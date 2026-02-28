@@ -40,6 +40,41 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
         },
         MappingEntry {
             source_kind: MappingSourceKind::Key,
+            source_label: "Shift+R",
+            target_label: "Record Mode",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "R",
+            target_label: "Record",
+            scope_label: "Armed/Active",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "C",
+            target_label: "Clear Track",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "Shift+C",
+            target_label: "Clear All",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "G",
+            target_label: "Song Loop",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
             source_label: "L",
             target_label: "Track Loop",
             scope_label: "Active Track",
@@ -53,10 +88,115 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
             enabled: true,
         },
         MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "A",
+            target_label: "Track Arm",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "M",
+            target_label: "Track Mute",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "S",
+            target_label: "Track Solo",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "I",
+            target_label: "Passthrough",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "[ ]",
+            target_label: "Set Track Loop",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "Shift+[ ]",
+            target_label: "Set Song Loop",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: ", .",
+            target_label: "Nudge Loop",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "Shift+, .",
+            target_label: "Nudge Song Loop",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "- =",
+            target_label: "Resize Loop",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "/ \\",
+            target_label: "Half/Double Loop",
+            scope_label: "Active Track",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "Left/Right",
+            target_label: "Select Track",
+            scope_label: "Relative",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "1-9",
+            target_label: "Select Track",
+            scope_label: "Absolute",
+            enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_label: "Tab/F1-F5",
+            target_label: "Pages/Overlay",
+            scope_label: "Global",
+            enabled: true,
+        },
+        MappingEntry {
             source_kind: MappingSourceKind::Midi,
             source_label: "Note C2",
             target_label: "Record Hold",
             scope_label: "Global",
+            enabled: false,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_label: "CC21",
+            target_label: "Track Loop",
+            scope_label: "Active Track",
+            enabled: false,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_label: "CC22",
+            target_label: "Track Mute",
+            scope_label: "Active Track",
             enabled: false,
         },
         MappingEntry {
@@ -65,6 +205,13 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
             target_label: "Play/Stop",
             scope_label: "Global",
             enabled: true,
+        },
+        MappingEntry {
+            source_kind: MappingSourceKind::Osc,
+            source_label: "/track/active/arm",
+            target_label: "Track Arm",
+            scope_label: "Active Track",
+            enabled: false,
         },
     ]
 }
@@ -77,14 +224,20 @@ mod tests {
     fn demo_mappings_cover_key_midi_and_osc_sources() {
         let mappings = demo_mappings();
 
-        assert!(mappings
-            .iter()
-            .any(|entry| entry.source_kind == MappingSourceKind::Key));
-        assert!(mappings
-            .iter()
-            .any(|entry| entry.source_kind == MappingSourceKind::Midi));
-        assert!(mappings
-            .iter()
-            .any(|entry| entry.source_kind == MappingSourceKind::Osc));
+        assert!(
+            mappings
+                .iter()
+                .any(|entry| entry.source_kind == MappingSourceKind::Key)
+        );
+        assert!(
+            mappings
+                .iter()
+                .any(|entry| entry.source_kind == MappingSourceKind::Midi)
+        );
+        assert!(
+            mappings
+                .iter()
+                .any(|entry| entry.source_kind == MappingSourceKind::Osc)
+        );
     }
 }

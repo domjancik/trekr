@@ -7,6 +7,7 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - `docs/product-spec.md`: product behavior, UX model, workflows, and MVP scope.
 - `docs/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
+- `docs/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
 
 ## Current Direction
 

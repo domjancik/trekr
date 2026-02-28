@@ -705,11 +705,38 @@ impl App {
             Color::RGB(154, 166, 182),
         )?;
         let row_gap = match self.page_state.mapping_mode {
-            MappingPageMode::Overview => 6,
-            MappingPageMode::Write => 8,
+            MappingPageMode::Overview => 3,
+            MappingPageMode::Write => 4,
         };
-        let rows = crate::ui::stacked_rows(list_bounds, self.mappings.len().max(1), row_gap);
-        for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
+        let row_height = match self.page_state.mapping_mode {
+            MappingPageMode::Overview => 18_i32,
+            MappingPageMode::Write => 20_i32,
+        };
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+
+        for visible_index in 0..visible_rows {
+            let index = start_index + visible_index;
+            if index >= self.mappings.len() {
+                break;
+            }
+            let row = Rect::new(
+                list_bounds.x,
+                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.width(),
+                row_height as u32,
+            );
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
             canvas.set_draw_color(if selected {
@@ -725,7 +752,7 @@ impl App {
             });
             canvas.draw_rect(row)?;
 
-            let source_rect = Rect::new(row.x + 6, row.y + 6, 24, row.height().saturating_sub(12));
+            let source_rect = Rect::new(row.x + 4, row.y + 3, 14, row.height().saturating_sub(6));
             let source_color = match entry.source_kind {
                 MappingSourceKind::Key => Color::RGB(98, 148, 232),
                 MappingSourceKind::Midi => Color::RGB(96, 202, 146),
@@ -735,10 +762,10 @@ impl App {
             canvas.fill_rect(source_rect)?;
 
             let enabled_rect = Rect::new(
-                row.x + row.width() as i32 - 28,
-                row.y + 6,
-                22,
-                row.height().saturating_sub(12),
+                row.x + row.width() as i32 - 20,
+                row.y + 3,
+                14,
+                row.height().saturating_sub(6),
             );
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(132, 220, 120)
@@ -748,22 +775,22 @@ impl App {
             canvas.fill_rect(enabled_rect)?;
 
             let trigger_rect = Rect::new(
-                source_rect.x + source_rect.width() as i32 + 8,
-                row.y + 8,
+                source_rect.x + source_rect.width() as i32 + 6,
+                row.y + 3,
                 104,
-                row.height().saturating_sub(16),
+                row.height().saturating_sub(6),
             );
             let target_rect = Rect::new(
-                trigger_rect.x + trigger_rect.width() as i32 + 8,
-                row.y + 8,
-                row.width().saturating_sub(286),
-                row.height().saturating_sub(16),
+                trigger_rect.x + trigger_rect.width() as i32 + 6,
+                row.y + 3,
+                row.width().saturating_sub(258),
+                row.height().saturating_sub(6),
             );
             let scope_rect = Rect::new(
-                row.x + row.width() as i32 - 146,
-                row.y + 8,
-                88,
-                row.height().saturating_sub(16),
+                row.x + row.width() as i32 - 118,
+                row.y + 3,
+                74,
+                row.height().saturating_sub(6),
             );
             canvas.set_draw_color(if selected {
                 Color::RGB(66, 80, 112)
@@ -783,9 +810,9 @@ impl App {
                 canvas,
                 entry.source_label,
                 Rect::new(
-                    trigger_rect.x + 6,
-                    row.y + 8,
-                    trigger_rect.width().saturating_sub(12),
+                    trigger_rect.x + 4,
+                    row.y + 5,
+                    trigger_rect.width().saturating_sub(8),
                     8,
                 ),
                 1,
@@ -795,9 +822,9 @@ impl App {
                 canvas,
                 entry.target_label,
                 Rect::new(
-                    target_rect.x + 6,
-                    row.y + 8,
-                    target_rect.width().saturating_sub(12),
+                    target_rect.x + 4,
+                    row.y + 5,
+                    target_rect.width().saturating_sub(8),
                     8,
                 ),
                 1,
@@ -807,15 +834,33 @@ impl App {
                 canvas,
                 entry.scope_label,
                 Rect::new(
-                    scope_rect.x + 6,
-                    row.y + 8,
-                    scope_rect.width().saturating_sub(12),
+                    scope_rect.x + 4,
+                    row.y + 5,
+                    scope_rect.width().saturating_sub(8),
                     8,
                 ),
                 1,
                 Color::RGB(236, 238, 242),
             )?;
         }
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!(
+                "Rows {}-{} / {}",
+                start_index.saturating_add(1),
+                (start_index + visible_rows).min(self.mappings.len()),
+                self.mappings.len()
+            ),
+            Rect::new(
+                content_bounds.x + content_bounds.width() as i32 - 120,
+                content_bounds.y + 12,
+                112,
+                8,
+            ),
+            1,
+            Color::RGB(154, 166, 182),
+        )?;
 
         Ok(())
     }
