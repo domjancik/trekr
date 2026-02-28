@@ -646,8 +646,10 @@ impl App {
                     note_range,
                     self.timeline_flow,
                 ) {
-                    canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
-                    canvas.fill_rect(region.rect)?;
+                    if detail {
+                        canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
+                        canvas.fill_rect(region.rect)?;
+                    }
                     canvas.set_draw_color(Color::RGB(248, 122, 122));
                     canvas.draw_rect(region.rect)?;
                 }
