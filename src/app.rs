@@ -1,9 +1,8 @@
+use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::project::Project;
 use crate::render::PaneRenderModel;
 use crate::ui::{LayoutMode, TimelineFlow};
-use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
 use std::time::{Duration, Instant};
@@ -14,6 +13,7 @@ pub struct App {
     engine_config: EngineConfig,
     layout_mode: LayoutMode,
     timeline_flow: TimelineFlow,
+    keyboard_bindings: KeyboardBindings,
 }
 
 impl App {
@@ -23,6 +23,7 @@ impl App {
             engine_config: EngineConfig::default(),
             layout_mode: LayoutMode::FixedFit,
             timeline_flow: TimelineFlow::DownwardColumns,
+            keyboard_bindings: KeyboardBindings,
         }
     }
 
@@ -31,13 +32,15 @@ impl App {
         let loop_detail = PaneRenderModel::loop_detail(&self.project);
 
         format!(
-            "trekr bootstrap: project='{}', tracks={}, layout={:?}, sample_rate={}, song_ticks={}, loop_ticks={}",
+            "trekr bootstrap: project='{}', tracks={}, layout={:?}, sample_rate={}, song_ticks={}, loop_ticks={}, playing={}, loop_enabled={}",
             self.project.name,
             self.project.tracks.len(),
             self.layout_mode,
             self.engine_config.sample_rate_hz,
             full_song.range.length_ticks,
-            loop_detail.range.length_ticks
+            loop_detail.range.length_ticks,
+            self.project.transport.playing,
+            self.project.transport.loop_enabled
         )
     }
 
@@ -60,18 +63,10 @@ impl App {
 
         'running: loop {
             for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => break 'running,
-                    Event::KeyDown {
-                        keycode: Some(Keycode::Space),
-                        repeat: false,
-                        ..
-                    } => self.timeline_flow = self.timeline_flow.toggle(),
-                    _ => {}
+                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
+                    if self.apply_action(action_event.action) == AppControl::Quit {
+                        break 'running;
+                    }
                 }
             }
 
@@ -178,9 +173,72 @@ impl App {
             pane.range.length_ticks,
             elapsed.as_millis() as u64,
         )?;
-        canvas.set_draw_color(Color::RGB(248, 240, 132));
+        canvas.set_draw_color(if self.project.transport.playing {
+            Color::RGB(248, 240, 132)
+        } else {
+            Color::RGB(140, 150, 162)
+        });
         canvas.fill_rect(playhead)?;
 
         Ok(())
+    }
+
+    fn apply_action(&mut self, action: AppAction) -> AppControl {
+        match action {
+            AppAction::Quit => AppControl::Quit,
+            AppAction::ToggleTimelineFlow => {
+                self.timeline_flow = self.timeline_flow.toggle();
+                AppControl::Continue
+            }
+            AppAction::TogglePlayback => {
+                self.project.transport.playing = !self.project.transport.playing;
+                AppControl::Continue
+            }
+            AppAction::ToggleLoopEnabled => {
+                self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
+                AppControl::Continue
+            }
+            AppAction::SetTimelineFlow(flow) => {
+                self.timeline_flow = flow;
+                AppControl::Continue
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppControl {
+    Continue,
+    Quit,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{App, AppControl};
+    use crate::actions::AppAction;
+    use crate::ui::TimelineFlow;
+
+    #[test]
+    fn apply_action_toggles_timeline_flow() {
+        let mut app = App::new();
+        assert_eq!(app.timeline_flow, TimelineFlow::DownwardColumns);
+
+        let control = app.apply_action(AppAction::ToggleTimelineFlow);
+
+        assert_eq!(control, AppControl::Continue);
+        assert_eq!(app.timeline_flow, TimelineFlow::AcrossRows);
+    }
+
+    #[test]
+    fn apply_action_toggles_transport_flags() {
+        let mut app = App::new();
+        assert!(!app.project.transport.playing);
+        assert!(app.project.transport.loop_enabled);
+
+        app.apply_action(AppAction::TogglePlayback);
+        app.apply_action(AppAction::ToggleLoopEnabled);
+
+        assert!(app.project.transport.playing);
+        assert!(!app.project.transport.loop_enabled);
     }
 }

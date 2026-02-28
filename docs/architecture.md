@@ -23,6 +23,22 @@ Recommended runtime structure:
 
 Messaging between the real-time engine and UI should avoid locks in the callback path.
 
+## Action Model
+
+The application should be action-driven at the input boundary.
+
+Required rule:
+
+- keyboard, MIDI, touch, OSC, remote control, and internal automation should all map into the same action layer
+
+That means:
+
+- device-specific handlers translate raw events into canonical `AppAction` values
+- app state changes happen by applying actions, not by embedding device logic in UI code
+- transport, loop, track, and mapping behavior stay consistent across control surfaces
+
+This is a core architectural requirement because MIDI control and remapping are central product features.
+
 ## Data Model
 
 Core entities:

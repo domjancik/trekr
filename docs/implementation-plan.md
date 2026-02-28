@@ -103,6 +103,7 @@ Exit criteria:
 
 Recommended first-pass modules:
 
+- `actions`: canonical app command model and source-agnostic action dispatch
 - `app`: startup, configuration, platform integration
 - `project`: persistent project model
 - `transport`: timing, tempo map, loop state
@@ -128,6 +129,7 @@ Current decisions locked in:
 - Rust is the chosen implementation language
 - low-end support targets Orange Pi Zero 2W-class devices and above
 - low-end optimization should favor snappy MIDI behavior and nearly static summary-based rendering over higher track ceilings
+- input handling should be action-driven so keyboard, MIDI, and later touch/remote control map into the same command surface
 
 ## First Build Recommendation
 

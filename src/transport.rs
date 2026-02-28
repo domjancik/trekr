@@ -13,6 +13,7 @@ pub struct Transport {
     pub tempo_bpm: u16,
     pub ppqn: u16,
     pub quantize: QuantizeMode,
+    pub loop_enabled: bool,
     pub playing: bool,
     pub recording: bool,
 }
@@ -23,6 +24,7 @@ impl Default for Transport {
             tempo_bpm: 120,
             ppqn: 960,
             quantize: QuantizeMode::Sixteenth,
+            loop_enabled: true,
             playing: false,
             recording: false,
         }
