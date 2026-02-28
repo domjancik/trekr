@@ -18,6 +18,7 @@ Deliver:
 - fixed-fit paired-column timeline mock rendering
 - default vertical-time timeline with `full | detail` per visible track
 - active-track selection and highlighting
+- page shell for switching between timeline and utility pages
 - save/load for minimal project state
 
 Exit criteria:
@@ -32,8 +33,10 @@ Deliver:
 
 - MIDI input enumeration
 - MIDI output enumeration
+- MIDI I/O page for selecting and inspecting available devices
 - per-track input routing
 - per-track output device/channel routing
+- active-track routing page for editing current track input/output/channel state
 - MIDI passthrough
 - transport-scheduled MIDI playback
 
@@ -64,6 +67,8 @@ Deliver:
 
 - MIDI learn
 - note and non-note control mapping
+- mapping model shared across keyboard, MIDI, and OSC
+- mappings page for viewing bindings by source, target, and scope
 - transport controls
 - track arm/mute/solo mapping
 - current-track and absolute-track actions
@@ -116,6 +121,7 @@ Recommended first-pass modules:
 - `ui`: panes, controls, and interaction state
 - `render`: fixed-fit timeline drawing and cached summaries
 - `mapping`: MIDI learn and action binding
+- `pages`: timeline page, mappings page, MIDI I/O page, and routing page state
 
 ## Technical Decision Summary
 
@@ -134,6 +140,7 @@ Current decisions locked in:
 - low-end support targets Orange Pi Zero 2W-class devices and above
 - low-end optimization should favor snappy MIDI behavior and nearly static summary-based rendering over higher track ceilings
 - input handling should be action-driven so keyboard, MIDI, and later touch/remote control map into the same command surface
+- utility pages are part of V1: mappings, MIDI I/O, and active-track routing
 
 ## First Build Recommendation
 

@@ -60,6 +60,54 @@ Potential later improvements:
 - optional micro-zoom inside the loop pane
 - optional scroll-assisted navigation for very high track counts
 
+### Utility Pages
+
+V1 should include focused utility pages alongside the timeline view so routing and control state are inspectable without guessing.
+
+### Mappings Page
+
+The mappings page should show the currently configured control bindings across all supported input surfaces:
+
+- keyboard shortcuts
+- MIDI note/control mappings
+- OSC address mappings
+
+The page should make the following visible:
+
+- input source type
+- input identifier such as key, MIDI message, or OSC address
+- target action
+- target scope such as current track or absolute track
+- conflict state if multiple bindings overlap
+- enabled/disabled state
+
+V1 may prioritize display-first with lightweight editing, but the structure should support later in-app reassignment and learn flows.
+
+### MIDI I/O Page
+
+The MIDI I/O page should expose device selection and availability for the full application:
+
+- detected MIDI input devices
+- detected MIDI output devices
+- connection/availability state
+- currently selected default inputs if global capture is enabled
+- currently available outputs for track routing
+
+This page is the operator-facing view for confirming that the hardware topology matches the live setup before editing or playback.
+
+### Active Track Routing Page
+
+The routing page should focus on the currently active track and surface the core per-track routing controls:
+
+- active track identity
+- selected MIDI input device
+- input channel mode: all or specific channel
+- selected MIDI output device
+- output MIDI channel
+- passthrough state
+
+Commands should continue to work in active-track-relative form by default, while absolute track addressing remains available through mappings and future batch routing tools.
+
 ## Track Model
 
 ### Track Types
@@ -151,6 +199,8 @@ Non-note MIDI can control:
 - region actions
 - macro controls
 - future synth/effect parameters
+
+Mappings should be representable across keyboard, MIDI, and OSC using the same action model so the mappings page can describe one unified command surface rather than separate subsystems.
 
 ## Audio Planning Constraints
 
