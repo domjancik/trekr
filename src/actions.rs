@@ -12,6 +12,10 @@ pub enum AppAction {
     TogglePlayback,
     ToggleGlobalLoop,
     ToggleCurrentTrackLoop,
+    SetCurrentTrackLoopStart,
+    SetCurrentTrackLoopEnd,
+    SetGlobalLoopStart,
+    SetGlobalLoopEnd,
     ToggleCurrentTrackArm,
     ToggleCurrentTrackMute,
     ToggleCurrentTrackSolo,
@@ -76,6 +80,32 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleCurrentTrackLoop,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::LeftBracket),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SetGlobalLoopStart
+                } else {
+                    AppAction::SetCurrentTrackLoopStart
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::RightBracket),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SetGlobalLoopEnd
+                } else {
+                    AppAction::SetCurrentTrackLoopEnd
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -213,5 +243,38 @@ mod tests {
 
         let resolved = KeyboardBindings.resolve(&event).expect("track select");
         assert_eq!(resolved.action, AppAction::SelectTrack(3));
+    }
+
+    #[test]
+    fn keyboard_bindings_map_brackets_to_loop_actions() {
+        let local = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::LeftBracket),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let global = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::RightBracket),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&local).unwrap().action,
+            AppAction::SetCurrentTrackLoopStart
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&global).unwrap().action,
+            AppAction::SetGlobalLoopEnd
+        );
     }
 }

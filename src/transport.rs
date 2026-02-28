@@ -32,6 +32,10 @@ impl Default for Transport {
 }
 
 impl Transport {
+    pub fn ticks_per_second(self) -> u64 {
+        (u64::from(self.tempo_bpm) * u64::from(self.ppqn)) / 60
+    }
+
     pub fn quantize_step_ticks(self) -> Option<u64> {
         match self.quantize {
             QuantizeMode::Off => None,
@@ -83,5 +87,11 @@ mod tests {
         };
 
         assert_eq!(transport.quantize_to_nearest(257), 257);
+    }
+
+    #[test]
+    fn ticks_per_second_uses_tempo_and_ppqn() {
+        let transport = Transport::default();
+        assert_eq!(transport.ticks_per_second(), 1_920);
     }
 }

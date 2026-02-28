@@ -13,6 +13,7 @@ pub struct App {
     layout_mode: LayoutMode,
     timeline_flow: TimelineFlow,
     keyboard_bindings: KeyboardBindings,
+    playhead_ticks: u64,
 }
 
 impl App {
@@ -23,6 +24,7 @@ impl App {
             layout_mode: LayoutMode::FixedFit,
             timeline_flow: TimelineFlow::DownwardColumns,
             keyboard_bindings: KeyboardBindings,
+            playhead_ticks: 0,
         }
     }
 
@@ -52,6 +54,7 @@ impl App {
         let mut canvas = window.into_canvas();
         let mut event_pump = sdl_context.event_pump()?;
         let started_at = Instant::now();
+        let mut last_frame_at = started_at;
         let auto_exit_after = std::env::var("TREKR_EXIT_AFTER_MS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
@@ -70,8 +73,12 @@ impl App {
                 break 'running;
             }
 
+            let now = Instant::now();
+            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            last_frame_at = now;
+
             self.update_window_title(canvas.window_mut())?;
-            self.draw(&mut canvas, started_at.elapsed())?;
+            self.draw(&mut canvas)?;
             std::thread::sleep(Duration::from_millis(16));
         }
 
@@ -81,7 +88,6 @@ impl App {
     fn draw(
         &self,
         canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
-        elapsed: Duration,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = canvas.output_size()?;
         let surface = crate::ui::surface_rect(width, height);
@@ -107,7 +113,6 @@ impl App {
                     detail_bounds,
                     index,
                     track,
-                    elapsed,
                     is_active,
                 )?;
             }
@@ -124,7 +129,6 @@ impl App {
         detail_bounds: Rect,
         track_index: usize,
         track: &crate::project::Track,
-        elapsed: Duration,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let full_accent = if track.state.armed {
@@ -151,7 +155,6 @@ impl App {
                 .loop_region
                 .end_ticks()
                 .max(self.project.full_song_range().end_ticks()),
-            elapsed,
             is_active,
             false,
             track,
@@ -162,7 +165,6 @@ impl App {
             detail_accent,
             track_index + 10,
             track.loop_region.length_ticks,
-            elapsed,
             is_active,
             true,
             track,
@@ -178,7 +180,6 @@ impl App {
         accent: Color,
         seed: usize,
         range_ticks: u64,
-        elapsed: Duration,
         is_active: bool,
         detail: bool,
         track: &crate::project::Track,
@@ -279,7 +280,7 @@ impl App {
             bounds,
             self.timeline_flow,
             range_ticks.max(1),
-            elapsed.as_millis() as u64,
+            self.playhead_ticks,
         )?;
         canvas.set_draw_color(if self.project.transport.playing {
             Color::RGB(248, 240, 132)
@@ -300,16 +301,21 @@ impl App {
             .active_track()
             .expect("demo project always has tracks");
         let title = format!(
-            "trekr | T{} {} | Space Play:{} | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
+            "trekr | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | Shift+[ ] SongLoop:{}-{} | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
             self.project.active_track_index + 1,
             active.name,
+            self.playhead_ticks,
+            active.loop_region.start_ticks,
+            active.loop_region.end_ticks(),
+            self.project.loop_region.start_ticks,
+            self.project.loop_region.end_ticks(),
             on_off(self.project.transport.playing),
-            on_off(self.project.transport.loop_enabled),
             on_off(active.state.loop_enabled),
             on_off(active.state.armed),
             on_off(active.state.muted),
             on_off(active.state.soloed),
             on_off(active.state.passthrough),
+            on_off(self.project.transport.loop_enabled),
         );
         window.set_title(&title)?;
         Ok(())
@@ -330,6 +336,32 @@ impl App {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.loop_enabled = !track.state.loop_enabled;
                 }
+                AppControl::Continue
+            }
+            AppAction::SetCurrentTrackLoopStart => {
+                let edit_ticks = self.current_edit_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.set_start_preserving_end(edit_ticks);
+                }
+                AppControl::Continue
+            }
+            AppAction::SetCurrentTrackLoopEnd => {
+                let edit_ticks = self.current_edit_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.set_end(edit_ticks);
+                }
+                AppControl::Continue
+            }
+            AppAction::SetGlobalLoopStart => {
+                let edit_ticks = self.current_edit_ticks();
+                self.project
+                    .loop_region
+                    .set_start_preserving_end(edit_ticks);
+                AppControl::Continue
+            }
+            AppAction::SetGlobalLoopEnd => {
+                let edit_ticks = self.current_edit_ticks();
+                self.project.loop_region.set_end(edit_ticks);
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackArm => {
@@ -373,6 +405,32 @@ impl App {
                 AppControl::Continue
             }
         }
+    }
+
+    fn advance_playhead(&mut self, delta: Duration) {
+        if !self.project.transport.playing {
+            return;
+        }
+
+        let ticks_per_second = self.project.transport.ticks_per_second();
+        let advanced_ticks =
+            (delta.as_nanos() as u128 * u128::from(ticks_per_second)) / 1_000_000_000_u128;
+        self.playhead_ticks = self.playhead_ticks.saturating_add(advanced_ticks as u64);
+
+        if self.project.transport.loop_enabled {
+            let loop_region = self.project.loop_region;
+            if loop_region.length_ticks > 0 {
+                let relative = self.playhead_ticks.saturating_sub(loop_region.start_ticks);
+                self.playhead_ticks =
+                    loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
+            }
+        }
+    }
+
+    fn current_edit_ticks(&self) -> u64 {
+        self.project
+            .transport
+            .quantize_to_nearest(self.playhead_ticks)
     }
 }
 
@@ -418,6 +476,31 @@ mod tests {
 
         assert!(app.project.transport.playing);
         assert!(!app.project.transport.loop_enabled);
+    }
+
+    #[test]
+    fn apply_action_sets_current_track_loop_bounds_from_playhead() {
+        let mut app = App::new();
+        app.playhead_ticks = 1_440;
+        app.apply_action(AppAction::SetCurrentTrackLoopStart);
+        app.playhead_ticks = 2_880;
+        app.apply_action(AppAction::SetCurrentTrackLoopEnd);
+
+        let active = app.project.active_track().unwrap();
+        assert_eq!(active.loop_region.start_ticks, 1_440);
+        assert_eq!(active.loop_region.end_ticks(), 2_880);
+    }
+
+    #[test]
+    fn apply_action_sets_global_loop_bounds_from_playhead() {
+        let mut app = App::new();
+        app.playhead_ticks = 960;
+        app.apply_action(AppAction::SetGlobalLoopStart);
+        app.playhead_ticks = 3_840;
+        app.apply_action(AppAction::SetGlobalLoopEnd);
+
+        assert_eq!(app.project.loop_region.start_ticks, 960);
+        assert_eq!(app.project.loop_region.end_ticks(), 3_840);
     }
 
     #[test]

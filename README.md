@@ -30,6 +30,8 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 Current controls:
 
 - `Space`: play/stop
+- `[` / `]`: set current-track loop start/end at playhead
+- `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `G`: toggle global loop enable
 - `L`: toggle current track loop enable
 - `A`: arm current track
