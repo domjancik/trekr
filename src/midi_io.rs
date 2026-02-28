@@ -1,3 +1,6 @@
+use midir::{MidiInput, MidiOutput, MidiOutputConnection};
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiPortRef {
     pub name: String,
@@ -29,6 +32,45 @@ pub struct MidiDeviceCatalog {
 }
 
 impl MidiDeviceCatalog {
+    pub fn scan() -> Self {
+        let inputs: Vec<MidiPortRef> = match MidiInput::new("trekr-midi-inputs") {
+            Ok(midi_in) => midi_in
+                .ports()
+                .into_iter()
+                .filter_map(|port| midi_in.port_name(&port).ok())
+                .map(|name| MidiPortRef { name })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        let outputs: Vec<MidiPortRef> = match MidiOutput::new("trekr-midi-outputs") {
+            Ok(midi_out) => midi_out
+                .ports()
+                .into_iter()
+                .filter_map(|port| midi_out.port_name(&port).ok())
+                .map(|name| MidiPortRef { name })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+        if inputs.is_empty() && outputs.is_empty() {
+            return Self::demo();
+        }
+
+        let mut catalog = Self {
+            selected_input: None,
+            selected_output: None,
+            inputs,
+            outputs,
+        };
+        if !catalog.inputs.is_empty() {
+            catalog.selected_input = Some(0);
+        }
+        if !catalog.outputs.is_empty() {
+            catalog.selected_output = Some(0);
+        }
+        catalog
+    }
+
     pub fn demo() -> Self {
         Self {
             inputs: vec![
@@ -43,6 +85,15 @@ impl MidiDeviceCatalog {
             ],
             selected_input: Some(0),
             selected_output: Some(0),
+        }
+    }
+
+    pub fn with_preserved_selection(&self, previous: &Self) -> Self {
+        Self {
+            selected_input: preserve_selection(&self.inputs, previous.selected_input_port()),
+            selected_output: preserve_selection(&self.outputs, previous.selected_output_port()),
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
         }
     }
 
@@ -79,25 +130,127 @@ impl MidiDeviceCatalog {
     }
 }
 
+fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> Option<usize> {
+    let Some(selected) = selected else {
+        return (!ports.is_empty()).then_some(0);
+    };
+
+    ports
+        .iter()
+        .position(|port| port == selected)
+        .or_else(|| (!ports.is_empty()).then_some(0))
+}
+
+pub struct MidiOutputRuntime {
+    app_name: &'static str,
+    connections: HashMap<String, MidiOutputConnection>,
+}
+
+impl Default for MidiOutputRuntime {
+    fn default() -> Self {
+        Self {
+            app_name: "trekr-midi-output",
+            connections: HashMap::new(),
+        }
+    }
+}
+
+impl MidiOutputRuntime {
+    pub fn send_note_on(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: u8,
+    ) -> Result<(), String> {
+        self.send_message(port, [status_byte(0x90, channel), pitch, velocity])
+    }
+
+    pub fn send_note_off(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+    ) -> Result<(), String> {
+        self.send_message(port, [status_byte(0x80, channel), pitch, 0])
+    }
+
+    pub fn send_all_notes_off(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+    ) -> Result<(), String> {
+        self.send_message(port, [status_byte(0xB0, channel), 123, 0])
+    }
+
+    fn send_message(&mut self, port: &MidiPortRef, message: [u8; 3]) -> Result<(), String> {
+        let connection = self.connection_for(port)?;
+        connection.send(&message).map_err(|error| error.to_string())
+    }
+
+    fn connection_for(&mut self, port: &MidiPortRef) -> Result<&mut MidiOutputConnection, String> {
+        if !self.connections.contains_key(&port.name) {
+            let connection = connect_output_by_name(self.app_name, &port.name)?;
+            self.connections.insert(port.name.clone(), connection);
+        }
+
+        self.connections
+            .get_mut(&port.name)
+            .ok_or_else(|| format!("missing output connection for {}", port.name))
+    }
+}
+
+fn connect_output_by_name(
+    app_name: &str,
+    target_name: &str,
+) -> Result<MidiOutputConnection, String> {
+    let midi_out = MidiOutput::new(app_name).map_err(|error| error.to_string())?;
+    let port = midi_out
+        .ports()
+        .into_iter()
+        .find(|port| midi_out.port_name(port).ok().as_deref() == Some(target_name))
+        .ok_or_else(|| format!("MIDI output port '{}' not found", target_name))?;
+
+    midi_out
+        .connect(&port, app_name)
+        .map_err(|error| error.to_string())
+}
+
+fn status_byte(base: u8, channel: u8) -> u8 {
+    base | channel.saturating_sub(1).min(15)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::MidiDeviceCatalog;
+    use super::{MidiDeviceCatalog, MidiPortRef, preserve_selection, status_byte};
 
     #[test]
-    fn demo_catalog_exposes_default_ports() {
-        let catalog = MidiDeviceCatalog::demo();
+    fn status_byte_uses_one_based_channel_numbers() {
+        assert_eq!(status_byte(0x90, 1), 0x90);
+        assert_eq!(status_byte(0x90, 16), 0x9F);
+    }
 
-        assert_eq!(catalog.selected_input_port().unwrap().name, "Keystep 37");
-        assert_eq!(catalog.selected_output_port().unwrap().name, "Digitone");
+    #[test]
+    fn preserve_selection_falls_back_to_first_port() {
+        let ports = vec![MidiPortRef::new("A"), MidiPortRef::new("B")];
+        let selected = MidiPortRef::new("Missing");
+
+        assert_eq!(preserve_selection(&ports, Some(&selected)), Some(0));
+        assert_eq!(preserve_selection(&ports, None), Some(0));
     }
 
     #[test]
     fn catalog_selection_clamps_to_available_ports() {
-        let mut catalog = MidiDeviceCatalog::demo();
+        let mut catalog = MidiDeviceCatalog {
+            inputs: vec![MidiPortRef::new("In 1"), MidiPortRef::new("In 2")],
+            outputs: vec![MidiPortRef::new("Out 1"), MidiPortRef::new("Out 2")],
+            selected_input: Some(0),
+            selected_output: Some(0),
+        };
         catalog.set_selected_input(99);
         catalog.set_selected_output(99);
 
-        assert_eq!(catalog.selected_input.unwrap(), 2);
-        assert_eq!(catalog.selected_output.unwrap(), 2);
+        assert_eq!(catalog.selected_input.unwrap(), 1);
+        assert_eq!(catalog.selected_output.unwrap(), 1);
     }
 }

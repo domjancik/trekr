@@ -24,6 +24,9 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - fixed-fit per-track paired columns in the form `full | detail | full | detail`
 - default vertical-time layout with time moving downward
 - a page shell for `Timeline`, `Mappings`, `MIDI I/O`, and `Routing`
+- real MIDI device enumeration via `midir`
+- basic routed MIDI note playback on track output ports/channels
+- in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
 - active-track highlighting
 - a moving playhead
 - per-track loop preview

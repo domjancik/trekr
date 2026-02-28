@@ -1,7 +1,7 @@
 use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::mapping::{MappingEntry, MappingSourceKind, demo_mappings};
-use crate::midi_io::{MidiDeviceCatalog, MidiPortRef};
+use crate::midi_io::{MidiDeviceCatalog, MidiOutputRuntime, MidiPortRef};
 use crate::pages::{AppPage, AppPageState, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
@@ -19,12 +19,14 @@ pub struct App {
     keyboard_bindings: KeyboardBindings,
     page_state: AppPageState,
     midi_devices: MidiDeviceCatalog,
+    midi_output: MidiOutputRuntime,
     mappings: Vec<MappingEntry>,
     playhead_ticks: u64,
 }
 
 impl App {
     pub fn new() -> Self {
+        let scanned_devices = MidiDeviceCatalog::scan();
         let mut app = Self {
             project: Project::demo(),
             engine_config: EngineConfig::default(),
@@ -32,7 +34,8 @@ impl App {
             timeline_flow: TimelineFlow::DownwardColumns,
             keyboard_bindings: KeyboardBindings,
             page_state: AppPageState::default(),
-            midi_devices: MidiDeviceCatalog::demo(),
+            midi_devices: scanned_devices,
+            midi_output: MidiOutputRuntime::default(),
             mappings: demo_mappings(),
             playhead_ticks: 0,
         };
@@ -161,6 +164,18 @@ impl App {
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
+            crate::ui::draw_text(
+                canvas,
+                page.label(),
+                tab.x + 30,
+                tab.y + 8,
+                1,
+                if active {
+                    Color::RGB(248, 244, 212)
+                } else {
+                    Color::RGB(188, 194, 206)
+                },
+            )?;
         }
 
         Ok(())
@@ -262,6 +277,14 @@ impl App {
         let header = crate::ui::track_header_rect(bounds, self.timeline_flow);
         canvas.set_draw_color(accent);
         canvas.fill_rect(header)?;
+        crate::ui::draw_text(
+            canvas,
+            &track.name,
+            header.x + 4,
+            header.y + 6,
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
 
         if track.state.passthrough {
             let rail = crate::ui::passthrough_rail_rect(bounds);
@@ -382,8 +405,17 @@ impl App {
         canvas.fill_rect(content_bounds)?;
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(content_bounds)?;
+        crate::ui::draw_text(
+            canvas,
+            "Mappings",
+            content_bounds.x + 8,
+            content_bounds.y + 8,
+            2,
+            Color::RGB(244, 232, 146),
+        )?;
 
-        let rows = crate::ui::stacked_rows(content_bounds, self.mappings.len().max(1), 8);
+        let list_bounds = crate::ui::inset_rect(content_bounds, 8, 32)?;
+        let rows = crate::ui::stacked_rows(list_bounds, self.mappings.len().max(1), 8);
         for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
@@ -435,6 +467,30 @@ impl App {
                 Color::RGB(104, 112, 124)
             });
             canvas.fill_rect(target_rect)?;
+            crate::ui::draw_text(
+                canvas,
+                entry.source_label,
+                source_rect.x + source_rect.width() as i32 + 8,
+                row.y + 8,
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            crate::ui::draw_text(
+                canvas,
+                entry.target_label,
+                target_rect.x + 6,
+                row.y + 8,
+                1,
+                Color::RGB(24, 28, 36),
+            )?;
+            crate::ui::draw_text(
+                canvas,
+                entry.scope_label,
+                target_rect.x + 6,
+                row.y + 20,
+                1,
+                Color::RGB(24, 28, 36),
+            )?;
         }
 
         Ok(())
@@ -448,10 +504,18 @@ impl App {
         let columns = crate::ui::equal_columns(content_bounds, 2, 14);
         let input_bounds = columns[0];
         let output_bounds = columns[1];
+        crate::ui::draw_text(
+            canvas,
+            "MIDI I/O",
+            content_bounds.x + 8,
+            content_bounds.y + 8,
+            2,
+            Color::RGB(244, 232, 146),
+        )?;
 
         self.draw_device_list(
             canvas,
-            input_bounds,
+            crate::ui::inset_rect(input_bounds, 0, 24)?,
             &self.midi_devices.inputs,
             self.page_state.midi_io.selected_input_index,
             self.midi_devices.selected_input,
@@ -460,12 +524,28 @@ impl App {
         )?;
         self.draw_device_list(
             canvas,
-            output_bounds,
+            crate::ui::inset_rect(output_bounds, 0, 24)?,
             &self.midi_devices.outputs,
             self.page_state.midi_io.selected_output_index,
             self.midi_devices.selected_output,
             self.page_state.midi_io.focus == MidiIoListFocus::Outputs,
             Color::RGB(224, 132, 90),
+        )?;
+        crate::ui::draw_text(
+            canvas,
+            "Inputs",
+            input_bounds.x + 8,
+            input_bounds.y + 28,
+            1,
+            Color::RGB(214, 242, 220),
+        )?;
+        crate::ui::draw_text(
+            canvas,
+            "Outputs",
+            output_bounds.x + 8,
+            output_bounds.y + 28,
+            1,
+            Color::RGB(246, 212, 194),
         )?;
 
         Ok(())
@@ -528,6 +608,14 @@ impl App {
             );
             canvas.set_draw_color(Color::RGB(182, 194, 212));
             canvas.fill_rect(bar)?;
+            crate::ui::draw_text(
+                canvas,
+                &ports[index].name,
+                bar.x + 4,
+                row.y + 8,
+                1,
+                Color::RGB(24, 28, 36),
+            )?;
         }
 
         Ok(())
@@ -542,8 +630,16 @@ impl App {
         canvas.fill_rect(content_bounds)?;
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(content_bounds)?;
+        crate::ui::draw_text(
+            canvas,
+            "Routing",
+            content_bounds.x + 8,
+            content_bounds.y + 8,
+            2,
+            Color::RGB(244, 232, 146),
+        )?;
 
-        let inner = crate::ui::inset_rect(content_bounds, 12, 12)?;
+        let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
         let (header, body) = crate::ui::split_top_strip(inner, 40, 10)?;
         let active_track = self.project.active_track().expect("demo project has tracks");
 
@@ -572,6 +668,14 @@ impl App {
             Color::RGB(92, 100, 112)
         });
         canvas.fill_rect(state_badge)?;
+        crate::ui::draw_text(
+            canvas,
+            &active_track.name,
+            name_badge.x + name_badge.width() as i32 + 8,
+            header.y + 12,
+            2,
+            Color::RGB(244, 244, 236),
+        )?;
 
         let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
         for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
@@ -616,6 +720,22 @@ impl App {
             );
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
+            crate::ui::draw_text(
+                canvas,
+                field.label(),
+                label.x + label.width() as i32 + 10,
+                row.y + 8,
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            crate::ui::draw_text(
+                canvas,
+                &self.routing_field_value(active_track, field),
+                value.x + 6,
+                row.y + 8,
+                1,
+                Color::RGB(24, 28, 36),
+            )?;
         }
 
         Ok(())
@@ -743,6 +863,9 @@ impl App {
             }
             AppAction::TogglePlayback => {
                 self.project.transport.playing = !self.project.transport.playing;
+                if !self.project.transport.playing {
+                    self.silence_all_tracks();
+                }
                 AppControl::Continue
             }
             AppAction::ToggleGlobalLoop => {
@@ -895,6 +1018,7 @@ impl App {
             return;
         }
 
+        let previous_ticks = self.playhead_ticks;
         let ticks_per_second = self.project.transport.ticks_per_second();
         let advanced_ticks =
             (delta.as_nanos() as u128 * u128::from(ticks_per_second)) / 1_000_000_000_u128;
@@ -908,6 +1032,8 @@ impl App {
                     loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
             }
         }
+
+        self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
     }
 
     fn current_edit_ticks(&self) -> u64 {
@@ -1075,6 +1201,132 @@ impl App {
             }
         }
     }
+
+    fn dispatch_midi_notes(&mut self, previous_ticks: u64, advanced_ticks: u64) {
+        if advanced_ticks == 0 {
+            return;
+        }
+
+        let global_loop = self
+            .project
+            .transport
+            .loop_enabled
+            .then_some(self.project.loop_region);
+        let track_events: Vec<(Option<MidiPortRef>, u8, Vec<(u64, bool, u8, u8)>)> = self
+            .project
+            .tracks
+            .iter()
+            .map(|track| {
+                let channel = track.routing.output_channel.unwrap_or(1).clamp(1, 16);
+                let port = track.routing.output_port.clone();
+                let loop_range = if track.state.loop_enabled {
+                    Some(track.loop_region)
+                } else {
+                    global_loop
+                };
+                let events = scheduled_note_events(track, previous_ticks, advanced_ticks, loop_range);
+                (port, channel, events)
+            })
+            .collect();
+
+        for (port, channel, events) in track_events {
+            let Some(port) = port else {
+                continue;
+            };
+
+            for (_, note_on, pitch, velocity) in events {
+                let _ = if note_on {
+                    self.midi_output
+                        .send_note_on(&port, channel, pitch, velocity)
+                } else {
+                    self.midi_output.send_note_off(&port, channel, pitch)
+                };
+            }
+        }
+    }
+
+    fn silence_all_tracks(&mut self) {
+        let ports_and_channels: Vec<(MidiPortRef, u8)> = self
+            .project
+            .tracks
+            .iter()
+            .filter_map(|track| {
+                track.routing
+                    .output_port
+                    .clone()
+                    .zip(track.routing.output_channel)
+            })
+            .collect();
+
+        for (port, channel) in ports_and_channels {
+            let _ = self.midi_output.send_all_notes_off(&port, channel);
+        }
+    }
+
+    fn routing_field_value(&self, track: &Track, field: RoutingField) -> String {
+        match field {
+            RoutingField::InputDevice => port_name(track.routing.input_port.as_ref()).to_string(),
+            RoutingField::InputChannel => input_channel_label(track.routing.input_channel),
+            RoutingField::OutputDevice => port_name(track.routing.output_port.as_ref()).to_string(),
+            RoutingField::OutputChannel => output_channel_label(track.routing.output_channel),
+            RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
+        }
+    }
+}
+
+fn scheduled_note_events(
+    track: &Track,
+    previous_ticks: u64,
+    advanced_ticks: u64,
+    loop_range: Option<crate::timeline::LoopRegion>,
+) -> Vec<(u64, bool, u8, u8)> {
+    if advanced_ticks == 0 || track.state.muted {
+        return Vec::new();
+    }
+
+    let segments = loop_range
+        .map(|range| ranged_segments(previous_ticks, advanced_ticks, range))
+        .unwrap_or_else(|| vec![(previous_ticks, previous_ticks.saturating_add(advanced_ticks))]);
+
+    let mut events = Vec::new();
+    for (segment_start, segment_end) in segments {
+        for note in &track.midi_notes {
+            if note.start_ticks >= segment_start && note.start_ticks < segment_end {
+                events.push((note.start_ticks, true, note.pitch, note.velocity));
+            }
+            if note.end_ticks() >= segment_start && note.end_ticks() < segment_end {
+                events.push((note.end_ticks(), false, note.pitch, note.velocity));
+            }
+        }
+    }
+
+    events.sort_by_key(|event| (event.0, event.1));
+    events
+}
+
+fn ranged_segments(previous_ticks: u64, advanced_ticks: u64, range: crate::timeline::LoopRegion) -> Vec<(u64, u64)> {
+    if range.length_ticks == 0 || advanced_ticks == 0 {
+        return Vec::new();
+    }
+
+    let mut segments = Vec::new();
+    let mut remaining = advanced_ticks;
+    let mut cursor = range.start_ticks + (previous_ticks % range.length_ticks);
+    let end = range.end_ticks();
+
+    while remaining > 0 {
+        let next_boundary = end.min(cursor.saturating_add(remaining));
+        segments.push((cursor, next_boundary));
+        let consumed = next_boundary.saturating_sub(cursor);
+        if consumed >= remaining {
+            break;
+        }
+
+        remaining = remaining.saturating_sub(consumed);
+        cursor = range.start_ticks;
+    }
+
+    segments
 }
 
 fn cycle_optional_port(
@@ -1378,7 +1630,7 @@ mod tests {
             cycle_optional_port(None, &app.midi_devices.outputs, 1)
                 .unwrap()
                 .name,
-            "Digitone"
+            app.midi_devices.outputs[0].name
         );
         assert_eq!(
             cycle_input_channel(MidiChannelFilter::Omni, 1),
