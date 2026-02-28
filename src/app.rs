@@ -325,7 +325,7 @@ impl App {
             .active_track()
             .expect("demo project always has tracks");
         let title = format!(
-            "trekr | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | Shift+[ ] SongLoop:{}-{} | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
+            "trekr | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | , . Nudge | Shift+[ ] SongLoop:{}-{} | Shift+, . Nudge | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
             self.project.active_track_index + 1,
             active.name,
             self.playhead_ticks,
@@ -386,6 +386,30 @@ impl App {
             AppAction::SetGlobalLoopEnd => {
                 let edit_ticks = self.current_edit_ticks();
                 self.project.loop_region.set_end(edit_ticks);
+                AppControl::Continue
+            }
+            AppAction::NudgeCurrentTrackLoopBackward => {
+                let delta = -(self.nudge_step_ticks() as i64);
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.shift_by(delta);
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeCurrentTrackLoopForward => {
+                let delta = self.nudge_step_ticks() as i64;
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.shift_by(delta);
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeGlobalLoopBackward => {
+                let delta = -(self.nudge_step_ticks() as i64);
+                self.project.loop_region.shift_by(delta);
+                AppControl::Continue
+            }
+            AppAction::NudgeGlobalLoopForward => {
+                let delta = self.nudge_step_ticks() as i64;
+                self.project.loop_region.shift_by(delta);
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackArm => {
@@ -455,6 +479,14 @@ impl App {
         self.project
             .transport
             .quantize_to_nearest(self.playhead_ticks)
+    }
+
+    fn nudge_step_ticks(&self) -> u64 {
+        self.project
+            .transport
+            .quantize_step_ticks()
+            .unwrap_or(1)
+            .max(1)
     }
 
     fn effective_track_playhead(&self, track: &crate::project::Track) -> u64 {
@@ -597,6 +629,36 @@ mod tests {
         assert_eq!(
             app.effective_track_playhead(app.project.active_track().unwrap()),
             2_400
+        );
+    }
+
+    #[test]
+    fn nudge_actions_shift_current_track_loop_by_quantize_step() {
+        let mut app = App::new();
+        let start = app.project.active_track().unwrap().loop_region.start_ticks;
+
+        app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
+        assert_eq!(
+            app.project.active_track().unwrap().loop_region.start_ticks,
+            start + app.nudge_step_ticks()
+        );
+
+        app.apply_action(AppAction::NudgeCurrentTrackLoopBackward);
+        assert_eq!(
+            app.project.active_track().unwrap().loop_region.start_ticks,
+            start
+        );
+    }
+
+    #[test]
+    fn nudge_actions_shift_global_loop_by_quantize_step() {
+        let mut app = App::new();
+        let start = app.project.loop_region.start_ticks;
+
+        app.apply_action(AppAction::NudgeGlobalLoopForward);
+        assert_eq!(
+            app.project.loop_region.start_ticks,
+            start + app.nudge_step_ticks()
         );
     }
 }

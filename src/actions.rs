@@ -16,6 +16,10 @@ pub enum AppAction {
     SetCurrentTrackLoopEnd,
     SetGlobalLoopStart,
     SetGlobalLoopEnd,
+    NudgeCurrentTrackLoopBackward,
+    NudgeCurrentTrackLoopForward,
+    NudgeGlobalLoopBackward,
+    NudgeGlobalLoopForward,
     ToggleCurrentTrackArm,
     ToggleCurrentTrackMute,
     ToggleCurrentTrackSolo,
@@ -105,6 +109,32 @@ impl KeyboardBindings {
                     AppAction::SetGlobalLoopEnd
                 } else {
                     AppAction::SetCurrentTrackLoopEnd
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Comma),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::NudgeGlobalLoopBackward
+                } else {
+                    AppAction::NudgeCurrentTrackLoopBackward
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Period),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::NudgeGlobalLoopForward
+                } else {
+                    AppAction::NudgeCurrentTrackLoopForward
                 },
                 ActionSource::Keyboard,
             )),
@@ -275,6 +305,39 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&global).unwrap().action,
             AppAction::SetGlobalLoopEnd
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_comma_period_to_nudges() {
+        let local = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Comma),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let global = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Period),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&local).unwrap().action,
+            AppAction::NudgeCurrentTrackLoopBackward
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&global).unwrap().action,
+            AppAction::NudgeGlobalLoopForward
         );
     }
 }
