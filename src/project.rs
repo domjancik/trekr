@@ -214,6 +214,42 @@ impl Track {
         })
     }
 
+    pub fn preview_notes(
+        &self,
+        transport: Transport,
+        current_ticks: u64,
+        record_range: Option<LoopRegion>,
+    ) -> Vec<MidiNote> {
+        let Some(take) = self.active_take.as_ref() else {
+            return Vec::new();
+        };
+
+        let mut notes = Vec::new();
+        for recorded_note in &take.recorded_notes {
+            if let Some(note) =
+                preview_midi_note(transport, *recorded_note, record_range, current_ticks)
+            {
+                notes.push(note);
+            }
+        }
+
+        for pending_note in &take.pending_notes {
+            let recorded_note = RecordedMidiNote {
+                pitch: pending_note.pitch,
+                velocity: pending_note.velocity,
+                started_at_ticks: pending_note.started_at_ticks,
+                ended_at_ticks: current_ticks.max(pending_note.started_at_ticks),
+            };
+            if let Some(note) =
+                preview_midi_note(transport, recorded_note, record_range, current_ticks)
+            {
+                notes.push(note);
+            }
+        }
+
+        notes
+    }
+
     pub fn content_end_ticks(&self) -> u64 {
         let notes_end = self
             .midi_notes
@@ -314,6 +350,27 @@ fn normalized_record_span(
     }
 
     (start_ticks, end_ticks)
+}
+
+fn preview_midi_note(
+    transport: Transport,
+    recorded_note: RecordedMidiNote,
+    record_range: Option<LoopRegion>,
+    current_ticks: u64,
+) -> Option<MidiNote> {
+    let (note_start, note_end) = normalized_record_span(
+        transport,
+        recorded_note.started_at_ticks,
+        recorded_note.ended_at_ticks.min(current_ticks.max(recorded_note.started_at_ticks)),
+        record_range,
+    );
+    let note_length = note_end.saturating_sub(note_start);
+    (note_length > 0).then_some(MidiNote::new(
+        recorded_note.pitch,
+        note_start,
+        note_length,
+        recorded_note.velocity,
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,6 +478,22 @@ mod tests {
         assert_eq!(
             track.preview_region(transport, 1_120, None),
             Some(Region::new(0, 960))
+        );
+    }
+
+    #[test]
+    fn preview_notes_include_pending_recorded_note_shapes() {
+        let transport = Transport {
+            quantize: QuantizeMode::Off,
+            ..Transport::default()
+        };
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        track.begin_recording(100);
+        track.record_note_on(64, 96, 120);
+
+        assert_eq!(
+            track.preview_notes(transport, 360, None),
+            vec![MidiNote::new(64, 120, 240, 96)]
         );
     }
 

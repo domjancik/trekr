@@ -656,6 +656,22 @@ impl App {
 
         for note in crate::ui::note_rects(
             content_rect,
+            &track.preview_notes(
+                self.project.transport,
+                self.record_head_ticks(track),
+                self.record_range(track),
+            ),
+            note_range,
+            self.timeline_flow,
+        ) {
+            canvas.set_draw_color(Color::RGBA(238, 108, 108, 176));
+            canvas.fill_rect(note.rect)?;
+            canvas.set_draw_color(Color::RGB(255, 176, 176));
+            canvas.draw_rect(note.rect)?;
+        }
+
+        for note in crate::ui::note_rects(
+            content_rect,
             &track.midi_notes,
             note_range,
             self.timeline_flow,
