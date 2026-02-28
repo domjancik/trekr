@@ -7,12 +7,7 @@ pub enum AppPage {
 }
 
 impl AppPage {
-    pub const ALL: [Self; 4] = [
-        Self::Timeline,
-        Self::Mappings,
-        Self::MidiIo,
-        Self::Routing,
-    ];
+    pub const ALL: [Self; 4] = [Self::Timeline, Self::Mappings, Self::MidiIo, Self::Routing];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -183,7 +178,10 @@ mod tests {
 
     #[test]
     fn routing_fields_cycle() {
-        assert_eq!(RoutingField::InputDevice.previous(), RoutingField::Passthrough);
+        assert_eq!(
+            RoutingField::InputDevice.previous(),
+            RoutingField::Passthrough
+        );
         assert_eq!(RoutingField::Passthrough.next(), RoutingField::InputDevice);
     }
 

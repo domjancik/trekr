@@ -229,11 +229,7 @@ impl MidiOutputRuntime {
             .map_err(|error| error.to_string())
     }
 
-    pub fn send_all_notes_off(
-        &mut self,
-        port: &MidiPortRef,
-        channel: u8,
-    ) -> Result<(), String> {
+    pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
         self.sender
             .send(MidiOutputCommand::AllNotesOff {
                 port: port.clone(),

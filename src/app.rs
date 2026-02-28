@@ -147,14 +147,17 @@ impl App {
         let _sdl_context = sdl3::init()?;
         self.viewport_size = (1280, 720);
 
-        for page in AppPage::ALL {
-            self.page_state.current_page = page;
+        for spec in capture_specs() {
+            self.page_state.current_page = spec.page;
+            self.overlay_state.active = spec.overlay;
             let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
             let mut canvas = surface.into_canvas()?;
             self.draw(&mut canvas)?;
-            let output_path = options.output_dir.join(capture_filename(page));
+            let output_path = options.output_dir.join(spec.filename);
             self.capture_surface_to_png(canvas.surface(), &output_path)?;
         }
+
+        self.overlay_state.active = None;
 
         Ok(())
     }
@@ -832,7 +835,7 @@ impl App {
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.scope_label,
+                compact_scope_label(entry.scope_label),
                 Rect::new(
                     scope_rect.x + 4,
                     row.y + 5,
@@ -874,36 +877,66 @@ impl App {
         canvas.fill_rect(bounds)?;
 
         let panel = Rect::new(
-            bounds.x + 120,
-            bounds.y + 64,
-            bounds.width() - 240,
-            bounds.height() - 128,
+            bounds.x + 84,
+            bounds.y + 44,
+            bounds.width() - 168,
+            bounds.height() - 88,
         );
         canvas.set_draw_color(Color::RGB(24, 30, 44));
         canvas.fill_rect(panel)?;
         canvas.set_draw_color(Color::RGB(244, 232, 146));
         canvas.draw_rect(panel)?;
+        let title_bounds = Rect::new(panel.x + 12, panel.y + 12, 220, 14);
         crate::ui::draw_text_fitted(
             canvas,
             "Mappings Overlay",
-            Rect::new(panel.x + 12, panel.y + 12, 180, 14),
+            title_bounds,
             2,
             Color::RGB(244, 232, 146),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "F5 closes  W toggles write mode",
-            Rect::new(panel.x + 220, panel.y + 16, 220, 8),
+            "F5 closes",
+            Rect::new(panel.x + 12, panel.y + 32, 70, 8),
             1,
-            Color::RGB(166, 178, 194),
+            Color::RGB(188, 198, 212),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "W write mode",
+            Rect::new(panel.x + 92, panel.y + 32, 86, 8),
+            1,
+            Color::RGB(188, 198, 212),
         )?;
 
-        let rows = crate::ui::stacked_rows(
-            crate::ui::inset_rect(panel, 12, 40)?,
-            self.mappings.len().max(1),
-            4,
-        );
-        for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
+        let list_bounds = crate::ui::inset_rect(panel, 12, 54)?;
+        let row_height = 18_i32;
+        let row_gap = 3_i32;
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+
+        for visible_index in 0..visible_rows {
+            let index = start_index + visible_index;
+            if index >= self.mappings.len() {
+                break;
+            }
+            let row = Rect::new(
+                list_bounds.x,
+                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.width(),
+                row_height as u32,
+            );
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
             canvas.set_draw_color(if selected {
@@ -922,25 +955,38 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 entry.source_label,
-                Rect::new(row.x + 8, row.y + 8, 110, 8),
+                Rect::new(row.x + 8, row.y + 5, 126, 8),
                 1,
                 Color::RGB(244, 244, 236),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
                 entry.target_label,
-                Rect::new(row.x + 132, row.y + 8, 170, 8),
+                Rect::new(row.x + 146, row.y + 5, 210, 8),
                 1,
                 Color::RGB(208, 220, 236),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.scope_label,
-                Rect::new(row.x + row.width() as i32 - 132, row.y + 8, 84, 8),
+                compact_scope_label(entry.scope_label),
+                Rect::new(row.x + row.width() as i32 - 126, row.y + 5, 90, 8),
                 1,
                 Color::RGB(182, 192, 210),
             )?;
         }
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!(
+                "Rows {}-{} / {}",
+                start_index.saturating_add(1),
+                (start_index + visible_rows).min(self.mappings.len()),
+                self.mappings.len()
+            ),
+            Rect::new(panel.x + panel.width() as i32 - 116, panel.y + 34, 104, 8),
+            1,
+            Color::RGB(160, 170, 184),
+        )?;
 
         Ok(())
     }
@@ -2001,13 +2047,41 @@ impl App {
     }
 }
 
-fn capture_filename(page: AppPage) -> &'static str {
-    match page {
-        AppPage::Timeline => "timeline.png",
-        AppPage::Mappings => "mappings.png",
-        AppPage::MidiIo => "midi-io.png",
-        AppPage::Routing => "routing.png",
-    }
+#[derive(Debug, Clone, Copy)]
+struct CaptureSpec {
+    page: AppPage,
+    overlay: Option<AppOverlay>,
+    filename: &'static str,
+}
+
+fn capture_specs() -> [CaptureSpec; 5] {
+    [
+        CaptureSpec {
+            page: AppPage::Timeline,
+            overlay: None,
+            filename: "timeline.png",
+        },
+        CaptureSpec {
+            page: AppPage::Mappings,
+            overlay: None,
+            filename: "mappings.png",
+        },
+        CaptureSpec {
+            page: AppPage::Mappings,
+            overlay: Some(AppOverlay::MappingsQuickView),
+            filename: "mappings-overlay.png",
+        },
+        CaptureSpec {
+            page: AppPage::MidiIo,
+            overlay: None,
+            filename: "midi-io.png",
+        },
+        CaptureSpec {
+            page: AppPage::Routing,
+            overlay: None,
+            filename: "routing.png",
+        },
+    ]
 }
 
 fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
@@ -2133,6 +2207,17 @@ fn mapping_source_label(source: MappingSourceKind) -> &'static str {
         MappingSourceKind::Key => "Key",
         MappingSourceKind::Midi => "MIDI",
         MappingSourceKind::Osc => "OSC",
+    }
+}
+
+fn compact_scope_label(scope: &str) -> &str {
+    match scope {
+        "Active Track" => "Act Track",
+        "Armed/Active" => "Armed/Act",
+        "Global" => "Global",
+        "Relative" => "Relative",
+        "Absolute" => "Absolute",
+        other => other,
     }
 }
 
