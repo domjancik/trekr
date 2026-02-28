@@ -22,6 +22,7 @@ pub enum AppAction {
     ToggleMappingsWriteMode,
     TogglePlayback,
     ToggleRecording,
+    CycleRecordMode,
     ToggleGlobalLoop,
     ResetGlobalLoop,
     ClearCurrentTrackContent,
@@ -165,10 +166,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::R),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleRecording,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::CycleRecordMode
+                } else {
+                    AppAction::ToggleRecording
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -645,6 +651,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let record_mode = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::R),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
         let clear_track = Event::KeyDown {
             timestamp: 0,
             window_id: 0,
@@ -669,6 +685,10 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&record).unwrap().action,
             AppAction::ToggleRecording
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&record_mode).unwrap().action,
+            AppAction::CycleRecordMode
         );
         assert_eq!(
             KeyboardBindings.resolve(&clear_track).unwrap().action,

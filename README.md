@@ -43,6 +43,7 @@ Current controls:
 - `W`: toggle mappings page mode between read-only overview and write mode
 - `Space`: play/stop
 - `R`: start/stop recording on armed tracks, or the active track if none are armed
+- `Shift+R`: cycle recording mode between `Overdub` and `Replace`
 - `C`: clear current track notes/regions and cancel its pending take
 - `Shift+C`: clear all track notes/regions and cancel pending takes
 - `Home`: reset the global song loop to the full song range
@@ -65,6 +66,12 @@ Current controls:
 - `Escape`: quit
 
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
+
+Recording flow notes:
+
+- armed tracks are the first recording targets; if none are armed, recording uses the active track
+- stopping playback while recording commits the active take instead of discarding it
+- the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 
 The `Mappings` page now supports two modes:
 

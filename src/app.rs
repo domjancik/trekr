@@ -5,6 +5,7 @@ use crate::midi_io::{MidiDeviceCatalog, MidiOutputRuntime, MidiPortRef};
 use crate::pages::{AppPage, AppPageState, MappingPageMode, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
+use crate::transport::RecordMode;
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
 use sdl3::pixels::Color;
@@ -293,6 +294,24 @@ impl App {
             1,
             Color::RGB(192, 206, 222),
         )?;
+        let record_mode_badge = Rect::new(header_bounds.x + 110, header_bounds.y + 6, 108, 14);
+        canvas.set_draw_color(match self.project.transport.record_mode {
+            RecordMode::Overdub => Color::RGB(54, 82, 126),
+            RecordMode::Replace => Color::RGB(122, 66, 48),
+        });
+        canvas.fill_rect(record_mode_badge)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!("Rec {}", self.project.transport.record_mode.label()),
+            Rect::new(
+                record_mode_badge.x + 6,
+                record_mode_badge.y + 4,
+                record_mode_badge.width().saturating_sub(12),
+                8,
+            ),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
         canvas.set_draw_color(Color::RGB(122, 84, 52));
         canvas.fill_rect(reset_button)?;
         canvas.set_draw_color(Color::RGB(244, 232, 146));
@@ -539,8 +558,8 @@ impl App {
             Rect::new(
                 label_left,
                 label_rect.y + 14,
-                (label_rect.width() as i32 - (label_left - label_rect.x) - label_right_margin).max(0)
-                    as u32,
+                (label_rect.width() as i32 - (label_left - label_rect.x) - label_right_margin)
+                    .max(0) as u32,
                 8,
             ),
             1,
@@ -548,13 +567,49 @@ impl App {
         )?;
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
+        for region in
+            crate::ui::region_rects(content_rect, &track.regions, note_range, self.timeline_flow)
+        {
+            canvas.set_draw_color(if region.clipped {
+                Color::RGB(108, 88, 56)
+            } else if track.state.muted {
+                Color::RGB(42, 46, 56)
+            } else {
+                Color::RGB(44, 54, 76)
+            });
+            canvas.fill_rect(region.rect)?;
+            canvas.set_draw_color(if is_active {
+                Color::RGB(212, 196, 122)
+            } else {
+                Color::RGB(96, 106, 126)
+            });
+            canvas.draw_rect(region.rect)?;
+        }
+
+        if let Some(preview_region) =
+            track.preview_region(self.project.transport, self.transport_ticks)
+        {
+            if preview_region.intersects(note_range) {
+                for region in crate::ui::region_rects(
+                    content_rect,
+                    &[preview_region],
+                    note_range,
+                    self.timeline_flow,
+                ) {
+                    canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
+                    canvas.fill_rect(region.rect)?;
+                    canvas.set_draw_color(Color::RGB(248, 122, 122));
+                    canvas.draw_rect(region.rect)?;
+                }
+            }
+        }
+
         for note in crate::ui::note_rects(
             content_rect,
             &track.midi_notes,
             note_range,
             self.timeline_flow,
-        )
-        {
+        ) {
             canvas.set_draw_color(if track.state.muted {
                 Color::RGB(92, 100, 112)
             } else if note.clipped {
@@ -640,7 +695,12 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "Scope",
-            Rect::new(content_bounds.x + content_bounds.width() as i32 - 154, content_bounds.y + 32, 48, 8),
+            Rect::new(
+                content_bounds.x + content_bounds.width() as i32 - 154,
+                content_bounds.y + 32,
+                48,
+                8,
+            ),
             1,
             Color::RGB(154, 166, 182),
         )?;
@@ -734,7 +794,12 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 entry.target_label,
-                Rect::new(target_rect.x + 6, row.y + 8, target_rect.width().saturating_sub(12), 8),
+                Rect::new(
+                    target_rect.x + 6,
+                    row.y + 8,
+                    target_rect.width().saturating_sub(12),
+                    8,
+                ),
                 1,
                 Color::RGB(24, 28, 36),
             )?;
@@ -763,7 +828,12 @@ impl App {
         canvas.set_draw_color(Color::RGBA(10, 14, 24, 220));
         canvas.fill_rect(bounds)?;
 
-        let panel = Rect::new(bounds.x + 120, bounds.y + 64, bounds.width() - 240, bounds.height() - 128);
+        let panel = Rect::new(
+            bounds.x + 120,
+            bounds.y + 64,
+            bounds.width() - 240,
+            bounds.height() - 128,
+        );
         canvas.set_draw_color(Color::RGB(24, 30, 44));
         canvas.fill_rect(panel)?;
         canvas.set_draw_color(Color::RGB(244, 232, 146));
@@ -783,7 +853,11 @@ impl App {
             Color::RGB(166, 178, 194),
         )?;
 
-        let rows = crate::ui::stacked_rows(crate::ui::inset_rect(panel, 12, 40)?, self.mappings.len().max(1), 4);
+        let rows = crate::ui::stacked_rows(
+            crate::ui::inset_rect(panel, 12, 40)?,
+            self.mappings.len().max(1),
+            4,
+        );
         for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
@@ -1000,7 +1074,10 @@ impl App {
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
         let (header, body) = crate::ui::split_top_strip(inner, 40, 10)?;
-        let active_track = self.project.active_track().expect("demo project has tracks");
+        let active_track = self
+            .project
+            .active_track()
+            .expect("demo project has tracks");
 
         canvas.set_draw_color(Color::RGB(54, 70, 104));
         canvas.fill_rect(header)?;
@@ -1138,7 +1215,12 @@ impl App {
                 Color::RGB(244, 244, 236),
             )?;
             if field == RoutingField::Passthrough {
-                let bool_chip = Rect::new(value.x + 6, value.y + 2, 54, value.height().saturating_sub(4));
+                let bool_chip = Rect::new(
+                    value.x + 6,
+                    value.y + 2,
+                    54,
+                    value.height().saturating_sub(4),
+                );
                 canvas.set_draw_color(if active_track.state.passthrough {
                     Color::RGB(52, 156, 150)
                 } else {
@@ -1187,16 +1269,20 @@ impl App {
         &self,
         window: &mut sdl3::video::Window,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let active = self.project.active_track().expect("demo project always has tracks");
+        let active = self
+            .project
+            .active_track()
+            .expect("demo project always has tracks");
         let title = match self.page_state.current_page {
             AppPage::Timeline => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
                 self.playhead_ticks,
                 on_off(self.project.transport.playing),
                 on_off(self.project.transport.recording),
+                self.project.transport.record_mode.label(),
                 active.loop_region.start_ticks,
                 active.loop_region.end_ticks(),
                 self.project.loop_region.start_ticks,
@@ -1307,11 +1393,12 @@ impl App {
                 AppControl::Continue
             }
             AppAction::ToggleMappingsOverlay => {
-                self.overlay_state.active = if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
-                    None
-                } else {
-                    Some(AppOverlay::MappingsQuickView)
-                };
+                self.overlay_state.active =
+                    if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+                        None
+                    } else {
+                        Some(AppOverlay::MappingsQuickView)
+                    };
                 AppControl::Continue
             }
             AppAction::ToggleMappingsWriteMode => {
@@ -1319,10 +1406,11 @@ impl App {
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
+                if self.project.transport.playing && self.project.transport.recording {
+                    self.finish_recording();
+                }
                 self.project.transport.playing = !self.project.transport.playing;
                 if !self.project.transport.playing {
-                    self.project.transport.recording = false;
-                    self.cancel_active_recording();
                     self.silence_all_tracks();
                 }
                 AppControl::Continue
@@ -1335,6 +1423,10 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::CycleRecordMode => {
+                self.project.transport.record_mode = self.project.transport.record_mode.next();
+                AppControl::Continue
+            }
             AppAction::ToggleGlobalLoop => {
                 self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
                 AppControl::Continue
@@ -1342,9 +1434,10 @@ impl App {
             AppAction::ResetGlobalLoop => {
                 self.project.loop_region = self.project.full_song_range();
                 self.project.transport.loop_enabled = true;
-                self.playhead_ticks = self
-                    .playhead_ticks
-                    .clamp(self.project.loop_region.start_ticks, self.project.loop_region.end_ticks());
+                self.playhead_ticks = self.playhead_ticks.clamp(
+                    self.project.loop_region.start_ticks,
+                    self.project.loop_region.end_ticks(),
+                );
                 AppControl::Continue
             }
             AppAction::ClearCurrentTrackContent => {
@@ -1379,7 +1472,9 @@ impl App {
             }
             AppAction::SetGlobalLoopStart => {
                 let edit_ticks = self.current_edit_ticks();
-                self.project.loop_region.set_start_preserving_end(edit_ticks);
+                self.project
+                    .loop_region
+                    .set_start_preserving_end(edit_ticks);
                 AppControl::Continue
             }
             AppAction::SetGlobalLoopEnd => {
@@ -1523,11 +1618,17 @@ impl App {
     }
 
     fn current_edit_ticks(&self) -> u64 {
-        self.project.transport.quantize_to_nearest(self.playhead_ticks)
+        self.project
+            .transport
+            .quantize_to_nearest(self.playhead_ticks)
     }
 
     fn nudge_step_ticks(&self) -> u64 {
-        self.project.transport.quantize_step_ticks().unwrap_or(1).max(1)
+        self.project
+            .transport
+            .quantize_step_ticks()
+            .unwrap_or(1)
+            .max(1)
     }
 
     fn effective_track_playhead(&self, track: &Track) -> u64 {
@@ -1565,12 +1666,6 @@ impl App {
         }
 
         self.project.transport.recording = false;
-    }
-
-    fn cancel_active_recording(&mut self) {
-        for track in &mut self.project.tracks {
-            track.active_take = None;
-        }
     }
 
     fn record_target_indices(&self) -> Vec<usize> {
@@ -1655,7 +1750,8 @@ impl App {
                 }
             },
             AppPage::Routing => {
-                self.page_state.selected_routing_field = self.page_state.selected_routing_field.next();
+                self.page_state.selected_routing_field =
+                    self.page_state.selected_routing_field.next();
             }
         }
     }
@@ -1664,7 +1760,9 @@ impl App {
         match self.page_state.current_page {
             AppPage::Timeline => {}
             AppPage::Mappings => {
-                if self.page_state.mapping_mode == MappingPageMode::Write && !self.mappings.is_empty() {
+                if self.page_state.mapping_mode == MappingPageMode::Write
+                    && !self.mappings.is_empty()
+                {
                     let index = self.page_state.selected_mapping_index;
                     self.mappings[index].enabled = if delta > 0 { true } else { false };
                 }
@@ -1680,7 +1778,9 @@ impl App {
         match self.page_state.current_page {
             AppPage::Timeline => {}
             AppPage::Mappings => {
-                if self.page_state.mapping_mode == MappingPageMode::Write && !self.mappings.is_empty() {
+                if self.page_state.mapping_mode == MappingPageMode::Write
+                    && !self.mappings.is_empty()
+                {
                     let index = self.page_state.selected_mapping_index;
                     self.mappings[index].enabled = !self.mappings[index].enabled;
                 }
@@ -1765,7 +1865,8 @@ impl App {
                 } else {
                     global_loop
                 };
-                let events = scheduled_note_events(track, previous_ticks, advanced_ticks, loop_range);
+                let events =
+                    scheduled_note_events(track, previous_ticks, advanced_ticks, loop_range);
                 (port, channel, events)
             })
             .collect();
@@ -1792,7 +1893,8 @@ impl App {
             .tracks
             .iter()
             .filter_map(|track| {
-                track.routing
+                track
+                    .routing
                     .output_port
                     .clone()
                     .zip(track.routing.output_channel)
@@ -1836,7 +1938,8 @@ impl App {
     fn timeline_header_bounds(&self) -> Rect {
         let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
         let inset = crate::ui::inset_rect(surface, 24, 24).expect("fixed app inset");
-        let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("fixed tabs split");
+        let (_, content_bounds) =
+            crate::ui::split_top_strip(inset, 28, 12).expect("fixed tabs split");
         let (header_bounds, _) =
             crate::ui::split_top_strip(content_bounds, 28, 10).expect("fixed timeline split");
         header_bounds
@@ -1881,7 +1984,12 @@ fn scheduled_note_events(
 
     let segments = loop_range
         .map(|range| ranged_segments(previous_ticks, advanced_ticks, range))
-        .unwrap_or_else(|| vec![(previous_ticks, previous_ticks.saturating_add(advanced_ticks))]);
+        .unwrap_or_else(|| {
+            vec![(
+                previous_ticks,
+                previous_ticks.saturating_add(advanced_ticks),
+            )]
+        });
 
     let mut events = Vec::new();
     for (segment_start, segment_end) in segments {
@@ -1899,7 +2007,11 @@ fn scheduled_note_events(
     events
 }
 
-fn ranged_segments(previous_ticks: u64, advanced_ticks: u64, range: crate::timeline::LoopRegion) -> Vec<(u64, u64)> {
+fn ranged_segments(
+    previous_ticks: u64,
+    advanced_ticks: u64,
+    range: crate::timeline::LoopRegion,
+) -> Vec<(u64, u64)> {
     if range.length_ticks == 0 || advanced_ticks == 0 {
         return Vec::new();
     }
@@ -1960,7 +2072,9 @@ fn cycle_input_channel(current: MidiChannelFilter, delta: i32) -> MidiChannelFil
 }
 
 fn cycle_output_channel(current: Option<u8>, delta: i32) -> Option<u8> {
-    let current_index = current.map(|value| i32::from(value.clamp(1, 16))).unwrap_or(0);
+    let current_index = current
+        .map(|value| i32::from(value.clamp(1, 16)))
+        .unwrap_or(0);
     let next_index = (current_index + delta).rem_euclid(17);
     if next_index == 0 {
         None
@@ -2006,10 +2120,13 @@ enum AppControl {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel};
+    use super::{
+        App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel,
+    };
     use crate::actions::AppAction;
     use crate::pages::{AppPage, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
+    use crate::transport::RecordMode;
     use crate::ui::TimelineFlow;
 
     #[test]
@@ -2212,7 +2329,10 @@ mod tests {
         assert!(app.overlay_state.active.is_none());
 
         app.apply_action(AppAction::ToggleMappingsOverlay);
-        assert_eq!(app.overlay_state.active, Some(AppOverlay::MappingsQuickView));
+        assert_eq!(
+            app.overlay_state.active,
+            Some(AppOverlay::MappingsQuickView)
+        );
 
         app.apply_action(AppAction::ToggleMappingsOverlay);
         assert!(app.overlay_state.active.is_none());
@@ -2239,7 +2359,10 @@ mod tests {
         let before = app.project.active_track().unwrap().routing.output_channel;
         app.apply_action(AppAction::AdjustPageItemForward);
 
-        assert_ne!(app.project.active_track().unwrap().routing.output_channel, before);
+        assert_ne!(
+            app.project.active_track().unwrap().routing.output_channel,
+            before
+        );
     }
 
     #[test]
@@ -2294,15 +2417,70 @@ mod tests {
     }
 
     #[test]
+    fn cycle_record_mode_updates_transport() {
+        let mut app = App::new();
+        assert_eq!(app.project.transport.record_mode, RecordMode::Overdub);
+
+        app.apply_action(AppAction::CycleRecordMode);
+        assert_eq!(app.project.transport.record_mode, RecordMode::Replace);
+    }
+
+    #[test]
+    fn recording_targets_armed_tracks_before_active_track() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[2].state.armed = true;
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.tracks[2].active_take.is_some());
+        assert!(app.project.tracks[0].active_take.is_none());
+
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.apply_action(AppAction::ToggleRecording);
+
+        assert!(!app.project.tracks[2].regions.is_empty());
+        assert!(app.project.tracks[0].regions.is_empty());
+    }
+
+    #[test]
+    fn stopping_playback_commits_active_recording() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().clear_content();
+
+        app.apply_action(AppAction::ToggleRecording);
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.apply_action(AppAction::TogglePlayback);
+
+        assert!(!app.project.transport.recording);
+        assert!(!app.project.transport.playing);
+        assert!(!app.project.active_track().unwrap().regions.is_empty());
+    }
+
+    #[test]
     fn clear_actions_remove_track_content() {
         let mut app = App::new();
         app.apply_action(AppAction::ClearCurrentTrackContent);
         assert!(app.project.active_track().unwrap().midi_notes.is_empty());
         assert!(app.project.active_track().unwrap().regions.is_empty());
 
-        app.project.tracks[1].regions.push(crate::timeline::Region::new(0, 480));
+        app.project.tracks[1]
+            .regions
+            .push(crate::timeline::Region::new(0, 480));
         app.apply_action(AppAction::ClearAllTrackContent);
-        assert!(app.project.tracks.iter().all(|track| track.midi_notes.is_empty()));
-        assert!(app.project.tracks.iter().all(|track| track.regions.is_empty()));
+        assert!(
+            app.project
+                .tracks
+                .iter()
+                .all(|track| track.midi_notes.is_empty())
+        );
+        assert!(
+            app.project
+                .tracks
+                .iter()
+                .all(|track| track.regions.is_empty())
+        );
     }
 }

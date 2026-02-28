@@ -1,5 +1,8 @@
 use sdl3::rect::Rect;
-use sdl3::{pixels::Color, render::{Canvas, RenderTarget}};
+use sdl3::{
+    pixels::Color,
+    render::{Canvas, RenderTarget},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutMode {
@@ -181,13 +184,14 @@ fn draw_glyph<T: RenderTarget>(
         for column in 0..glyph_width() {
             let bit = 1 << (glyph_width() - 1 - column);
             if row & bit != 0 {
-                canvas.fill_rect(Rect::new(
-                    x + column * scale,
-                    y + row_index as i32 * scale,
-                    scale as u32,
-                    scale as u32,
-                ))
-                .map_err(|error| error.to_string())?;
+                canvas
+                    .fill_rect(Rect::new(
+                        x + column * scale,
+                        y + row_index as i32 * scale,
+                        scale as u32,
+                        scale as u32,
+                    ))
+                    .map_err(|error| error.to_string())?;
             }
         }
     }
@@ -285,6 +289,12 @@ pub struct NoteRect {
     pub clipped: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegionRect {
+    pub rect: Rect,
+    pub clipped: bool,
+}
+
 pub fn note_rects(
     lane: Rect,
     notes: &[crate::project::MidiNote],
@@ -313,6 +323,62 @@ pub fn note_rects(
     rects
 }
 
+pub fn region_rects(
+    lane: Rect,
+    regions: &[crate::timeline::Region],
+    range: crate::timeline::LoopRegion,
+    flow: TimelineFlow,
+) -> Vec<RegionRect> {
+    let mut rects = Vec::new();
+
+    for region in regions
+        .iter()
+        .copied()
+        .filter(|region| region.intersects(range))
+    {
+        let region_start = region.start_ticks.max(range.start_ticks);
+        let region_end = region.end_ticks().min(range.end_ticks());
+        let clipped = region_start != region.start_ticks || region_end != region.end_ticks();
+        let length_ticks = region_end.saturating_sub(region_start).max(1);
+        let rect = match flow {
+            TimelineFlow::DownwardColumns => {
+                let y0 = lane.y
+                    + ((region_start - range.start_ticks) as u128 * u128::from(lane.height())
+                        / u128::from(range.length_ticks.max(1))) as i32;
+                let y1 = lane.y
+                    + ((region_start + length_ticks - range.start_ticks) as u128
+                        * u128::from(lane.height())
+                        / u128::from(range.length_ticks.max(1))) as i32;
+                Rect::new(
+                    lane.x + 2,
+                    y0,
+                    lane.width().saturating_sub(4).max(2),
+                    (y1 - y0).max(2) as u32,
+                )
+            }
+            TimelineFlow::AcrossRows => {
+                let x0 = lane.x
+                    + ((region_start - range.start_ticks) as u128 * u128::from(lane.width())
+                        / u128::from(range.length_ticks.max(1))) as i32;
+                let x1 = lane.x
+                    + ((region_start + length_ticks - range.start_ticks) as u128
+                        * u128::from(lane.width())
+                        / u128::from(range.length_ticks.max(1))) as i32;
+                Rect::new(
+                    x0,
+                    lane.y + 2,
+                    (x1 - x0).max(2) as u32,
+                    lane.height().saturating_sub(4).max(2),
+                )
+            }
+        };
+
+        rects.push(RegionRect { rect, clipped });
+    }
+
+    rects
+}
+
 pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 34),
@@ -330,7 +396,9 @@ pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 pub fn track_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 14, lane.width(), 20),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y + 14, 56, lane.height().saturating_sub(14)),
+        TimelineFlow::AcrossRows => {
+            Rect::new(lane.x, lane.y + 14, 56, lane.height().saturating_sub(14))
+        }
     }
 }
 
@@ -556,10 +624,9 @@ fn horizontal_note_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges,
-        note_rects, passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect,
-        split_top_strip, stacked_rows, surface_rect, text_width, timeline_guides,
-        timeline_ruler_ticks,
+        HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges, note_rects,
+        passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect, split_top_strip,
+        stacked_rows, surface_rect, text_width, timeline_guides, timeline_ruler_ticks,
         track_column_pairs, track_content_rect, track_header_rect, track_label_rect,
         track_status_rect, truncate_text_to_width,
     };
@@ -676,8 +743,7 @@ mod tests {
     fn timeline_ruler_ticks_anchor_to_the_edge() {
         let vertical =
             timeline_ruler_ticks(Rect::new(10, 20, 80, 240), TimelineFlow::DownwardColumns);
-        let horizontal =
-            timeline_ruler_ticks(Rect::new(10, 20, 80, 240), TimelineFlow::AcrossRows);
+        let horizontal = timeline_ruler_ticks(Rect::new(10, 20, 80, 240), TimelineFlow::AcrossRows);
 
         assert_eq!(vertical[0].x, 10);
         assert_eq!(horizontal[0].y, 20);

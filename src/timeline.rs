@@ -11,6 +11,14 @@ impl Region {
             length_ticks,
         }
     }
+
+    pub fn end_ticks(self) -> u64 {
+        self.start_ticks + self.length_ticks
+    }
+
+    pub fn intersects(self, other: LoopRegion) -> bool {
+        self.start_ticks < other.end_ticks() && self.end_ticks() > other.start_ticks
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,11 +99,22 @@ impl RecordingTake {
         self.released_at_ticks = Some(released_at_ticks);
         self
     }
+
+    pub fn preview_region(
+        self,
+        current_ticks: u64,
+        quantize: impl Fn(u64) -> u64,
+    ) -> Option<Region> {
+        let start_ticks = quantize(self.pressed_at_ticks);
+        let end_ticks = quantize(current_ticks.max(self.pressed_at_ticks));
+        let length_ticks = end_ticks.saturating_sub(start_ticks);
+        (length_ticks > 0).then_some(Region::new(start_ticks, length_ticks))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::LoopRegion;
+    use super::{LoopRegion, RecordingTake, Region};
 
     #[test]
     fn loop_region_can_move_start_without_collapsing() {
@@ -138,5 +157,20 @@ mod tests {
 
         loop_region.half_length();
         assert_eq!(loop_region.length_ticks, 1);
+    }
+
+    #[test]
+    fn region_reports_intersection() {
+        let region = Region::new(100, 80);
+        assert!(region.intersects(LoopRegion::new(120, 20)));
+        assert!(!region.intersects(LoopRegion::new(180, 10)));
+    }
+
+    #[test]
+    fn recording_take_builds_preview_region() {
+        let take = RecordingTake::new(110);
+        let preview = take.preview_region(362, |ticks| (ticks / 120) * 120);
+
+        assert_eq!(preview, Some(Region::new(0, 360)));
     }
 }

@@ -1,6 +1,6 @@
 use crate::routing::TrackRouting;
 use crate::timeline::{LoopRegion, RecordingTake, Region};
-use crate::transport::Transport;
+use crate::transport::{RecordMode, Transport};
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -130,8 +130,22 @@ impl Track {
             return;
         }
 
-        self.regions.push(Region::new(start_ticks, length_ticks));
+        let committed_region = Region::new(start_ticks, length_ticks);
+        if transport.record_mode == RecordMode::Replace {
+            self.remove_content_in_range(LoopRegion::new(
+                committed_region.start_ticks,
+                committed_region.length_ticks,
+            ));
+        }
+
+        self.regions.push(committed_region);
         self.append_demo_recorded_notes(start_ticks, length_ticks);
+    }
+
+    pub fn preview_region(&self, transport: Transport, current_ticks: u64) -> Option<Region> {
+        self.active_take.and_then(|take| {
+            take.preview_region(current_ticks, |ticks| transport.quantize_to_nearest(ticks))
+        })
     }
 
     pub fn content_end_ticks(&self) -> u64 {
@@ -176,6 +190,11 @@ impl Track {
         self.active_take = None;
         self.midi_notes.clear();
         self.regions.clear();
+    }
+
+    fn remove_content_in_range(&mut self, range: LoopRegion) {
+        self.midi_notes.retain(|note| !note.intersects(range));
+        self.regions.retain(|region| !region.intersects(range));
     }
 
     fn append_demo_recorded_notes(&mut self, start_ticks: u64, length_ticks: u64) {
@@ -245,7 +264,7 @@ pub struct TrackState {
 mod tests {
     use super::{MidiNote, Project, Track, TrackKind};
     use crate::timeline::{LoopRegion, RecordingTake, Region};
-    use crate::transport::{QuantizeMode, Transport};
+    use crate::transport::{QuantizeMode, RecordMode, Transport};
 
     #[test]
     fn full_song_range_uses_loop_region_when_no_regions_exist() {
@@ -292,6 +311,21 @@ mod tests {
     }
 
     #[test]
+    fn preview_region_tracks_active_take_span() {
+        let transport = Transport {
+            quantize: QuantizeMode::Quarter,
+            ..Transport::default()
+        };
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        track.begin_recording(110);
+
+        assert_eq!(
+            track.preview_region(transport, 1_120),
+            Some(Region::new(0, 960))
+        );
+    }
+
+    #[test]
     fn track_selection_supports_relative_and_absolute_moves() {
         let mut project = Project::demo();
         assert_eq!(project.active_track_index, 0);
@@ -333,5 +367,40 @@ mod tests {
         assert!(track.active_take.is_none());
         assert!(track.midi_notes.is_empty());
         assert!(track.regions.is_empty());
+    }
+
+    #[test]
+    fn replace_record_mode_removes_overlapping_content() {
+        let transport = Transport {
+            quantize: QuantizeMode::Quarter,
+            record_mode: RecordMode::Replace,
+            ..Transport::default()
+        };
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        track.midi_notes = vec![
+            MidiNote::new(60, 0, 960, 100),
+            MidiNote::new(64, 1_920, 960, 100),
+        ];
+        track.regions = vec![Region::new(0, 960), Region::new(1_920, 960)];
+
+        track.commit_take(transport, RecordingTake::new(0).release(1_000));
+
+        assert_eq!(
+            track.regions,
+            vec![Region::new(1_920, 960), Region::new(0, 960)]
+        );
+        assert!(
+            track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 64 && note.start_ticks == 1_920)
+        );
+        assert!(track.midi_notes.iter().any(|note| note.start_ticks < 960));
+        assert!(
+            !track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 60 && note.start_ticks == 0)
+        );
     }
 }

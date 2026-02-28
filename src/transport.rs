@@ -9,10 +9,33 @@ pub enum QuantizeMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordMode {
+    Overdub,
+    Replace,
+}
+
+impl RecordMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Overdub => Self::Replace,
+            Self::Replace => Self::Overdub,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Overdub => "Overdub",
+            Self::Replace => "Replace",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Transport {
     pub tempo_bpm: u16,
     pub ppqn: u16,
     pub quantize: QuantizeMode,
+    pub record_mode: RecordMode,
     pub loop_enabled: bool,
     pub playing: bool,
     pub recording: bool,
@@ -24,6 +47,7 @@ impl Default for Transport {
             tempo_bpm: 120,
             ppqn: 960,
             quantize: QuantizeMode::Sixteenth,
+            record_mode: RecordMode::Overdub,
             loop_enabled: true,
             playing: false,
             recording: false,
@@ -66,7 +90,7 @@ impl Transport {
 
 #[cfg(test)]
 mod tests {
-    use super::{QuantizeMode, Transport};
+    use super::{QuantizeMode, RecordMode, Transport};
 
     #[test]
     fn quantize_to_nearest_prefers_nearest_boundary() {
@@ -93,5 +117,11 @@ mod tests {
     fn ticks_per_second_uses_tempo_and_ppqn() {
         let transport = Transport::default();
         assert_eq!(transport.ticks_per_second(), 1_920);
+    }
+
+    #[test]
+    fn record_mode_cycles() {
+        assert_eq!(RecordMode::Overdub.next(), RecordMode::Replace);
+        assert_eq!(RecordMode::Replace.label(), "Replace");
     }
 }
