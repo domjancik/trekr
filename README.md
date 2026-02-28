@@ -76,6 +76,15 @@ The capture path is renderer-owned rather than desktop-owned:
 - screenshots are exported from the SDL drawing layer
 - capture runs against an offscreen software surface, so other desktop apps do not leak into the images
 
+Review process:
+
+1. Run `powershell -ExecutionPolicy Bypass -File .\scripts\capture-ui-screens.ps1`
+2. Check `artifacts/screenshots\manifest.json` for the exported page/image list
+3. Run `powershell -ExecutionPolicy Bypass -File .\scripts\review-ui-screens.ps1`
+4. Read `artifacts/reviews/ui-findings.md` for the latest Codex layout findings
+
+The review script passes the generated screenshots to `codex exec --image ...`, so the analysis step is based on the renderer-level captures rather than a live desktop screenshot.
+
 Example:
 
 ```powershell

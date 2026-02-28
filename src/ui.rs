@@ -455,6 +455,28 @@ pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
     guides
 }
 
+pub fn timeline_ruler_ticks(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
+    let guide_count: usize = 8;
+    let mut ticks = Vec::with_capacity(guide_count);
+
+    for step in 0..guide_count {
+        let ratio = step as f32 / guide_count as f32;
+        let tick = match flow {
+            TimelineFlow::DownwardColumns => {
+                let y = bounds.y + (bounds.height() as f32 * ratio) as i32;
+                Rect::new(bounds.x, y, bounds.width().min(8), 2)
+            }
+            TimelineFlow::AcrossRows => {
+                let x = bounds.x + (bounds.width() as f32 * ratio) as i32;
+                Rect::new(x, bounds.y, 2, bounds.height().min(8))
+            }
+        };
+        ticks.push(tick);
+    }
+
+    ticks
+}
+
 pub fn playhead_rect_in_range(
     bounds: Rect,
     flow: TimelineFlow,
@@ -537,6 +559,7 @@ mod tests {
         HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges,
         note_rects, passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect,
         split_top_strip, stacked_rows, surface_rect, text_width, timeline_guides,
+        timeline_ruler_ticks,
         track_column_pairs, track_content_rect, track_header_rect, track_label_rect,
         track_status_rect, truncate_text_to_width,
     };
@@ -647,6 +670,19 @@ mod tests {
 
         assert_eq!(vertical[0].width(), 200);
         assert_eq!(horizontal[0].height(), 400);
+    }
+
+    #[test]
+    fn timeline_ruler_ticks_anchor_to_the_edge() {
+        let vertical =
+            timeline_ruler_ticks(Rect::new(10, 20, 80, 240), TimelineFlow::DownwardColumns);
+        let horizontal =
+            timeline_ruler_ticks(Rect::new(10, 20, 80, 240), TimelineFlow::AcrossRows);
+
+        assert_eq!(vertical[0].x, 10);
+        assert_eq!(horizontal[0].y, 20);
+        assert!(vertical[0].width() <= 8);
+        assert!(horizontal[0].height() <= 8);
     }
 
     #[test]
