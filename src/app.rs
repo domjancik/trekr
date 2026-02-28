@@ -15,7 +15,6 @@ use crate::pages::{
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
-use crate::transport::RecordMode;
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
 use sdl3::pixels::Color;
@@ -357,33 +356,17 @@ impl App {
             1,
             Color::RGB(192, 206, 222),
         )?;
-        let record_mode_badge = Rect::new(header_bounds.x + 96, header_bounds.y + 6, 108, 14);
-        canvas.set_draw_color(match self.project.transport.record_mode {
-            RecordMode::Overdub => Color::RGB(54, 82, 126),
-            RecordMode::Replace => Color::RGB(122, 66, 48),
-        });
-        canvas.fill_rect(record_mode_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("Rec {}", self.project.transport.record_mode.label()),
-            Rect::new(
-                record_mode_badge.x + 6,
-                record_mode_badge.y + 4,
-                record_mode_badge.width().saturating_sub(12),
-                8,
-            ),
+            "Vertical paired view",
+            Rect::new(header_bounds.x + 96, header_bounds.y + 8, 104, 8),
             1,
-            Color::RGB(244, 244, 236),
+            Color::RGB(212, 220, 230),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Full + loop detail",
-            Rect::new(
-                record_mode_badge.x + record_mode_badge.width() as i32 + 12,
-                header_bounds.y + 8,
-                116,
-                8,
-            ),
+            "Song columns with per-track loop detail",
+            Rect::new(header_bounds.x + 212, header_bounds.y + 8, 180, 8),
             1,
             Color::RGB(190, 198, 210),
         )?;
@@ -767,6 +750,14 @@ impl App {
                 Color::RGB(70, 100, 120),
             ),
         ];
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Transport",
+            Rect::new(bounds.x + 8, bounds.y - 10, 54, 8),
+            1,
+            Color::RGB(170, 180, 196),
+        )?;
 
         let mut cursor_x = bounds.x + 6;
         for (label, fill) in chips {
@@ -1362,6 +1353,7 @@ impl App {
             self.midi_devices.selected_input,
             self.page_state.midi_io.focus == MidiIoListFocus::Inputs,
             Color::RGB(78, 196, 164),
+            "Input",
         )?;
         self.draw_device_list(
             canvas,
@@ -1378,6 +1370,7 @@ impl App {
             self.midi_devices.selected_output,
             self.page_state.midi_io.focus == MidiIoListFocus::Outputs,
             Color::RGB(224, 132, 90),
+            "Output",
         )?;
 
         Ok(())
@@ -1392,6 +1385,7 @@ impl App {
         active_index: Option<usize>,
         focused: bool,
         accent: Color,
+        role_label: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         canvas.set_draw_color(Color::RGB(22, 28, 42));
         canvas.fill_rect(bounds)?;
@@ -1432,13 +1426,15 @@ impl App {
             });
             canvas.fill_rect(status)?;
 
-            let active_badge_width = if is_active { 40 } else { 0 };
+            let selected_badge_width = if is_selected { 58 } else { 0 };
+            let active_badge_width = if is_active { 62 } else { 0 };
+            let reserved_badge_width = selected_badge_width + active_badge_width;
             let header_rect = Rect::new(
                 status.x + status.width() as i32 + 8,
                 row.y + 8,
                 row.width()
                     .saturating_sub(40)
-                    .saturating_sub(active_badge_width as u32),
+                    .saturating_sub(reserved_badge_width as u32),
                 8,
             );
             let body_rect = Rect::new(
@@ -1461,12 +1457,17 @@ impl App {
                 Color::RGB(230, 236, 244),
             )?;
             if is_active {
-                let active_badge = Rect::new(row.x + row.width() as i32 - 48, row.y + 8, 32, 8);
+                let active_badge = Rect::new(
+                    row.x + row.width() as i32 - 12 - active_badge_width - selected_badge_width,
+                    row.y + 8,
+                    active_badge_width as u32,
+                    8,
+                );
                 canvas.set_draw_color(accent);
                 canvas.fill_rect(active_badge)?;
                 crate::ui::draw_text_fitted(
                     canvas,
-                    "Def",
+                    &format!("Default {role_label}"),
                     Rect::new(
                         active_badge.x + 3,
                         active_badge.y,
@@ -1475,6 +1476,28 @@ impl App {
                     ),
                     1,
                     Color::RGB(22, 28, 36),
+                )?;
+            }
+            if is_selected {
+                let selected_badge = Rect::new(
+                    row.x + row.width() as i32 - 12 - selected_badge_width,
+                    row.y + 8,
+                    selected_badge_width as u32,
+                    8,
+                );
+                canvas.set_draw_color(Color::RGB(244, 232, 146));
+                canvas.fill_rect(selected_badge)?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    "Selected",
+                    Rect::new(
+                        selected_badge.x + 3,
+                        selected_badge.y,
+                        selected_badge.width().saturating_sub(6),
+                        8,
+                    ),
+                    1,
+                    Color::RGB(24, 28, 36),
                 )?;
             }
         }
