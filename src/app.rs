@@ -1237,14 +1237,14 @@ impl App {
         let name_badge = Rect::new(
             header.x + 8,
             header.y + 8,
-            36,
+            52,
             header.height().saturating_sub(16),
         );
         canvas.set_draw_color(Color::RGB(220, 124, 100));
         canvas.fill_rect(name_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Active",
+            "Act",
             Rect::new(
                 name_badge.x + 4,
                 name_badge.y + 4,
@@ -1284,15 +1284,27 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
+            &format!("Track {}", self.project.active_track_index + 1),
+            Rect::new(
+                name_badge.x + name_badge.width() as i32 + 8,
+                header.y + 9,
+                74,
+                8,
+            ),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
             &active_track.name,
             Rect::new(
                 name_badge.x + name_badge.width() as i32 + 8,
-                header.y + 12,
+                header.y + 21,
                 (state_badge.x - (name_badge.x + name_badge.width() as i32 + 16)).max(0) as u32,
-                14,
+                8,
             ),
-            2,
-            Color::RGB(244, 244, 236),
+            1,
+            Color::RGB(208, 216, 228),
         )?;
 
         let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
@@ -1313,7 +1325,7 @@ impl App {
             });
             canvas.draw_rect(row)?;
 
-            let label = Rect::new(row.x + 8, row.y + 8, 26, row.height().saturating_sub(16));
+            let label = Rect::new(row.x + 8, row.y + 8, 18, row.height().saturating_sub(16));
             canvas.set_draw_color(Color::RGB(110, 120, 140));
             canvas.fill_rect(label)?;
 
@@ -1330,18 +1342,18 @@ impl App {
                     }
                 }
             };
-            let label_text_rect = Rect::new(row.x + 44, row.y + 8, 150, 8);
+            let label_text_rect = Rect::new(row.x + 34, row.y + 8, 112, 8);
             let value = Rect::new(
-                row.x + 202,
-                row.y + 10,
-                row.width().saturating_sub(266),
-                row.height().saturating_sub(20),
+                row.x + 156,
+                row.y + 8,
+                row.width().saturating_sub(220),
+                row.height().saturating_sub(16),
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 54,
-                row.y + 10,
-                44,
-                row.height().saturating_sub(20),
+                row.x + row.width() as i32 - 56,
+                row.y + 8,
+                46,
+                row.height().saturating_sub(16),
             );
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
@@ -1382,7 +1394,7 @@ impl App {
                     &self.routing_field_value(active_track, field),
                     Rect::new(
                         bool_chip.x + 6,
-                        bool_chip.y + 4,
+                        bool_chip.y + 3,
                         bool_chip.width().saturating_sub(12),
                         8,
                     ),
@@ -1393,7 +1405,12 @@ impl App {
                 crate::ui::draw_text_fitted(
                     canvas,
                     &self.routing_field_value(active_track, field),
-                    Rect::new(value.x + 6, row.y + 8, value.width().saturating_sub(12), 8),
+                    Rect::new(
+                        value.x + 8,
+                        value.y + 6,
+                        value.width().saturating_sub(16),
+                        8,
+                    ),
                     1,
                     Color::RGB(24, 28, 36),
                 )?;
