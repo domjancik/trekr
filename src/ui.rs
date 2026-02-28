@@ -125,6 +125,50 @@ pub fn text_width(text: &str, scale: u32) -> u32 {
     text.chars().count() as u32 * ((glyph_width() as u32 + 1) * scale)
 }
 
+pub fn truncate_text_to_width(text: &str, max_width: u32, scale: u32) -> String {
+    if text_width(text, scale) <= max_width {
+        return text.to_string();
+    }
+
+    let ellipsis = "...";
+    if text_width(ellipsis, scale) > max_width {
+        return String::new();
+    }
+
+    let mut fitted = String::new();
+    for character in text.chars() {
+        let mut candidate = fitted.clone();
+        candidate.push(character);
+        candidate.push_str(ellipsis);
+        if text_width(&candidate, scale) > max_width {
+            break;
+        }
+        fitted.push(character);
+    }
+
+    if fitted.is_empty() {
+        ellipsis.to_string()
+    } else {
+        fitted.push_str(ellipsis);
+        fitted
+    }
+}
+
+pub fn draw_text_fitted(
+    canvas: &mut Canvas<Window>,
+    text: &str,
+    bounds: Rect,
+    scale: u32,
+    color: Color,
+) -> Result<(), String> {
+    let fitted = truncate_text_to_width(text, bounds.width(), scale);
+    if fitted.is_empty() {
+        return Ok(());
+    }
+
+    draw_text(canvas, &fitted, bounds.x, bounds.y, scale, color)
+}
+
 fn draw_glyph(
     canvas: &mut Canvas<Window>,
     character: char,
@@ -461,8 +505,8 @@ mod tests {
     use super::{
         HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges,
         note_rects, passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect,
-        split_top_strip, stacked_rows, surface_rect, timeline_guides, track_column_pairs,
-        track_header_rect,
+        split_top_strip, stacked_rows, surface_rect, text_width, timeline_guides,
+        track_column_pairs, track_header_rect, truncate_text_to_width,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -509,6 +553,15 @@ mod tests {
 
         assert_eq!(rows.len(), 4);
         assert!(rows[1].y > rows[0].y);
+    }
+
+    #[test]
+    fn truncate_text_to_width_adds_ellipsis_when_needed() {
+        let full = "MICROSOFT GS WAVETABLE SYNTH";
+        let truncated = truncate_text_to_width(full, text_width("MICROSOFT...", 1), 1);
+
+        assert!(truncated.ends_with("..."));
+        assert!(text_width(&truncated, 1) <= text_width("MICROSOFT...", 1));
     }
 
     #[test]

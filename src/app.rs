@@ -174,11 +174,10 @@ impl App {
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 page.label(),
-                tab.x + 30,
-                tab.y + 8,
+                Rect::new(tab.x + 30, tab.y + 8, tab.width().saturating_sub(36), 8),
                 1,
                 if active {
                     Color::RGB(248, 244, 212)
@@ -206,11 +205,15 @@ impl App {
         canvas.fill_rect(reset_button)?;
         canvas.set_draw_color(Color::RGB(244, 232, 146));
         canvas.draw_rect(reset_button)?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "Reset Song Loop",
-            reset_button.x + 8,
-            reset_button.y + 8,
+            Rect::new(
+                reset_button.x + 8,
+                reset_button.y + 8,
+                reset_button.width().saturating_sub(16),
+                8,
+            ),
             1,
             Color::RGB(248, 244, 212),
         )?;
@@ -306,15 +309,6 @@ impl App {
         let header = crate::ui::track_header_rect(bounds, self.timeline_flow);
         canvas.set_draw_color(accent);
         canvas.fill_rect(header)?;
-        crate::ui::draw_text(
-            canvas,
-            &track.name,
-            header.x + 4,
-            header.y + 6,
-            1,
-            Color::RGB(244, 244, 236),
-        )?;
-
         if track.state.passthrough {
             let rail = crate::ui::passthrough_rail_rect(bounds);
             canvas.set_draw_color(Color::RGB(74, 210, 214));
@@ -389,6 +383,22 @@ impl App {
             canvas.fill_rect(badge.rect)?;
         }
 
+        let label_left = header.x + 44;
+        let label_right_margin = if detail { 26 } else { 4 };
+        crate::ui::draw_text_fitted(
+            canvas,
+            &track.name,
+            Rect::new(
+                label_left,
+                header.y + 6,
+                (header.width() as i32 - (label_left - header.x) - label_right_margin).max(0)
+                    as u32,
+                8,
+            ),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
+
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
         for note in crate::ui::note_rects(bounds, &track.midi_notes, note_range, self.timeline_flow)
         {
@@ -434,11 +444,10 @@ impl App {
         canvas.fill_rect(content_bounds)?;
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(content_bounds)?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "Mappings",
-            content_bounds.x + 8,
-            content_bounds.y + 8,
+            Rect::new(content_bounds.x + 8, content_bounds.y + 8, 180, 14),
             2,
             Color::RGB(244, 232, 146),
         )?;
@@ -461,8 +470,7 @@ impl App {
             });
             canvas.draw_rect(row)?;
 
-            let source_rect =
-                Rect::new(row.x + 6, row.y + 6, 24, row.height().saturating_sub(12));
+            let source_rect = Rect::new(row.x + 6, row.y + 6, 24, row.height().saturating_sub(12));
             let source_color = match entry.source_kind {
                 MappingSourceKind::Key => Color::RGB(98, 148, 232),
                 MappingSourceKind::Midi => Color::RGB(96, 202, 146),
@@ -484,11 +492,17 @@ impl App {
             });
             canvas.fill_rect(enabled_rect)?;
 
+            let source_label_rect = Rect::new(
+                source_rect.x + source_rect.width() as i32 + 8,
+                row.y + 8,
+                96,
+                8,
+            );
             let target_rect = Rect::new(
-                source_rect.x + source_rect.width() as i32 + 10,
-                row.y + 10,
-                row.width().saturating_sub(100),
-                row.height().saturating_sub(20),
+                source_label_rect.x + source_label_rect.width() as i32 + 8,
+                row.y + 8,
+                row.width().saturating_sub(170),
+                row.height().saturating_sub(16),
             );
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(182, 194, 212)
@@ -496,27 +510,24 @@ impl App {
                 Color::RGB(104, 112, 124)
             });
             canvas.fill_rect(target_rect)?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 entry.source_label,
-                source_rect.x + source_rect.width() as i32 + 8,
-                row.y + 8,
+                source_label_rect,
                 1,
                 Color::RGB(244, 244, 236),
             )?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 entry.target_label,
-                target_rect.x + 6,
-                row.y + 8,
+                Rect::new(target_rect.x + 6, row.y + 8, target_rect.width().saturating_sub(12), 8),
                 1,
                 Color::RGB(24, 28, 36),
             )?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 entry.scope_label,
-                target_rect.x + 6,
-                row.y + 20,
+                Rect::new(target_rect.x + 6, row.y + 20, target_rect.width().saturating_sub(12), 8),
                 1,
                 Color::RGB(24, 28, 36),
             )?;
@@ -533,11 +544,10 @@ impl App {
         let columns = crate::ui::equal_columns(content_bounds, 2, 14);
         let input_bounds = columns[0];
         let output_bounds = columns[1];
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "MIDI I/O",
-            content_bounds.x + 8,
-            content_bounds.y + 8,
+            Rect::new(content_bounds.x + 8, content_bounds.y + 8, 160, 14),
             2,
             Color::RGB(244, 232, 146),
         )?;
@@ -560,19 +570,17 @@ impl App {
             self.page_state.midi_io.focus == MidiIoListFocus::Outputs,
             Color::RGB(224, 132, 90),
         )?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "Inputs",
-            input_bounds.x + 8,
-            input_bounds.y + 28,
+            Rect::new(input_bounds.x + 8, input_bounds.y + 28, 80, 8),
             1,
             Color::RGB(214, 242, 220),
         )?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "Outputs",
-            output_bounds.x + 8,
-            output_bounds.y + 28,
+            Rect::new(output_bounds.x + 8, output_bounds.y + 28, 80, 8),
             1,
             Color::RGB(246, 212, 194),
         )?;
@@ -637,11 +645,10 @@ impl App {
             );
             canvas.set_draw_color(Color::RGB(182, 194, 212));
             canvas.fill_rect(bar)?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 &ports[index].name,
-                bar.x + 4,
-                row.y + 8,
+                Rect::new(bar.x + 4, row.y + 8, bar.width().saturating_sub(8), 8),
                 1,
                 Color::RGB(24, 28, 36),
             )?;
@@ -659,11 +666,10 @@ impl App {
         canvas.fill_rect(content_bounds)?;
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(content_bounds)?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             "Routing",
-            content_bounds.x + 8,
-            content_bounds.y + 8,
+            Rect::new(content_bounds.x + 8, content_bounds.y + 8, 140, 14),
             2,
             Color::RGB(244, 232, 146),
         )?;
@@ -697,11 +703,15 @@ impl App {
             Color::RGB(92, 100, 112)
         });
         canvas.fill_rect(state_badge)?;
-        crate::ui::draw_text(
+        crate::ui::draw_text_fitted(
             canvas,
             &active_track.name,
-            name_badge.x + name_badge.width() as i32 + 8,
-            header.y + 12,
+            Rect::new(
+                name_badge.x + name_badge.width() as i32 + 8,
+                header.y + 12,
+                (state_badge.x - (name_badge.x + name_badge.width() as i32 + 16)).max(0) as u32,
+                14,
+            ),
             2,
             Color::RGB(244, 244, 236),
         )?;
@@ -741,27 +751,26 @@ impl App {
                     }
                 }
             };
+            let label_text_rect = Rect::new(row.x + 44, row.y + 8, 150, 8);
             let value = Rect::new(
-                label.x + label.width() as i32 + 12,
+                row.x + 210,
                 row.y + 10,
-                row.width().saturating_sub(58),
+                row.width().saturating_sub(220),
                 row.height().saturating_sub(20),
             );
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 field.label(),
-                label.x + label.width() as i32 + 10,
-                row.y + 8,
+                label_text_rect,
                 1,
                 Color::RGB(244, 244, 236),
             )?;
-            crate::ui::draw_text(
+            crate::ui::draw_text_fitted(
                 canvas,
                 &self.routing_field_value(active_track, field),
-                value.x + 6,
-                row.y + 8,
+                Rect::new(value.x + 6, row.y + 8, value.width().saturating_sub(12), 8),
                 1,
                 Color::RGB(24, 28, 36),
             )?;
