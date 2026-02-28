@@ -709,14 +709,8 @@ impl App {
             1,
             Color::RGB(154, 166, 182),
         )?;
-        let row_gap = match self.page_state.mapping_mode {
-            MappingPageMode::Overview => 3,
-            MappingPageMode::Write => 4,
-        };
-        let row_height = match self.page_state.mapping_mode {
-            MappingPageMode::Overview => 18_i32,
-            MappingPageMode::Write => 20_i32,
-        };
+        let row_gap = 3_i32;
+        let row_height = 18_i32;
         let stride = row_height + row_gap;
         let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
         let selected_index = self
