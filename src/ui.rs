@@ -1,4 +1,3 @@
-use crate::render::TrackCompaction;
 use sdl3::rect::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,26 +20,16 @@ impl TimelineFlow {
     }
 }
 
-pub fn split_panes(width: u32, height: u32) -> [Rect; 2] {
+pub fn surface_rect(width: u32, height: u32) -> Rect {
     let gutter = 18_i32;
     let width = width as i32;
     let height = height as i32;
-    let pane_height = ((height - gutter * 3) / 2).max(100);
-
-    [
-        Rect::new(
-            gutter,
-            gutter,
-            (width - gutter * 2) as u32,
-            pane_height as u32,
-        ),
-        Rect::new(
-            gutter,
-            gutter * 2 + pane_height,
-            (width - gutter * 2) as u32,
-            pane_height as u32,
-        ),
-    ]
+    Rect::new(
+        gutter,
+        gutter,
+        (width - gutter * 2) as u32,
+        (height - gutter * 2) as u32,
+    )
 }
 
 pub fn inset_rect(rect: Rect, inset_x: i32, inset_y: i32) -> Result<Rect, String> {
@@ -59,66 +48,31 @@ pub fn inset_rect(rect: Rect, inset_x: i32, inset_y: i32) -> Result<Rect, String
     ))
 }
 
-pub fn lane_rects(
-    bounds: Rect,
-    track_count: usize,
-    flow: TimelineFlow,
-    compaction: TrackCompaction,
-) -> Vec<Rect> {
+pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)> {
     if track_count == 0 {
         return Vec::new();
     }
 
-    let weights: Vec<u32> = (0..track_count)
-        .map(|index| lane_weight(track_count, index, compaction))
-        .collect();
-    let total_weight: u32 = weights.iter().sum();
+    let pair_gap = 14_i32;
+    let inner_gap = 6_i32;
+    let total_pair_gap = pair_gap * (track_count.saturating_sub(1) as i32);
+    let pair_width = ((bounds.width() as i32 - total_pair_gap) / track_count as i32).max(20);
+    let sub_width = ((pair_width - inner_gap) / 2).max(8);
+    let mut pairs = Vec::with_capacity(track_count);
 
-    let mut offset = 0_i32;
-    let mut lanes = Vec::with_capacity(track_count);
-
-    for (index, weight) in weights.iter().enumerate() {
-        match flow {
-            TimelineFlow::DownwardColumns => {
-                let is_last = index + 1 == track_count;
-                let available = bounds.width() as i32;
-                let lane_width = if is_last {
-                    available - offset
-                } else {
-                    ((available as i64 * *weight as i64) / total_weight as i64) as i32
-                }
-                .max(6);
-                let lane = Rect::new(
-                    bounds.x + offset,
-                    bounds.y,
-                    lane_width as u32,
-                    bounds.height(),
-                );
-                lanes.push(inset_rect(lane, 3, 3).unwrap_or(lane));
-                offset += lane_width;
-            }
-            TimelineFlow::AcrossRows => {
-                let is_last = index + 1 == track_count;
-                let available = bounds.height() as i32;
-                let lane_height = if is_last {
-                    available - offset
-                } else {
-                    ((available as i64 * *weight as i64) / total_weight as i64) as i32
-                }
-                .max(6);
-                let lane = Rect::new(
-                    bounds.x,
-                    bounds.y + offset,
-                    bounds.width(),
-                    lane_height as u32,
-                );
-                lanes.push(inset_rect(lane, 3, 3).unwrap_or(lane));
-                offset += lane_height;
-            }
-        }
+    for index in 0..track_count {
+        let pair_x = bounds.x + index as i32 * (pair_width + pair_gap);
+        let full = Rect::new(pair_x, bounds.y, sub_width as u32, bounds.height());
+        let detail = Rect::new(
+            pair_x + sub_width + inner_gap,
+            bounds.y,
+            sub_width as u32,
+            bounds.height(),
+        );
+        pairs.push((full, detail));
     }
 
-    lanes
+    pairs
 }
 
 pub fn region_blocks(lane: Rect, seed: usize, flow: TimelineFlow) -> Vec<Rect> {
@@ -160,6 +114,15 @@ pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
         TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 20),
         TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height()),
     }
+}
+
+pub fn detail_badge_rect(header: Rect) -> Rect {
+    Rect::new(
+        header.x + (header.width() as i32 / 2),
+        header.y + 4,
+        (header.width() / 2).max(10),
+        (header.height() - 8).max(6),
+    )
 }
 
 pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
@@ -205,50 +168,30 @@ pub fn playhead_rect(
     }
 }
 
-fn lane_weight(track_count: usize, index: usize, compaction: TrackCompaction) -> u32 {
-    if track_count <= 2 {
-        return 100;
-    }
-
-    let is_outer = index == 0 || index + 1 == track_count;
-
-    match (compaction, is_outer) {
-        (TrackCompaction::Comfortable, _) => 100,
-        (TrackCompaction::CompactEdges, true) => 60,
-        (TrackCompaction::CompactEdges, false) => 100,
-        (TrackCompaction::Dense, true) => 45,
-        (TrackCompaction::Dense, false) => 80,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        TimelineFlow, lane_rects, playhead_rect, split_panes, timeline_guides, track_header_rect,
+        TimelineFlow, detail_badge_rect, playhead_rect, surface_rect, timeline_guides,
+        track_column_pairs, track_header_rect,
     };
-    use crate::render::TrackCompaction;
     use sdl3::rect::Rect;
 
     #[test]
-    fn pane_split_stacks_two_full_width_views() {
-        let [top, bottom] = split_panes(1280, 720);
+    fn surface_rect_fills_window_with_margin() {
+        let surface = surface_rect(1280, 720);
 
-        assert_eq!(top.width(), 1244);
-        assert_eq!(bottom.width(), 1244);
-        assert!(bottom.y > top.y);
+        assert_eq!(surface.width(), 1244);
+        assert_eq!(surface.height(), 684);
     }
 
     #[test]
-    fn compact_edges_shrinks_outer_columns() {
-        let lanes = lane_rects(
-            Rect::new(0, 0, 1000, 200),
-            4,
-            TimelineFlow::DownwardColumns,
-            TrackCompaction::CompactEdges,
-        );
+    fn track_column_pairs_build_full_detail_pairs() {
+        let pairs = track_column_pairs(Rect::new(0, 0, 1000, 400), 4);
+        let (full, detail) = pairs[0];
 
-        assert!(lanes[0].width() < lanes[1].width());
-        assert!(lanes[3].width() < lanes[2].width());
+        assert!(detail.x > full.x);
+        assert_eq!(full.height(), 400);
+        assert_eq!(detail.height(), 400);
     }
 
     #[test]
@@ -287,5 +230,12 @@ mod tests {
 
         assert_eq!(vertical[0].width(), 200);
         assert_eq!(horizontal[0].height(), 400);
+    }
+
+    #[test]
+    fn detail_badge_uses_header_space() {
+        let badge = detail_badge_rect(Rect::new(20, 10, 40, 20));
+        assert!(badge.x > 20);
+        assert!(badge.width() > 0);
     }
 }

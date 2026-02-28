@@ -1,6 +1,6 @@
 use crate::ui::TimelineFlow;
 use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
+use sdl3::keyboard::{Keycode, Mod};
 
 /// The canonical application command layer.
 ///
@@ -9,9 +9,16 @@ use sdl3::keyboard::Keycode;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     Quit,
-    ToggleTimelineFlow,
     TogglePlayback,
-    ToggleLoopEnabled,
+    ToggleGlobalLoop,
+    ToggleCurrentTrackLoop,
+    ToggleCurrentTrackArm,
+    ToggleCurrentTrackMute,
+    ToggleCurrentTrackSolo,
+    ToggleCurrentTrackPassthrough,
+    SelectNextTrack,
+    SelectPreviousTrack,
+    SelectTrack(usize),
     SetTimelineFlow(TimelineFlow),
 }
 
@@ -52,15 +59,15 @@ impl KeyboardBindings {
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleTimelineFlow,
+                AppAction::TogglePlayback,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
-                keycode: Some(Keycode::P),
+                keycode: Some(Keycode::G),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::TogglePlayback,
+                AppAction::ToggleGlobalLoop,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -68,11 +75,86 @@ impl KeyboardBindings {
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleLoopEnabled,
+                AppAction::ToggleCurrentTrackLoop,
                 ActionSource::Keyboard,
             )),
+            Event::KeyDown {
+                keycode: Some(Keycode::A),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleCurrentTrackArm,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::M),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleCurrentTrackMute,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::S),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleCurrentTrackSolo,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::I),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleCurrentTrackPassthrough,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Right),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectNextTrack,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Left),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectPreviousTrack,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(keycode),
+                keymod,
+                repeat: false,
+                ..
+            } if !keymod
+                .intersects(Mod::LALTMOD | Mod::RALTMOD | Mod::LCTRLMOD | Mod::RCTRLMOD) =>
+            {
+                digit_track_index(*keycode).map(|index| {
+                    ActionEvent::new(AppAction::SelectTrack(index), ActionSource::Keyboard)
+                })
+            }
             _ => None,
         }
+    }
+}
+
+fn digit_track_index(keycode: Keycode) -> Option<usize> {
+    match keycode {
+        Keycode::_1 => Some(0),
+        Keycode::_2 => Some(1),
+        Keycode::_3 => Some(2),
+        Keycode::_4 => Some(3),
+        Keycode::_5 => Some(4),
+        Keycode::_6 => Some(5),
+        Keycode::_7 => Some(6),
+        Keycode::_8 => Some(7),
+        Keycode::_9 => Some(8),
+        _ => None,
     }
 }
 
@@ -114,5 +196,22 @@ mod tests {
         };
 
         assert!(KeyboardBindings.resolve(&event).is_none());
+    }
+
+    #[test]
+    fn keyboard_bindings_map_number_keys_to_absolute_tracks() {
+        let event = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::_4),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        let resolved = KeyboardBindings.resolve(&event).expect("track select");
+        assert_eq!(resolved.action, AppAction::SelectTrack(3));
     }
 }

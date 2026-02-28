@@ -1,7 +1,6 @@
 use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::project::Project;
-use crate::render::PaneRenderModel;
 use crate::ui::{LayoutMode, TimelineFlow};
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
@@ -28,17 +27,14 @@ impl App {
     }
 
     pub fn bootstrap_summary(&self) -> String {
-        let full_song = PaneRenderModel::full_song(&self.project);
-        let loop_detail = PaneRenderModel::loop_detail(&self.project);
-
         format!(
-            "trekr bootstrap: project='{}', tracks={}, layout={:?}, sample_rate={}, song_ticks={}, loop_ticks={}, playing={}, loop_enabled={}",
+            "trekr bootstrap: project='{}', tracks={}, active_track={}, layout={:?}, sample_rate={}, song_ticks={}, playing={}, loop_enabled={}",
             self.project.name,
             self.project.tracks.len(),
+            self.project.active_track_index + 1,
             self.layout_mode,
             self.engine_config.sample_rate_hz,
-            full_song.range.length_ticks,
-            loop_detail.range.length_ticks,
+            self.project.full_song_range().length_ticks,
             self.project.transport.playing,
             self.project.transport.loop_enabled
         )
@@ -87,90 +83,133 @@ impl App {
         elapsed: Duration,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = canvas.output_size()?;
-        let panes = crate::ui::split_panes(width, height);
-        let full_song = PaneRenderModel::full_song(&self.project);
-        let loop_detail = PaneRenderModel::loop_detail(&self.project);
+        let surface = crate::ui::surface_rect(width, height);
+        let columns = crate::ui::track_column_pairs(
+            crate::ui::inset_rect(surface, 24, 24)?,
+            self.project.tracks.len(),
+        );
 
         canvas.set_draw_color(Color::RGB(18, 24, 38));
         canvas.clear();
 
-        self.draw_pane(
-            canvas,
-            panes[0],
-            &full_song,
-            elapsed,
-            Color::RGB(36, 58, 92),
-        )?;
-        self.draw_pane(
-            canvas,
-            panes[1],
-            &loop_detail,
-            elapsed,
-            Color::RGB(92, 58, 36),
-        )?;
+        canvas.set_draw_color(Color::RGB(28, 34, 50));
+        canvas.fill_rect(surface)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(surface)?;
+
+        for (index, track) in self.project.tracks.iter().enumerate() {
+            if let Some((full_bounds, detail_bounds)) = columns.get(index).copied() {
+                let is_active = index == self.project.active_track_index;
+                self.draw_track_column(
+                    canvas,
+                    full_bounds,
+                    detail_bounds,
+                    index,
+                    track,
+                    elapsed,
+                    is_active,
+                )?;
+            }
+        }
         let _ = canvas.present();
 
         Ok(())
     }
 
-    fn draw_pane(
+    fn draw_track_column(
+        &self,
+        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track_index: usize,
+        track: &crate::project::Track,
+        elapsed: Duration,
+        is_active: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let full_accent = if is_active {
+            Color::RGB(42, 90, 168)
+        } else {
+            Color::RGB(36, 58, 92)
+        };
+        let detail_accent = if is_active {
+            Color::RGB(162, 88, 34)
+        } else {
+            Color::RGB(92, 58, 36)
+        };
+
+        self.draw_track_subcolumn(
+            canvas,
+            full_bounds,
+            full_accent,
+            track_index,
+            track
+                .loop_region
+                .end_ticks()
+                .max(self.project.full_song_range().end_ticks()),
+            elapsed,
+            is_active,
+            false,
+        )?;
+        self.draw_track_subcolumn(
+            canvas,
+            detail_bounds,
+            detail_accent,
+            track_index + 10,
+            track.loop_region.length_ticks,
+            elapsed,
+            is_active,
+            true,
+        )?;
+
+        Ok(())
+    }
+
+    fn draw_track_subcolumn(
         &self,
         canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
         bounds: Rect,
-        pane: &PaneRenderModel,
-        elapsed: Duration,
         accent: Color,
+        seed: usize,
+        range_ticks: u64,
+        elapsed: Duration,
+        is_active: bool,
+        detail: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(28, 34, 50));
+        canvas.set_draw_color(Color::RGB(20, 27, 40));
         canvas.fill_rect(bounds)?;
-
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(if is_active {
+            Color::RGB(240, 222, 116)
+        } else {
+            Color::RGB(88, 96, 120)
+        });
         canvas.draw_rect(bounds)?;
 
-        let content = crate::ui::inset_rect(bounds, 20, 20)?;
-        let lanes = crate::ui::lane_rects(
-            content,
-            pane.visible_tracks,
-            self.timeline_flow,
-            pane.compaction,
-        );
+        let header = crate::ui::track_header_rect(bounds, self.timeline_flow);
+        canvas.set_draw_color(accent);
+        canvas.fill_rect(header)?;
 
-        canvas.set_draw_color(Color::RGB(20, 27, 40));
-        canvas.fill_rect(content)?;
-
-        for guide in crate::ui::timeline_guides(content, self.timeline_flow) {
+        for guide in crate::ui::timeline_guides(bounds, self.timeline_flow) {
             canvas.set_draw_color(Color::RGB(52, 62, 84));
             canvas.fill_rect(guide)?;
         }
 
-        for (index, lane) in lanes.iter().enumerate() {
-            let lane_color = if index % 2 == 0 {
-                accent
-            } else {
-                Color::RGB(
-                    accent.r.saturating_sub(22),
-                    accent.g.saturating_sub(22),
-                    accent.b.saturating_sub(22),
-                )
-            };
-            canvas.set_draw_color(lane_color);
-            canvas.fill_rect(crate::ui::track_header_rect(*lane, self.timeline_flow))?;
+        if detail {
+            let loop_tag = crate::ui::detail_badge_rect(header);
+            canvas.set_draw_color(Color::RGB(252, 192, 104));
+            canvas.fill_rect(loop_tag)?;
+        }
 
-            canvas.set_draw_color(Color::RGB(180, 188, 205));
-            canvas.draw_rect(*lane)?;
-
-            for block in crate::ui::region_blocks(*lane, index, self.timeline_flow) {
-                canvas.set_draw_color(Color::RGB(210, 222, 236));
-                canvas.fill_rect(block)?;
-                canvas.set_draw_color(Color::RGB(245, 247, 250));
-                canvas.draw_rect(block)?;
-            }
+        for block in crate::ui::region_blocks(bounds, seed, self.timeline_flow) {
+            canvas.set_draw_color(Color::RGB(210, 222, 236));
+            canvas.fill_rect(block)?;
+            canvas.set_draw_color(Color::RGB(245, 247, 250));
+            canvas.draw_rect(block)?;
         }
 
         let playhead = crate::ui::playhead_rect(
-            content,
+            bounds,
             self.timeline_flow,
-            pane.range.length_ticks,
+            range_ticks.max(1),
             elapsed.as_millis() as u64,
         )?;
         canvas.set_draw_color(if self.project.transport.playing {
@@ -186,16 +225,54 @@ impl App {
     fn apply_action(&mut self, action: AppAction) -> AppControl {
         match action {
             AppAction::Quit => AppControl::Quit,
-            AppAction::ToggleTimelineFlow => {
-                self.timeline_flow = self.timeline_flow.toggle();
-                AppControl::Continue
-            }
             AppAction::TogglePlayback => {
                 self.project.transport.playing = !self.project.transport.playing;
                 AppControl::Continue
             }
-            AppAction::ToggleLoopEnabled => {
+            AppAction::ToggleGlobalLoop => {
                 self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
+                AppControl::Continue
+            }
+            AppAction::ToggleCurrentTrackLoop => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.loop_enabled = !track.state.loop_enabled;
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleCurrentTrackArm => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.armed = !track.state.armed;
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleCurrentTrackMute => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.muted = !track.state.muted;
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleCurrentTrackSolo => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.soloed = !track.state.soloed;
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleCurrentTrackPassthrough => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.passthrough = !track.state.passthrough;
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectNextTrack => {
+                self.project.select_next_track();
+                AppControl::Continue
+            }
+            AppAction::SelectPreviousTrack => {
+                self.project.select_previous_track();
+                AppControl::Continue
+            }
+            AppAction::SelectTrack(index) => {
+                self.project.select_track(index);
                 AppControl::Continue
             }
             AppAction::SetTimelineFlow(flow) => {
@@ -219,14 +296,18 @@ mod tests {
     use crate::ui::TimelineFlow;
 
     #[test]
-    fn apply_action_toggles_timeline_flow() {
+    fn apply_action_sets_active_track_and_current_track_flags() {
         let mut app = App::new();
-        assert_eq!(app.timeline_flow, TimelineFlow::DownwardColumns);
+        assert_eq!(app.project.active_track_index, 0);
 
-        let control = app.apply_action(AppAction::ToggleTimelineFlow);
+        let control = app.apply_action(AppAction::SelectTrack(2));
+        app.apply_action(AppAction::ToggleCurrentTrackLoop);
+        app.apply_action(AppAction::ToggleCurrentTrackArm);
 
         assert_eq!(control, AppControl::Continue);
-        assert_eq!(app.timeline_flow, TimelineFlow::AcrossRows);
+        assert_eq!(app.project.active_track_index, 2);
+        assert!(app.project.tracks[2].state.loop_enabled);
+        assert!(app.project.tracks[2].state.armed);
     }
 
     #[test]
@@ -236,9 +317,18 @@ mod tests {
         assert!(app.project.transport.loop_enabled);
 
         app.apply_action(AppAction::TogglePlayback);
-        app.apply_action(AppAction::ToggleLoopEnabled);
+        app.apply_action(AppAction::ToggleGlobalLoop);
 
         assert!(app.project.transport.playing);
         assert!(!app.project.transport.loop_enabled);
+    }
+
+    #[test]
+    fn app_still_supports_absolute_flow_override() {
+        let mut app = App::new();
+        let control = app.apply_action(AppAction::SetTimelineFlow(TimelineFlow::AcrossRows));
+
+        assert_eq!(control, AppControl::Continue);
+        assert_eq!(app.timeline_flow, TimelineFlow::AcrossRows);
     }
 }

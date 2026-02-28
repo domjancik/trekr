@@ -2,7 +2,7 @@
 
 ## Product Summary
 
-`trekr` is a MIDI-first tracker/player/looper. It presents the full song and the active loop region at the same time, with both views fit entirely into fixed canvases by default.
+`trekr` is a MIDI-first tracker/player/looper. It presents each visible track as a paired vertical view, with a full-range column and a loop-detail column shown side by side.
 
 The initial release focuses on:
 
@@ -19,24 +19,24 @@ Audio is planned as a second-phase feature. The timeline, routing, and track mod
 - Route each track to its own MIDI channel and optionally its own output device.
 - Monitor and pass through live MIDI input while playing.
 - Record loops by holding record and releasing on the desired musical boundary.
-- View the full arrangement and the current loop region simultaneously.
+- View each track's full arrangement and current loop region simultaneously.
 
 ## UX Model
 
 ### Timeline Views
 
-The app shows two synchronized timeline panes:
+The default view is organized as alternating track columns:
 
-1. Full song view
-2. Detail loop view
+`full 1 | detail 1 | full 2 | detail 2 | ...`
 
 Default behavior:
 
-- full song view always fits the entire song into the pane
-- detail view always fits the entire selected loop region into the pane
+- each track has a full-range column
+- each track has a detail column for that track's loop region
+- both columns fit their full ranges into the available height
 - content stays fixed in the pane instead of scrolling in the default mode
-- the playhead moves through both panes
-- changing the loop region immediately updates the detail pane range
+- the playhead moves downward through all visible columns
+- the active track should be visually highlighted
 
 The default timeline flow is vertical-time:
 
@@ -44,7 +44,7 @@ The default timeline flow is vertical-time:
 - tracks appear as side-by-side columns
 - the playhead traverses downward through those columns
 
-An alternate across-time row layout may exist as a later or developer-facing comparison mode, but the product default should be downward-time columns. If the track count becomes too high, edge tracks may compress before scrolling is introduced in a later iteration.
+Commands may target the currently active track by default. Absolute track addressing should also be supported for mappings and shortcuts. If the track count becomes too high, columns may narrow before scrolling is introduced in a later iteration.
 
 ### Editing Model
 
@@ -75,6 +75,7 @@ V1 requires MIDI tracks. The model should also reserve space for later audio or 
 Each track should support:
 
 - arm
+- independent loop enable
 - mute
 - solo
 - monitor/passthrough enable
@@ -89,6 +90,7 @@ The timeline uses linear regions rather than scene launching:
 
 - regions are placed directly on the timeline
 - loops are time ranges, not free-floating clips
+- each track may maintain its own loop region and loop-enable state
 - V1 does not require scene or clip-launch workflows
 
 ## Recording
@@ -141,7 +143,10 @@ Non-note MIDI can control:
 
 - transport
 - record
+- active-track selection
 - track arm/mute/solo
+- current-track loop enable
+- absolute track-targeted actions
 - loop in/out selection
 - region actions
 - macro controls
@@ -173,10 +178,9 @@ Secondary target:
 ### Include
 
 - transport
-- full song overview pane
-- loop detail pane
+- active-track model
 - fixed-fit default layout
-- fixed-fit vertical-time track columns
+- fixed-fit paired track columns with `full | detail` per track
 - MIDI tracks
 - MIDI record/overdub
 - hold-to-record with nearest-quantize commit

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a MIDI-first tracker/player/looper with fixed-fit full-song and loop-detail panes, then extend the same engine toward audio overlay and modular processing.
+Build a MIDI-first tracker/player/looper with fixed-fit per-track full/detail columns, then extend the same engine toward audio overlay and modular processing.
 
 ## Delivery Strategy
 
@@ -15,14 +15,15 @@ Deliver:
 - app shell
 - project model
 - transport model
-- fixed-fit dual-pane timeline mock rendering
-- default vertical-time timeline with tracks as side-by-side columns
+- fixed-fit paired-column timeline mock rendering
+- default vertical-time timeline with `full | detail` per visible track
+- active-track selection and highlighting
 - save/load for minimal project state
 
 Exit criteria:
 
 - app launches on the primary desktop target
-- full song pane and loop pane stay synchronized
+- each track's full/detail pair stays synchronized
 - a saved project restores transport, tracks, and loop region
 
 ## Milestone 2: MIDI Engine
@@ -65,6 +66,7 @@ Deliver:
 - note and non-note control mapping
 - transport controls
 - track arm/mute/solo mapping
+- current-track and absolute-track actions
 - loop-region controls
 - macro target abstraction
 
@@ -122,8 +124,10 @@ Current decisions locked in:
 - V1 is MIDI-first
 - audio is phase two and must fit the same routing/timeline model
 - default UI is fixed-fit, not scroll-first
-- detail pane shows the full selected loop region
+- default view is alternating per-track `full | detail` columns
+- active-track-relative actions are first-class, with absolute track targeting also supported
 - timeline is linear, not scene-launch based
+- tracks may loop independently
 - record release commits to the nearest quantize boundary
 - modular internal interfaces are preferred so plugin-style extension remains possible later
 - Rust is the chosen implementation language

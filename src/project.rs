@@ -7,6 +7,7 @@ pub struct Project {
     pub name: String,
     pub transport: Transport,
     pub loop_region: LoopRegion,
+    pub active_track_index: usize,
     pub tracks: Vec<Track>,
 }
 
@@ -16,6 +17,7 @@ impl Project {
             name: "Untitled".to_string(),
             transport: Transport::default(),
             loop_region: LoopRegion::new(0, 16 * 960),
+            active_track_index: 0,
             tracks: (1..=6)
                 .map(|index| Track::new(&format!("Track {}", index), TrackKind::Midi))
                 .collect(),
@@ -33,6 +35,40 @@ impl Project {
 
         LoopRegion::new(0, end_ticks.max(self.loop_region.end_ticks()))
     }
+
+    pub fn select_track(&mut self, index: usize) {
+        if self.tracks.is_empty() {
+            self.active_track_index = 0;
+            return;
+        }
+
+        self.active_track_index = index.min(self.tracks.len() - 1);
+    }
+
+    pub fn select_next_track(&mut self) {
+        if self.tracks.is_empty() {
+            return;
+        }
+
+        self.active_track_index = (self.active_track_index + 1) % self.tracks.len();
+    }
+
+    pub fn select_previous_track(&mut self) {
+        if self.tracks.is_empty() {
+            return;
+        }
+
+        let track_count = self.tracks.len();
+        self.active_track_index = (self.active_track_index + track_count - 1) % track_count;
+    }
+
+    pub fn active_track(&self) -> Option<&Track> {
+        self.tracks.get(self.active_track_index)
+    }
+
+    pub fn active_track_mut(&mut self) -> Option<&mut Track> {
+        self.tracks.get_mut(self.active_track_index)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +77,7 @@ pub struct Track {
     pub kind: TrackKind,
     pub state: TrackState,
     pub routing: TrackRouting,
+    pub loop_region: LoopRegion,
     pub active_take: Option<RecordingTake>,
     pub regions: Vec<Region>,
 }
@@ -52,6 +89,7 @@ impl Track {
             kind,
             state: TrackState::default(),
             routing: TrackRouting::default(),
+            loop_region: LoopRegion::new(0, 4 * 960),
             active_take: None,
             regions: Vec::new(),
         }
@@ -97,6 +135,7 @@ pub enum TrackKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TrackState {
     pub armed: bool,
+    pub loop_enabled: bool,
     pub muted: bool,
     pub soloed: bool,
     pub passthrough: bool,
@@ -150,5 +189,20 @@ mod tests {
 
         assert!(track.active_take.is_none());
         assert_eq!(track.regions, vec![Region::new(960, 960)]);
+    }
+
+    #[test]
+    fn track_selection_supports_relative_and_absolute_moves() {
+        let mut project = Project::demo();
+        assert_eq!(project.active_track_index, 0);
+
+        project.select_track(3);
+        assert_eq!(project.active_track_index, 3);
+
+        project.select_next_track();
+        assert_eq!(project.active_track_index, 4);
+
+        project.select_previous_track();
+        assert_eq!(project.active_track_index, 3);
     }
 }
