@@ -134,6 +134,33 @@ pub fn passthrough_rail_rect(bounds: Rect) -> Rect {
     )
 }
 
+pub fn range_highlight_rect(
+    bounds: Rect,
+    flow: TimelineFlow,
+    view_start_ticks: u64,
+    view_length_ticks: u64,
+    range: crate::timeline::LoopRegion,
+) -> Rect {
+    let view_length_ticks = view_length_ticks.max(1);
+    let start_ratio =
+        range.start_ticks.saturating_sub(view_start_ticks) as f32 / view_length_ticks as f32;
+    let end_ratio =
+        range.end_ticks().saturating_sub(view_start_ticks) as f32 / view_length_ticks as f32;
+
+    match flow {
+        TimelineFlow::DownwardColumns => {
+            let y = bounds.y + (bounds.height() as f32 * start_ratio.clamp(0.0, 1.0)) as i32;
+            let end_y = bounds.y + (bounds.height() as f32 * end_ratio.clamp(0.0, 1.0)) as i32;
+            Rect::new(bounds.x, y, bounds.width(), (end_y - y).max(2) as u32)
+        }
+        TimelineFlow::AcrossRows => {
+            let x = bounds.x + (bounds.width() as f32 * start_ratio.clamp(0.0, 1.0)) as i32;
+            let end_x = bounds.x + (bounds.width() as f32 * end_ratio.clamp(0.0, 1.0)) as i32;
+            Rect::new(x, bounds.y, (end_x - x).max(2) as u32, bounds.height())
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaderBadgeKind {
     TrackIndex,
@@ -273,8 +300,8 @@ fn horizontal_note_rect(
 mod tests {
     use super::{
         HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, note_rects,
-        passthrough_rail_rect, playhead_rect_in_range, surface_rect, timeline_guides,
-        track_column_pairs, track_header_rect,
+        passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect, surface_rect,
+        timeline_guides, track_column_pairs, track_header_rect,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -385,5 +412,26 @@ mod tests {
 
         assert_eq!(rects.len(), 1);
         assert!(rects[0].clipped);
+    }
+
+    #[test]
+    fn range_highlight_follows_time_axis() {
+        let vertical = range_highlight_rect(
+            Rect::new(0, 0, 80, 400),
+            TimelineFlow::DownwardColumns,
+            0,
+            1600,
+            LoopRegion::new(400, 400),
+        );
+        let horizontal = range_highlight_rect(
+            Rect::new(0, 0, 80, 400),
+            TimelineFlow::AcrossRows,
+            0,
+            1600,
+            LoopRegion::new(400, 400),
+        );
+
+        assert_eq!(vertical.width(), 80);
+        assert_eq!(horizontal.height(), 400);
     }
 }

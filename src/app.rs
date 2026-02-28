@@ -212,6 +212,22 @@ impl App {
             canvas.fill_rect(rail)?;
         }
 
+        if !detail && track.state.loop_enabled {
+            let loop_highlight = crate::ui::range_highlight_rect(
+                bounds,
+                self.timeline_flow,
+                view_start_ticks,
+                range_ticks.max(1),
+                track.loop_region,
+            );
+            canvas.set_draw_color(if is_active {
+                Color::RGB(88, 72, 24)
+            } else {
+                Color::RGB(54, 48, 28)
+            });
+            canvas.fill_rect(loop_highlight)?;
+        }
+
         for guide in crate::ui::timeline_guides(bounds, self.timeline_flow) {
             canvas.set_draw_color(Color::RGB(52, 62, 84));
             canvas.fill_rect(guide)?;
@@ -447,12 +463,7 @@ impl App {
             return raw;
         }
 
-        if raw < track.loop_region.start_ticks {
-            return raw;
-        }
-
-        let relative = raw - track.loop_region.start_ticks;
-        track.loop_region.start_ticks + (relative % track.loop_region.length_ticks)
+        track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
     }
 }
 
@@ -571,6 +582,21 @@ mod tests {
         assert_eq!(
             app.effective_track_playhead(app.project.active_track().unwrap()),
             1_440
+        );
+    }
+
+    #[test]
+    fn effective_track_playhead_moves_even_before_loop_start() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = true;
+        track.loop_region.start_ticks = 1_920;
+        track.loop_region.length_ticks = 960;
+        app.playhead_ticks = 480;
+
+        assert_eq!(
+            app.effective_track_playhead(app.project.active_track().unwrap()),
+            2_400
         );
     }
 }
