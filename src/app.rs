@@ -1055,34 +1055,63 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let columns = crate::ui::equal_columns(content_bounds, 2, 14);
+        canvas.set_draw_color(Color::RGB(22, 28, 42));
+        canvas.fill_rect(content_bounds)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(content_bounds)?;
+
+        let (header_bounds, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
+        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
         let input_bounds = columns[0];
         let output_bounds = columns[1];
         crate::ui::draw_text_fitted(
             canvas,
-            "Midi IO",
-            Rect::new(content_bounds.x + 8, content_bounds.y + 8, 160, 14),
+            "MIDI I/O",
+            Rect::new(header_bounds.x + 8, header_bounds.y + 8, 160, 14),
             2,
             Color::RGB(244, 232, 146),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
+            "Select default inputs and outputs",
+            Rect::new(header_bounds.x + 188, header_bounds.y + 12, 220, 8),
+            1,
+            Color::RGB(184, 194, 206),
+        )?;
+
+        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
+        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
+        canvas.set_draw_color(Color::RGB(28, 34, 50));
+        canvas.fill_rect(input_header)?;
+        canvas.fill_rect(output_header)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(input_header)?;
+        canvas.draw_rect(output_header)?;
+        crate::ui::draw_text_fitted(
+            canvas,
             "Inputs",
-            Rect::new(input_bounds.x + 8, input_bounds.y + 10, 96, 14),
+            Rect::new(input_header.x + 8, input_header.y + 7, 96, 8),
             2,
             Color::RGB(214, 242, 220),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Outputs",
-            Rect::new(output_bounds.x + 8, output_bounds.y + 10, 96, 14),
+            Rect::new(output_header.x + 8, output_header.y + 7, 96, 8),
             2,
             Color::RGB(246, 212, 194),
         )?;
 
         self.draw_device_list(
             canvas,
-            crate::ui::inset_rect(input_bounds, 0, 32)?,
+            Rect::new(
+                input_bounds.x,
+                input_header.y + input_header.height() as i32 + 6,
+                input_bounds.width(),
+                input_bounds
+                    .height()
+                    .saturating_sub(input_header.height().saturating_add(28)),
+            ),
             &self.midi_devices.inputs,
             self.page_state.midi_io.selected_input_index,
             self.midi_devices.selected_input,
@@ -1091,7 +1120,14 @@ impl App {
         )?;
         self.draw_device_list(
             canvas,
-            crate::ui::inset_rect(output_bounds, 0, 32)?,
+            Rect::new(
+                output_bounds.x,
+                output_header.y + output_header.height() as i32 + 6,
+                output_bounds.width(),
+                output_bounds
+                    .height()
+                    .saturating_sub(output_header.height().saturating_add(28)),
+            ),
             &self.midi_devices.outputs,
             self.page_state.midi_io.selected_output_index,
             self.midi_devices.selected_output,
@@ -1151,10 +1187,13 @@ impl App {
             });
             canvas.fill_rect(status)?;
 
+            let active_badge_width = if is_active { 40 } else { 0 };
             let header_rect = Rect::new(
                 status.x + status.width() as i32 + 8,
                 row.y + 8,
-                row.width().saturating_sub(40),
+                row.width()
+                    .saturating_sub(40)
+                    .saturating_sub(active_badge_width as u32),
                 8,
             );
             let body_rect = Rect::new(
@@ -1177,7 +1216,7 @@ impl App {
                 Color::RGB(230, 236, 244),
             )?;
             if is_active {
-                let active_badge = Rect::new(row.x + row.width() as i32 - 52, row.y + 8, 36, 8);
+                let active_badge = Rect::new(row.x + row.width() as i32 - 48, row.y + 8, 32, 8);
                 canvas.set_draw_color(accent);
                 canvas.fill_rect(active_badge)?;
                 crate::ui::draw_text_fitted(
