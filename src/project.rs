@@ -1,5 +1,5 @@
 use crate::routing::TrackRouting;
-use crate::timeline::{LoopRegion, Region};
+use crate::timeline::{LoopRegion, RecordingTake, Region};
 use crate::transport::Transport;
 
 #[derive(Debug, Clone)]
@@ -42,6 +42,7 @@ pub struct Track {
     pub kind: TrackKind,
     pub state: TrackState,
     pub routing: TrackRouting,
+    pub active_take: Option<RecordingTake>,
     pub regions: Vec<Region>,
 }
 
@@ -52,13 +53,30 @@ impl Track {
             kind,
             state: TrackState::default(),
             routing: TrackRouting::default(),
+            active_take: None,
             regions: Vec::new(),
         }
     }
 
+    pub fn begin_recording(&mut self, pressed_at: u64) {
+        self.active_take = Some(RecordingTake::new(pressed_at));
+    }
+
     /// V1 is MIDI-first, so record commit currently appends a MIDI region.
-    pub fn commit_recording(&mut self, transport: Transport, pressed_at: u64, released_at: u64) {
-        let start_ticks = transport.quantize_to_nearest(pressed_at);
+    pub fn finish_recording(&mut self, transport: Transport, released_at: u64) {
+        let Some(take) = self.active_take.take() else {
+            return;
+        };
+
+        self.commit_take(transport, take.release(released_at));
+    }
+
+    pub fn commit_take(&mut self, transport: Transport, take: RecordingTake) {
+        let Some(released_at) = take.released_at_ticks else {
+            return;
+        };
+
+        let start_ticks = transport.quantize_to_nearest(take.pressed_at_ticks);
         let end_ticks = transport.quantize_to_nearest(released_at);
         let length_ticks = end_ticks.saturating_sub(start_ticks);
 
@@ -88,7 +106,7 @@ pub struct TrackState {
 #[cfg(test)]
 mod tests {
     use super::{Project, Track, TrackKind};
-    use crate::timeline::Region;
+    use crate::timeline::{RecordingTake, Region};
     use crate::transport::{QuantizeMode, Transport};
 
     #[test]
@@ -118,8 +136,20 @@ mod tests {
         };
         let mut track = Track::new("Track 1", TrackKind::Midi);
 
-        track.commit_recording(transport, 220, 721);
+        track.commit_take(transport, RecordingTake::new(220).release(721));
 
         assert_eq!(track.regions, vec![Region::new(240, 480)]);
+    }
+
+    #[test]
+    fn finish_recording_consumes_active_take() {
+        let transport = Transport::default();
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        track.begin_recording(960);
+
+        track.finish_recording(transport, 1_920);
+
+        assert!(track.active_take.is_none());
+        assert_eq!(track.regions, vec![Region::new(960, 960)]);
     }
 }
