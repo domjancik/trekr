@@ -137,22 +137,51 @@ pub fn region_blocks(lane: Rect, seed: usize, flow: TimelineFlow) -> Vec<Rect> {
 
         let rect = match flow {
             TimelineFlow::DownwardColumns => Rect::new(
-                lane.x + 6,
+                lane.x + 10,
                 lane.y + major_start,
-                lane.width().saturating_sub(12),
+                lane.width().saturating_sub(20),
                 major_size.max(6) as u32,
             ),
             TimelineFlow::AcrossRows => Rect::new(
                 lane.x + major_start,
-                lane.y + 6,
+                lane.y + 10,
                 major_size.max(6) as u32,
-                lane.height().saturating_sub(12),
+                lane.height().saturating_sub(20),
             ),
         };
         blocks.push(rect);
     }
 
     blocks
+}
+
+pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 20),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height()),
+    }
+}
+
+pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
+    let guide_count: usize = 8;
+    let mut guides = Vec::with_capacity(guide_count.saturating_sub(1));
+
+    for step in 1..guide_count {
+        let ratio = step as f32 / guide_count as f32;
+        let guide = match flow {
+            TimelineFlow::DownwardColumns => {
+                let y = bounds.y + (bounds.height() as f32 * ratio) as i32;
+                Rect::new(bounds.x, y, bounds.width(), 1)
+            }
+            TimelineFlow::AcrossRows => {
+                let x = bounds.x + (bounds.width() as f32 * ratio) as i32;
+                Rect::new(x, bounds.y, 1, bounds.height())
+            }
+        };
+        guides.push(guide);
+    }
+
+    guides
 }
 
 pub fn playhead_rect(
@@ -194,7 +223,9 @@ fn lane_weight(track_count: usize, index: usize, compaction: TrackCompaction) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{TimelineFlow, lane_rects, playhead_rect, split_panes};
+    use super::{
+        TimelineFlow, lane_rects, playhead_rect, split_panes, timeline_guides, track_header_rect,
+    };
     use crate::render::TrackCompaction;
     use sdl3::rect::Rect;
 
@@ -239,5 +270,22 @@ mod tests {
 
         assert_eq!(vertical.width(), 300);
         assert_eq!(horizontal.height(), 200);
+    }
+
+    #[test]
+    fn downward_columns_use_top_headers() {
+        let header = track_header_rect(Rect::new(10, 20, 80, 240), TimelineFlow::DownwardColumns);
+
+        assert_eq!(header.height(), 20);
+        assert_eq!(header.width(), 80);
+    }
+
+    #[test]
+    fn timeline_guides_follow_time_axis() {
+        let vertical = timeline_guides(Rect::new(0, 0, 200, 400), TimelineFlow::DownwardColumns);
+        let horizontal = timeline_guides(Rect::new(0, 0, 200, 400), TimelineFlow::AcrossRows);
+
+        assert_eq!(vertical[0].width(), 200);
+        assert_eq!(horizontal[0].height(), 400);
     }
 }

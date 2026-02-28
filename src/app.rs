@@ -140,18 +140,26 @@ impl App {
             pane.compaction,
         );
 
+        canvas.set_draw_color(Color::RGB(20, 27, 40));
+        canvas.fill_rect(content)?;
+
+        for guide in crate::ui::timeline_guides(content, self.timeline_flow) {
+            canvas.set_draw_color(Color::RGB(52, 62, 84));
+            canvas.fill_rect(guide)?;
+        }
+
         for (index, lane) in lanes.iter().enumerate() {
             let lane_color = if index % 2 == 0 {
                 accent
             } else {
                 Color::RGB(
-                    accent.r.saturating_sub(16),
-                    accent.g.saturating_sub(16),
-                    accent.b.saturating_sub(16),
+                    accent.r.saturating_sub(22),
+                    accent.g.saturating_sub(22),
+                    accent.b.saturating_sub(22),
                 )
             };
             canvas.set_draw_color(lane_color);
-            canvas.fill_rect(*lane)?;
+            canvas.fill_rect(crate::ui::track_header_rect(*lane, self.timeline_flow))?;
 
             canvas.set_draw_color(Color::RGB(180, 188, 205));
             canvas.draw_rect(*lane)?;
@@ -159,6 +167,8 @@ impl App {
             for block in crate::ui::region_blocks(*lane, index, self.timeline_flow) {
                 canvas.set_draw_color(Color::RGB(210, 222, 236));
                 canvas.fill_rect(block)?;
+                canvas.set_draw_color(Color::RGB(245, 247, 250));
+                canvas.draw_rect(block)?;
             }
         }
 

@@ -16,10 +16,9 @@ impl Project {
             name: "Untitled".to_string(),
             transport: Transport::default(),
             loop_region: LoopRegion::new(0, 16 * 960),
-            tracks: vec![
-                Track::new("Track 1", TrackKind::Midi),
-                Track::new("Track 2", TrackKind::Midi),
-            ],
+            tracks: (1..=6)
+                .map(|index| Track::new(&format!("Track {}", index), TrackKind::Midi))
+                .collect(),
         }
     }
 
