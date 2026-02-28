@@ -106,6 +106,64 @@ Exit criteria:
 
 - architecture supports later audio overlay without restructuring the project model
 
+## Remaining MVP Checklist
+
+Priority 1: Workflow completion
+
+- visible in-canvas transport strip for play, stop, record, record mode, and loop status
+- clearer record-target feedback for armed tracks versus active-track fallback
+- save/load actions from inside the app UI
+- one deterministic empty-project flow and one deterministic fixture-project flow exposed in UI or startup actions
+
+Priority 2: MIDI authoring usability
+
+- editable MIDI regions on the timeline
+- note editing inside the detail column
+- region move/resize/delete actions
+- safer overdub behavior when new notes overlap existing notes
+- explicit preview styling for pending recorded notes versus committed notes
+
+Priority 3: Mapping workflow
+
+- real mapping editor instead of overview-only + enabled toggle
+- MIDI learn
+- OSC binding input path
+- conflict handling and binding replacement rules
+- persistent binding management in save/load flows
+
+Priority 4: Timing and engine hardening
+
+- move MIDI timing further off the UI loop
+- timestamp live MIDI input against the transport clock instead of UI-frame polling
+- improve playback/record jitter behavior on low-end targets
+- add device refresh and reconnect handling for hot-plugged MIDI ports
+
+Priority 5: UI cleanup
+
+- timeline header cleanup
+- clearer selection hierarchy in timeline columns
+- routing page control hierarchy cleanup
+- MIDI I/O card hierarchy cleanup
+- stronger modal treatment for the mappings overlay
+
+## Near-Term Sync Milestone: Ableton Link
+
+Ableton Link should land soon after the core MVP becomes comfortable to use, not as a distant rewrite item.
+
+Deliver:
+
+- Link session module isolated from the UI layer
+- global transport tempo/phase sync with clear local versus external authority rules
+- optional start/stop participation
+- conversion between Link beat time and internal tick time
+- loop interaction policy for global transport loop versus per-track loops
+
+Exit criteria:
+
+- tempo and beat phase can follow or drive a Link session
+- local recording and loop workflows remain coherent while Link is active
+- Link integration does not require bypassing the canonical action/transport model
+
 ## Module Breakdown
 
 Recommended first-pass modules:

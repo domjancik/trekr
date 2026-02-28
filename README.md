@@ -90,6 +90,11 @@ The `Mappings` page now supports two modes:
 
 The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.
 
+Current planning note:
+
+- the remaining MVP checklist now lives in `docs/implementation-plan.md`
+- Ableton Link is planned as a near-term sync milestone after the core MVP workflow is comfortable, and its architecture notes live in `docs/architecture.md`
+
 ## UI Review Loop
 
 The repo includes a scripted screenshot-and-review loop for visual QA:

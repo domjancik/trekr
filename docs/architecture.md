@@ -173,3 +173,31 @@ This remains compatible with the product goals because:
 - lower track ceilings on smaller devices are acceptable
 - the primary performance requirement is snappy MIDI timing and mostly static overview rendering
 - the architecture explicitly avoids the categories of framework overhead most likely to hurt low-end performance
+
+## Ableton Link Readiness
+
+Ableton Link is compatible with the current architecture and should be treated as a near-term sync layer, not a separate product line.
+
+Why it fits:
+
+- transport is already modeled independently from rendering and pages
+- the action model lets external sync decisions enter through the same command path as keyboard or MIDI control
+- timing already distinguishes transport state from purely visual state
+
+Required constraints for Link integration:
+
+- Link must attach to the global transport, not to per-track loop state directly
+- per-track loops remain local track behavior layered on top of a Link-driven transport phase
+- tempo, play state, and phase authority must be explicit: local, external, or shared
+- Link beat time must convert into internal tick time without bypassing transport logic
+
+Important caveat:
+
+- Ableton Link is a tempo/phase sync system, not full arrangement-position sync
+
+That means the practical design should be:
+
+- Link controls shared tempo
+- Link controls shared beat phase
+- optional shared start/stop participation
+- arrangement position and per-track loop semantics remain app-defined
