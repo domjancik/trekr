@@ -1,7 +1,10 @@
 use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::mapping::{MappingEntry, MappingSourceKind, demo_mappings};
-use crate::midi_io::{MidiDeviceCatalog, MidiOutputRuntime, MidiPortRef};
+use crate::midi_io::{
+    MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
+    MidiPortRef,
+};
 use crate::pages::{AppPage, AppPageState, MappingPageMode, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
@@ -26,6 +29,7 @@ pub struct App {
     keyboard_bindings: KeyboardBindings,
     page_state: AppPageState,
     midi_devices: MidiDeviceCatalog,
+    midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
@@ -59,6 +63,7 @@ impl App {
             keyboard_bindings: KeyboardBindings,
             page_state: AppPageState::default(),
             midi_devices: scanned_devices,
+            midi_input: MidiInputRuntime::default(),
             midi_output: MidiOutputRuntime::default(),
             mappings: demo_mappings(),
             overlay_state: OverlayState::default(),
@@ -67,6 +72,7 @@ impl App {
             playhead_ticks: 0,
         };
         app.seed_demo_routing();
+        app.sync_midi_inputs();
         app
     }
 
@@ -125,6 +131,7 @@ impl App {
                 break 'running;
             }
 
+            self.poll_midi_input();
             let now = Instant::now();
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
@@ -1821,6 +1828,7 @@ impl App {
                 self.midi_devices.outputs.get(index % output_count).cloned();
             track.routing.output_channel = Some(((index % 16) + 1) as u8);
         }
+        self.sync_midi_inputs();
     }
 
     fn select_previous_page_item(&mut self) {
@@ -1910,9 +1918,11 @@ impl App {
                 }
             }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
-                MidiIoListFocus::Inputs => self
-                    .midi_devices
-                    .set_selected_input(self.page_state.midi_io.selected_input_index),
+                MidiIoListFocus::Inputs => {
+                    self.midi_devices
+                        .set_selected_input(self.page_state.midi_io.selected_input_index);
+                    self.sync_midi_inputs();
+                }
                 MidiIoListFocus::Outputs => self
                     .midi_devices
                     .set_selected_output(self.page_state.midi_io.selected_output_index),
@@ -1938,6 +1948,7 @@ impl App {
                         &self.midi_devices.inputs,
                         delta,
                     );
+                    self.sync_midi_inputs();
                 }
                 RoutingField::InputChannel => {
                     track.routing.input_channel =
@@ -1961,6 +1972,85 @@ impl App {
                     }
                     if track.routing.output_port.is_none() {
                         track.routing.output_port = current_output;
+                    }
+                    self.sync_midi_inputs();
+                }
+            }
+        }
+    }
+
+    fn sync_midi_inputs(&mut self) {
+        let mut ports = Vec::new();
+        for track in &self.project.tracks {
+            if let Some(port) = track.routing.input_port.clone() {
+                if !ports.iter().any(|existing: &MidiPortRef| existing == &port) {
+                    ports.push(port);
+                }
+            }
+        }
+        self.midi_input.sync_ports(&ports);
+    }
+
+    fn poll_midi_input(&mut self) {
+        let events = self.midi_input.drain_events();
+        for event in events {
+            self.handle_midi_input_event(event);
+        }
+    }
+
+    fn handle_midi_input_event(&mut self, event: MidiInputEvent) {
+        let matching_tracks: Vec<usize> = self
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter(|(_, track)| {
+                track.routing.input_port.as_ref() == Some(&event.port)
+                    && match track.routing.input_channel {
+                        MidiChannelFilter::Omni => true,
+                        MidiChannelFilter::Channel(channel) => channel == event.channel,
+                    }
+            })
+            .map(|(index, _)| index)
+            .collect();
+
+        for index in matching_tracks {
+            let input_ticks = self
+                .project
+                .tracks
+                .get(index)
+                .map(|track| self.record_head_ticks(track))
+                .unwrap_or(self.playhead_ticks);
+
+            if let Some(track) = self.project.tracks.get_mut(index) {
+                match event.message {
+                    MidiInputMessage::NoteOn { pitch, velocity } => {
+                        if track.active_take.is_some() {
+                            track.record_note_on(pitch, velocity, input_ticks);
+                        }
+                        if track.state.passthrough {
+                            if let (Some(port), Some(channel)) =
+                                (track.routing.output_port.as_ref(), track.routing.output_channel)
+                            {
+                                let _ = self
+                                    .midi_output
+                                    .send_note_on(port, channel.clamp(1, 16), pitch, velocity);
+                            }
+                        }
+                    }
+                    MidiInputMessage::NoteOff { pitch } => {
+                        if track.active_take.is_some() {
+                            track.record_note_off(pitch, input_ticks);
+                        }
+                        if track.state.passthrough {
+                            if let (Some(port), Some(channel)) =
+                                (track.routing.output_port.as_ref(), track.routing.output_channel)
+                            {
+                                let _ =
+                                    self.midi_output
+                                        .send_note_off(port, channel.clamp(1, 16), pitch);
+                            }
+                        }
                     }
                 }
             }
@@ -2287,6 +2377,7 @@ mod tests {
         App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel,
     };
     use crate::actions::AppAction;
+    use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
     use crate::transport::RecordMode;
@@ -2568,15 +2659,34 @@ mod tests {
         assert!(app.project.transport.recording);
         assert!(app.project.transport.playing);
 
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.clone())
+            .unwrap_or_else(|| MidiPortRef::new("Keystep 37"));
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
         app.transport_ticks = 1_920;
         app.playhead_ticks = 1_920;
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+        });
         app.apply_action(AppAction::ToggleRecording);
 
         let active = app.project.active_track().unwrap();
         assert!(!app.project.transport.recording);
         assert!(active.active_take.is_none());
         assert!(!active.regions.is_empty());
-        assert!(!active.midi_notes.is_empty());
+        assert!(active.midi_notes.iter().any(|note| note.pitch == 64));
     }
 
     #[test]

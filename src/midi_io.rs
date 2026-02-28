@@ -1,6 +1,6 @@
-use midir::{MidiInput, MidiOutput, MidiOutputConnection};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +23,19 @@ pub enum MidiMessageKind {
     ProgramChange,
     PitchBend,
     ChannelPressure,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MidiInputMessage {
+    NoteOn { pitch: u8, velocity: u8 },
+    NoteOff { pitch: u8 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MidiInputEvent {
+    pub port: MidiPortRef,
+    pub channel: u8,
+    pub message: MidiInputMessage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +160,13 @@ pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
 }
 
+pub struct MidiInputRuntime {
+    app_name: &'static str,
+    sender: Sender<MidiInputEvent>,
+    receiver: Receiver<MidiInputEvent>,
+    connections: HashMap<String, MidiInputConnection<()>>,
+}
+
 enum MidiOutputCommand {
     NoteOn {
         port: MidiPortRef,
@@ -184,6 +204,18 @@ impl Default for MidiOutputRuntime {
             .expect("midi output worker should start");
 
         Self { sender }
+    }
+}
+
+impl Default for MidiInputRuntime {
+    fn default() -> Self {
+        let (sender, receiver) = mpsc::channel();
+        Self {
+            app_name: "trekr-midi-input",
+            sender,
+            receiver,
+            connections: HashMap::new(),
+        }
     }
 }
 
@@ -236,6 +268,34 @@ impl MidiOutputRuntime {
                 channel,
             })
             .map_err(|error| error.to_string())
+    }
+}
+
+impl MidiInputRuntime {
+    pub fn sync_ports(&mut self, ports: &[MidiPortRef]) {
+        let wanted: Vec<String> = ports.iter().map(|port| port.name.clone()).collect();
+        self.connections
+            .retain(|name, _| wanted.iter().any(|wanted_name| wanted_name == name));
+
+        for port in ports {
+            if self.connections.contains_key(&port.name) {
+                continue;
+            }
+
+            if let Ok(connection) =
+                connect_input_by_name(self.app_name, &port.name, self.sender.clone())
+            {
+                self.connections.insert(port.name.clone(), connection);
+            }
+        }
+    }
+
+    pub fn drain_events(&self) -> Vec<MidiInputEvent> {
+        let mut events = Vec::new();
+        while let Ok(event) = self.receiver.try_recv() {
+            events.push(event);
+        }
+        events
     }
 }
 
@@ -296,13 +356,67 @@ fn connect_output_by_name(
         .map_err(|error| error.to_string())
 }
 
+fn connect_input_by_name(
+    app_name: &str,
+    target_name: &str,
+    sender: Sender<MidiInputEvent>,
+) -> Result<MidiInputConnection<()>, String> {
+    let mut midi_in = MidiInput::new(app_name).map_err(|error| error.to_string())?;
+    midi_in.ignore(Ignore::None);
+    let port = midi_in
+        .ports()
+        .into_iter()
+        .find(|port| midi_in.port_name(port).ok().as_deref() == Some(target_name))
+        .ok_or_else(|| format!("MIDI input port '{}' not found", target_name))?;
+    let port_name = target_name.to_string();
+
+    midi_in
+        .connect(
+            &port,
+            app_name,
+            move |_timestamp, message, _state| {
+                if let Some(event) = parse_input_event(&port_name, message) {
+                    let _ = sender.send(event);
+                }
+            },
+            (),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn parse_input_event(port_name: &str, message: &[u8]) -> Option<MidiInputEvent> {
+    let status = *message.first()?;
+    let channel = (status & 0x0F) + 1;
+    let pitch = *message.get(1)?;
+    let value = *message.get(2).unwrap_or(&0);
+
+    let message = match status & 0xF0 {
+        0x80 => MidiInputMessage::NoteOff { pitch },
+        0x90 if value == 0 => MidiInputMessage::NoteOff { pitch },
+        0x90 => MidiInputMessage::NoteOn {
+            pitch,
+            velocity: value,
+        },
+        _ => return None,
+    };
+
+    Some(MidiInputEvent {
+        port: MidiPortRef::new(port_name),
+        channel,
+        message,
+    })
+}
+
 fn status_byte(base: u8, channel: u8) -> u8 {
     base | channel.saturating_sub(1).min(15)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MidiDeviceCatalog, MidiPortRef, preserve_selection, status_byte};
+    use super::{
+        MidiDeviceCatalog, MidiInputMessage, MidiPortRef, parse_input_event, preserve_selection,
+        status_byte,
+    };
 
     #[test]
     fn status_byte_uses_one_based_channel_numbers() {
@@ -332,5 +446,20 @@ mod tests {
 
         assert_eq!(catalog.selected_input.unwrap(), 1);
         assert_eq!(catalog.selected_output.unwrap(), 1);
+    }
+
+    #[test]
+    fn parse_input_event_handles_note_on_and_off() {
+        let note_on = parse_input_event("In A", &[0x90, 64, 100]).unwrap();
+        let note_off = parse_input_event("In A", &[0x90, 64, 0]).unwrap();
+
+        assert_eq!(
+            note_on.message,
+            MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100
+            }
+        );
+        assert_eq!(note_off.message, MidiInputMessage::NoteOff { pitch: 64 });
     }
 }

@@ -1,5 +1,5 @@
 use crate::routing::TrackRouting;
-use crate::timeline::{LoopRegion, RecordingTake, Region};
+use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{RecordMode, Transport};
 
 #[derive(Debug, Clone)]
@@ -108,6 +108,18 @@ impl Track {
         self.active_take = Some(RecordingTake::new(pressed_at));
     }
 
+    pub fn record_note_on(&mut self, pitch: u8, velocity: u8, started_at: u64) {
+        if let Some(take) = self.active_take.as_mut() {
+            take.note_on(pitch, velocity, started_at);
+        }
+    }
+
+    pub fn record_note_off(&mut self, pitch: u8, ended_at: u64) {
+        if let Some(take) = self.active_take.as_mut() {
+            take.note_off(pitch, ended_at);
+        }
+    }
+
     /// V1 is MIDI-first, so record commit currently appends a MIDI region.
     pub fn finish_recording(
         &mut self,
@@ -149,7 +161,13 @@ impl Track {
         }
 
         self.regions.push(committed_region);
-        self.append_demo_recorded_notes(start_ticks, length_ticks);
+        self.append_recorded_notes(
+            transport,
+            &take.recorded_notes,
+            record_range,
+            start_ticks,
+            end_ticks,
+        );
     }
 
     pub fn preview_region(
@@ -158,7 +176,7 @@ impl Track {
         current_ticks: u64,
         record_range: Option<LoopRegion>,
     ) -> Option<Region> {
-        self.active_take.and_then(|take| {
+        self.active_take.as_ref().and_then(|take| {
             let (start_ticks, end_ticks) =
                 normalized_record_span(transport, take.pressed_at_ticks, current_ticks, record_range);
             let length_ticks = end_ticks.saturating_sub(start_ticks);
@@ -215,21 +233,32 @@ impl Track {
         self.regions.retain(|region| !region.intersects(range));
     }
 
-    fn append_demo_recorded_notes(&mut self, start_ticks: u64, length_ticks: u64) {
-        let step = (length_ticks / 4).max(120);
-        let note_len = (step / 2).max(60);
-        let base_pitch = 60 + ((self.name.len() as u8) % 12);
-
-        for index in 0..4 {
-            let note_start = start_ticks + step * index;
-            if note_start >= start_ticks + length_ticks {
-                break;
+    fn append_recorded_notes(
+        &mut self,
+        transport: Transport,
+        recorded_notes: &[RecordedMidiNote],
+        record_range: Option<LoopRegion>,
+        start_ticks: u64,
+        end_ticks: u64,
+    ) {
+        for recorded_note in recorded_notes {
+            let (note_start, note_end) = normalized_record_span(
+                transport,
+                recorded_note.started_at_ticks,
+                recorded_note.ended_at_ticks,
+                record_range,
+            );
+            let note_start = note_start.clamp(start_ticks, end_ticks.saturating_sub(1));
+            let note_end = note_end.clamp(note_start.saturating_add(1), end_ticks);
+            let note_length = note_end.saturating_sub(note_start);
+            if note_length == 0 {
+                continue;
             }
             self.midi_notes.push(MidiNote::new(
-                base_pitch.saturating_add((index as u8) * 2),
+                recorded_note.pitch,
                 note_start,
-                note_len.min(length_ticks),
-                104,
+                note_length,
+                recorded_note.velocity,
             ));
         }
     }
@@ -422,8 +451,11 @@ mod tests {
             MidiNote::new(64, 1_920, 960, 100),
         ];
         track.regions = vec![Region::new(0, 960), Region::new(1_920, 960)];
+        let mut take = RecordingTake::new(0);
+        take.note_on(67, 110, 120);
+        take.note_off(67, 480);
 
-        track.commit_take(transport, RecordingTake::new(0).release(1_000), None);
+        track.commit_take(transport, take.release(1_000), None);
 
         assert_eq!(
             track.regions,
@@ -435,12 +467,14 @@ mod tests {
                 .iter()
                 .any(|note| note.pitch == 64 && note.start_ticks == 1_920)
         );
-        assert!(track.midi_notes.iter().any(|note| note.start_ticks < 960));
         assert!(
             !track
                 .midi_notes
                 .iter()
                 .any(|note| note.pitch == 60 && note.start_ticks == 0)
+        );
+        assert!(
+            track.midi_notes.iter().any(|note| note.pitch == 67 && note.start_ticks == 0)
         );
     }
 
