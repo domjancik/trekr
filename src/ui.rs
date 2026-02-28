@@ -193,14 +193,17 @@ pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
     guides
 }
 
-pub fn playhead_rect(
+pub fn playhead_rect_in_range(
     bounds: Rect,
     flow: TimelineFlow,
-    range_ticks: u64,
-    elapsed_ms: u64,
+    view_start_ticks: u64,
+    view_length_ticks: u64,
+    position_ticks: u64,
 ) -> Result<Rect, String> {
-    let range_ticks = range_ticks.max(1);
-    let phase = (elapsed_ms % range_ticks) as f32 / range_ticks as f32;
+    let view_length_ticks = view_length_ticks.max(1);
+    let clamped = position_ticks.clamp(view_start_ticks, view_start_ticks + view_length_ticks);
+    let relative_ticks = clamped.saturating_sub(view_start_ticks);
+    let phase = relative_ticks as f32 / view_length_ticks as f32;
 
     match flow {
         TimelineFlow::DownwardColumns => {
@@ -218,7 +221,8 @@ pub fn playhead_rect(
 mod tests {
     use super::{
         HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, passthrough_rail_rect,
-        playhead_rect, surface_rect, timeline_guides, track_column_pairs, track_header_rect,
+        playhead_rect_in_range, surface_rect, timeline_guides, track_column_pairs,
+        track_header_rect,
     };
     use sdl3::rect::Rect;
 
@@ -242,16 +246,18 @@ mod tests {
 
     #[test]
     fn playhead_uses_major_axis_for_orientation() {
-        let vertical = playhead_rect(
+        let vertical = playhead_rect_in_range(
             Rect::new(10, 10, 300, 200),
             TimelineFlow::DownwardColumns,
+            0,
             1000,
             500,
         )
         .expect("vertical playhead");
-        let horizontal = playhead_rect(
+        let horizontal = playhead_rect_in_range(
             Rect::new(10, 10, 300, 200),
             TimelineFlow::AcrossRows,
+            0,
             1000,
             500,
         )

@@ -151,10 +151,12 @@ impl App {
             full_bounds,
             full_accent,
             track_index,
+            0,
             track
                 .loop_region
                 .end_ticks()
                 .max(self.project.full_song_range().end_ticks()),
+            self.effective_track_playhead(track),
             is_active,
             false,
             track,
@@ -164,7 +166,9 @@ impl App {
             detail_bounds,
             detail_accent,
             track_index + 10,
+            track.loop_region.start_ticks,
             track.loop_region.length_ticks,
+            self.effective_track_playhead(track),
             is_active,
             true,
             track,
@@ -179,7 +183,9 @@ impl App {
         bounds: Rect,
         accent: Color,
         seed: usize,
+        view_start_ticks: u64,
         range_ticks: u64,
+        playhead_ticks: u64,
         is_active: bool,
         detail: bool,
         track: &crate::project::Track,
@@ -276,11 +282,12 @@ impl App {
             canvas.draw_rect(block)?;
         }
 
-        let playhead = crate::ui::playhead_rect(
+        let playhead = crate::ui::playhead_rect_in_range(
             bounds,
             self.timeline_flow,
+            view_start_ticks,
             range_ticks.max(1),
-            self.playhead_ticks,
+            playhead_ticks,
         )?;
         canvas.set_draw_color(if self.project.transport.playing {
             Color::RGB(248, 240, 132)
@@ -432,6 +439,20 @@ impl App {
             .transport
             .quantize_to_nearest(self.playhead_ticks)
     }
+
+    fn effective_track_playhead(&self, track: &crate::project::Track) -> u64 {
+        let raw = self.playhead_ticks;
+        if !track.state.loop_enabled || track.loop_region.length_ticks == 0 {
+            return raw;
+        }
+
+        if raw < track.loop_region.start_ticks {
+            return raw;
+        }
+
+        let relative = raw - track.loop_region.start_ticks;
+        track.loop_region.start_ticks + (relative % track.loop_region.length_ticks)
+    }
 }
 
 fn on_off(value: bool) -> &'static str {
@@ -535,5 +556,20 @@ mod tests {
         assert!(title.contains("Play:on"));
         assert!(title.contains("Loop:on"));
         assert!(title.contains("Arm:on"));
+    }
+
+    #[test]
+    fn effective_track_playhead_wraps_inside_track_loop() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = true;
+        track.loop_region.start_ticks = 960;
+        track.loop_region.length_ticks = 960;
+        app.playhead_ticks = 2_400;
+
+        assert_eq!(
+            app.effective_track_playhead(app.project.active_track().unwrap()),
+            1_440
+        );
     }
 }
