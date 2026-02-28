@@ -18,6 +18,8 @@ pub enum AppAction {
     AdjustPageItemBackward,
     AdjustPageItemForward,
     ActivatePageItem,
+    ToggleMappingsOverlay,
+    ToggleMappingsWriteMode,
     TogglePlayback,
     ToggleRecording,
     ToggleGlobalLoop,
@@ -138,11 +140,27 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
+                keycode: Some(Keycode::F5),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleMappingsOverlay,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
                 keycode: Some(Keycode::G),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleGlobalLoop,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::W),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleMappingsWriteMode,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -494,6 +512,39 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&direct).unwrap().action,
             AppAction::ShowPage(AppPage::MidiIo)
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_mappings_overlay_and_write_mode() {
+        let overlay = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F5),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let write_mode = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::W),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&overlay).unwrap().action,
+            AppAction::ToggleMappingsOverlay
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&write_mode).unwrap().action,
+            AppAction::ToggleMappingsWriteMode
         );
     }
 

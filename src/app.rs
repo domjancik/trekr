@@ -2,7 +2,7 @@ use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::mapping::{MappingEntry, MappingSourceKind, demo_mappings};
 use crate::midi_io::{MidiDeviceCatalog, MidiOutputRuntime, MidiPortRef};
-use crate::pages::{AppPage, AppPageState, MidiIoListFocus, RoutingField};
+use crate::pages::{AppPage, AppPageState, MappingPageMode, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
 use crate::ui::{LayoutMode, TimelineFlow};
@@ -27,9 +27,20 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_output: MidiOutputRuntime,
     mappings: Vec<MappingEntry>,
+    overlay_state: OverlayState,
     viewport_size: (u32, u32),
     transport_ticks: u64,
     playhead_ticks: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppOverlay {
+    MappingsQuickView,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct OverlayState {
+    active: Option<AppOverlay>,
 }
 
 pub struct UiCaptureOptions {
@@ -49,6 +60,7 @@ impl App {
             midi_devices: scanned_devices,
             midi_output: MidiOutputRuntime::default(),
             mappings: demo_mappings(),
+            overlay_state: OverlayState::default(),
             viewport_size: (1280, 720),
             transport_ticks: 0,
             playhead_ticks: 0,
@@ -172,8 +184,21 @@ impl App {
             AppPage::Routing => self.draw_routing_page(canvas, content_bounds)?,
         }
 
+        self.draw_overlay(canvas, inset)?;
+
         canvas.present();
         Ok(())
+    }
+
+    fn draw_overlay<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match self.overlay_state.active {
+            Some(AppOverlay::MappingsQuickView) => self.draw_mappings_overlay(canvas, bounds),
+            None => Ok(()),
+        }
     }
 
     fn capture_surface_to_png(
@@ -579,15 +604,22 @@ impl App {
             2,
             Color::RGB(244, 232, 146),
         )?;
-        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 170, 16);
+        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
         canvas.set_draw_color(Color::RGB(50, 62, 88));
         canvas.fill_rect(overview_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Mode: Read Only",
-            Rect::new(content_bounds.x + 208, content_bounds.y + 12, 154, 8),
+            &format!("Mode: {}", self.page_state.mapping_mode.label()),
+            Rect::new(content_bounds.x + 208, content_bounds.y + 12, 170, 8),
             1,
             Color::RGB(206, 214, 224),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "F5 Overlay  W Write",
+            Rect::new(content_bounds.x + 400, content_bounds.y + 12, 150, 8),
+            1,
+            Color::RGB(154, 166, 182),
         )?;
 
         let list_bounds = crate::ui::inset_rect(content_bounds, 8, 44)?;
@@ -612,7 +644,11 @@ impl App {
             1,
             Color::RGB(154, 166, 182),
         )?;
-        let rows = crate::ui::stacked_rows(list_bounds, self.mappings.len().max(1), 8);
+        let row_gap = match self.page_state.mapping_mode {
+            MappingPageMode::Overview => 6,
+            MappingPageMode::Write => 8,
+        };
+        let rows = crate::ui::stacked_rows(list_bounds, self.mappings.len().max(1), row_gap);
         for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
@@ -713,6 +749,77 @@ impl App {
                 ),
                 1,
                 Color::RGB(236, 238, 242),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn draw_mappings_overlay<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGBA(10, 14, 24, 220));
+        canvas.fill_rect(bounds)?;
+
+        let panel = Rect::new(bounds.x + 120, bounds.y + 64, bounds.width() - 240, bounds.height() - 128);
+        canvas.set_draw_color(Color::RGB(24, 30, 44));
+        canvas.fill_rect(panel)?;
+        canvas.set_draw_color(Color::RGB(244, 232, 146));
+        canvas.draw_rect(panel)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Mappings Overlay",
+            Rect::new(panel.x + 12, panel.y + 12, 180, 14),
+            2,
+            Color::RGB(244, 232, 146),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "F5 closes  W toggles write mode",
+            Rect::new(panel.x + 220, panel.y + 16, 220, 8),
+            1,
+            Color::RGB(166, 178, 194),
+        )?;
+
+        let rows = crate::ui::stacked_rows(crate::ui::inset_rect(panel, 12, 40)?, self.mappings.len().max(1), 4);
+        for (index, row) in rows.into_iter().enumerate().take(self.mappings.len()) {
+            let entry = &self.mappings[index];
+            let selected = index == self.page_state.selected_mapping_index;
+            canvas.set_draw_color(if selected {
+                Color::RGB(58, 72, 102)
+            } else {
+                Color::RGB(34, 42, 60)
+            });
+            canvas.fill_rect(row)?;
+            canvas.set_draw_color(if selected {
+                Color::RGB(244, 232, 146)
+            } else {
+                Color::RGB(82, 92, 114)
+            });
+            canvas.draw_rect(row)?;
+
+            crate::ui::draw_text_fitted(
+                canvas,
+                entry.source_label,
+                Rect::new(row.x + 8, row.y + 8, 110, 8),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                entry.target_label,
+                Rect::new(row.x + 132, row.y + 8, 170, 8),
+                1,
+                Color::RGB(208, 220, 236),
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                entry.scope_label,
+                Rect::new(row.x + row.width() as i32 - 132, row.y + 8, 84, 8),
+                1,
+                Color::RGB(182, 192, 210),
             )?;
         }
 
@@ -1104,8 +1211,10 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Quick Overview Read Only | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
+                    self.page_state.mapping_mode.label(),
+                    on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
                     mapping_source_label(selected.source_kind),
                     selected.source_label,
                     selected.target_label,
@@ -1195,6 +1304,18 @@ impl App {
             }
             AppAction::ActivatePageItem => {
                 self.activate_page_item();
+                AppControl::Continue
+            }
+            AppAction::ToggleMappingsOverlay => {
+                self.overlay_state.active = if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+                    None
+                } else {
+                    Some(AppOverlay::MappingsQuickView)
+                };
+                AppControl::Continue
+            }
+            AppAction::ToggleMappingsWriteMode => {
+                self.page_state.mapping_mode = self.page_state.mapping_mode.toggle();
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
@@ -1542,7 +1663,12 @@ impl App {
     fn adjust_page_item(&mut self, delta: i32) {
         match self.page_state.current_page {
             AppPage::Timeline => {}
-            AppPage::Mappings => {}
+            AppPage::Mappings => {
+                if self.page_state.mapping_mode == MappingPageMode::Write && !self.mappings.is_empty() {
+                    let index = self.page_state.selected_mapping_index;
+                    self.mappings[index].enabled = if delta > 0 { true } else { false };
+                }
+            }
             AppPage::MidiIo => {
                 self.page_state.midi_io.focus = self.page_state.midi_io.focus.toggle();
             }
@@ -1553,7 +1679,12 @@ impl App {
     fn activate_page_item(&mut self) {
         match self.page_state.current_page {
             AppPage::Timeline => {}
-            AppPage::Mappings => {}
+            AppPage::Mappings => {
+                if self.page_state.mapping_mode == MappingPageMode::Write && !self.mappings.is_empty() {
+                    let index = self.page_state.selected_mapping_index;
+                    self.mappings[index].enabled = !self.mappings[index].enabled;
+                }
+            }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
                 MidiIoListFocus::Inputs => self
                     .midi_devices
@@ -1875,7 +2006,7 @@ enum AppControl {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppControl, cycle_input_channel, cycle_optional_port, cycle_output_channel};
+    use super::{App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel};
     use crate::actions::AppAction;
     use crate::pages::{AppPage, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
@@ -2061,6 +2192,30 @@ mod tests {
 
         app.apply_action(AppAction::ActivatePageItem);
         assert_eq!(app.mappings[0].enabled, before);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_can_edit_enabled_state() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        let before = app.mappings[0].enabled;
+
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert_ne!(app.mappings[0].enabled, before);
+    }
+
+    #[test]
+    fn mappings_overlay_toggles_on_and_off() {
+        let mut app = App::new();
+        assert!(app.overlay_state.active.is_none());
+
+        app.apply_action(AppAction::ToggleMappingsOverlay);
+        assert_eq!(app.overlay_state.active, Some(AppOverlay::MappingsQuickView));
+
+        app.apply_action(AppAction::ToggleMappingsOverlay);
+        assert!(app.overlay_state.active.is_none());
     }
 
     #[test]

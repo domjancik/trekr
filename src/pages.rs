@@ -43,6 +43,28 @@ impl AppPage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MappingPageMode {
+    Overview,
+    Write,
+}
+
+impl MappingPageMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Read Only",
+            Self::Write => "Write",
+        }
+    }
+
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Overview => Self::Write,
+            Self::Write => Self::Overview,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MidiIoListFocus {
     Inputs,
     Outputs,
@@ -128,6 +150,7 @@ pub struct AppPageState {
     pub current_page: AppPage,
     pub midi_io: MidiIoPageState,
     pub selected_mapping_index: usize,
+    pub mapping_mode: MappingPageMode,
     pub selected_routing_field: RoutingField,
 }
 
@@ -137,6 +160,7 @@ impl Default for AppPageState {
             current_page: AppPage::Timeline,
             midi_io: MidiIoPageState::default(),
             selected_mapping_index: 0,
+            mapping_mode: MappingPageMode::Overview,
             selected_routing_field: RoutingField::InputDevice,
         }
     }
@@ -144,7 +168,7 @@ impl Default for AppPageState {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppPage, MidiIoListFocus, RoutingField};
+    use super::{AppPage, MappingPageMode, MidiIoListFocus, RoutingField};
 
     #[test]
     fn app_pages_cycle_in_expected_order() {
@@ -161,5 +185,11 @@ mod tests {
     fn routing_fields_cycle() {
         assert_eq!(RoutingField::InputDevice.previous(), RoutingField::Passthrough);
         assert_eq!(RoutingField::Passthrough.next(), RoutingField::InputDevice);
+    }
+
+    #[test]
+    fn mapping_page_mode_toggles() {
+        assert_eq!(MappingPageMode::Overview.toggle(), MappingPageMode::Write);
+        assert_eq!(MappingPageMode::Write.label(), "Write");
     }
 }

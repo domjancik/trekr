@@ -36,9 +36,11 @@ Current controls:
 
 - `Tab` / `Shift+Tab`: next/previous page
 - `F1` / `F2` / `F3` / `F4`: show timeline, mappings, MIDI I/O, or routing page
+- `F5`: toggle the quick mappings overlay from any page
 - `Up` / `Down`: select current page item
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
+- `W`: toggle mappings page mode between read-only overview and write mode
 - `Space`: play/stop
 - `R`: start/stop recording on armed tracks, or the active track if none are armed
 - `C`: clear current track notes/regions and cancel its pending take
@@ -64,7 +66,12 @@ Current controls:
 
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
 
-The `Mappings` page is currently a non-editable quick overview of all key, MIDI, and OSC bindings.
+The `Mappings` page now supports two modes:
+
+- `Read Only`: compact overview
+- `Write`: allows toggling mapping enabled state on the selected row
+
+The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.
 
 ## UI Review Loop
 
