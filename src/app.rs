@@ -1,7 +1,7 @@
 use crate::engine::EngineConfig;
 use crate::project::Project;
 use crate::render::PaneRenderModel;
-use crate::ui::{LayoutMode, TrackOrientation};
+use crate::ui::{LayoutMode, TimelineFlow};
 use sdl3::event::Event;
 use sdl3::keyboard::Keycode;
 use sdl3::pixels::Color;
@@ -13,7 +13,7 @@ pub struct App {
     project: Project,
     engine_config: EngineConfig,
     layout_mode: LayoutMode,
-    track_orientation: TrackOrientation,
+    timeline_flow: TimelineFlow,
 }
 
 impl App {
@@ -22,7 +22,7 @@ impl App {
             project: Project::demo(),
             engine_config: EngineConfig::default(),
             layout_mode: LayoutMode::FixedFit,
-            track_orientation: TrackOrientation::Columns,
+            timeline_flow: TimelineFlow::DownwardColumns,
         }
     }
 
@@ -70,7 +70,7 @@ impl App {
                         keycode: Some(Keycode::Space),
                         repeat: false,
                         ..
-                    } => self.track_orientation = self.track_orientation.toggle(),
+                    } => self.timeline_flow = self.timeline_flow.toggle(),
                     _ => {}
                 }
             }
@@ -136,7 +136,7 @@ impl App {
         let lanes = crate::ui::lane_rects(
             content,
             pane.visible_tracks,
-            self.track_orientation,
+            self.timeline_flow,
             pane.compaction,
         );
 
@@ -156,7 +156,7 @@ impl App {
             canvas.set_draw_color(Color::RGB(180, 188, 205));
             canvas.draw_rect(*lane)?;
 
-            for block in crate::ui::region_blocks(*lane, index, self.track_orientation) {
+            for block in crate::ui::region_blocks(*lane, index, self.timeline_flow) {
                 canvas.set_draw_color(Color::RGB(210, 222, 236));
                 canvas.fill_rect(block)?;
             }
@@ -164,7 +164,7 @@ impl App {
 
         let playhead = crate::ui::playhead_rect(
             content,
-            self.track_orientation,
+            self.timeline_flow,
             pane.range.length_ticks,
             elapsed.as_millis() as u64,
         )?;

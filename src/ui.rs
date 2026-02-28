@@ -7,16 +7,16 @@ pub enum LayoutMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrackOrientation {
-    Rows,
-    Columns,
+pub enum TimelineFlow {
+    DownwardColumns,
+    AcrossRows,
 }
 
-impl TrackOrientation {
+impl TimelineFlow {
     pub fn toggle(self) -> Self {
         match self {
-            Self::Rows => Self::Columns,
-            Self::Columns => Self::Rows,
+            Self::DownwardColumns => Self::AcrossRows,
+            Self::AcrossRows => Self::DownwardColumns,
         }
     }
 }
@@ -62,7 +62,7 @@ pub fn inset_rect(rect: Rect, inset_x: i32, inset_y: i32) -> Result<Rect, String
 pub fn lane_rects(
     bounds: Rect,
     track_count: usize,
-    orientation: TrackOrientation,
+    flow: TimelineFlow,
     compaction: TrackCompaction,
 ) -> Vec<Rect> {
     if track_count == 0 {
@@ -78,8 +78,8 @@ pub fn lane_rects(
     let mut lanes = Vec::with_capacity(track_count);
 
     for (index, weight) in weights.iter().enumerate() {
-        match orientation {
-            TrackOrientation::Columns => {
+        match flow {
+            TimelineFlow::DownwardColumns => {
                 let is_last = index + 1 == track_count;
                 let available = bounds.width() as i32;
                 let lane_width = if is_last {
@@ -97,7 +97,7 @@ pub fn lane_rects(
                 lanes.push(inset_rect(lane, 3, 3).unwrap_or(lane));
                 offset += lane_width;
             }
-            TrackOrientation::Rows => {
+            TimelineFlow::AcrossRows => {
                 let is_last = index + 1 == track_count;
                 let available = bounds.height() as i32;
                 let lane_height = if is_last {
@@ -121,10 +121,10 @@ pub fn lane_rects(
     lanes
 }
 
-pub fn region_blocks(lane: Rect, seed: usize, orientation: TrackOrientation) -> Vec<Rect> {
-    let major = match orientation {
-        TrackOrientation::Columns => lane.height() as i32,
-        TrackOrientation::Rows => lane.width() as i32,
+pub fn region_blocks(lane: Rect, seed: usize, flow: TimelineFlow) -> Vec<Rect> {
+    let major = match flow {
+        TimelineFlow::DownwardColumns => lane.height() as i32,
+        TimelineFlow::AcrossRows => lane.width() as i32,
     };
     let block_count = 2 + (seed % 3);
     let mut blocks = Vec::with_capacity(block_count);
@@ -135,14 +135,14 @@ pub fn region_blocks(lane: Rect, seed: usize, orientation: TrackOrientation) -> 
         let major_start = (major as f32 * start_ratio) as i32;
         let major_size = (major as f32 * size_ratio) as i32;
 
-        let rect = match orientation {
-            TrackOrientation::Columns => Rect::new(
+        let rect = match flow {
+            TimelineFlow::DownwardColumns => Rect::new(
                 lane.x + 6,
                 lane.y + major_start,
                 lane.width().saturating_sub(12),
                 major_size.max(6) as u32,
             ),
-            TrackOrientation::Rows => Rect::new(
+            TimelineFlow::AcrossRows => Rect::new(
                 lane.x + major_start,
                 lane.y + 6,
                 major_size.max(6) as u32,
@@ -157,19 +157,19 @@ pub fn region_blocks(lane: Rect, seed: usize, orientation: TrackOrientation) -> 
 
 pub fn playhead_rect(
     bounds: Rect,
-    orientation: TrackOrientation,
+    flow: TimelineFlow,
     range_ticks: u64,
     elapsed_ms: u64,
 ) -> Result<Rect, String> {
     let range_ticks = range_ticks.max(1);
     let phase = (elapsed_ms % range_ticks) as f32 / range_ticks as f32;
 
-    match orientation {
-        TrackOrientation::Columns => {
+    match flow {
+        TimelineFlow::DownwardColumns => {
             let y = bounds.y + (bounds.height() as f32 * phase) as i32;
             Ok(Rect::new(bounds.x, y, bounds.width(), 2))
         }
-        TrackOrientation::Rows => {
+        TimelineFlow::AcrossRows => {
             let x = bounds.x + (bounds.width() as f32 * phase) as i32;
             Ok(Rect::new(x, bounds.y, 2, bounds.height()))
         }
@@ -194,7 +194,7 @@ fn lane_weight(track_count: usize, index: usize, compaction: TrackCompaction) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{TrackOrientation, lane_rects, playhead_rect, split_panes};
+    use super::{TimelineFlow, lane_rects, playhead_rect, split_panes};
     use crate::render::TrackCompaction;
     use sdl3::rect::Rect;
 
@@ -212,7 +212,7 @@ mod tests {
         let lanes = lane_rects(
             Rect::new(0, 0, 1000, 200),
             4,
-            TrackOrientation::Columns,
+            TimelineFlow::DownwardColumns,
             TrackCompaction::CompactEdges,
         );
 
@@ -224,14 +224,14 @@ mod tests {
     fn playhead_uses_major_axis_for_orientation() {
         let vertical = playhead_rect(
             Rect::new(10, 10, 300, 200),
-            TrackOrientation::Columns,
+            TimelineFlow::DownwardColumns,
             1000,
             500,
         )
         .expect("vertical playhead");
         let horizontal = playhead_rect(
             Rect::new(10, 10, 300, 200),
-            TrackOrientation::Rows,
+            TimelineFlow::AcrossRows,
             1000,
             500,
         )

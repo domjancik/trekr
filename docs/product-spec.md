@@ -38,7 +38,13 @@ Default behavior:
 - the playhead moves through both panes
 - changing the loop region immediately updates the detail pane range
 
-Tracks may be shown as rows or columns. If the track count becomes too high, edge tracks may compress in the non-primary axis before scrolling is introduced in a later iteration.
+The default timeline flow is vertical-time:
+
+- time proceeds downward
+- tracks appear as side-by-side columns
+- the playhead traverses downward through those columns
+
+An alternate across-time row layout may exist as a later or developer-facing comparison mode, but the product default should be downward-time columns. If the track count becomes too high, edge tracks may compress before scrolling is introduced in a later iteration.
 
 ### Editing Model
 
@@ -170,7 +176,7 @@ Secondary target:
 - full song overview pane
 - loop detail pane
 - fixed-fit default layout
-- track row/column orientation toggle
+- fixed-fit vertical-time track columns
 - MIDI tracks
 - MIDI record/overdub
 - hold-to-record with nearest-quantize commit

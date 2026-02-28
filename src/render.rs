@@ -1,6 +1,6 @@
 use crate::project::Project;
 use crate::timeline::LoopRegion;
-use crate::ui::TrackOrientation;
+use crate::ui::TimelineFlow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderDetail {
@@ -52,14 +52,14 @@ impl TrackCompaction {
         }
     }
 
-    pub fn lane_hint(self, orientation: TrackOrientation) -> &'static str {
-        match (self, orientation) {
-            (Self::Comfortable, TrackOrientation::Rows) => "full-height lanes",
-            (Self::Comfortable, TrackOrientation::Columns) => "full-width lanes",
-            (Self::CompactEdges, TrackOrientation::Rows) => "smaller outer rows",
-            (Self::CompactEdges, TrackOrientation::Columns) => "smaller outer columns",
-            (Self::Dense, TrackOrientation::Rows) => "dense rows",
-            (Self::Dense, TrackOrientation::Columns) => "dense columns",
+    pub fn lane_hint(self, flow: TimelineFlow) -> &'static str {
+        match (self, flow) {
+            (Self::Comfortable, TimelineFlow::AcrossRows) => "full-height lanes",
+            (Self::Comfortable, TimelineFlow::DownwardColumns) => "full-width lanes",
+            (Self::CompactEdges, TimelineFlow::AcrossRows) => "smaller outer rows",
+            (Self::CompactEdges, TimelineFlow::DownwardColumns) => "smaller outer columns",
+            (Self::Dense, TimelineFlow::AcrossRows) => "dense rows",
+            (Self::Dense, TimelineFlow::DownwardColumns) => "dense columns",
         }
     }
 }
@@ -67,7 +67,7 @@ impl TrackCompaction {
 #[cfg(test)]
 mod tests {
     use super::TrackCompaction;
-    use crate::ui::TrackOrientation;
+    use crate::ui::TimelineFlow;
 
     #[test]
     fn compaction_scales_with_track_count() {
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn compaction_lane_hints_match_orientation() {
         assert_eq!(
-            TrackCompaction::CompactEdges.lane_hint(TrackOrientation::Columns),
+            TrackCompaction::CompactEdges.lane_hint(TimelineFlow::DownwardColumns),
             "smaller outer columns"
         );
     }

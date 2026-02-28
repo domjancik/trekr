@@ -22,11 +22,12 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 `cargo run` opens a native SDL3 window with:
 
 - fixed-fit full-song and loop-detail panes
-- placeholder track lanes rendered as rows or columns
+- default vertical-time layout with tracks as side-by-side columns
+- optional alternate across-time layout for comparison while prototyping
 - a moving playhead
 - track compaction behavior for higher track counts
 
 Current controls:
 
-- `Space`: toggle rows/columns
+- `Space`: toggle vertical-time columns / across-time rows
 - `Escape`: quit

@@ -16,7 +16,7 @@ Deliver:
 - project model
 - transport model
 - fixed-fit dual-pane timeline mock rendering
-- track row/column orientation toggle
+- default vertical-time timeline with tracks as side-by-side columns
 - save/load for minimal project state
 
 Exit criteria:
