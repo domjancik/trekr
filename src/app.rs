@@ -6,8 +6,14 @@ use crate::pages::{AppPage, AppPageState, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
 use crate::ui::{LayoutMode, TimelineFlow};
+use image::RgbaImage;
 use sdl3::pixels::Color;
+use sdl3::pixels::PixelFormat;
 use sdl3::rect::Rect;
+use sdl3::render::{Canvas, RenderTarget};
+use sdl3::surface::SurfaceRef;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// App is the top-level composition root for the first vertical slice.
@@ -23,6 +29,10 @@ pub struct App {
     mappings: Vec<MappingEntry>,
     viewport_size: (u32, u32),
     playhead_ticks: u64,
+}
+
+pub struct UiCaptureOptions {
+    pub output_dir: PathBuf,
 }
 
 impl App {
@@ -113,9 +123,30 @@ impl App {
         Ok(())
     }
 
-    fn draw(
+    pub fn capture_ui_pages(
+        &mut self,
+        options: UiCaptureOptions,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        fs::create_dir_all(&options.output_dir)?;
+
+        let _sdl_context = sdl3::init()?;
+        self.viewport_size = (1280, 720);
+
+        for page in AppPage::ALL {
+            self.page_state.current_page = page;
+            let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
+            let mut canvas = surface.into_canvas()?;
+            self.draw(&mut canvas)?;
+            let output_path = options.output_dir.join(capture_filename(page));
+            self.capture_surface_to_png(canvas.surface(), &output_path)?;
+        }
+
+        Ok(())
+    }
+
+    fn draw<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = canvas.output_size()?;
         let surface = crate::ui::surface_rect(width, height);
@@ -143,9 +174,36 @@ impl App {
         Ok(())
     }
 
-    fn draw_page_tabs(
+    fn capture_surface_to_png(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        surface: &SurfaceRef,
+        path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let surface = surface.convert_format(PixelFormat::RGBA32)?;
+        let width = surface.width();
+        let height = surface.height();
+        let pitch = surface.pitch() as usize;
+        let row_len = width as usize * 4;
+        let mut pixels = vec![0_u8; row_len * height as usize];
+
+        surface.with_lock(|src| {
+            for row in 0..height as usize {
+                let src_start = row * pitch;
+                let dst_start = row * row_len;
+                pixels[dst_start..dst_start + row_len]
+                    .copy_from_slice(&src[src_start..src_start + row_len]);
+            }
+        });
+
+        let image = RgbaImage::from_raw(width, height, pixels)
+            .ok_or_else(|| "failed to convert renderer pixels to image".to_owned())?;
+        image.save(path)?;
+        Ok(())
+    }
+
+    fn draw_page_tabs<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let tabs = crate::ui::equal_columns(bounds, AppPage::ALL.len(), 10);
@@ -190,9 +248,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_timeline_page(
+    fn draw_timeline_page<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (header_bounds, timeline_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
@@ -230,9 +288,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_track_column(
+    fn draw_track_column<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         full_bounds: Rect,
         detail_bounds: Rect,
         track: &Track,
@@ -279,9 +337,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_track_subcolumn(
+    fn draw_track_subcolumn<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         bounds: Rect,
         accent: Color,
         view_start_ticks: u64,
@@ -444,9 +502,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_mappings_page(
+    fn draw_mappings_page<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         canvas.set_draw_color(Color::RGB(22, 28, 42));
@@ -553,9 +611,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_midi_io_page(
+    fn draw_midi_io_page<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let columns = crate::ui::equal_columns(content_bounds, 2, 14);
@@ -605,9 +663,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_device_list(
+    fn draw_device_list<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         bounds: Rect,
         ports: &[MidiPortRef],
         selected_index: usize,
@@ -674,9 +732,9 @@ impl App {
         Ok(())
     }
 
-    fn draw_routing_page(
+    fn draw_routing_page<T: RenderTarget>(
         &self,
-        canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
+        canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         canvas.set_draw_color(Color::RGB(22, 28, 42));
@@ -1368,6 +1426,15 @@ impl App {
             width,
             header_bounds.height().saturating_sub(8),
         )
+    }
+}
+
+fn capture_filename(page: AppPage) -> &'static str {
+    match page {
+        AppPage::Timeline => "timeline.png",
+        AppPage::Mappings => "mappings.png",
+        AppPage::MidiIo => "midi-io.png",
+        AppPage::Routing => "routing.png",
     }
 }
 

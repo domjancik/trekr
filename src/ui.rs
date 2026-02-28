@@ -1,5 +1,5 @@
 use sdl3::rect::Rect;
-use sdl3::{pixels::Color, render::Canvas, video::Window};
+use sdl3::{pixels::Color, render::{Canvas, RenderTarget}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutMode {
@@ -100,8 +100,8 @@ pub fn stacked_rows(bounds: Rect, count: usize, gap: i32) -> Vec<Rect> {
     rows
 }
 
-pub fn draw_text(
-    canvas: &mut Canvas<Window>,
+pub fn draw_text<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
     text: &str,
     x: i32,
     y: i32,
@@ -154,8 +154,8 @@ pub fn truncate_text_to_width(text: &str, max_width: u32, scale: u32) -> String 
     }
 }
 
-pub fn draw_text_fitted(
-    canvas: &mut Canvas<Window>,
+pub fn draw_text_fitted<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
     text: &str,
     bounds: Rect,
     scale: u32,
@@ -169,8 +169,8 @@ pub fn draw_text_fitted(
     draw_text(canvas, &fitted, bounds.x, bounds.y, scale, color)
 }
 
-fn draw_glyph(
-    canvas: &mut Canvas<Window>,
+fn draw_glyph<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
     character: char,
     x: i32,
     y: i32,

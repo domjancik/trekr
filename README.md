@@ -66,9 +66,14 @@ The `Mappings` page is currently a non-editable quick overview of all key, MIDI,
 
 The repo includes a scripted screenshot-and-review loop for visual QA:
 
-- `scripts/capture-ui-screens.ps1`: launches `trekr`, captures `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
+- `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence
+
+The capture path is renderer-owned rather than desktop-owned:
+
+- screenshots are exported from the SDL drawing layer
+- capture runs against an offscreen software surface, so other desktop apps do not leak into the images
 
 Example:
 
