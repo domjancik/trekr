@@ -19,8 +19,11 @@ pub enum AppAction {
     AdjustPageItemForward,
     ActivatePageItem,
     TogglePlayback,
+    ToggleRecording,
     ToggleGlobalLoop,
     ResetGlobalLoop,
+    ClearCurrentTrackContent,
+    ClearAllTrackContent,
     ToggleCurrentTrackLoop,
     SetCurrentTrackLoopStart,
     SetCurrentTrackLoopEnd,
@@ -143,11 +146,32 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
+                keycode: Some(Keycode::R),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleRecording,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
                 keycode: Some(Keycode::Home),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ResetGlobalLoop,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::C),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ClearAllTrackContent
+                } else {
+                    AppAction::ClearCurrentTrackContent
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -555,6 +579,53 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&event).unwrap().action,
             AppAction::ResetGlobalLoop
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_record_and_clear_shortcuts() {
+        let record = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::R),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let clear_track = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::C),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let clear_all = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::C),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&record).unwrap().action,
+            AppAction::ToggleRecording
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&clear_track).unwrap().action,
+            AppAction::ClearCurrentTrackContent
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&clear_all).unwrap().action,
+            AppAction::ClearAllTrackContent
         );
     }
 

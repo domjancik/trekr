@@ -28,6 +28,7 @@ pub struct App {
     midi_output: MidiOutputRuntime,
     mappings: Vec<MappingEntry>,
     viewport_size: (u32, u32),
+    transport_ticks: u64,
     playhead_ticks: u64,
 }
 
@@ -49,6 +50,7 @@ impl App {
             midi_output: MidiOutputRuntime::default(),
             mappings: demo_mappings(),
             viewport_size: (1280, 720),
+            transport_ticks: 0,
             playhead_ticks: 0,
         };
         app.seed_demo_routing();
@@ -491,6 +493,17 @@ impl App {
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(badge.rect)?;
+        }
+
+        if track.active_take.is_some() {
+            let record_badge = Rect::new(
+                status_rect.x + status_rect.width() as i32 - 18,
+                status_rect.y + 4,
+                14,
+                status_rect.height().saturating_sub(8),
+            );
+            canvas.set_draw_color(Color::RGB(238, 88, 88));
+            canvas.fill_rect(record_badge)?;
         }
 
         let label_left = label_rect.x + 4;
@@ -1070,12 +1083,13 @@ impl App {
         let active = self.project.active_track().expect("demo project always has tracks");
         let title = match self.page_state.current_page {
             AppPage::Timeline => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
                 self.playhead_ticks,
                 on_off(self.project.transport.playing),
+                on_off(self.project.transport.recording),
                 active.loop_region.start_ticks,
                 active.loop_region.end_ticks(),
                 self.project.loop_region.start_ticks,
@@ -1186,7 +1200,17 @@ impl App {
             AppAction::TogglePlayback => {
                 self.project.transport.playing = !self.project.transport.playing;
                 if !self.project.transport.playing {
+                    self.project.transport.recording = false;
+                    self.cancel_active_recording();
                     self.silence_all_tracks();
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleRecording => {
+                if self.project.transport.recording {
+                    self.finish_recording();
+                } else {
+                    self.begin_recording();
                 }
                 AppControl::Continue
             }
@@ -1200,6 +1224,16 @@ impl App {
                 self.playhead_ticks = self
                     .playhead_ticks
                     .clamp(self.project.loop_region.start_ticks, self.project.loop_region.end_ticks());
+                AppControl::Continue
+            }
+            AppAction::ClearCurrentTrackContent => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.clear_content();
+                }
+                AppControl::Continue
+            }
+            AppAction::ClearAllTrackContent => {
+                self.project.clear_all_track_content();
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackLoop => {
@@ -1348,16 +1382,17 @@ impl App {
             return;
         }
 
-        let previous_ticks = self.playhead_ticks;
+        let previous_ticks = self.transport_ticks;
         let ticks_per_second = self.project.transport.ticks_per_second();
         let advanced_ticks =
             (delta.as_nanos() as u128 * u128::from(ticks_per_second)) / 1_000_000_000_u128;
-        self.playhead_ticks = self.playhead_ticks.saturating_add(advanced_ticks as u64);
+        self.transport_ticks = self.transport_ticks.saturating_add(advanced_ticks as u64);
+        self.playhead_ticks = self.transport_ticks;
 
         if self.project.transport.loop_enabled {
             let loop_region = self.project.loop_region;
             if loop_region.length_ticks > 0 {
-                let relative = self.playhead_ticks.saturating_sub(loop_region.start_ticks);
+                let relative = self.transport_ticks.saturating_sub(loop_region.start_ticks);
                 self.playhead_ticks =
                     loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
             }
@@ -1381,6 +1416,55 @@ impl App {
         }
 
         track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
+    }
+
+    fn begin_recording(&mut self) {
+        let target_indices = self.record_target_indices();
+        if target_indices.is_empty() {
+            return;
+        }
+
+        for index in target_indices {
+            if let Some(track) = self.project.tracks.get_mut(index) {
+                track.begin_recording(self.transport_ticks);
+            }
+        }
+        self.project.transport.recording = true;
+        self.project.transport.playing = true;
+    }
+
+    fn finish_recording(&mut self) {
+        let release_ticks = self.transport_ticks;
+        let transport = self.project.transport;
+
+        for track in &mut self.project.tracks {
+            if track.active_take.is_some() {
+                track.finish_recording(transport, release_ticks);
+            }
+        }
+
+        self.project.transport.recording = false;
+    }
+
+    fn cancel_active_recording(&mut self) {
+        for track in &mut self.project.tracks {
+            track.active_take = None;
+        }
+    }
+
+    fn record_target_indices(&self) -> Vec<usize> {
+        let armed: Vec<usize> = self
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, track)| track.state.armed.then_some(index))
+            .collect();
+        if armed.is_empty() {
+            vec![self.project.active_track_index]
+        } else {
+            armed
+        }
     }
 
     fn seed_demo_routing(&mut self) {
@@ -2030,5 +2114,40 @@ mod tests {
 
         assert_eq!(app.project.loop_region, app.project.full_song_range());
         assert!(app.project.transport.loop_enabled);
+    }
+
+    #[test]
+    fn toggle_recording_creates_visible_take_content() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().clear_content();
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.transport.recording);
+        assert!(app.project.transport.playing);
+
+        app.transport_ticks = 1_920;
+        app.playhead_ticks = 1_920;
+        app.apply_action(AppAction::ToggleRecording);
+
+        let active = app.project.active_track().unwrap();
+        assert!(!app.project.transport.recording);
+        assert!(active.active_take.is_none());
+        assert!(!active.regions.is_empty());
+        assert!(!active.midi_notes.is_empty());
+    }
+
+    #[test]
+    fn clear_actions_remove_track_content() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ClearCurrentTrackContent);
+        assert!(app.project.active_track().unwrap().midi_notes.is_empty());
+        assert!(app.project.active_track().unwrap().regions.is_empty());
+
+        app.project.tracks[1].regions.push(crate::timeline::Region::new(0, 480));
+        app.apply_action(AppAction::ClearAllTrackContent);
+        assert!(app.project.tracks.iter().all(|track| track.midi_notes.is_empty()));
+        assert!(app.project.tracks.iter().all(|track| track.regions.is_empty()));
     }
 }

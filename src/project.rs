@@ -68,6 +68,12 @@ impl Project {
     pub fn active_track_mut(&mut self) -> Option<&mut Track> {
         self.tracks.get_mut(self.active_track_index)
     }
+
+    pub fn clear_all_track_content(&mut self) {
+        for track in &mut self.tracks {
+            track.clear_content();
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +131,7 @@ impl Track {
         }
 
         self.regions.push(Region::new(start_ticks, length_ticks));
+        self.append_demo_recorded_notes(start_ticks, length_ticks);
     }
 
     pub fn content_end_ticks(&self) -> u64 {
@@ -163,6 +170,31 @@ impl Track {
                 )
             })
             .collect();
+    }
+
+    pub fn clear_content(&mut self) {
+        self.active_take = None;
+        self.midi_notes.clear();
+        self.regions.clear();
+    }
+
+    fn append_demo_recorded_notes(&mut self, start_ticks: u64, length_ticks: u64) {
+        let step = (length_ticks / 4).max(120);
+        let note_len = (step / 2).max(60);
+        let base_pitch = 60 + ((self.name.len() as u8) % 12);
+
+        for index in 0..4 {
+            let note_start = start_ticks + step * index;
+            if note_start >= start_ticks + length_ticks {
+                break;
+            }
+            self.midi_notes.push(MidiNote::new(
+                base_pitch.saturating_add((index as u8) * 2),
+                note_start,
+                note_len.min(length_ticks),
+                104,
+            ));
+        }
     }
 }
 
@@ -288,5 +320,18 @@ mod tests {
         let note = MidiNote::new(60, 960, 480, 100);
         assert!(note.intersects(LoopRegion::new(1_200, 960)));
         assert!(!note.intersects(LoopRegion::new(2_000, 120)));
+    }
+
+    #[test]
+    fn clear_content_resets_take_notes_and_regions() {
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        track.begin_recording(100);
+        track.regions.push(Region::new(0, 240));
+
+        track.clear_content();
+
+        assert!(track.active_take.is_none());
+        assert!(track.midi_notes.is_empty());
+        assert!(track.regions.is_empty());
     }
 }

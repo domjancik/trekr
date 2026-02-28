@@ -40,6 +40,9 @@ Current controls:
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `Space`: play/stop
+- `R`: start/stop recording on armed tracks, or the active track if none are armed
+- `C`: clear current track notes/regions and cancel its pending take
+- `Shift+C`: clear all track notes/regions and cancel pending takes
 - `Home`: reset the global song loop to the full song range
 - `[` / `]`: set current-track loop start/end at playhead
 - `,` / `.`: nudge current-track loop backward/forward by one quantize step
