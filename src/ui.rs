@@ -125,6 +125,52 @@ pub fn detail_badge_rect(header: Rect) -> Rect {
     )
 }
 
+pub fn passthrough_rail_rect(bounds: Rect) -> Rect {
+    Rect::new(
+        bounds.x + 2,
+        bounds.y + 2,
+        4,
+        bounds.height().saturating_sub(4),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderBadgeKind {
+    TrackIndex,
+    Armed,
+    Muted,
+    Solo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeaderBadge {
+    pub kind: HeaderBadgeKind,
+    pub rect: Rect,
+}
+
+pub fn header_badges(header: Rect) -> [HeaderBadge; 4] {
+    let size = (header.height().saturating_sub(8)).max(6) as i32;
+    let y = header.y + 4;
+    [
+        HeaderBadge {
+            kind: HeaderBadgeKind::TrackIndex,
+            rect: Rect::new(header.x + 4, y, size as u32, size as u32),
+        },
+        HeaderBadge {
+            kind: HeaderBadgeKind::Armed,
+            rect: Rect::new(header.x + 8 + size, y, size as u32, size as u32),
+        },
+        HeaderBadge {
+            kind: HeaderBadgeKind::Muted,
+            rect: Rect::new(header.x + 12 + size * 2, y, size as u32, size as u32),
+        },
+        HeaderBadge {
+            kind: HeaderBadgeKind::Solo,
+            rect: Rect::new(header.x + 16 + size * 3, y, size as u32, size as u32),
+        },
+    ]
+}
+
 pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
     let guide_count: usize = 8;
     let mut guides = Vec::with_capacity(guide_count.saturating_sub(1));
@@ -171,8 +217,8 @@ pub fn playhead_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        TimelineFlow, detail_badge_rect, playhead_rect, surface_rect, timeline_guides,
-        track_column_pairs, track_header_rect,
+        HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, passthrough_rail_rect,
+        playhead_rect, surface_rect, timeline_guides, track_column_pairs, track_header_rect,
     };
     use sdl3::rect::Rect;
 
@@ -237,5 +283,19 @@ mod tests {
         let badge = detail_badge_rect(Rect::new(20, 10, 40, 20));
         assert!(badge.x > 20);
         assert!(badge.width() > 0);
+    }
+
+    #[test]
+    fn header_badges_include_track_and_state_markers() {
+        let badges = header_badges(Rect::new(10, 10, 80, 20));
+        assert_eq!(badges[0].kind, HeaderBadgeKind::TrackIndex);
+        assert_eq!(badges[3].kind, HeaderBadgeKind::Solo);
+    }
+
+    #[test]
+    fn passthrough_rail_stays_thin() {
+        let rail = passthrough_rail_rect(Rect::new(10, 20, 80, 240));
+        assert_eq!(rail.width(), 4);
+        assert_eq!(rail.height(), 236);
     }
 }

@@ -70,6 +70,7 @@ impl App {
                 break 'running;
             }
 
+            self.update_window_title(canvas.window_mut())?;
             self.draw(&mut canvas, started_at.elapsed())?;
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -126,15 +127,19 @@ impl App {
         elapsed: Duration,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let full_accent = if is_active {
+        let full_accent = if track.state.armed {
+            Color::RGB(148, 54, 54)
+        } else if is_active {
             Color::RGB(42, 90, 168)
         } else {
             Color::RGB(36, 58, 92)
         };
-        let detail_accent = if is_active {
-            Color::RGB(162, 88, 34)
+        let detail_accent = if track.state.loop_enabled && self.project.transport.loop_enabled {
+            Color::RGB(178, 104, 34)
+        } else if is_active {
+            Color::RGB(124, 82, 46)
         } else {
-            Color::RGB(92, 58, 36)
+            Color::RGB(74, 54, 40)
         };
 
         self.draw_track_subcolumn(
@@ -149,6 +154,7 @@ impl App {
             elapsed,
             is_active,
             false,
+            track,
         )?;
         self.draw_track_subcolumn(
             canvas,
@@ -159,6 +165,7 @@ impl App {
             elapsed,
             is_active,
             true,
+            track,
         )?;
 
         Ok(())
@@ -174,10 +181,17 @@ impl App {
         elapsed: Duration,
         is_active: bool,
         detail: bool,
+        track: &crate::project::Track,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(20, 27, 40));
+        canvas.set_draw_color(if track.state.muted {
+            Color::RGB(16, 18, 24)
+        } else {
+            Color::RGB(20, 27, 40)
+        });
         canvas.fill_rect(bounds)?;
-        canvas.set_draw_color(if is_active {
+        canvas.set_draw_color(if track.state.soloed {
+            Color::RGB(124, 214, 132)
+        } else if is_active {
             Color::RGB(240, 222, 116)
         } else {
             Color::RGB(88, 96, 120)
@@ -188,6 +202,12 @@ impl App {
         canvas.set_draw_color(accent);
         canvas.fill_rect(header)?;
 
+        if track.state.passthrough {
+            let rail = crate::ui::passthrough_rail_rect(bounds);
+            canvas.set_draw_color(Color::RGB(74, 210, 214));
+            canvas.fill_rect(rail)?;
+        }
+
         for guide in crate::ui::timeline_guides(bounds, self.timeline_flow) {
             canvas.set_draw_color(Color::RGB(52, 62, 84));
             canvas.fill_rect(guide)?;
@@ -195,14 +215,63 @@ impl App {
 
         if detail {
             let loop_tag = crate::ui::detail_badge_rect(header);
-            canvas.set_draw_color(Color::RGB(252, 192, 104));
+            canvas.set_draw_color(
+                if track.state.loop_enabled && self.project.transport.loop_enabled {
+                    Color::RGB(252, 192, 104)
+                } else {
+                    Color::RGB(88, 82, 76)
+                },
+            );
             canvas.fill_rect(loop_tag)?;
         }
 
+        for badge in crate::ui::header_badges(header) {
+            let color = match badge.kind {
+                crate::ui::HeaderBadgeKind::TrackIndex => {
+                    if is_active {
+                        Color::RGB(250, 244, 200)
+                    } else {
+                        Color::RGB(208, 216, 228)
+                    }
+                }
+                crate::ui::HeaderBadgeKind::Armed => {
+                    if track.state.armed {
+                        Color::RGB(250, 110, 110)
+                    } else {
+                        Color::RGB(82, 74, 74)
+                    }
+                }
+                crate::ui::HeaderBadgeKind::Muted => {
+                    if track.state.muted {
+                        Color::RGB(136, 140, 150)
+                    } else {
+                        Color::RGB(72, 76, 86)
+                    }
+                }
+                crate::ui::HeaderBadgeKind::Solo => {
+                    if track.state.soloed {
+                        Color::RGB(124, 214, 132)
+                    } else {
+                        Color::RGB(70, 84, 70)
+                    }
+                }
+            };
+            canvas.set_draw_color(color);
+            canvas.fill_rect(badge.rect)?;
+        }
+
         for block in crate::ui::region_blocks(bounds, seed, self.timeline_flow) {
-            canvas.set_draw_color(Color::RGB(210, 222, 236));
+            canvas.set_draw_color(if track.state.muted {
+                Color::RGB(92, 100, 112)
+            } else {
+                Color::RGB(210, 222, 236)
+            });
             canvas.fill_rect(block)?;
-            canvas.set_draw_color(Color::RGB(245, 247, 250));
+            canvas.set_draw_color(if track.state.muted {
+                Color::RGB(128, 134, 144)
+            } else {
+                Color::RGB(245, 247, 250)
+            });
             canvas.draw_rect(block)?;
         }
 
@@ -219,6 +288,30 @@ impl App {
         });
         canvas.fill_rect(playhead)?;
 
+        Ok(())
+    }
+
+    fn update_window_title(
+        &self,
+        window: &mut sdl3::video::Window,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let active = self
+            .project
+            .active_track()
+            .expect("demo project always has tracks");
+        let title = format!(
+            "trekr | T{} {} | Space Play:{} | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
+            self.project.active_track_index + 1,
+            active.name,
+            on_off(self.project.transport.playing),
+            on_off(self.project.transport.loop_enabled),
+            on_off(active.state.loop_enabled),
+            on_off(active.state.armed),
+            on_off(active.state.muted),
+            on_off(active.state.soloed),
+            on_off(active.state.passthrough),
+        );
+        window.set_title(&title)?;
         Ok(())
     }
 
@@ -283,6 +376,10 @@ impl App {
     }
 }
 
+fn on_off(value: bool) -> &'static str {
+    if value { "on" } else { "off" }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppControl {
     Continue,
@@ -330,5 +427,30 @@ mod tests {
 
         assert_eq!(control, AppControl::Continue);
         assert_eq!(app.timeline_flow, TimelineFlow::AcrossRows);
+    }
+
+    #[test]
+    fn window_title_reports_active_track_state() {
+        let mut app = App::new();
+        app.apply_action(AppAction::TogglePlayback);
+        app.apply_action(AppAction::ToggleCurrentTrackArm);
+        app.apply_action(AppAction::ToggleCurrentTrackLoop);
+
+        let title = format!(
+            "trekr | T{} {} | Space Play:{} | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
+            app.project.active_track_index + 1,
+            app.project.active_track().unwrap().name,
+            super::on_off(app.project.transport.playing),
+            super::on_off(app.project.transport.loop_enabled),
+            super::on_off(app.project.active_track().unwrap().state.loop_enabled),
+            super::on_off(app.project.active_track().unwrap().state.armed),
+            super::on_off(app.project.active_track().unwrap().state.muted),
+            super::on_off(app.project.active_track().unwrap().state.soloed),
+            super::on_off(app.project.active_track().unwrap().state.passthrough),
+        );
+
+        assert!(title.contains("Play:on"));
+        assert!(title.contains("Loop:on"));
+        assert!(title.contains("Arm:on"));
     }
 }
