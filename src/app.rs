@@ -451,6 +451,13 @@ impl App {
             2,
             Color::RGB(244, 232, 146),
         )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Quick Overview / Read Only",
+            Rect::new(content_bounds.x + 200, content_bounds.y + 12, 260, 8),
+            1,
+            Color::RGB(184, 194, 206),
+        )?;
 
         let list_bounds = crate::ui::inset_rect(content_bounds, 8, 32)?;
         let rows = crate::ui::stacked_rows(list_bounds, self.mappings.len().max(1), 8);
@@ -498,10 +505,11 @@ impl App {
                 96,
                 8,
             );
+            let scope_rect = Rect::new(row.x + row.width() as i32 - 148, row.y + 20, 110, 8);
             let target_rect = Rect::new(
                 source_label_rect.x + source_label_rect.width() as i32 + 8,
                 row.y + 8,
-                row.width().saturating_sub(170),
+                row.width().saturating_sub(288),
                 row.height().saturating_sub(16),
             );
             canvas.set_draw_color(if entry.enabled {
@@ -527,7 +535,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 entry.scope_label,
-                Rect::new(target_rect.x + 6, row.y + 20, target_rect.width().saturating_sub(12), 8),
+                scope_rect,
                 1,
                 Color::RGB(24, 28, 36),
             )?;
@@ -806,7 +814,7 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Up/Down Select | Enter Toggle | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Quick Overview Read Only | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     mapping_source_label(selected.source_kind),
                     selected.source_label,
@@ -1185,11 +1193,7 @@ impl App {
     fn activate_page_item(&mut self) {
         match self.page_state.current_page {
             AppPage::Timeline => {}
-            AppPage::Mappings => {
-                if let Some(mapping) = self.mappings.get_mut(self.page_state.selected_mapping_index) {
-                    mapping.enabled = !mapping.enabled;
-                }
-            }
+            AppPage::Mappings => {}
             AppPage::MidiIo => match self.page_state.midi_io.focus {
                 MidiIoListFocus::Inputs => self
                     .midi_devices
@@ -1681,13 +1685,13 @@ mod tests {
     }
 
     #[test]
-    fn mappings_page_can_toggle_entry_state() {
+    fn mappings_page_is_read_only() {
         let mut app = App::new();
         app.apply_action(AppAction::ShowPage(AppPage::Mappings));
-        assert!(app.mappings[0].enabled);
+        let before = app.mappings[0].enabled;
 
         app.apply_action(AppAction::ActivatePageItem);
-        assert!(!app.mappings[0].enabled);
+        assert_eq!(app.mappings[0].enabled, before);
     }
 
     #[test]

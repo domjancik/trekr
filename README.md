@@ -59,3 +59,5 @@ Current controls:
 - `Escape`: quit
 
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
+
+The `Mappings` page is currently a non-editable quick overview of all key, MIDI, and OSC bindings.
