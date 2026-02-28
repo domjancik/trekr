@@ -69,7 +69,7 @@ The repo includes a scripted screenshot-and-review loop for visual QA:
 
 - `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
-- `scripts/run-ui-review.ps1`: runs both steps in sequence
+- `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`
 
 The capture path is renderer-owned rather than desktop-owned:
 
@@ -82,6 +82,7 @@ Review process:
 2. Check `artifacts/screenshots\manifest.json` for the exported page/image list
 3. Run `powershell -ExecutionPolicy Bypass -File .\scripts\review-ui-screens.ps1`
 4. Read `artifacts/reviews/ui-findings.md` for the latest Codex layout findings
+5. Use `artifacts/archive/<git-commit>/screenshots` and `artifacts/archive/<git-commit>/reviews/ui-findings.md` for the commit-keyed snapshot
 
 The review script passes the generated screenshots to `codex exec --image ...`, so the analysis step is based on the renderer-level captures rather than a live desktop screenshot.
 
