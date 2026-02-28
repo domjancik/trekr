@@ -93,6 +93,42 @@ The real differences are usually elsewhere:
 
 The likely gap on tiny hardware comes more from library and rendering choices than from the language itself. A Rust app with a simple native renderer can still perform very well. A heavy UI framework in either language will erase that advantage quickly.
 
+## Chosen Stack
+
+The project should proceed with:
+
+- Rust
+- SDL3 bindings for windowing, input, and lightweight native rendering
+- CPAL for audio I/O
+- midir for MIDI I/O
+- custom fixed-fit timeline rendering instead of a heavy retained-mode UI framework
+
+Reasoning:
+
+- primary deployment is now small PCs and similar embedded desktop-class systems
+- iOS/Android remains a future option worth preserving
+- the app can still perform well on Orange Pi Zero 2W-class hardware and above if the renderer stays simple and the real-time path remains allocation-free
+
+## Low-End Device Constraints
+
+The Rust decision is acceptable only if the implementation keeps the low-end target explicit.
+
+Required constraints:
+
+- MIDI-first playback and rendering must stay responsive on Orange Pi Zero 2W-class devices and above
+- default timeline rendering should be nearly static and summary-based, not continuously re-laid out
+- track rendering should prefer precomputed summaries and cheap redraws
+- no browser engine
+- no heavyweight GPU-first UI framework
+- no allocations or locks in the real-time callback path
+- track-count ceilings may be lower on the smallest devices, but interaction latency should remain tight
+
+Expected degradations on low-end devices are acceptable in these areas:
+
+- lower maximum simultaneous track count
+- lower waveform detail density once audio arrives
+- reduced nonessential animation or visual polish
+
 ## Plugin Architecture
 
 V1 does not need user-facing plugin hosting, but some internal interfaces should be plugin-shaped now if they reduce future migration cost.
@@ -111,17 +147,13 @@ That gives two benefits:
 - current routing and processing code stays modular
 - later expansion toward synths, effects, or DAW-like capabilities is easier
 
-## Recommended Initial Choice
+## Decision Summary
 
-Pick Option A if:
+Rust is the selected implementation language.
 
-- Pi Zero-class support is a hard constraint
-- the smallest runtime footprint matters more than language safety
+This remains compatible with the product goals because:
 
-Pick Option B if:
-
-- small PCs are the real primary target
-- mobile optionality matters
-- you want stronger safety guarantees in engine code
-
-Given the current requirements, Option B is reasonable if "from Pi Zero to laptop" is aspirational and the first actual deployments are small PCs. Option A is safer if the floor really is Pi Zero-class hardware from day one.
+- the practical low-end floor is Orange Pi Zero 2W-class hardware and above
+- lower track ceilings on smaller devices are acceptable
+- the primary performance requirement is snappy MIDI timing and mostly static overview rendering
+- the architecture explicitly avoids the categories of framework overhead most likely to hurt low-end performance

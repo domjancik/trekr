@@ -14,3 +14,4 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - Secondary target: iOS/Android if the chosen stack supports it cleanly.
 - V1 focus: MIDI sequencing, routing, passthrough, and loop-based recording.
 - Audio follows MIDI-first V1 and should layer onto the same timeline and routing model later.
+- Chosen implementation stack: Rust with a lightweight native rendering and I/O stack.

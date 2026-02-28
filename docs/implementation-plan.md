@@ -125,6 +125,9 @@ Current decisions locked in:
 - timeline is linear, not scene-launch based
 - record release commits to the nearest quantize boundary
 - modular internal interfaces are preferred so plugin-style extension remains possible later
+- Rust is the chosen implementation language
+- low-end support targets Orange Pi Zero 2W-class devices and above
+- low-end optimization should favor snappy MIDI behavior and nearly static summary-based rendering over higher track ceilings
 
 ## First Build Recommendation
 
