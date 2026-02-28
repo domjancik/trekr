@@ -361,7 +361,9 @@ fn preview_midi_note(
     let (note_start, note_end) = normalized_record_span(
         transport,
         recorded_note.started_at_ticks,
-        recorded_note.ended_at_ticks.min(current_ticks.max(recorded_note.started_at_ticks)),
+        recorded_note
+            .ended_at_ticks
+            .min(current_ticks.max(recorded_note.started_at_ticks)),
         record_range,
     );
     let note_length = note_end.saturating_sub(note_start);

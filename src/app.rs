@@ -1,11 +1,17 @@
 use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
-use crate::mapping::{MappingEntry, MappingSourceKind, demo_mappings};
+use crate::link::{LinkRuntime, LinkSnapshot};
+use crate::mapping::{
+    MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_kind,
+    cycle_mapping_source_label, cycle_mapping_target_label, default_source_label, demo_mappings,
+};
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
     MidiPortRef,
 };
-use crate::pages::{AppPage, AppPageState, MappingPageMode, MidiIoListFocus, RoutingField};
+use crate::pages::{
+    AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
+};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
@@ -32,11 +38,13 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
+    link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
     viewport_size: (u32, u32),
     transport_ticks: u64,
     playhead_ticks: u64,
+    link_snapshot: LinkSnapshot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +104,10 @@ impl App {
         page_state: AppPageState,
     ) -> Self {
         let scanned_devices = MidiDeviceCatalog::scan();
+        let mut link = LinkRuntime::new(f64::from(project.transport.tempo_bpm));
+        link.set_enabled(project.transport.link_enabled);
+        link.set_start_stop_sync(project.transport.link_start_stop_sync);
+        let link_snapshot = link.refresh();
         Self {
             project,
             engine_config: EngineConfig::default(),
@@ -106,11 +118,13 @@ impl App {
             midi_devices: scanned_devices,
             midi_input: MidiInputRuntime::default(),
             midi_output: MidiOutputRuntime::default(),
+            link,
             mappings,
             overlay_state: OverlayState::default(),
             viewport_size: (1280, 720),
             transport_ticks: 0,
             playhead_ticks: 0,
+            link_snapshot,
         }
     }
 
@@ -329,7 +343,8 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (header_bounds, timeline_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
+        let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
+        let (transport_bounds, timeline_bounds) = crate::ui::split_top_strip(body_bounds, 24, 8)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
         canvas.set_draw_color(Color::RGB(34, 44, 64));
         canvas.fill_rect(header_bounds)?;
@@ -337,12 +352,12 @@ impl App {
         canvas.draw_rect(header_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Song/Loop",
-            Rect::new(header_bounds.x + 8, header_bounds.y + 8, 96, 8),
+            "Timeline",
+            Rect::new(header_bounds.x + 8, header_bounds.y + 8, 84, 8),
             1,
             Color::RGB(192, 206, 222),
         )?;
-        let record_mode_badge = Rect::new(header_bounds.x + 110, header_bounds.y + 6, 108, 14);
+        let record_mode_badge = Rect::new(header_bounds.x + 96, header_bounds.y + 6, 108, 14);
         canvas.set_draw_color(match self.project.transport.record_mode {
             RecordMode::Overdub => Color::RGB(54, 82, 126),
             RecordMode::Replace => Color::RGB(122, 66, 48),
@@ -363,7 +378,12 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "Full + loop detail",
-            Rect::new(record_mode_badge.x + record_mode_badge.width() as i32 + 12, header_bounds.y + 8, 116, 8),
+            Rect::new(
+                record_mode_badge.x + record_mode_badge.width() as i32 + 12,
+                header_bounds.y + 8,
+                116,
+                8,
+            ),
             1,
             Color::RGB(190, 198, 210),
         )?;
@@ -383,6 +403,7 @@ impl App {
             1,
             Color::RGB(248, 244, 212),
         )?;
+        self.draw_transport_strip(canvas, transport_bounds)?;
 
         let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
 
@@ -706,6 +727,175 @@ impl App {
         Ok(())
     }
 
+    fn draw_transport_strip<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGB(28, 36, 52));
+        canvas.fill_rect(bounds)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(bounds)?;
+
+        let chips = [
+            (
+                format!("Play {}", on_off(self.project.transport.playing)),
+                if self.project.transport.playing {
+                    Color::RGB(96, 162, 122)
+                } else {
+                    Color::RGB(74, 84, 102)
+                },
+            ),
+            (
+                format!("Rec {}", on_off(self.project.transport.recording)),
+                if self.project.transport.recording {
+                    Color::RGB(180, 76, 76)
+                } else {
+                    Color::RGB(88, 78, 82)
+                },
+            ),
+            (
+                format!("Mode {}", self.project.transport.record_mode.label()),
+                Color::RGB(76, 94, 136),
+            ),
+            (
+                format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
+                Color::RGB(116, 96, 54),
+            ),
+            (
+                format!("Tempo {}", self.project.transport.tempo_bpm),
+                Color::RGB(70, 100, 120),
+            ),
+        ];
+
+        let mut cursor_x = bounds.x + 6;
+        for (label, fill) in chips {
+            let width = crate::ui::text_width(&label, 1) + 12;
+            let chip = Rect::new(
+                cursor_x,
+                bounds.y + 4,
+                width,
+                bounds.height().saturating_sub(8),
+            );
+            canvas.set_draw_color(fill);
+            canvas.fill_rect(chip)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &label,
+                Rect::new(chip.x + 6, chip.y + 4, chip.width().saturating_sub(12), 8),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            cursor_x += chip.width() as i32 + 6;
+            if cursor_x >= bounds.x + bounds.width() as i32 - 120 {
+                break;
+            }
+        }
+
+        let right_badges = [
+            (
+                format!("Q {}", quantize_label(self.project.transport.quantize)),
+                Color::RGB(72, 88, 110),
+            ),
+            (
+                format!("Link {}", on_off(self.project.transport.link_enabled)),
+                if self.project.transport.link_enabled {
+                    Color::RGB(74, 122, 144)
+                } else {
+                    Color::RGB(68, 76, 92)
+                },
+            ),
+            (
+                format!(
+                    "Sync {}",
+                    on_off(self.project.transport.link_start_stop_sync)
+                ),
+                Color::RGB(82, 98, 130),
+            ),
+            (
+                format!("Peers {}", self.link_snapshot.peers),
+                Color::RGB(66, 80, 102),
+            ),
+        ];
+        let mut right_cursor = bounds.x + bounds.width() as i32 - 8;
+        for (label, fill) in right_badges.into_iter().rev() {
+            let width = crate::ui::text_width(&label, 1) + 12;
+            right_cursor -= width as i32;
+            let chip = Rect::new(
+                right_cursor,
+                bounds.y + 4,
+                width,
+                bounds.height().saturating_sub(8),
+            );
+            canvas.set_draw_color(fill);
+            canvas.fill_rect(chip)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &label,
+                Rect::new(chip.x + 6, chip.y + 4, chip.width().saturating_sub(12), 8),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            right_cursor -= 6;
+        }
+
+        let hint = if self.project.transport.link_enabled {
+            "F6 Link  Shift+F6 Sync"
+        } else {
+            "F6 Link"
+        };
+        let hint_width = crate::ui::text_width(hint, 1) + 6;
+        crate::ui::draw_text_fitted(
+            canvas,
+            hint,
+            Rect::new(
+                (right_cursor - hint_width as i32 - 4).max(cursor_x + 6),
+                bounds.y + 8,
+                hint_width,
+                8,
+            ),
+            1,
+            Color::RGB(166, 176, 192),
+        )?;
+
+        Ok(())
+    }
+
+    fn mapping_row_cells(&self, row: Rect) -> [Rect; 5] {
+        let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
+        let source_rect = Rect::new(
+            type_rect.x + type_rect.width() as i32 + 6,
+            row.y + 3,
+            116,
+            row.height().saturating_sub(6),
+        );
+        let enabled_rect = Rect::new(
+            row.x + row.width() as i32 - 34,
+            row.y + 3,
+            28,
+            row.height().saturating_sub(6),
+        );
+        let scope_rect = Rect::new(
+            enabled_rect.x - 80,
+            row.y + 3,
+            72,
+            row.height().saturating_sub(6),
+        );
+        let target_rect = Rect::new(
+            source_rect.x + source_rect.width() as i32 + 6,
+            row.y + 3,
+            (scope_rect.x - (source_rect.x + source_rect.width() as i32 + 12)).max(48) as u32,
+            row.height().saturating_sub(6),
+        );
+        [
+            type_rect,
+            source_rect,
+            target_rect,
+            scope_rect,
+            enabled_rect,
+        ]
+    }
+
     fn draw_mappings_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -732,41 +922,82 @@ impl App {
             1,
             Color::RGB(206, 214, 224),
         )?;
+        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        canvas.set_draw_color(if self.page_state.mapping_midi_learn_armed {
+            Color::RGB(146, 62, 62)
+        } else {
+            Color::RGB(44, 56, 78)
+        });
+        canvas.fill_rect(learn_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            "F5 Overlay  W Write",
-            Rect::new(content_bounds.x + 400, content_bounds.y + 12, 150, 8),
+            if self.page_state.mapping_midi_learn_armed {
+                "Learn: waiting"
+            } else {
+                "Learn: idle"
+            },
+            Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
-            Color::RGB(154, 166, 182),
-        )?;
-
-        let list_bounds = crate::ui::inset_rect(content_bounds, 8, 44)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Source",
-            Rect::new(content_bounds.x + 56, content_bounds.y + 32, 60, 8),
-            1,
-            Color::RGB(154, 166, 182),
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Target",
-            Rect::new(content_bounds.x + 208, content_bounds.y + 32, 60, 8),
-            1,
-            Color::RGB(154, 166, 182),
+            Color::RGB(236, 240, 246),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Scope",
+            &format!(
+                "Rows {} / {}",
+                self.page_state
+                    .selected_mapping_index
+                    .saturating_add(1)
+                    .min(self.mappings.len()),
+                self.mappings.len()
+            ),
             Rect::new(
-                content_bounds.x + content_bounds.width() as i32 - 154,
-                content_bounds.y + 32,
-                48,
+                content_bounds.x + content_bounds.width() as i32 - 100,
+                content_bounds.y + 12,
+                92,
                 8,
             ),
             1,
             Color::RGB(154, 166, 182),
         )?;
+
+        let footer_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + content_bounds.height() as i32 - 20,
+            content_bounds.width().saturating_sub(16),
+            12,
+        );
+        let list_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + 44,
+            content_bounds.width().saturating_sub(16),
+            content_bounds.height().saturating_sub(68),
+        );
+        let header_row = Rect::new(
+            list_bounds.x,
+            content_bounds.y + 30,
+            list_bounds.width(),
+            10,
+        );
+        let header_cells = self.mapping_row_cells(Rect::new(
+            header_row.x,
+            header_row.y,
+            header_row.width(),
+            18,
+        ));
+        for (index, field) in MappingField::ALL.iter().enumerate() {
+            crate::ui::draw_text_fitted(
+                canvas,
+                field.label(),
+                Rect::new(
+                    header_cells[index].x,
+                    header_row.y,
+                    header_cells[index].width(),
+                    8,
+                ),
+                1,
+                Color::RGB(154, 166, 182),
+            )?;
+        }
         let row_gap = 3_i32;
         let row_height = 18_i32;
         let stride = row_height + row_gap;
@@ -809,7 +1040,8 @@ impl App {
             });
             canvas.draw_rect(row)?;
 
-            let source_rect = Rect::new(row.x + 4, row.y + 3, 14, row.height().saturating_sub(6));
+            let cells = self.mapping_row_cells(row);
+            let source_rect = Rect::new(cells[0].x, cells[0].y, 14, cells[0].height());
             let source_color = match entry.source_kind {
                 MappingSourceKind::Key => Color::RGB(98, 148, 232),
                 MappingSourceKind::Midi => Color::RGB(96, 202, 146),
@@ -818,12 +1050,7 @@ impl App {
             canvas.set_draw_color(source_color);
             canvas.fill_rect(source_rect)?;
 
-            let enabled_rect = Rect::new(
-                row.x + row.width() as i32 - 20,
-                row.y + 3,
-                14,
-                row.height().saturating_sub(6),
-            );
+            let enabled_rect = Rect::new(cells[4].x + 6, cells[4].y, 14, cells[4].height());
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(132, 220, 120)
             } else {
@@ -831,29 +1058,16 @@ impl App {
             });
             canvas.fill_rect(enabled_rect)?;
 
-            let trigger_rect = Rect::new(
-                source_rect.x + source_rect.width() as i32 + 6,
-                row.y + 3,
-                104,
-                row.height().saturating_sub(6),
-            );
-            let target_rect = Rect::new(
-                trigger_rect.x + trigger_rect.width() as i32 + 6,
-                row.y + 3,
-                row.width().saturating_sub(258),
-                row.height().saturating_sub(6),
-            );
-            let scope_rect = Rect::new(
-                row.x + row.width() as i32 - 118,
-                row.y + 3,
-                74,
-                row.height().saturating_sub(6),
-            );
+            let kind_rect = cells[0];
+            let trigger_rect = cells[1];
+            let target_rect = cells[2];
+            let scope_rect = cells[3];
             canvas.set_draw_color(if selected {
                 Color::RGB(66, 80, 112)
             } else {
                 Color::RGB(42, 50, 70)
             });
+            canvas.fill_rect(kind_rect)?;
             canvas.fill_rect(trigger_rect)?;
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(182, 194, 212)
@@ -863,6 +1077,19 @@ impl App {
             canvas.fill_rect(target_rect)?;
             canvas.set_draw_color(Color::RGB(66, 74, 88));
             canvas.fill_rect(scope_rect)?;
+            canvas.fill_rect(cells[4])?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                mapping_source_label(entry.source_kind),
+                Rect::new(
+                    kind_rect.x + 18,
+                    row.y + 5,
+                    kind_rect.width().saturating_sub(22),
+                    8,
+                ),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &entry.source_label,
@@ -899,20 +1126,43 @@ impl App {
                 1,
                 Color::RGB(236, 238, 242),
             )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                if entry.enabled { "On" } else { "Off" },
+                Rect::new(
+                    cells[4].x + 2,
+                    row.y + 5,
+                    cells[4].width().saturating_sub(4),
+                    8,
+                ),
+                1,
+                Color::RGB(236, 238, 242),
+            )?;
+
+            if selected && self.page_state.mapping_mode == MappingPageMode::Write {
+                let field_rect = cells[mapping_field_index(self.page_state.selected_mapping_field)];
+                canvas.set_draw_color(
+                    if self.page_state.mapping_midi_learn_armed
+                        && self.page_state.selected_mapping_field == MappingField::SourceValue
+                    {
+                        Color::RGB(252, 126, 126)
+                    } else {
+                        Color::RGB(252, 232, 146)
+                    },
+                );
+                canvas.draw_rect(field_rect)?;
+            }
         }
 
+        canvas.set_draw_color(Color::RGB(26, 32, 46));
+        canvas.fill_rect(footer_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!(
-                "Rows {}-{} / {}",
-                start_index.saturating_add(1),
-                (start_index + visible_rows).min(self.mappings.len()),
-                self.mappings.len()
-            ),
+            "F5 Overlay  W Write  Shift+Left/Right Field  Q/E Adjust  Enter Learn/Toggle",
             Rect::new(
-                content_bounds.x + content_bounds.width() as i32 - 120,
-                content_bounds.y + 12,
-                112,
+                footer_bounds.x + 6,
+                footer_bounds.y + 2,
+                footer_bounds.width().saturating_sub(12),
                 8,
             ),
             1,
@@ -1476,7 +1726,7 @@ impl App {
             .expect("demo project always has tracks");
         let title = match self.page_state.current_page {
             AppPage::Timeline => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | F6 Link:{} Shift+F6 Sync:{} Peers:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
@@ -1484,6 +1734,9 @@ impl App {
                 on_off(self.project.transport.playing),
                 on_off(self.project.transport.recording),
                 self.project.transport.record_mode.label(),
+                on_off(self.project.transport.link_enabled),
+                on_off(self.project.transport.link_start_stop_sync),
+                self.link_snapshot.peers,
                 active.loop_region.start_ticks,
                 active.loop_region.end_ticks(),
                 self.project.loop_region.start_ticks,
@@ -1498,10 +1751,12 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     self.page_state.mapping_mode.label(),
                     on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
+                    self.page_state.selected_mapping_field.label(),
+                    on_off(self.page_state.mapping_midi_learn_armed),
                     mapping_source_label(selected.source_kind),
                     selected.source_label,
                     selected.target_label,
@@ -1604,6 +1859,32 @@ impl App {
             }
             AppAction::ToggleMappingsWriteMode => {
                 self.page_state.mapping_mode = self.page_state.mapping_mode.toggle();
+                self.page_state.mapping_midi_learn_armed = false;
+                if self.page_state.mapping_mode == MappingPageMode::Overview {
+                    self.page_state.selected_mapping_field = MappingField::SourceValue;
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectPreviousPageField => {
+                self.select_previous_page_field();
+                AppControl::Continue
+            }
+            AppAction::SelectNextPageField => {
+                self.select_next_page_field();
+                AppControl::Continue
+            }
+            AppAction::ToggleLinkEnabled => {
+                self.project.transport.link_enabled = !self.project.transport.link_enabled;
+                self.link.set_enabled(self.project.transport.link_enabled);
+                self.link_snapshot = self.link.refresh();
+                AppControl::Continue
+            }
+            AppAction::ToggleLinkStartStopSync => {
+                self.project.transport.link_start_stop_sync =
+                    !self.project.transport.link_start_stop_sync;
+                self.link
+                    .set_start_stop_sync(self.project.transport.link_start_stop_sync);
+                self.link_snapshot = self.link.refresh();
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
@@ -1611,6 +1892,13 @@ impl App {
                     self.finish_recording();
                 }
                 self.project.transport.playing = !self.project.transport.playing;
+                if self.project.transport.link_enabled {
+                    self.link.commit_playing(
+                        self.project.transport.playing,
+                        self.transport_ticks as f64 / f64::from(self.project.transport.ppqn.max(1)),
+                    );
+                    self.link_snapshot = self.link.refresh();
+                }
                 if !self.project.transport.playing {
                     self.silence_all_tracks();
                 }
@@ -1795,6 +2083,11 @@ impl App {
     }
 
     fn advance_playhead(&mut self, delta: Duration) {
+        if self.project.transport.link_enabled {
+            self.advance_linked_playhead();
+            return;
+        }
+
         if !self.project.transport.playing {
             return;
         }
@@ -1816,6 +2109,40 @@ impl App {
         }
 
         self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
+    }
+
+    fn advance_linked_playhead(&mut self) {
+        self.link_snapshot = self.link.refresh();
+        self.project.transport.tempo_bpm =
+            self.link_snapshot.tempo_bpm.round().clamp(20.0, 400.0) as u16;
+        if self.project.transport.link_start_stop_sync {
+            self.project.transport.playing = self.link_snapshot.is_playing;
+        }
+        if !self.project.transport.playing {
+            return;
+        }
+
+        let previous_ticks = self.transport_ticks;
+        let linked_ticks = (self.link_snapshot.beat.max(0.0)
+            * f64::from(self.project.transport.ppqn.max(1)))
+        .round() as u64;
+        self.transport_ticks = linked_ticks;
+        self.playhead_ticks = linked_ticks;
+
+        if self.project.transport.loop_enabled {
+            let loop_region = self.project.loop_region;
+            if loop_region.length_ticks > 0 {
+                let relative = self.transport_ticks.saturating_sub(loop_region.start_ticks);
+                self.playhead_ticks =
+                    loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
+            }
+        }
+
+        if linked_ticks < previous_ticks {
+            self.silence_all_tracks();
+            return;
+        }
+        self.dispatch_midi_notes(previous_ticks, linked_ticks.saturating_sub(previous_ticks));
     }
 
     fn current_edit_ticks(&self) -> u64 {
@@ -1946,6 +2273,7 @@ impl App {
                     let count = self.mappings.len();
                     self.page_state.selected_mapping_index =
                         (self.page_state.selected_mapping_index + count - 1) % count;
+                    self.page_state.mapping_midi_learn_armed = false;
                 }
             }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
@@ -1974,6 +2302,7 @@ impl App {
                 if !self.mappings.is_empty() {
                     self.page_state.selected_mapping_index =
                         (self.page_state.selected_mapping_index + 1) % self.mappings.len();
+                    self.page_state.mapping_midi_learn_armed = false;
                 }
             }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
@@ -1995,6 +2324,25 @@ impl App {
         }
     }
 
+    fn select_previous_page_field(&mut self) {
+        if self.page_state.current_page == AppPage::Mappings
+            && self.page_state.mapping_mode == MappingPageMode::Write
+        {
+            self.page_state.selected_mapping_field =
+                self.page_state.selected_mapping_field.previous();
+            self.page_state.mapping_midi_learn_armed = false;
+        }
+    }
+
+    fn select_next_page_field(&mut self) {
+        if self.page_state.current_page == AppPage::Mappings
+            && self.page_state.mapping_mode == MappingPageMode::Write
+        {
+            self.page_state.selected_mapping_field = self.page_state.selected_mapping_field.next();
+            self.page_state.mapping_midi_learn_armed = false;
+        }
+    }
+
     fn adjust_page_item(&mut self, delta: i32) {
         match self.page_state.current_page {
             AppPage::Timeline => {}
@@ -2002,8 +2350,7 @@ impl App {
                 if self.page_state.mapping_mode == MappingPageMode::Write
                     && !self.mappings.is_empty()
                 {
-                    let index = self.page_state.selected_mapping_index;
-                    self.mappings[index].enabled = if delta > 0 { true } else { false };
+                    self.adjust_mapping_field(delta);
                 }
             }
             AppPage::MidiIo => {
@@ -2020,8 +2367,7 @@ impl App {
                 if self.page_state.mapping_mode == MappingPageMode::Write
                     && !self.mappings.is_empty()
                 {
-                    let index = self.page_state.selected_mapping_index;
-                    self.mappings[index].enabled = !self.mappings[index].enabled;
+                    self.activate_mapping_field();
                 }
             }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
@@ -2040,6 +2386,76 @@ impl App {
                         track.state.passthrough = !track.state.passthrough;
                     }
                 }
+            }
+        }
+    }
+
+    fn adjust_mapping_field(&mut self, delta: i32) {
+        let index = self.page_state.selected_mapping_index;
+        let field = self.page_state.selected_mapping_field;
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return;
+        };
+
+        self.page_state.mapping_midi_learn_armed = false;
+        match field {
+            MappingField::SourceKind => {
+                entry.source_kind = cycle_mapping_source_kind(entry.source_kind, delta);
+                entry.source_label = default_source_label(entry.source_kind).to_string();
+            }
+            MappingField::SourceValue => {
+                entry.source_label =
+                    cycle_mapping_source_label(entry.source_kind, &entry.source_label, delta)
+                        .to_string();
+            }
+            MappingField::Target => {
+                entry.target_label =
+                    cycle_mapping_target_label(&entry.target_label, delta).to_string();
+            }
+            MappingField::Scope => {
+                entry.scope_label =
+                    cycle_mapping_scope_label(&entry.scope_label, delta).to_string();
+            }
+            MappingField::Enabled => {
+                entry.enabled = delta > 0;
+            }
+        }
+    }
+
+    fn activate_mapping_field(&mut self) {
+        let index = self.page_state.selected_mapping_index;
+        let field = self.page_state.selected_mapping_field;
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return;
+        };
+
+        match field {
+            MappingField::SourceKind => {
+                entry.source_kind = cycle_mapping_source_kind(entry.source_kind, 1);
+                entry.source_label = default_source_label(entry.source_kind).to_string();
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::SourceValue => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    self.page_state.mapping_midi_learn_armed =
+                        !self.page_state.mapping_midi_learn_armed;
+                } else {
+                    entry.source_label =
+                        cycle_mapping_source_label(entry.source_kind, &entry.source_label, 1)
+                            .to_string();
+                }
+            }
+            MappingField::Target => {
+                entry.target_label = cycle_mapping_target_label(&entry.target_label, 1).to_string();
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::Scope => {
+                entry.scope_label = cycle_mapping_scope_label(&entry.scope_label, 1).to_string();
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::Enabled => {
+                entry.enabled = !entry.enabled;
+                self.page_state.mapping_midi_learn_armed = false;
             }
         }
     }
@@ -2106,6 +2522,10 @@ impl App {
     }
 
     fn handle_midi_input_event(&mut self, event: MidiInputEvent) {
+        if self.capture_mapping_midi_learn(&event) {
+            return;
+        }
+
         let matching_tracks: Vec<usize> = self
             .project
             .tracks
@@ -2166,9 +2586,30 @@ impl App {
                             }
                         }
                     }
+                    MidiInputMessage::ControlChange { .. } => {}
                 }
             }
         }
+    }
+
+    fn capture_mapping_midi_learn(&mut self, event: &MidiInputEvent) -> bool {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+            || !self.page_state.mapping_midi_learn_armed
+        {
+            return false;
+        }
+
+        let index = self.page_state.selected_mapping_index;
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return false;
+        };
+
+        entry.source_kind = MappingSourceKind::Midi;
+        entry.source_label = midi_learn_label(event);
+        entry.enabled = true;
+        self.page_state.mapping_midi_learn_armed = false;
+        true
     }
 
     fn dispatch_midi_notes(&mut self, previous_ticks: u64, advanced_ticks: u64) {
@@ -2458,6 +2899,47 @@ fn compact_scope_label(scope: &str) -> &str {
     }
 }
 
+fn mapping_field_index(field: MappingField) -> usize {
+    match field {
+        MappingField::SourceKind => 0,
+        MappingField::SourceValue => 1,
+        MappingField::Target => 2,
+        MappingField::Scope => 3,
+        MappingField::Enabled => 4,
+    }
+}
+
+fn midi_learn_label(event: &MidiInputEvent) -> String {
+    match event.message {
+        MidiInputMessage::NoteOn { pitch, .. } | MidiInputMessage::NoteOff { pitch } => {
+            format!("Note {} Ch{}", midi_note_name(pitch), event.channel)
+        }
+        MidiInputMessage::ControlChange { controller, .. } => {
+            format!("CC{} Ch{}", controller, event.channel)
+        }
+    }
+}
+
+fn midi_note_name(pitch: u8) -> String {
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    let name = NAMES[(pitch % 12) as usize];
+    let octave = (pitch / 12) as i16 - 1;
+    format!("{name}{octave}")
+}
+
+fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
+    match quantize {
+        crate::transport::QuantizeMode::Off => "Off",
+        crate::transport::QuantizeMode::Pulse => "Pulse",
+        crate::transport::QuantizeMode::Sixteenth => "1/16",
+        crate::transport::QuantizeMode::Eighth => "1/8",
+        crate::transport::QuantizeMode::Quarter => "1/4",
+        crate::transport::QuantizeMode::Bar => "Bar",
+    }
+}
+
 fn port_name(port: Option<&MidiPortRef>) -> &str {
     port.map(|value| value.name.as_str()).unwrap_or("none")
 }
@@ -2491,8 +2973,9 @@ mod tests {
         App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel,
     };
     use crate::actions::AppAction;
+    use crate::mapping::MappingSourceKind;
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
-    use crate::pages::{AppPage, MidiIoListFocus, RoutingField};
+    use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
     use crate::transport::RecordMode;
     use crate::ui::TimelineFlow;
@@ -2686,9 +3169,48 @@ mod tests {
         let before = app.mappings[0].enabled;
 
         app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Enabled;
         app.apply_action(AppAction::ActivatePageItem);
 
         assert_ne!(app.mappings[0].enabled, before);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_cycles_selected_field() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        assert_eq!(app.page_state.mapping_mode, MappingPageMode::Write);
+        assert_eq!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceValue
+        );
+
+        app.apply_action(AppAction::SelectNextPageField);
+        assert_eq!(app.page_state.selected_mapping_field, MappingField::Target);
+    }
+
+    #[test]
+    fn midi_learn_updates_selected_mapping_source() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::SourceValue;
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.apply_action(AppAction::ActivatePageItem);
+        assert!(app.page_state.mapping_midi_learn_armed);
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 3,
+            message: MidiInputMessage::ControlChange {
+                controller: 24,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.mappings[0].source_label, "CC24 Ch3");
+        assert!(!app.page_state.mapping_midi_learn_armed);
     }
 
     #[test]

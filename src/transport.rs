@@ -33,11 +33,14 @@ impl RecordMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Transport {
     pub tempo_bpm: u16,
     pub ppqn: u16,
     pub quantize: QuantizeMode,
     pub record_mode: RecordMode,
+    pub link_enabled: bool,
+    pub link_start_stop_sync: bool,
     pub loop_enabled: bool,
     pub playing: bool,
     pub recording: bool,
@@ -50,6 +53,8 @@ impl Default for Transport {
             ppqn: 960,
             quantize: QuantizeMode::Sixteenth,
             record_mode: RecordMode::Overdub,
+            link_enabled: false,
+            link_start_stop_sync: false,
             loop_enabled: true,
             playing: false,
             recording: false,

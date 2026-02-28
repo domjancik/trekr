@@ -32,6 +32,9 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - active-track highlighting
 - a moving playhead
 - per-track loop preview
+- an in-canvas transport strip on the timeline page
+- a field-based mappings editor with MIDI learn for MIDI sources
+- an Ableton Link-facing transport layer with runtime status in the transport strip
 
 Launch state:
 
@@ -46,7 +49,10 @@ Current controls:
 - `Tab` / `Shift+Tab`: next/previous page
 - `F1` / `F2` / `F3` / `F4`: show timeline, mappings, MIDI I/O, or routing page
 - `F5`: toggle the quick mappings overlay from any page
+- `F6`: toggle Ableton Link participation
+- `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `Up` / `Down`: select current page item
+- `Shift+Left` / `Shift+Right`: select current editable field on the mappings page in write mode
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `W`: toggle mappings page mode between read-only overview and write mode
@@ -86,7 +92,19 @@ Recording flow notes:
 The `Mappings` page now supports two modes:
 
 - `Read Only`: compact overview
-- `Write`: allows toggling mapping enabled state on the selected row
+- `Write`: field-based editing for source type, source value, target, scope, and enabled state
+
+MIDI learn notes:
+
+- in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
+- the next incoming MIDI note or CC updates that mapping source and exits learn mode
+- `Shift+Left` / `Shift+Right` moves between editable mapping fields
+
+Ableton Link notes:
+
+- on non-Windows builds, the app uses the `ableton-link` crate as the backend transport peer
+- on Windows, the current upstream crate does not build cleanly because its wrapper expects `unistd.h`, so the app keeps the same Link-facing UI/actions with a local stub backend instead of breaking the build
+- the transport strip shows Link enabled state, start/stop sync state, and peer count/status summary
 
 The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.
 

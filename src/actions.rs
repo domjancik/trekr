@@ -20,9 +20,13 @@ pub enum AppAction {
     ActivatePageItem,
     ToggleMappingsOverlay,
     ToggleMappingsWriteMode,
+    SelectPreviousPageField,
+    SelectNextPageField,
     TogglePlayback,
     ToggleRecording,
     CycleRecordMode,
+    ToggleLinkEnabled,
+    ToggleLinkStartStopSync,
     ToggleGlobalLoop,
     ResetGlobalLoop,
     ClearCurrentTrackContent,
@@ -146,6 +150,19 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleMappingsOverlay,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F6),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ToggleLinkStartStopSync
+                } else {
+                    AppAction::ToggleLinkEnabled
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -384,18 +401,28 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Right),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::SelectNextTrack,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SelectNextPageField
+                } else {
+                    AppAction::SelectNextTrack
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Left),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::SelectPreviousTrack,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SelectPreviousPageField
+                } else {
+                    AppAction::SelectPreviousTrack
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {

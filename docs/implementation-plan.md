@@ -111,6 +111,7 @@ Exit criteria:
 Priority 1: Workflow completion
 
 - visible in-canvas transport strip for play, stop, record, record mode, and loop status
+  status: initial slice implemented, needs hierarchy cleanup
 - clearer record-target feedback for armed tracks versus active-track fallback
 - save/load actions from inside the app UI
 - one deterministic empty-project flow and one deterministic fixture-project flow exposed in UI or startup actions
@@ -126,7 +127,9 @@ Priority 2: MIDI authoring usability
 Priority 3: Mapping workflow
 
 - real mapping editor instead of overview-only + enabled toggle
+  status: initial field editor implemented
 - MIDI learn
+  status: initial MIDI note/CC learn implemented
 - OSC binding input path
 - conflict handling and binding replacement rules
 - persistent binding management in save/load flows
@@ -163,6 +166,10 @@ Exit criteria:
 - tempo and beat phase can follow or drive a Link session
 - local recording and loop workflows remain coherent while Link is active
 - Link integration does not require bypassing the canonical action/transport model
+
+Current note:
+
+- the app now exposes Link-facing transport controls and state, but the real `ableton-link` backend is currently enabled only on non-Windows builds because the upstream crate does not compile cleanly on Windows
 
 ## Module Breakdown
 

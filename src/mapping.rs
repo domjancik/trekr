@@ -31,6 +31,112 @@ pub struct MappingEntry {
     pub enabled: bool,
 }
 
+const KEY_SOURCE_OPTIONS: &[&str] = &[
+    "Space",
+    "R",
+    "Shift+R",
+    "C",
+    "Shift+C",
+    "G",
+    "L",
+    "A",
+    "M",
+    "S",
+    "I",
+    "[ ]",
+    ", .",
+    "- =",
+    "/ \\",
+    "Left/Right",
+    "Tab/F1-F6",
+];
+
+const MIDI_SOURCE_OPTIONS: &[&str] =
+    &["Note C2", "Note D2", "CC20", "CC21", "CC22", "CC23", "CC24"];
+
+const OSC_SOURCE_OPTIONS: &[&str] = &[
+    "/transport/play",
+    "/transport/record",
+    "/track/active/arm",
+    "/track/active/mute",
+    "/track/active/loop",
+];
+
+const TARGET_OPTIONS: &[&str] = &[
+    "Play/Stop",
+    "Record",
+    "Record Mode",
+    "Song Loop",
+    "Track Loop",
+    "Clear Track",
+    "Clear All",
+    "Track Arm",
+    "Track Mute",
+    "Track Solo",
+    "Passthrough",
+    "Select Track",
+    "Pages/Overlay",
+    "Link Enable",
+    "Link Start/Stop",
+];
+
+const SCOPE_OPTIONS: &[&str] = &[
+    "Global",
+    "Active Track",
+    "Armed/Active",
+    "Relative",
+    "Absolute",
+];
+
+pub fn cycle_mapping_source_kind(current: MappingSourceKind, delta: i32) -> MappingSourceKind {
+    let options = [
+        MappingSourceKind::Key,
+        MappingSourceKind::Midi,
+        MappingSourceKind::Osc,
+    ];
+    let current_index = options
+        .iter()
+        .position(|candidate| *candidate == current)
+        .unwrap_or(0) as i32;
+    options[(current_index + delta).rem_euclid(options.len() as i32) as usize]
+}
+
+pub fn default_source_label(kind: MappingSourceKind) -> &'static str {
+    source_options(kind).first().copied().unwrap_or("Space")
+}
+
+pub fn cycle_mapping_source_label(
+    kind: MappingSourceKind,
+    current: &str,
+    delta: i32,
+) -> &'static str {
+    cycle_label(source_options(kind), current, delta)
+}
+
+pub fn cycle_mapping_target_label(current: &str, delta: i32) -> &'static str {
+    cycle_label(TARGET_OPTIONS, current, delta)
+}
+
+pub fn cycle_mapping_scope_label(current: &str, delta: i32) -> &'static str {
+    cycle_label(SCOPE_OPTIONS, current, delta)
+}
+
+fn source_options(kind: MappingSourceKind) -> &'static [&'static str] {
+    match kind {
+        MappingSourceKind::Key => KEY_SOURCE_OPTIONS,
+        MappingSourceKind::Midi => MIDI_SOURCE_OPTIONS,
+        MappingSourceKind::Osc => OSC_SOURCE_OPTIONS,
+    }
+}
+
+fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str {
+    let current_index = options
+        .iter()
+        .position(|candidate| *candidate == current)
+        .unwrap_or(0) as i32;
+    options[(current_index + delta).rem_euclid(options.len() as i32) as usize]
+}
+
 pub fn demo_mappings() -> Vec<MappingEntry> {
     vec![
         MappingEntry {
@@ -220,7 +326,10 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MappingSourceKind, demo_mappings};
+    use super::{
+        MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_kind,
+        cycle_mapping_target_label, default_source_label, demo_mappings,
+    };
 
     #[test]
     fn demo_mappings_cover_key_midi_and_osc_sources() {
@@ -241,5 +350,19 @@ mod tests {
                 .iter()
                 .any(|entry| entry.source_kind == MappingSourceKind::Osc)
         );
+    }
+
+    #[test]
+    fn mapping_cycle_helpers_wrap() {
+        assert_eq!(
+            cycle_mapping_source_kind(MappingSourceKind::Key, -1),
+            MappingSourceKind::Osc
+        );
+        assert_eq!(default_source_label(MappingSourceKind::Midi), "Note C2");
+        assert_eq!(
+            cycle_mapping_target_label("Play/Stop", -1),
+            "Link Start/Stop"
+        );
+        assert_eq!(cycle_mapping_scope_label("Global", -1), "Absolute");
     }
 }

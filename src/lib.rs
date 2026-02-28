@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod app;
 pub mod engine;
+pub mod link;
 pub mod mapping;
 pub mod midi_io;
 pub mod pages;

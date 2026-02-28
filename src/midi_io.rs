@@ -30,6 +30,7 @@ pub enum MidiMessageKind {
 pub enum MidiInputMessage {
     NoteOn { pitch: u8, velocity: u8 },
     NoteOff { pitch: u8 },
+    ControlChange { controller: u8, value: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -398,6 +399,10 @@ fn parse_input_event(port_name: &str, message: &[u8]) -> Option<MidiInputEvent> 
             pitch,
             velocity: value,
         },
+        0xB0 => MidiInputMessage::ControlChange {
+            controller: pitch,
+            value,
+        },
         _ => return None,
     };
 
@@ -453,6 +458,7 @@ mod tests {
     fn parse_input_event_handles_note_on_and_off() {
         let note_on = parse_input_event("In A", &[0x90, 64, 100]).unwrap();
         let note_off = parse_input_event("In A", &[0x90, 64, 0]).unwrap();
+        let cc = parse_input_event("In A", &[0xB0, 21, 127]).unwrap();
 
         assert_eq!(
             note_on.message,
@@ -462,5 +468,12 @@ mod tests {
             }
         );
         assert_eq!(note_off.message, MidiInputMessage::NoteOff { pitch: 64 });
+        assert_eq!(
+            cc.message,
+            MidiInputMessage::ControlChange {
+                controller: 21,
+                value: 127,
+            }
+        );
     }
 }

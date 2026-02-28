@@ -33,8 +33,11 @@ Keyboard mappings currently implemented:
 - `Tab` / `Shift+Tab`: next/previous page
 - `F1` / `F2` / `F3` / `F4`: timeline / mappings / MIDI I/O / routing page
 - `F5`: toggle mappings overlay
+- `F6`: toggle Ableton Link participation
+- `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `W`: toggle mappings page mode
 - `Up` / `Down`: select current page item
+- `Shift+Left` / `Shift+Right`: select current mappings-editor field in write mode
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `Escape`: quit
@@ -49,6 +52,7 @@ Prototype demo MIDI/OSC mappings shown on the mappings page:
 - `/track/active/arm` -> `Track Arm` (`Active Track`)
 
 Notes:
-- the mappings page is still a prototype overview, not the final editor
-- MIDI/OSC input learn is not implemented yet
+- the mappings page now has a basic write mode with field selection and MIDI learn
+- MIDI learn currently captures MIDI note and CC sources
+- OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface

@@ -45,6 +45,55 @@ pub enum MappingPageMode {
     Write,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MappingField {
+    SourceKind,
+    SourceValue,
+    Target,
+    Scope,
+    Enabled,
+}
+
+impl MappingField {
+    pub const ALL: [Self; 5] = [
+        Self::SourceKind,
+        Self::SourceValue,
+        Self::Target,
+        Self::Scope,
+        Self::Enabled,
+    ];
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::SourceKind => Self::SourceValue,
+            Self::SourceValue => Self::Target,
+            Self::Target => Self::Scope,
+            Self::Scope => Self::Enabled,
+            Self::Enabled => Self::SourceKind,
+        }
+    }
+
+    pub fn previous(self) -> Self {
+        match self {
+            Self::SourceKind => Self::Enabled,
+            Self::SourceValue => Self::SourceKind,
+            Self::Target => Self::SourceValue,
+            Self::Scope => Self::Target,
+            Self::Enabled => Self::Scope,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SourceKind => "Type",
+            Self::SourceValue => "Source",
+            Self::Target => "Target",
+            Self::Scope => "Scope",
+            Self::Enabled => "On",
+        }
+    }
+}
+
 impl MappingPageMode {
     pub fn label(self) -> &'static str {
         match self {
@@ -143,11 +192,14 @@ impl RoutingField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppPageState {
     pub current_page: AppPage,
     pub midi_io: MidiIoPageState,
     pub selected_mapping_index: usize,
     pub mapping_mode: MappingPageMode,
+    pub selected_mapping_field: MappingField,
+    pub mapping_midi_learn_armed: bool,
     pub selected_routing_field: RoutingField,
 }
 
@@ -158,6 +210,8 @@ impl Default for AppPageState {
             midi_io: MidiIoPageState::default(),
             selected_mapping_index: 0,
             mapping_mode: MappingPageMode::Overview,
+            selected_mapping_field: MappingField::SourceValue,
+            mapping_midi_learn_armed: false,
             selected_routing_field: RoutingField::InputDevice,
         }
     }
@@ -165,7 +219,7 @@ impl Default for AppPageState {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppPage, MappingPageMode, MidiIoListFocus, RoutingField};
+    use super::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
 
     #[test]
     fn app_pages_cycle_in_expected_order() {
@@ -191,5 +245,11 @@ mod tests {
     fn mapping_page_mode_toggles() {
         assert_eq!(MappingPageMode::Overview.toggle(), MappingPageMode::Write);
         assert_eq!(MappingPageMode::Write.label(), "Write");
+    }
+
+    #[test]
+    fn mapping_fields_cycle() {
+        assert_eq!(MappingField::SourceKind.previous(), MappingField::Enabled);
+        assert_eq!(MappingField::Enabled.next(), MappingField::SourceKind);
     }
 }
