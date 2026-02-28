@@ -39,6 +39,7 @@ Current controls:
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `Space`: play/stop
+- `Home`: reset the global song loop to the full song range
 - `[` / `]`: set current-track loop start/end at playhead
 - `,` / `.`: nudge current-track loop backward/forward by one quantize step
 - `-` / `=`: shorten/extend current-track loop by one quantize step
@@ -56,3 +57,5 @@ Current controls:
 - `Left` / `Right`: select previous/next track directly
 - `1`-`9`: select track by absolute index
 - `Escape`: quit
+
+The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.

@@ -20,6 +20,7 @@ pub enum AppAction {
     ActivatePageItem,
     TogglePlayback,
     ToggleGlobalLoop,
+    ResetGlobalLoop,
     ToggleCurrentTrackLoop,
     SetCurrentTrackLoopStart,
     SetCurrentTrackLoopEnd,
@@ -50,6 +51,7 @@ pub enum AppAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionSource {
     Keyboard,
+    Pointer,
     Midi,
     Touch,
     Remote,
@@ -138,6 +140,14 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleGlobalLoop,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Home),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ResetGlobalLoop,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -526,6 +536,25 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&global).unwrap().action,
             AppAction::SetGlobalLoopEnd
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_home_to_global_loop_reset() {
+        let event = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Home),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&event).unwrap().action,
+            AppAction::ResetGlobalLoop
         );
     }
 

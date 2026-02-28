@@ -21,6 +21,7 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_output: MidiOutputRuntime,
     mappings: Vec<MappingEntry>,
+    viewport_size: (u32, u32),
     playhead_ticks: u64,
 }
 
@@ -37,6 +38,7 @@ impl App {
             midi_devices: scanned_devices,
             midi_output: MidiOutputRuntime::default(),
             mappings: demo_mappings(),
+            viewport_size: (1280, 720),
             playhead_ticks: 0,
         };
         app.seed_demo_routing();
@@ -80,6 +82,13 @@ impl App {
 
         'running: loop {
             for event in event_pump.poll_iter() {
+                if let Some(action_event) = self.pointer_action(&event) {
+                    if self.apply_action(action_event.action) == AppControl::Quit {
+                        break 'running;
+                    }
+                    continue;
+                }
+
                 if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
                     if self.apply_action(action_event.action) == AppControl::Quit {
                         break 'running;
@@ -94,6 +103,7 @@ impl App {
             let now = Instant::now();
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            self.viewport_size = canvas.output_size()?;
 
             self.update_window_title(canvas.window_mut())?;
             self.draw(&mut canvas)?;
@@ -186,7 +196,26 @@ impl App {
         canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let columns = crate::ui::track_column_pairs(content_bounds, self.project.tracks.len());
+        let (header_bounds, timeline_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
+        let reset_button = self.global_loop_reset_button_rect(header_bounds);
+        canvas.set_draw_color(Color::RGB(34, 44, 64));
+        canvas.fill_rect(header_bounds)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(header_bounds)?;
+        canvas.set_draw_color(Color::RGB(122, 84, 52));
+        canvas.fill_rect(reset_button)?;
+        canvas.set_draw_color(Color::RGB(244, 232, 146));
+        canvas.draw_rect(reset_button)?;
+        crate::ui::draw_text(
+            canvas,
+            "Reset Song Loop",
+            reset_button.x + 8,
+            reset_button.y + 8,
+            1,
+            Color::RGB(248, 244, 212),
+        )?;
+
+        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
 
         for (index, track) in self.project.tracks.iter().enumerate() {
             if let Some((full_bounds, detail_bounds)) = columns.get(index).copied() {
@@ -872,6 +901,14 @@ impl App {
                 self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
                 AppControl::Continue
             }
+            AppAction::ResetGlobalLoop => {
+                self.project.loop_region = self.project.full_song_range();
+                self.project.transport.loop_enabled = true;
+                self.playhead_ticks = self
+                    .playhead_ticks
+                    .clamp(self.project.loop_region.start_ticks, self.project.loop_region.end_ticks());
+                AppControl::Continue
+            }
             AppAction::ToggleCurrentTrackLoop => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.loop_enabled = !track.state.loop_enabled;
@@ -1272,6 +1309,51 @@ impl App {
             RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
         }
     }
+
+    fn pointer_action(&self, event: &sdl3::event::Event) -> Option<crate::actions::ActionEvent> {
+        match event {
+            sdl3::event::Event::MouseButtonDown { x, y, .. }
+                if self.page_state.current_page == AppPage::Timeline
+                    && rect_contains(
+                        self.global_loop_reset_button_rect(self.timeline_header_bounds()),
+                        *x as i32,
+                        *y as i32,
+                    ) =>
+            {
+                Some(crate::actions::ActionEvent::new(
+                    AppAction::ResetGlobalLoop,
+                    crate::actions::ActionSource::Pointer,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    fn timeline_header_bounds(&self) -> Rect {
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).expect("fixed app inset");
+        let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("fixed tabs split");
+        let (header_bounds, _) =
+            crate::ui::split_top_strip(content_bounds, 28, 10).expect("fixed timeline split");
+        header_bounds
+    }
+
+    fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
+        let width = crate::ui::text_width("Reset Song Loop", 1) + 18;
+        Rect::new(
+            header_bounds.x + 8,
+            header_bounds.y + 4,
+            width,
+            header_bounds.height().saturating_sub(8),
+        )
+    }
+}
+
+fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
+    x >= rect.x
+        && x < rect.x + rect.width() as i32
+        && y >= rect.y
+        && y < rect.y + rect.height() as i32
 }
 
 fn scheduled_note_events(
@@ -1637,5 +1719,18 @@ mod tests {
             MidiChannelFilter::Channel(1)
         );
         assert_eq!(cycle_output_channel(None, -1), Some(16));
+    }
+
+    #[test]
+    fn reset_global_loop_restores_full_song_range() {
+        let mut app = App::new();
+        app.project.loop_region.start_ticks = 1_920;
+        app.project.loop_region.length_ticks = 1;
+        app.playhead_ticks = 1_920;
+
+        app.apply_action(AppAction::ResetGlobalLoop);
+
+        assert_eq!(app.project.loop_region, app.project.full_song_range());
+        assert!(app.project.transport.loop_enabled);
     }
 }
