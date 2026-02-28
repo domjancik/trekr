@@ -360,6 +360,13 @@ impl App {
             1,
             Color::RGB(244, 244, 236),
         )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Full + loop detail",
+            Rect::new(record_mode_badge.x + record_mode_badge.width() as i32 + 12, header_bounds.y + 8, 116, 8),
+            1,
+            Color::RGB(190, 198, 210),
+        )?;
         canvas.set_draw_color(Color::RGB(122, 84, 52));
         canvas.fill_rect(reset_button)?;
         canvas.set_draw_color(Color::RGB(244, 232, 146));
@@ -375,18 +382,6 @@ impl App {
             ),
             1,
             Color::RGB(248, 244, 212),
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Song | Loop",
-            Rect::new(
-                reset_button.x + reset_button.width() as i32 + 12,
-                header_bounds.y + 8,
-                72,
-                8,
-            ),
-            1,
-            Color::RGB(190, 198, 210),
         )?;
 
         let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
@@ -2281,7 +2276,7 @@ impl App {
     fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
         let width = crate::ui::text_width("Reset Song Loop", 1) + 18;
         Rect::new(
-            header_bounds.x + 8,
+            header_bounds.x + header_bounds.width() as i32 - width as i32 - 8,
             header_bounds.y + 4,
             width,
             header_bounds.height().saturating_sub(8),
