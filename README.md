@@ -61,3 +61,17 @@ Current controls:
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
 
 The `Mappings` page is currently a non-editable quick overview of all key, MIDI, and OSC bindings.
+
+## UI Review Loop
+
+The repo includes a scripted screenshot-and-review loop for visual QA:
+
+- `scripts/capture-ui-screens.ps1`: launches `trekr`, captures `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
+- `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
+- `scripts/run-ui-review.ps1`: runs both steps in sequence
+
+Example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-ui-review.ps1
+```
