@@ -589,9 +589,11 @@ impl App {
             canvas.draw_rect(region.rect)?;
         }
 
-        if let Some(preview_region) =
-            track.preview_region(self.project.transport, self.transport_ticks)
-        {
+        if let Some(preview_region) = track.preview_region(
+            self.project.transport,
+            self.record_head_ticks(track),
+            self.record_range(track),
+        ) {
             if preview_region.intersects(note_range) {
                 for region in crate::ui::region_rects(
                     content_rect,
@@ -1731,6 +1733,24 @@ impl App {
         track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
     }
 
+    fn record_head_ticks(&self, track: &Track) -> u64 {
+        if track.state.loop_enabled {
+            self.effective_track_playhead(track)
+        } else {
+            self.playhead_ticks
+        }
+    }
+
+    fn record_range(&self, track: &Track) -> Option<crate::timeline::LoopRegion> {
+        if track.state.loop_enabled {
+            Some(track.loop_region)
+        } else if self.project.transport.loop_enabled {
+            Some(self.project.loop_region)
+        } else {
+            None
+        }
+    }
+
     fn begin_recording(&mut self) {
         let target_indices = self.record_target_indices();
         if target_indices.is_empty() {
@@ -1738,8 +1758,14 @@ impl App {
         }
 
         for index in target_indices {
+            let pressed_at = self
+                .project
+                .tracks
+                .get(index)
+                .map(|track| self.record_head_ticks(track))
+                .unwrap_or(self.playhead_ticks);
             if let Some(track) = self.project.tracks.get_mut(index) {
-                track.begin_recording(self.transport_ticks);
+                track.begin_recording(pressed_at);
             }
         }
         self.project.transport.recording = true;
@@ -1747,12 +1773,25 @@ impl App {
     }
 
     fn finish_recording(&mut self) {
-        let release_ticks = self.transport_ticks;
         let transport = self.project.transport;
+        let track_count = self.project.tracks.len();
 
-        for track in &mut self.project.tracks {
-            if track.active_take.is_some() {
-                track.finish_recording(transport, release_ticks);
+        for index in 0..track_count {
+            let release_ticks = self
+                .project
+                .tracks
+                .get(index)
+                .map(|track| self.record_head_ticks(track))
+                .unwrap_or(self.playhead_ticks);
+            let record_range = self
+                .project
+                .tracks
+                .get(index)
+                .and_then(|track| self.record_range(track));
+            if let Some(track) = self.project.tracks.get_mut(index) {
+                if track.active_take.is_some() {
+                    track.finish_recording(transport, release_ticks, record_range);
+                }
             }
         }
 
@@ -2587,6 +2626,27 @@ mod tests {
         assert!(!app.project.transport.recording);
         assert!(!app.project.transport.playing);
         assert!(!app.project.active_track().unwrap().regions.is_empty());
+    }
+
+    #[test]
+    fn looped_track_recording_commits_inside_track_loop() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        app.project.transport.quantize = crate::transport::QuantizeMode::Off;
+        app.project.transport.loop_enabled = false;
+        app.playhead_ticks = 1_680;
+
+        app.apply_action(AppAction::ToggleRecording);
+        app.playhead_ticks = 1_200;
+        app.apply_action(AppAction::ToggleRecording);
+
+        assert_eq!(
+            app.project.active_track().unwrap().regions,
+            vec![crate::timeline::Region::new(1_680, 240)]
+        );
     }
 
     #[test]

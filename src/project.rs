@@ -109,21 +109,31 @@ impl Track {
     }
 
     /// V1 is MIDI-first, so record commit currently appends a MIDI region.
-    pub fn finish_recording(&mut self, transport: Transport, released_at: u64) {
+    pub fn finish_recording(
+        &mut self,
+        transport: Transport,
+        released_at: u64,
+        record_range: Option<LoopRegion>,
+    ) {
         let Some(take) = self.active_take.take() else {
             return;
         };
 
-        self.commit_take(transport, take.release(released_at));
+        self.commit_take(transport, take.release(released_at), record_range);
     }
 
-    pub fn commit_take(&mut self, transport: Transport, take: RecordingTake) {
+    pub fn commit_take(
+        &mut self,
+        transport: Transport,
+        take: RecordingTake,
+        record_range: Option<LoopRegion>,
+    ) {
         let Some(released_at) = take.released_at_ticks else {
             return;
         };
 
-        let start_ticks = transport.quantize_to_nearest(take.pressed_at_ticks);
-        let end_ticks = transport.quantize_to_nearest(released_at);
+        let (start_ticks, end_ticks) =
+            normalized_record_span(transport, take.pressed_at_ticks, released_at, record_range);
         let length_ticks = end_ticks.saturating_sub(start_ticks);
 
         if length_ticks == 0 {
@@ -142,9 +152,17 @@ impl Track {
         self.append_demo_recorded_notes(start_ticks, length_ticks);
     }
 
-    pub fn preview_region(&self, transport: Transport, current_ticks: u64) -> Option<Region> {
+    pub fn preview_region(
+        &self,
+        transport: Transport,
+        current_ticks: u64,
+        record_range: Option<LoopRegion>,
+    ) -> Option<Region> {
         self.active_take.and_then(|take| {
-            take.preview_region(current_ticks, |ticks| transport.quantize_to_nearest(ticks))
+            let (start_ticks, end_ticks) =
+                normalized_record_span(transport, take.pressed_at_ticks, current_ticks, record_range);
+            let length_ticks = end_ticks.saturating_sub(start_ticks);
+            (length_ticks > 0).then_some(Region::new(start_ticks, length_ticks))
         })
     }
 
@@ -215,6 +233,28 @@ impl Track {
             ));
         }
     }
+}
+
+fn normalized_record_span(
+    transport: Transport,
+    pressed_at_ticks: u64,
+    released_at_ticks: u64,
+    record_range: Option<LoopRegion>,
+) -> (u64, u64) {
+    let mut start_ticks = transport.quantize_to_nearest(pressed_at_ticks);
+    let mut end_ticks = transport.quantize_to_nearest(released_at_ticks);
+
+    if let Some(range) = record_range {
+        let range_start = range.start_ticks;
+        let range_end = range.end_ticks();
+        start_ticks = start_ticks.clamp(range_start, range_end.saturating_sub(1));
+        end_ticks = end_ticks.clamp(range_start, range_end);
+        if end_ticks < start_ticks {
+            end_ticks = range_end;
+        }
+    }
+
+    (start_ticks, end_ticks)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,7 +333,7 @@ mod tests {
         };
         let mut track = Track::new("Track 1", TrackKind::Midi);
 
-        track.commit_take(transport, RecordingTake::new(220).release(721));
+        track.commit_take(transport, RecordingTake::new(220).release(721), None);
 
         assert_eq!(track.regions, vec![Region::new(240, 480)]);
     }
@@ -304,7 +344,7 @@ mod tests {
         let mut track = Track::new("Track 1", TrackKind::Midi);
         track.begin_recording(960);
 
-        track.finish_recording(transport, 1_920);
+        track.finish_recording(transport, 1_920, None);
 
         assert!(track.active_take.is_none());
         assert_eq!(track.regions, vec![Region::new(960, 960)]);
@@ -320,7 +360,7 @@ mod tests {
         track.begin_recording(110);
 
         assert_eq!(
-            track.preview_region(transport, 1_120),
+            track.preview_region(transport, 1_120, None),
             Some(Region::new(0, 960))
         );
     }
@@ -383,7 +423,7 @@ mod tests {
         ];
         track.regions = vec![Region::new(0, 960), Region::new(1_920, 960)];
 
-        track.commit_take(transport, RecordingTake::new(0).release(1_000));
+        track.commit_take(transport, RecordingTake::new(0).release(1_000), None);
 
         assert_eq!(
             track.regions,
@@ -402,5 +442,23 @@ mod tests {
                 .iter()
                 .any(|note| note.pitch == 60 && note.start_ticks == 0)
         );
+    }
+
+    #[test]
+    fn loop_recording_clamps_wrapped_release_to_loop_end() {
+        let transport = Transport {
+            quantize: QuantizeMode::Off,
+            ..Transport::default()
+        };
+        let mut track = Track::new("Track 1", TrackKind::Midi);
+        let loop_range = LoopRegion::new(960, 960);
+
+        track.commit_take(
+            transport,
+            RecordingTake::new(1_680).release(1_200),
+            Some(loop_range),
+        );
+
+        assert_eq!(track.regions.last().copied(), Some(Region::new(1_680, 240)));
     }
 }
