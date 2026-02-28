@@ -92,12 +92,14 @@ Recording flow notes:
 The `Mappings` page now supports two modes:
 
 - `Read Only`: compact overview
-- `Write`: field-based editing for source type, source value, target, scope, and enabled state
+- `Write`: field-based editing for source type, source device, source value, target, scope, and enabled state
 
 MIDI learn notes:
 
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
+- learned MIDI mappings store the device name of the input that triggered learn
+- live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
 
 Ableton Link notes:

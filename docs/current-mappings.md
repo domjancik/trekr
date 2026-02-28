@@ -54,5 +54,8 @@ Prototype demo MIDI/OSC mappings shown on the mappings page:
 Notes:
 - the mappings page now has a basic write mode with field selection and MIDI learn
 - MIDI learn currently captures MIDI note and CC sources
+- MIDI mappings can now execute app actions from live MIDI input
+- MIDI mappings can be filtered to `Any MIDI` or a specific input device name
+- a persisted mapping may also target an absolute track scope like `Track 3`
 - OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface

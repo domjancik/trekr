@@ -25,6 +25,8 @@ pub enum MappingSourceKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MappingEntry {
     pub source_kind: MappingSourceKind,
+    #[serde(default = "default_mapping_source_device")]
+    pub source_device_label: String,
     pub source_label: String,
     pub target_label: String,
     pub scope_label: String,
@@ -88,6 +90,10 @@ const SCOPE_OPTIONS: &[&str] = &[
     "Absolute",
 ];
 
+pub fn default_mapping_source_device() -> String {
+    "Any MIDI".to_string()
+}
+
 pub fn cycle_mapping_source_kind(current: MappingSourceKind, delta: i32) -> MappingSourceKind {
     let options = [
         MappingSourceKind::Key,
@@ -121,6 +127,21 @@ pub fn cycle_mapping_scope_label(current: &str, delta: i32) -> &'static str {
     cycle_label(SCOPE_OPTIONS, current, delta)
 }
 
+pub fn cycle_mapping_source_device_label(current: &str, devices: &[String], delta: i32) -> String {
+    let mut options = vec![default_mapping_source_device()];
+    for device in devices {
+        if !options.iter().any(|candidate| candidate == device) {
+            options.push(device.clone());
+        }
+    }
+
+    let current_index = options
+        .iter()
+        .position(|candidate| candidate == current)
+        .unwrap_or(0) as i32;
+    options[(current_index + delta).rem_euclid(options.len() as i32) as usize].clone()
+}
+
 fn source_options(kind: MappingSourceKind) -> &'static [&'static str] {
     match kind {
         MappingSourceKind::Key => KEY_SOURCE_OPTIONS,
@@ -139,196 +160,189 @@ fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str
 
 pub fn demo_mappings() -> Vec<MappingEntry> {
     vec![
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Space".to_string(),
-            target_label: "Play/Stop".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Shift+R".to_string(),
-            target_label: "Record Mode".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "R".to_string(),
-            target_label: "Record".to_string(),
-            scope_label: "Armed/Active".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "C".to_string(),
-            target_label: "Clear Track".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Shift+C".to_string(),
-            target_label: "Clear All".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "G".to_string(),
-            target_label: "Song Loop".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "L".to_string(),
-            target_label: "Track Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Midi,
-            source_label: "CC20".to_string(),
-            target_label: "Track Arm".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "A".to_string(),
-            target_label: "Track Arm".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "M".to_string(),
-            target_label: "Track Mute".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "S".to_string(),
-            target_label: "Track Solo".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "I".to_string(),
-            target_label: "Passthrough".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "[ ]".to_string(),
-            target_label: "Set Track Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Shift+[ ]".to_string(),
-            target_label: "Set Song Loop".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: ", .".to_string(),
-            target_label: "Nudge Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Shift+, .".to_string(),
-            target_label: "Nudge Song Loop".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "- =".to_string(),
-            target_label: "Resize Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "/ \\".to_string(),
-            target_label: "Half/Double Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Left/Right".to_string(),
-            target_label: "Select Track".to_string(),
-            scope_label: "Relative".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "1-9".to_string(),
-            target_label: "Select Track".to_string(),
-            scope_label: "Absolute".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Key,
-            source_label: "Tab/F1-F5".to_string(),
-            target_label: "Pages/Overlay".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Midi,
-            source_label: "Note C2".to_string(),
-            target_label: "Record Hold".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: false,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Midi,
-            source_label: "CC21".to_string(),
-            target_label: "Track Loop".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: false,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Midi,
-            source_label: "CC22".to_string(),
-            target_label: "Track Mute".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: false,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Osc,
-            source_label: "/transport/play".to_string(),
-            target_label: "Play/Stop".to_string(),
-            scope_label: "Global".to_string(),
-            enabled: true,
-        },
-        MappingEntry {
-            source_kind: MappingSourceKind::Osc,
-            source_label: "/track/active/arm".to_string(),
-            target_label: "Track Arm".to_string(),
-            scope_label: "Active Track".to_string(),
-            enabled: false,
-        },
+        entry(MappingSourceKind::Key, "Space", "Play/Stop", "Global", true),
+        entry(
+            MappingSourceKind::Key,
+            "Shift+R",
+            "Record Mode",
+            "Global",
+            true,
+        ),
+        entry(MappingSourceKind::Key, "R", "Record", "Armed/Active", true),
+        entry(
+            MappingSourceKind::Key,
+            "C",
+            "Clear Track",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Shift+C",
+            "Clear All",
+            "Global",
+            true,
+        ),
+        entry(MappingSourceKind::Key, "G", "Song Loop", "Global", true),
+        entry(
+            MappingSourceKind::Key,
+            "L",
+            "Track Loop",
+            "Active Track",
+            true,
+        ),
+        midi_entry("Any MIDI", "CC20", "Track Arm", "Active Track", true),
+        entry(
+            MappingSourceKind::Key,
+            "A",
+            "Track Arm",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "M",
+            "Track Mute",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "S",
+            "Track Solo",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "I",
+            "Passthrough",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "[ ]",
+            "Set Track Loop",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Shift+[ ]",
+            "Set Song Loop",
+            "Global",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            ", .",
+            "Nudge Loop",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Shift+, .",
+            "Nudge Song Loop",
+            "Global",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "- =",
+            "Resize Loop",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "/ \\",
+            "Half/Double Loop",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Left/Right",
+            "Select Track",
+            "Relative",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "1-9",
+            "Select Track",
+            "Absolute",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Tab/F1-F5",
+            "Pages/Overlay",
+            "Global",
+            true,
+        ),
+        midi_entry("Any MIDI", "Note C2", "Record Hold", "Global", false),
+        midi_entry("Any MIDI", "CC21", "Track Loop", "Active Track", false),
+        midi_entry("Any MIDI", "CC22", "Track Mute", "Active Track", false),
+        entry(
+            MappingSourceKind::Osc,
+            "/transport/play",
+            "Play/Stop",
+            "Global",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Osc,
+            "/track/active/arm",
+            "Track Arm",
+            "Active Track",
+            false,
+        ),
     ]
+}
+
+fn entry(
+    source_kind: MappingSourceKind,
+    source_label: &str,
+    target_label: &str,
+    scope_label: &str,
+    enabled: bool,
+) -> MappingEntry {
+    MappingEntry {
+        source_kind,
+        source_device_label: default_mapping_source_device(),
+        source_label: source_label.to_string(),
+        target_label: target_label.to_string(),
+        scope_label: scope_label.to_string(),
+        enabled,
+    }
+}
+
+fn midi_entry(
+    source_device_label: &str,
+    source_label: &str,
+    target_label: &str,
+    scope_label: &str,
+    enabled: bool,
+) -> MappingEntry {
+    MappingEntry {
+        source_kind: MappingSourceKind::Midi,
+        source_device_label: source_device_label.to_string(),
+        source_label: source_label.to_string(),
+        target_label: target_label.to_string(),
+        scope_label: scope_label.to_string(),
+        enabled,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_kind,
-        cycle_mapping_target_label, default_source_label, demo_mappings,
+        MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_device_label,
+        cycle_mapping_source_kind, cycle_mapping_target_label, default_mapping_source_device,
+        default_source_label, demo_mappings,
     };
 
     #[test]
@@ -359,10 +373,15 @@ mod tests {
             MappingSourceKind::Osc
         );
         assert_eq!(default_source_label(MappingSourceKind::Midi), "Note C2");
+        assert_eq!(default_mapping_source_device(), "Any MIDI");
         assert_eq!(
             cycle_mapping_target_label("Play/Stop", -1),
             "Link Start/Stop"
         );
         assert_eq!(cycle_mapping_scope_label("Global", -1), "Absolute");
+        assert_eq!(
+            cycle_mapping_source_device_label("Any MIDI", &["Port A".to_string()], 1),
+            "Port A"
+        );
     }
 }

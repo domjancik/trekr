@@ -48,6 +48,7 @@ pub enum MappingPageMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MappingField {
     SourceKind,
+    SourceDevice,
     SourceValue,
     Target,
     Scope,
@@ -55,8 +56,9 @@ pub enum MappingField {
 }
 
 impl MappingField {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::SourceKind,
+        Self::SourceDevice,
         Self::SourceValue,
         Self::Target,
         Self::Scope,
@@ -65,7 +67,8 @@ impl MappingField {
 
     pub fn next(self) -> Self {
         match self {
-            Self::SourceKind => Self::SourceValue,
+            Self::SourceKind => Self::SourceDevice,
+            Self::SourceDevice => Self::SourceValue,
             Self::SourceValue => Self::Target,
             Self::Target => Self::Scope,
             Self::Scope => Self::Enabled,
@@ -76,7 +79,8 @@ impl MappingField {
     pub fn previous(self) -> Self {
         match self {
             Self::SourceKind => Self::Enabled,
-            Self::SourceValue => Self::SourceKind,
+            Self::SourceDevice => Self::SourceKind,
+            Self::SourceValue => Self::SourceDevice,
             Self::Target => Self::SourceValue,
             Self::Scope => Self::Target,
             Self::Enabled => Self::Scope,
@@ -86,6 +90,7 @@ impl MappingField {
     pub fn label(self) -> &'static str {
         match self {
             Self::SourceKind => "Type",
+            Self::SourceDevice => "Device",
             Self::SourceValue => "Source",
             Self::Target => "Target",
             Self::Scope => "Scope",

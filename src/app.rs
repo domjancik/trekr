@@ -2,8 +2,9 @@ use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
-    MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_kind,
-    cycle_mapping_source_label, cycle_mapping_target_label, default_source_label, demo_mappings,
+    MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_device_label,
+    cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
+    default_mapping_source_device, default_source_label, demo_mappings,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -860,12 +861,18 @@ impl App {
         Ok(())
     }
 
-    fn mapping_row_cells(&self, row: Rect) -> [Rect; 5] {
+    fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
         let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
         let source_rect = Rect::new(
             type_rect.x + type_rect.width() as i32 + 6,
             row.y + 3,
-            116,
+            92,
+            row.height().saturating_sub(6),
+        );
+        let device_rect = Rect::new(
+            source_rect.x + source_rect.width() as i32 + 6,
+            row.y + 3,
+            98,
             row.height().saturating_sub(6),
         );
         let enabled_rect = Rect::new(
@@ -881,14 +888,15 @@ impl App {
             row.height().saturating_sub(6),
         );
         let target_rect = Rect::new(
-            source_rect.x + source_rect.width() as i32 + 6,
+            device_rect.x + device_rect.width() as i32 + 6,
             row.y + 3,
-            (scope_rect.x - (source_rect.x + source_rect.width() as i32 + 12)).max(48) as u32,
+            (scope_rect.x - (device_rect.x + device_rect.width() as i32 + 12)).max(48) as u32,
             row.height().saturating_sub(6),
         );
         [
             type_rect,
             source_rect,
+            device_rect,
             target_rect,
             scope_rect,
             enabled_rect,
@@ -1049,7 +1057,7 @@ impl App {
             canvas.set_draw_color(source_color);
             canvas.fill_rect(source_rect)?;
 
-            let enabled_rect = Rect::new(cells[4].x + 6, cells[4].y, 14, cells[4].height());
+            let enabled_rect = Rect::new(cells[5].x + 6, cells[5].y, 14, cells[5].height());
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(132, 220, 120)
             } else {
@@ -1059,8 +1067,9 @@ impl App {
 
             let kind_rect = cells[0];
             let trigger_rect = cells[1];
-            let target_rect = cells[2];
-            let scope_rect = cells[3];
+            let device_rect = cells[2];
+            let target_rect = cells[3];
+            let scope_rect = cells[4];
             canvas.set_draw_color(if selected {
                 Color::RGB(66, 80, 112)
             } else {
@@ -1068,6 +1077,7 @@ impl App {
             });
             canvas.fill_rect(kind_rect)?;
             canvas.fill_rect(trigger_rect)?;
+            canvas.fill_rect(device_rect)?;
             canvas.set_draw_color(if entry.enabled {
                 Color::RGB(182, 194, 212)
             } else {
@@ -1076,7 +1086,7 @@ impl App {
             canvas.fill_rect(target_rect)?;
             canvas.set_draw_color(Color::RGB(66, 74, 88));
             canvas.fill_rect(scope_rect)?;
-            canvas.fill_rect(cells[4])?;
+            canvas.fill_rect(cells[5])?;
             crate::ui::draw_text_fitted(
                 canvas,
                 mapping_source_label(entry.source_kind),
@@ -1100,6 +1110,18 @@ impl App {
                 ),
                 1,
                 Color::RGB(244, 244, 236),
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &entry.source_device_label,
+                Rect::new(
+                    device_rect.x + 4,
+                    row.y + 5,
+                    device_rect.width().saturating_sub(8),
+                    8,
+                ),
+                1,
+                Color::RGB(226, 234, 244),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -1129,9 +1151,9 @@ impl App {
                 canvas,
                 if entry.enabled { "On" } else { "Off" },
                 Rect::new(
-                    cells[4].x + 2,
+                    cells[5].x + 2,
                     row.y + 5,
-                    cells[4].width().saturating_sub(4),
+                    cells[5].width().saturating_sub(4),
                     8,
                 ),
                 1,
@@ -2439,6 +2461,12 @@ impl App {
     fn adjust_mapping_field(&mut self, delta: i32) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
+        let mapping_device_names = self
+            .midi_devices
+            .inputs
+            .iter()
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
         let Some(entry) = self.mappings.get_mut(index) else {
             return;
         };
@@ -2447,7 +2475,19 @@ impl App {
         match field {
             MappingField::SourceKind => {
                 entry.source_kind = cycle_mapping_source_kind(entry.source_kind, delta);
+                if entry.source_kind != MappingSourceKind::Midi {
+                    entry.source_device_label = default_mapping_source_device();
+                }
                 entry.source_label = default_source_label(entry.source_kind).to_string();
+            }
+            MappingField::SourceDevice => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    entry.source_device_label = cycle_mapping_source_device_label(
+                        &entry.source_device_label,
+                        &mapping_device_names,
+                        delta,
+                    );
+                }
             }
             MappingField::SourceValue => {
                 entry.source_label =
@@ -2478,7 +2518,26 @@ impl App {
         match field {
             MappingField::SourceKind => {
                 entry.source_kind = cycle_mapping_source_kind(entry.source_kind, 1);
+                if entry.source_kind != MappingSourceKind::Midi {
+                    entry.source_device_label = default_mapping_source_device();
+                }
                 entry.source_label = default_source_label(entry.source_kind).to_string();
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::SourceDevice => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    let mapping_device_names = self
+                        .midi_devices
+                        .inputs
+                        .iter()
+                        .map(|port| port.name.clone())
+                        .collect::<Vec<_>>();
+                    entry.source_device_label = cycle_mapping_source_device_label(
+                        &entry.source_device_label,
+                        &mapping_device_names,
+                        1,
+                    );
+                }
                 self.page_state.mapping_midi_learn_armed = false;
             }
             MappingField::SourceValue => {
@@ -2572,6 +2631,11 @@ impl App {
             return;
         }
 
+        let mapping_actions = self.resolve_midi_mapping_actions(&event);
+        for action in mapping_actions {
+            let _ = self.apply_action(action);
+        }
+
         let matching_tracks: Vec<usize> = self
             .project
             .tracks
@@ -2652,10 +2716,19 @@ impl App {
         };
 
         entry.source_kind = MappingSourceKind::Midi;
+        entry.source_device_label = event.port.name.clone();
         entry.source_label = midi_learn_label(event);
         entry.enabled = true;
         self.page_state.mapping_midi_learn_armed = false;
         true
+    }
+
+    fn resolve_midi_mapping_actions(&self, event: &MidiInputEvent) -> Vec<AppAction> {
+        self.mappings
+            .iter()
+            .filter(|entry| midi_mapping_matches_event(entry, event))
+            .flat_map(mapping_entry_to_actions)
+            .collect()
     }
 
     fn dispatch_midi_notes(&mut self, previous_ticks: u64, advanced_ticks: u64) {
@@ -2948,10 +3021,11 @@ fn compact_scope_label(scope: &str) -> &str {
 fn mapping_field_index(field: MappingField) -> usize {
     match field {
         MappingField::SourceKind => 0,
-        MappingField::SourceValue => 1,
-        MappingField::Target => 2,
-        MappingField::Scope => 3,
-        MappingField::Enabled => 4,
+        MappingField::SourceDevice => 1,
+        MappingField::SourceValue => 2,
+        MappingField::Target => 3,
+        MappingField::Scope => 4,
+        MappingField::Enabled => 5,
     }
 }
 
@@ -2973,6 +3047,91 @@ fn midi_note_name(pitch: u8) -> String {
     let name = NAMES[(pitch % 12) as usize];
     let octave = (pitch / 12) as i16 - 1;
     format!("{name}{octave}")
+}
+
+fn midi_note_label(pitch: u8) -> String {
+    format!("Note {}", midi_note_name(pitch))
+}
+
+fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> bool {
+    if !entry.enabled || entry.source_kind != MappingSourceKind::Midi {
+        return false;
+    }
+
+    if entry.source_device_label != default_mapping_source_device()
+        && entry.source_device_label != event.port.name
+    {
+        return false;
+    }
+
+    match event.message {
+        MidiInputMessage::NoteOn { pitch, .. } => {
+            entry.source_label == midi_note_label(pitch)
+                || entry.source_label == format!("{} Ch{}", midi_note_label(pitch), event.channel)
+        }
+        MidiInputMessage::ControlChange { controller, .. } => {
+            entry.source_label == format!("CC{controller}")
+                || entry.source_label == format!("CC{controller} Ch{}", event.channel)
+        }
+        MidiInputMessage::NoteOff { .. } => false,
+    }
+}
+
+fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
+    let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
+    match entry.target_label.as_str() {
+        "Play/Stop" => vec![AppAction::TogglePlayback],
+        "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
+        "Record Mode" => vec![AppAction::CycleRecordMode],
+        "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
+        "Track Loop" | "Set Track Loop" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
+        }
+        "Clear Track" => {
+            track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
+        }
+        "Clear All" => vec![AppAction::ClearAllTrackContent],
+        "Track Arm" => track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackArm),
+        "Track Mute" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackMute)
+        }
+        "Track Solo" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackSolo)
+        }
+        "Passthrough" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleCurrentTrackPassthrough,
+        ),
+        "Select Track" => absolute_track_index
+            .map(AppAction::SelectTrack)
+            .or_else(|| match entry.scope_label.as_str() {
+                "Relative" => Some(AppAction::SelectNextTrack),
+                _ => None,
+            })
+            .into_iter()
+            .collect(),
+        "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
+        "Link Enable" => vec![AppAction::ToggleLinkEnabled],
+        "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
+        _ => Vec::new(),
+    }
+}
+
+fn track_scoped_actions(
+    absolute_track_index: Option<usize>,
+    toggle_action: AppAction,
+) -> Vec<AppAction> {
+    absolute_track_index
+        .map(|index| vec![AppAction::SelectTrack(index), toggle_action])
+        .unwrap_or_else(|| vec![toggle_action])
+}
+
+fn parse_absolute_track_scope(scope_label: &str) -> Option<usize> {
+    let scope = scope_label.trim();
+    scope
+        .strip_prefix("Track ")
+        .and_then(|suffix| suffix.parse::<usize>().ok())
+        .and_then(|index| index.checked_sub(1))
 }
 
 fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
@@ -3019,7 +3178,7 @@ mod tests {
         App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel,
     };
     use crate::actions::AppAction;
-    use crate::mapping::MappingSourceKind;
+    use crate::mapping::{MappingEntry, MappingSourceKind};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
@@ -3256,7 +3415,87 @@ mod tests {
         });
 
         assert_eq!(app.mappings[0].source_label, "CC24 Ch3");
+        assert_eq!(app.mappings[0].source_device_label, "In A");
         assert!(!app.page_state.mapping_midi_learn_armed);
+    }
+
+    #[test]
+    fn midi_mapping_triggers_action_for_matching_device() {
+        let mut app = App::new();
+        app.project.select_track(1);
+        app.project.tracks[1].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Port A".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert!(app.project.tracks[1].state.armed);
+    }
+
+    #[test]
+    fn midi_mapping_ignores_non_matching_device() {
+        let mut app = App::new();
+        app.project.select_track(1);
+        app.project.tracks[1].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Port A".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port B"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert!(!app.project.tracks[1].state.armed);
+    }
+
+    #[test]
+    fn midi_mapping_can_target_absolute_track_scope() {
+        let mut app = App::new();
+        app.project.select_track(0);
+        app.project.tracks[2].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Any MIDI".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Track 3".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.project.active_track_index, 2);
+        assert!(app.project.tracks[2].state.armed);
     }
 
     #[test]
