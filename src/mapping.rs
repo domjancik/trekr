@@ -33,6 +33,19 @@ pub struct MappingEntry {
     pub enabled: bool,
 }
 
+impl MappingEntry {
+    pub fn default_new() -> Self {
+        Self {
+            source_kind: MappingSourceKind::Key,
+            source_device_label: default_mapping_source_device(),
+            source_label: default_source_label(MappingSourceKind::Key).to_string(),
+            target_label: "Play/Stop".to_string(),
+            scope_label: default_scope_label("Play/Stop", 0),
+            enabled: false,
+        }
+    }
+}
+
 const KEY_SOURCE_OPTIONS: &[&str] = &[
     "Space",
     "R",
@@ -127,6 +140,27 @@ pub fn cycle_mapping_scope_label(current: &str, delta: i32) -> &'static str {
     cycle_label(SCOPE_OPTIONS, current, delta)
 }
 
+pub fn default_scope_label(target_label: &str, track_count: usize) -> String {
+    scope_options_for_target(target_label, track_count)
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "Global".to_string())
+}
+
+pub fn cycle_mapping_scope_value(
+    current: &str,
+    delta: i32,
+    target_label: &str,
+    track_count: usize,
+) -> String {
+    let options = scope_options_for_target(target_label, track_count);
+    let current_index = options
+        .iter()
+        .position(|candidate| candidate == current)
+        .unwrap_or(0) as i32;
+    options[(current_index + delta).rem_euclid(options.len() as i32) as usize].clone()
+}
+
 pub fn cycle_mapping_source_device_label(current: &str, devices: &[String], delta: i32) -> String {
     let mut options = vec![default_mapping_source_device()];
     for device in devices {
@@ -156,6 +190,39 @@ fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str
         .position(|candidate| *candidate == current)
         .unwrap_or(0) as i32;
     options[(current_index + delta).rem_euclid(options.len() as i32) as usize]
+}
+
+fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<String> {
+    match target_label {
+        "Play/Stop" | "Record Mode" | "Song Loop" | "Set Song Loop" | "Clear All"
+        | "Pages/Overlay" | "Link Enable" | "Link Start/Stop" => vec!["Global".to_string()],
+        "Record" | "Record Hold" => {
+            let mut options = vec!["Armed/Active".to_string(), "Active Track".to_string()];
+            options.extend(absolute_track_scopes(track_count));
+            options
+        }
+        "Select Track" => {
+            let mut options = vec!["Relative".to_string()];
+            options.extend(absolute_track_scopes(track_count));
+            options
+        }
+        "Track Loop" | "Set Track Loop" | "Clear Track" | "Track Arm" | "Track Mute"
+        | "Track Solo" | "Passthrough" => {
+            let mut options = vec!["Active Track".to_string()];
+            options.extend(absolute_track_scopes(track_count));
+            options
+        }
+        _ => SCOPE_OPTIONS
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+    }
+}
+
+fn absolute_track_scopes(track_count: usize) -> Vec<String> {
+    (0..track_count.max(1))
+        .map(|index| format!("Track {}", index + 1))
+        .collect()
 }
 
 pub fn demo_mappings() -> Vec<MappingEntry> {
@@ -340,9 +407,9 @@ fn midi_entry(
 #[cfg(test)]
 mod tests {
     use super::{
-        MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_device_label,
-        cycle_mapping_source_kind, cycle_mapping_target_label, default_mapping_source_device,
-        default_source_label, demo_mappings,
+        MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_scope_value,
+        cycle_mapping_source_device_label, cycle_mapping_source_kind, cycle_mapping_target_label,
+        default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
     };
 
     #[test]
@@ -383,5 +450,24 @@ mod tests {
             cycle_mapping_source_device_label("Any MIDI", &["Port A".to_string()], 1),
             "Port A"
         );
+        assert_eq!(default_scope_label("Track Arm", 4), "Active Track");
+        assert_eq!(
+            cycle_mapping_scope_value("Active Track", 1, "Track Arm", 4),
+            "Track 1"
+        );
+        assert_eq!(
+            cycle_mapping_scope_value("Track 4", 1, "Track Arm", 4),
+            "Active Track"
+        );
+    }
+
+    #[test]
+    fn default_new_mapping_starts_disabled() {
+        let entry = MappingEntry::default_new();
+
+        assert_eq!(entry.source_kind, MappingSourceKind::Key);
+        assert_eq!(entry.target_label, "Play/Stop");
+        assert_eq!(entry.scope_label, "Global");
+        assert!(!entry.enabled);
     }
 }

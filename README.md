@@ -56,6 +56,8 @@ Current controls:
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `W`: toggle mappings page mode between read-only overview and write mode
+- `N`: add a mapping row on the mappings page in write mode
+- `Delete`: remove the selected mapping row on the mappings page in write mode
 - `Space`: play/stop
 - `R`: start/stop recording on armed tracks, or the active track if none are armed
 - `Shift+R`: cycle recording mode between `Overdub` and `Replace`
@@ -93,6 +95,7 @@ The `Mappings` page now supports two modes:
 
 - `Read Only`: compact overview
 - `Write`: field-based editing for source type, source device, source value, target, scope, and enabled state
+- `Write` mode also supports adding/removing rows and cycling track-scoped mappings into concrete `Track 1`, `Track 2`, ... scopes
 
 MIDI learn notes:
 

@@ -20,6 +20,8 @@ pub enum AppAction {
     ActivatePageItem,
     ToggleMappingsOverlay,
     ToggleMappingsWriteMode,
+    AddMappingRow,
+    RemoveSelectedMapping,
     SelectPreviousPageField,
     SelectNextPageField,
     TogglePlayback,
@@ -179,6 +181,14 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleMappingsWriteMode,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::N),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::AddMappingRow,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -400,6 +410,14 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
+                keycode: Some(Keycode::Delete),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::RemoveSelectedMapping,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
                 keycode: Some(Keycode::Right),
                 keymod,
                 repeat: false,
@@ -570,6 +588,26 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let add_mapping = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::N),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let delete_mapping = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Delete),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
 
         assert_eq!(
             KeyboardBindings.resolve(&overlay).unwrap().action,
@@ -578,6 +616,14 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&write_mode).unwrap().action,
             AppAction::ToggleMappingsWriteMode
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&add_mapping).unwrap().action,
+            AppAction::AddMappingRow
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&delete_mapping).unwrap().action,
+            AppAction::RemoveSelectedMapping
         );
     }
 

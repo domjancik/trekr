@@ -2,9 +2,9 @@ use crate::actions::{AppAction, KeyboardBindings};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
-    MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_source_device_label,
+    MappingEntry, MappingSourceKind, cycle_mapping_scope_value, cycle_mapping_source_device_label,
     cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
-    default_mapping_source_device, default_source_label, demo_mappings,
+    default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -1819,7 +1819,7 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     self.page_state.mapping_mode.label(),
                     on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
@@ -1827,6 +1827,7 @@ impl App {
                     on_off(self.page_state.mapping_midi_learn_armed),
                     mapping_source_label(selected.source_kind),
                     selected.source_label,
+                    selected.source_device_label,
                     selected.target_label,
                     selected.scope_label,
                     on_off(selected.enabled),
@@ -1931,6 +1932,14 @@ impl App {
                 if self.page_state.mapping_mode == MappingPageMode::Overview {
                     self.page_state.selected_mapping_field = MappingField::SourceValue;
                 }
+                AppControl::Continue
+            }
+            AppAction::AddMappingRow => {
+                self.add_mapping_row();
+                AppControl::Continue
+            }
+            AppAction::RemoveSelectedMapping => {
+                self.remove_selected_mapping();
                 AppControl::Continue
             }
             AppAction::SelectPreviousPageField => {
@@ -2461,6 +2470,7 @@ impl App {
     fn adjust_mapping_field(&mut self, delta: i32) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
+        let track_count = self.project.tracks.len();
         let mapping_device_names = self
             .midi_devices
             .inputs
@@ -2497,10 +2507,15 @@ impl App {
             MappingField::Target => {
                 entry.target_label =
                     cycle_mapping_target_label(&entry.target_label, delta).to_string();
+                entry.scope_label = default_scope_label(&entry.target_label, track_count);
             }
             MappingField::Scope => {
-                entry.scope_label =
-                    cycle_mapping_scope_label(&entry.scope_label, delta).to_string();
+                entry.scope_label = cycle_mapping_scope_value(
+                    &entry.scope_label,
+                    delta,
+                    &entry.target_label,
+                    track_count,
+                );
             }
             MappingField::Enabled => {
                 entry.enabled = delta > 0;
@@ -2511,6 +2526,7 @@ impl App {
     fn activate_mapping_field(&mut self) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
+        let track_count = self.project.tracks.len();
         let Some(entry) = self.mappings.get_mut(index) else {
             return;
         };
@@ -2552,10 +2568,16 @@ impl App {
             }
             MappingField::Target => {
                 entry.target_label = cycle_mapping_target_label(&entry.target_label, 1).to_string();
+                entry.scope_label = default_scope_label(&entry.target_label, track_count);
                 self.page_state.mapping_midi_learn_armed = false;
             }
             MappingField::Scope => {
-                entry.scope_label = cycle_mapping_scope_label(&entry.scope_label, 1).to_string();
+                entry.scope_label = cycle_mapping_scope_value(
+                    &entry.scope_label,
+                    1,
+                    &entry.target_label,
+                    track_count,
+                );
                 self.page_state.mapping_midi_learn_armed = false;
             }
             MappingField::Enabled => {
@@ -2563,6 +2585,50 @@ impl App {
                 self.page_state.mapping_midi_learn_armed = false;
             }
         }
+    }
+
+    fn add_mapping_row(&mut self) {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+        {
+            return;
+        }
+
+        let insert_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len());
+        let mut entry = self
+            .mappings
+            .get(insert_index)
+            .cloned()
+            .unwrap_or_else(MappingEntry::default_new);
+        entry.enabled = false;
+        entry.scope_label = default_scope_label(&entry.target_label, self.project.tracks.len());
+        self.mappings
+            .insert(insert_index + usize::from(!self.mappings.is_empty()), entry);
+        self.page_state.selected_mapping_index =
+            (insert_index + usize::from(!self.mappings.is_empty())).min(self.mappings.len() - 1);
+        self.page_state.mapping_midi_learn_armed = false;
+    }
+
+    fn remove_selected_mapping(&mut self) {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+            || self.mappings.is_empty()
+        {
+            return;
+        }
+
+        self.mappings.remove(self.page_state.selected_mapping_index);
+        if self.mappings.is_empty() {
+            self.mappings.push(MappingEntry::default_new());
+        }
+        self.page_state.selected_mapping_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        self.page_state.mapping_midi_learn_armed = false;
     }
 
     fn adjust_routing_field(&mut self, delta: i32) {
@@ -3393,6 +3459,44 @@ mod tests {
 
         app.apply_action(AppAction::SelectNextPageField);
         assert_eq!(app.page_state.selected_mapping_field, MappingField::Target);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_can_add_and_remove_rows() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        let original_len = app.mappings.len();
+        let selected_index = app.page_state.selected_mapping_index;
+
+        app.apply_action(AppAction::AddMappingRow);
+
+        assert_eq!(app.mappings.len(), original_len + 1);
+        assert_eq!(app.page_state.selected_mapping_index, selected_index + 1);
+        assert!(!app.mappings[app.page_state.selected_mapping_index].enabled);
+
+        app.apply_action(AppAction::RemoveSelectedMapping);
+
+        assert_eq!(app.mappings.len(), original_len);
+        assert!(app.page_state.selected_mapping_index < app.mappings.len());
+    }
+
+    #[test]
+    fn mappings_page_scope_cycles_into_absolute_track_targets() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_index = 0;
+        app.page_state.selected_mapping_field = MappingField::Target;
+
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Active Track".to_string();
+        app.apply_action(AppAction::SelectNextPageField);
+        app.apply_action(AppAction::AdjustPageItemForward);
+        assert_eq!(app.mappings[0].scope_label, "Track 1");
+
+        app.apply_action(AppAction::AdjustPageItemBackward);
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
     }
 
     #[test]
