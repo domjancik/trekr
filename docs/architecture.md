@@ -194,7 +194,7 @@ Required constraints for Link integration:
 Important caveat:
 
 - Ableton Link is a tempo/phase sync system, not full arrangement-position sync
-- the current `ableton-link` crate does not build cleanly on Windows because its wrapper expects `unistd.h`, so the app should keep a transport-facing Link abstraction that can use the real backend on supported platforms and a stub backend where the crate is blocked
+- the app should prefer a thin native bridge over the official Ableton Link source instead of depending on the current broken Rust wrapper crate
 
 That means the practical design should be:
 

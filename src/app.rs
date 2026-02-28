@@ -1507,7 +1507,7 @@ impl App {
         )?;
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
-        let (header, body) = crate::ui::split_top_strip(inner, 40, 10)?;
+        let (header, body) = crate::ui::split_top_strip(inner, 48, 10)?;
         let active_track = self
             .project
             .active_track()
@@ -1518,45 +1518,54 @@ impl App {
         canvas.set_draw_color(Color::RGB(244, 232, 146));
         canvas.draw_rect(header)?;
 
-        let name_badge = Rect::new(
-            header.x + 8,
-            header.y + 8,
-            52,
-            header.height().saturating_sub(16),
-        );
-        canvas.set_draw_color(Color::RGB(220, 124, 100));
-        canvas.fill_rect(name_badge)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Act",
-            Rect::new(
-                name_badge.x + 4,
-                name_badge.y + 4,
-                name_badge.width().saturating_sub(8),
-                8,
+        let meta_badges = [
+            (
+                Rect::new(
+                    header.x + 8,
+                    header.y + 8,
+                    90,
+                    header.height().saturating_sub(16),
+                ),
+                Color::RGB(220, 124, 100),
+                format!("Active T{}", self.project.active_track_index + 1),
             ),
-            1,
-            Color::RGB(24, 28, 36),
-        )?;
+            (
+                Rect::new(
+                    header.x + 106,
+                    header.y + 8,
+                    92,
+                    header.height().saturating_sub(16),
+                ),
+                if active_track.state.passthrough {
+                    Color::RGB(72, 188, 180)
+                } else {
+                    Color::RGB(92, 100, 112)
+                },
+                format!("Thru {}", on_off(active_track.state.passthrough)),
+            ),
+        ];
+        for (rect, color, label) in meta_badges {
+            canvas.set_draw_color(color);
+            canvas.fill_rect(rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &label,
+                Rect::new(rect.x + 6, rect.y + 4, rect.width().saturating_sub(12), 8),
+                1,
+                Color::RGB(24, 28, 36),
+            )?;
+        }
         let state_badge = Rect::new(
-            header.x + header.width() as i32 - 118,
+            header.x + header.width() as i32 - 122,
             header.y + 8,
-            108,
+            112,
             header.height().saturating_sub(16),
         );
-        canvas.set_draw_color(if active_track.state.passthrough {
-            Color::RGB(72, 188, 180)
-        } else {
-            Color::RGB(92, 100, 112)
-        });
+        canvas.set_draw_color(Color::RGB(70, 86, 118));
         canvas.fill_rect(state_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            if active_track.state.passthrough {
-                "Thru On"
-            } else {
-                "Thru Off"
-            },
+            "Q/E adjust",
             Rect::new(
                 state_badge.x + 6,
                 state_badge.y + 4,
@@ -1568,11 +1577,11 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("Track {}", self.project.active_track_index + 1),
+            &active_track.name,
             Rect::new(
-                name_badge.x + name_badge.width() as i32 + 8,
-                header.y + 9,
-                74,
+                header.x + 208,
+                header.y + 8,
+                (state_badge.x - header.x - 220).max(0) as u32,
                 8,
             ),
             1,
@@ -1580,11 +1589,11 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            &active_track.name,
+            "Input and output routing for the active track",
             Rect::new(
-                name_badge.x + name_badge.width() as i32 + 8,
-                header.y + 21,
-                (state_badge.x - (name_badge.x + name_badge.width() as i32 + 16)).max(0) as u32,
+                header.x + 208,
+                header.y + 24,
+                (state_badge.x - header.x - 220).max(0) as u32,
                 8,
             ),
             1,
@@ -1634,9 +1643,9 @@ impl App {
                 row.height().saturating_sub(16),
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 56,
+                row.x + row.width() as i32 - 72,
                 row.y + 8,
-                46,
+                62,
                 row.height().saturating_sub(16),
             );
             canvas.set_draw_color(value_color);
@@ -1701,7 +1710,13 @@ impl App {
             }
             crate::ui::draw_text_fitted(
                 canvas,
-                if selected { "Edit" } else { "View" },
+                if field == RoutingField::Passthrough {
+                    "Toggle"
+                } else if selected {
+                    "Adjust"
+                } else {
+                    "Ready"
+                },
                 Rect::new(
                     affordance.x + 6,
                     affordance.y + 4,

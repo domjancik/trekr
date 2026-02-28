@@ -34,7 +34,7 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - per-track loop preview
 - an in-canvas transport strip on the timeline page
 - a field-based mappings editor with MIDI learn for MIDI sources
-- an Ableton Link-facing transport layer with runtime status in the transport strip
+- a cross-platform Ableton Link transport layer with runtime status in the transport strip
 
 Launch state:
 
@@ -102,8 +102,8 @@ MIDI learn notes:
 
 Ableton Link notes:
 
-- on non-Windows builds, the app uses the `ableton-link` crate as the backend transport peer
-- on Windows, the current upstream crate does not build cleanly because its wrapper expects `unistd.h`, so the app keeps the same Link-facing UI/actions with a local stub backend instead of breaking the build
+- Ableton Link now uses the official Ableton source from the `vendor/ableton-link` git submodule through a small native bridge, instead of the broken third-party Rust wrapper
+- clone with submodules or run `git submodule update --init --recursive` so the bundled `asio` dependency is available on Linux, Windows, and macOS
 - the transport strip shows Link enabled state, start/stop sync state, and peer count/status summary
 
 The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.

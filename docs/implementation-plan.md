@@ -169,7 +169,7 @@ Exit criteria:
 
 Current note:
 
-- the app now exposes Link-facing transport controls and state, but the real `ableton-link` backend is currently enabled only on non-Windows builds because the upstream crate does not compile cleanly on Windows
+- the app now exposes Link-facing transport controls and state through a thin native bridge over the official Ableton Link source so Linux, Windows, and macOS can share one integration path
 
 ## Module Breakdown
 

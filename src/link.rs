@@ -1,3 +1,6 @@
+use std::ffi::c_void;
+use std::ptr::NonNull;
+
 const LINK_QUANTUM_BEATS: f64 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,154 +30,127 @@ impl Default for LinkSnapshot {
     }
 }
 
-#[cfg(not(windows))]
-mod backend {
-    use super::{LINK_QUANTUM_BEATS, LinkSnapshot};
-    use ableton_link::Link;
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct NativeLinkSnapshot {
+    enabled: u8,
+    start_stop_sync: u8,
+    is_playing: u8,
+    reserved: u8,
+    peers: usize,
+    tempo_bpm: f64,
+    beat: f64,
+    phase: f64,
+    micros: i64,
+}
 
-    pub struct LinkRuntime {
-        link: Link,
-        snapshot: LinkSnapshot,
-    }
-
-    impl LinkRuntime {
-        pub fn new(initial_tempo_bpm: f64) -> Self {
-            let mut runtime = Self {
-                link: Link::new(initial_tempo_bpm),
-                snapshot: LinkSnapshot {
-                    tempo_bpm: initial_tempo_bpm,
-                    ..LinkSnapshot::default()
-                },
-            };
-            runtime.refresh();
-            runtime
-        }
-
-        pub fn snapshot(&self) -> LinkSnapshot {
-            self.snapshot
-        }
-
-        pub fn set_enabled(&mut self, enabled: bool) {
-            if self.link.is_enabled() != enabled {
-                self.link.enable(enabled);
-            }
-            self.refresh();
-        }
-
-        pub fn set_start_stop_sync(&mut self, enabled: bool) {
-            if self.link.is_start_stop_sync_enabled() != enabled {
-                self.link.enable_start_stop_sync(enabled);
-            }
-            self.refresh();
-        }
-
-        pub fn commit_tempo(&mut self, bpm: f64) {
-            let micros = self.link.clock().micros();
-            let link_ptr: *mut Link = &mut self.link;
-            self.link.with_app_session_state(move |mut session| {
-                session.set_tempo(bpm, micros);
-                unsafe {
-                    (*link_ptr).commit_app_session_state(session);
-                }
-            });
-            self.refresh();
-        }
-
-        pub fn commit_playing(&mut self, playing: bool, beat: f64) {
-            let micros = self.link.clock().micros();
-            let link_ptr: *mut Link = &mut self.link;
-            self.link.with_app_session_state(move |mut session| {
-                session.set_is_playing_and_request_beat_at_time(
-                    playing,
-                    micros,
-                    beat,
-                    LINK_QUANTUM_BEATS,
-                );
-                unsafe {
-                    (*link_ptr).commit_app_session_state(session);
-                }
-            });
-            self.refresh();
-        }
-
-        pub fn refresh(&mut self) -> LinkSnapshot {
-            let micros = self.link.clock().micros();
-            let enabled = self.link.is_enabled();
-            let start_stop_sync = self.link.is_start_stop_sync_enabled();
-            let peers = self.link.num_peers();
-            let mut snapshot = LinkSnapshot {
-                enabled,
-                start_stop_sync,
-                peers,
-                micros,
-                ..self.snapshot
-            };
-            self.link.with_app_session_state(|session| {
-                snapshot.tempo_bpm = session.tempo();
-                snapshot.beat = session.beat_at_time(micros, LINK_QUANTUM_BEATS);
-                snapshot.phase = session.phase_at_time(micros, LINK_QUANTUM_BEATS);
-                snapshot.is_playing = session.is_playing();
-            });
-            self.snapshot = snapshot;
-            snapshot
+impl From<NativeLinkSnapshot> for LinkSnapshot {
+    fn from(value: NativeLinkSnapshot) -> Self {
+        Self {
+            enabled: value.enabled != 0,
+            start_stop_sync: value.start_stop_sync != 0,
+            peers: value.peers,
+            tempo_bpm: value.tempo_bpm,
+            beat: value.beat,
+            phase: value.phase,
+            is_playing: value.is_playing != 0,
+            micros: value.micros,
         }
     }
 }
 
-#[cfg(windows)]
-mod backend {
-    use super::LinkSnapshot;
-    use std::time::Instant;
+pub struct LinkRuntime {
+    handle: NonNull<c_void>,
+    snapshot: LinkSnapshot,
+}
 
-    pub struct LinkRuntime {
-        snapshot: LinkSnapshot,
-        started_at: Instant,
+impl LinkRuntime {
+    pub fn new(initial_tempo_bpm: f64) -> Self {
+        let handle = unsafe { trekr_link_new(initial_tempo_bpm) };
+        let handle = NonNull::new(handle).expect("link runtime should allocate");
+        let mut runtime = Self {
+            handle,
+            snapshot: LinkSnapshot {
+                tempo_bpm: initial_tempo_bpm,
+                ..LinkSnapshot::default()
+            },
+        };
+        runtime.refresh();
+        runtime
     }
 
-    impl LinkRuntime {
-        pub fn new(initial_tempo_bpm: f64) -> Self {
-            Self {
-                snapshot: LinkSnapshot {
-                    tempo_bpm: initial_tempo_bpm,
-                    ..LinkSnapshot::default()
-                },
-                started_at: Instant::now(),
-            }
-        }
+    pub fn snapshot(&self) -> LinkSnapshot {
+        self.snapshot
+    }
 
-        pub fn snapshot(&self) -> LinkSnapshot {
-            self.snapshot
-        }
+    pub fn set_enabled(&mut self, enabled: bool) {
+        unsafe { trekr_link_set_enabled(self.handle.as_ptr(), bool_to_u8(enabled)) };
+        self.refresh();
+    }
 
-        pub fn set_enabled(&mut self, enabled: bool) {
-            self.snapshot.enabled = enabled;
-        }
+    pub fn set_start_stop_sync(&mut self, enabled: bool) {
+        unsafe {
+            trekr_link_set_start_stop_sync_enabled(self.handle.as_ptr(), bool_to_u8(enabled))
+        };
+        self.refresh();
+    }
 
-        pub fn set_start_stop_sync(&mut self, enabled: bool) {
-            self.snapshot.start_stop_sync = enabled;
-        }
+    pub fn commit_tempo(&mut self, bpm: f64) {
+        unsafe { trekr_link_commit_tempo(self.handle.as_ptr(), bpm) };
+        self.refresh();
+    }
 
-        pub fn commit_tempo(&mut self, bpm: f64) {
-            self.snapshot.tempo_bpm = bpm.max(20.0);
-        }
+    pub fn commit_playing(&mut self, playing: bool, beat: f64) {
+        unsafe {
+            trekr_link_commit_playing(
+                self.handle.as_ptr(),
+                bool_to_u8(playing),
+                beat,
+                LINK_QUANTUM_BEATS,
+            )
+        };
+        self.refresh();
+    }
 
-        pub fn commit_playing(&mut self, playing: bool, _beat: f64) {
-            self.snapshot.is_playing = playing;
+    pub fn refresh(&mut self) -> LinkSnapshot {
+        let mut native = NativeLinkSnapshot {
+            enabled: 0,
+            start_stop_sync: 0,
+            is_playing: 0,
+            reserved: 0,
+            peers: 0,
+            tempo_bpm: self.snapshot.tempo_bpm,
+            beat: 0.0,
+            phase: 0.0,
+            micros: 0,
+        };
+        unsafe {
+            trekr_link_snapshot(self.handle.as_ptr(), LINK_QUANTUM_BEATS, &mut native);
         }
-
-        pub fn refresh(&mut self) -> LinkSnapshot {
-            self.snapshot.micros = self.started_at.elapsed().as_micros() as i64;
-            if self.snapshot.is_playing {
-                let beats_per_second = self.snapshot.tempo_bpm / 60.0;
-                self.snapshot.beat = (self.snapshot.micros as f64 / 1_000_000.0) * beats_per_second;
-                self.snapshot.phase = self.snapshot.beat.rem_euclid(super::LINK_QUANTUM_BEATS);
-            }
-            self.snapshot
-        }
+        self.snapshot = native.into();
+        self.snapshot
     }
 }
 
-pub use backend::LinkRuntime;
+impl Drop for LinkRuntime {
+    fn drop(&mut self) {
+        unsafe { trekr_link_free(self.handle.as_ptr()) };
+    }
+}
+
+fn bool_to_u8(value: bool) -> u8 {
+    if value { 1 } else { 0 }
+}
+
+unsafe extern "C" {
+    fn trekr_link_new(bpm: f64) -> *mut c_void;
+    fn trekr_link_free(handle: *mut c_void);
+    fn trekr_link_set_enabled(handle: *mut c_void, enabled: u8);
+    fn trekr_link_set_start_stop_sync_enabled(handle: *mut c_void, enabled: u8);
+    fn trekr_link_snapshot(handle: *mut c_void, quantum: f64, snapshot: *mut NativeLinkSnapshot);
+    fn trekr_link_commit_tempo(handle: *mut c_void, bpm: f64);
+    fn trekr_link_commit_playing(handle: *mut c_void, is_playing: u8, beat: f64, quantum: f64);
+}
 
 #[cfg(test)]
 mod tests {
