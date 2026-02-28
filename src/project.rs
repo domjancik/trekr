@@ -28,8 +28,7 @@ impl Project {
         let end_ticks = self
             .tracks
             .iter()
-            .flat_map(|track| track.regions.iter())
-            .map(|region| region.start_ticks + region.length_ticks)
+            .map(Track::content_end_ticks)
             .max()
             .unwrap_or(self.loop_region.end_ticks());
 
@@ -79,20 +78,24 @@ pub struct Track {
     pub routing: TrackRouting,
     pub loop_region: LoopRegion,
     pub active_take: Option<RecordingTake>,
+    pub midi_notes: Vec<MidiNote>,
     pub regions: Vec<Region>,
 }
 
 impl Track {
     pub fn new(name: &str, kind: TrackKind) -> Self {
-        Self {
+        let mut track = Self {
             name: name.to_string(),
             kind,
             state: TrackState::default(),
             routing: TrackRouting::default(),
             loop_region: LoopRegion::new(0, 4 * 960),
             active_take: None,
+            midi_notes: Vec::new(),
             regions: Vec::new(),
-        }
+        };
+        track.seed_demo_notes();
+        track
     }
 
     pub fn begin_recording(&mut self, pressed_at: u64) {
@@ -123,6 +126,44 @@ impl Track {
 
         self.regions.push(Region::new(start_ticks, length_ticks));
     }
+
+    pub fn content_end_ticks(&self) -> u64 {
+        let notes_end = self
+            .midi_notes
+            .iter()
+            .map(|note| note.end_ticks())
+            .max()
+            .unwrap_or(0);
+        let regions_end = self
+            .regions
+            .iter()
+            .map(|region| region.start_ticks + region.length_ticks)
+            .max()
+            .unwrap_or(0);
+
+        notes_end.max(regions_end).max(self.loop_region.end_ticks())
+    }
+
+    fn seed_demo_notes(&mut self) {
+        let base_pitch = 48 + ((self.name.len() as u8) % 12);
+        let motif = [0_u8, 4, 7, 11, 7, 4, 2, 5];
+
+        self.midi_notes = motif
+            .iter()
+            .enumerate()
+            .map(|(index, interval)| {
+                let step_ticks = 480_u64;
+                let start_ticks = index as u64 * step_ticks;
+                let duration = if index % 3 == 0 { 360 } else { 240 };
+                MidiNote::new(
+                    base_pitch.saturating_add(*interval),
+                    start_ticks,
+                    duration,
+                    96_u8.saturating_sub(index as u8 * 4),
+                )
+            })
+            .collect();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,6 +171,33 @@ pub enum TrackKind {
     Midi,
     Audio,
     Hybrid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MidiNote {
+    pub pitch: u8,
+    pub start_ticks: u64,
+    pub length_ticks: u64,
+    pub velocity: u8,
+}
+
+impl MidiNote {
+    pub fn new(pitch: u8, start_ticks: u64, length_ticks: u64, velocity: u8) -> Self {
+        Self {
+            pitch,
+            start_ticks,
+            length_ticks,
+            velocity,
+        }
+    }
+
+    pub fn end_ticks(self) -> u64 {
+        self.start_ticks + self.length_ticks
+    }
+
+    pub fn intersects(self, range: LoopRegion) -> bool {
+        self.start_ticks < range.end_ticks() && self.end_ticks() > range.start_ticks
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -143,8 +211,8 @@ pub struct TrackState {
 
 #[cfg(test)]
 mod tests {
-    use super::{Project, Track, TrackKind};
-    use crate::timeline::{RecordingTake, Region};
+    use super::{MidiNote, Project, Track, TrackKind};
+    use crate::timeline::{LoopRegion, RecordingTake, Region};
     use crate::transport::{QuantizeMode, Transport};
 
     #[test]
@@ -204,5 +272,21 @@ mod tests {
 
         project.select_previous_track();
         assert_eq!(project.active_track_index, 3);
+    }
+
+    #[test]
+    fn full_song_range_includes_note_content() {
+        let mut project = Project::demo();
+        project.tracks[0].midi_notes = vec![MidiNote::new(60, 0, 960, 100)];
+        project.tracks[1].midi_notes = vec![MidiNote::new(72, 7_680, 960, 100)];
+
+        assert_eq!(project.full_song_range().end_ticks(), 15_360);
+    }
+
+    #[test]
+    fn midi_note_reports_range_intersection() {
+        let note = MidiNote::new(60, 960, 480, 100);
+        assert!(note.intersects(LoopRegion::new(1_200, 960)));
+        assert!(!note.intersects(LoopRegion::new(2_000, 120)));
     }
 }

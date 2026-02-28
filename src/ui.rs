@@ -75,38 +75,38 @@ pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)>
     pairs
 }
 
-pub fn region_blocks(lane: Rect, seed: usize, flow: TimelineFlow) -> Vec<Rect> {
-    let major = match flow {
-        TimelineFlow::DownwardColumns => lane.height() as i32,
-        TimelineFlow::AcrossRows => lane.width() as i32,
-    };
-    let block_count = 2 + (seed % 3);
-    let mut blocks = Vec::with_capacity(block_count);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoteRect {
+    pub rect: Rect,
+    pub clipped: bool,
+}
 
-    for block_index in 0..block_count {
-        let start_ratio = 0.12 + 0.22 * block_index as f32;
-        let size_ratio = 0.12 + 0.03 * ((seed + block_index) % 4) as f32;
-        let major_start = (major as f32 * start_ratio) as i32;
-        let major_size = (major as f32 * size_ratio) as i32;
+pub fn note_rects(
+    lane: Rect,
+    notes: &[crate::project::MidiNote],
+    range: crate::timeline::LoopRegion,
+    flow: TimelineFlow,
+) -> Vec<NoteRect> {
+    let mut rects = Vec::new();
+
+    for note in notes.iter().copied().filter(|note| note.intersects(range)) {
+        let note_start = note.start_ticks.max(range.start_ticks);
+        let note_end = note.end_ticks().min(range.end_ticks());
+        let clipped = note_start != note.start_ticks || note_end != note.end_ticks();
 
         let rect = match flow {
-            TimelineFlow::DownwardColumns => Rect::new(
-                lane.x + 10,
-                lane.y + major_start,
-                lane.width().saturating_sub(20),
-                major_size.max(6) as u32,
-            ),
-            TimelineFlow::AcrossRows => Rect::new(
-                lane.x + major_start,
-                lane.y + 10,
-                major_size.max(6) as u32,
-                lane.height().saturating_sub(20),
-            ),
+            TimelineFlow::DownwardColumns => {
+                vertical_note_rect(lane, note, note_start, note_end, range)
+            }
+            TimelineFlow::AcrossRows => {
+                horizontal_note_rect(lane, note, note_start, note_end, range)
+            }
         };
-        blocks.push(rect);
+
+        rects.push(NoteRect { rect, clipped });
     }
 
-    blocks
+    rects
 }
 
 pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
@@ -217,13 +217,67 @@ pub fn playhead_rect_in_range(
     }
 }
 
+fn vertical_note_rect(
+    lane: Rect,
+    note: crate::project::MidiNote,
+    note_start: u64,
+    note_end: u64,
+    range: crate::timeline::LoopRegion,
+) -> Rect {
+    let pitch_min = 36_i32;
+    let pitch_span = 60_i32;
+    let lane_inner_x = lane.x + 8;
+    let lane_inner_width = (lane.width() as i32 - 16).max(8);
+    let note_x_ratio =
+        ((i32::from(note.pitch) - pitch_min).clamp(0, pitch_span - 1)) as f32 / pitch_span as f32;
+    let note_width = (lane_inner_width / 10).max(4);
+    let x = lane_inner_x + ((lane_inner_width - note_width) as f32 * note_x_ratio) as i32;
+
+    let start_ratio =
+        note_start.saturating_sub(range.start_ticks) as f32 / range.length_ticks.max(1) as f32;
+    let end_ratio =
+        note_end.saturating_sub(range.start_ticks) as f32 / range.length_ticks.max(1) as f32;
+    let y = lane.y + (lane.height() as f32 * start_ratio) as i32;
+    let height = ((lane.height() as f32 * (end_ratio - start_ratio)).max(4.0)) as u32;
+
+    Rect::new(x, y, note_width as u32, height)
+}
+
+fn horizontal_note_rect(
+    lane: Rect,
+    note: crate::project::MidiNote,
+    note_start: u64,
+    note_end: u64,
+    range: crate::timeline::LoopRegion,
+) -> Rect {
+    let pitch_min = 36_i32;
+    let pitch_span = 60_i32;
+    let lane_inner_y = lane.y + 8;
+    let lane_inner_height = (lane.height() as i32 - 16).max(8);
+    let note_y_ratio =
+        ((i32::from(note.pitch) - pitch_min).clamp(0, pitch_span - 1)) as f32 / pitch_span as f32;
+    let note_height = (lane_inner_height / 10).max(4);
+    let y = lane_inner_y + ((lane_inner_height - note_height) as f32 * note_y_ratio) as i32;
+
+    let start_ratio =
+        note_start.saturating_sub(range.start_ticks) as f32 / range.length_ticks.max(1) as f32;
+    let end_ratio =
+        note_end.saturating_sub(range.start_ticks) as f32 / range.length_ticks.max(1) as f32;
+    let x = lane.x + (lane.width() as f32 * start_ratio) as i32;
+    let width = ((lane.width() as f32 * (end_ratio - start_ratio)).max(4.0)) as u32;
+
+    Rect::new(x, y, width, note_height as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, passthrough_rail_rect,
-        playhead_rect_in_range, surface_rect, timeline_guides, track_column_pairs,
-        track_header_rect,
+        HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, note_rects,
+        passthrough_rail_rect, playhead_rect_in_range, surface_rect, timeline_guides,
+        track_column_pairs, track_header_rect,
     };
+    use crate::project::MidiNote;
+    use crate::timeline::LoopRegion;
     use sdl3::rect::Rect;
 
     #[test]
@@ -303,5 +357,33 @@ mod tests {
         let rail = passthrough_rail_rect(Rect::new(10, 20, 80, 240));
         assert_eq!(rail.width(), 4);
         assert_eq!(rail.height(), 236);
+    }
+
+    #[test]
+    fn note_rects_use_pitch_for_horizontal_position_in_vertical_view() {
+        let low = MidiNote::new(40, 0, 240, 100);
+        let high = MidiNote::new(80, 0, 240, 100);
+        let rects = note_rects(
+            Rect::new(10, 10, 80, 240),
+            &[low, high],
+            LoopRegion::new(0, 960),
+            TimelineFlow::DownwardColumns,
+        );
+
+        assert!(rects[1].rect.x > rects[0].rect.x);
+    }
+
+    #[test]
+    fn note_rects_clip_to_loop_range() {
+        let note = MidiNote::new(64, 0, 960, 100);
+        let rects = note_rects(
+            Rect::new(10, 10, 80, 240),
+            &[note],
+            LoopRegion::new(240, 240),
+            TimelineFlow::DownwardColumns,
+        );
+
+        assert_eq!(rects.len(), 1);
+        assert!(rects[0].clipped);
     }
 }

@@ -152,10 +152,7 @@ impl App {
             full_accent,
             track_index,
             0,
-            track
-                .loop_region
-                .end_ticks()
-                .max(self.project.full_song_range().end_ticks()),
+            self.project.full_song_range().length_ticks,
             self.effective_track_playhead(track),
             is_active,
             false,
@@ -182,7 +179,7 @@ impl App {
         canvas: &mut sdl3::render::Canvas<sdl3::video::Window>,
         bounds: Rect,
         accent: Color,
-        seed: usize,
+        _seed: usize,
         view_start_ticks: u64,
         range_ticks: u64,
         playhead_ticks: u64,
@@ -267,19 +264,23 @@ impl App {
             canvas.fill_rect(badge.rect)?;
         }
 
-        for block in crate::ui::region_blocks(bounds, seed, self.timeline_flow) {
+        let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
+        for note in crate::ui::note_rects(bounds, &track.midi_notes, note_range, self.timeline_flow)
+        {
             canvas.set_draw_color(if track.state.muted {
                 Color::RGB(92, 100, 112)
+            } else if note.clipped {
+                Color::RGB(244, 204, 132)
             } else {
                 Color::RGB(210, 222, 236)
             });
-            canvas.fill_rect(block)?;
+            canvas.fill_rect(note.rect)?;
             canvas.set_draw_color(if track.state.muted {
                 Color::RGB(128, 134, 144)
             } else {
                 Color::RGB(245, 247, 250)
             });
-            canvas.draw_rect(block)?;
+            canvas.draw_rect(note.rect)?;
         }
 
         let playhead = crate::ui::playhead_rect_in_range(
