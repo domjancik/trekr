@@ -358,14 +358,14 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Vertical paired view",
-            Rect::new(header_bounds.x + 96, header_bounds.y + 8, 104, 8),
+            "Vertical",
+            Rect::new(header_bounds.x + 96, header_bounds.y + 8, 54, 8),
             1,
             Color::RGB(212, 220, 230),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Song columns with per-track loop detail",
+            "Song columns + loop detail",
             Rect::new(header_bounds.x + 212, header_bounds.y + 8, 180, 8),
             1,
             Color::RGB(190, 198, 210),
@@ -720,7 +720,7 @@ impl App {
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(bounds)?;
 
-        let chips = [
+        let transport_chips = [
             (
                 format!("Play {}", on_off(self.project.transport.playing)),
                 if self.project.transport.playing {
@@ -750,17 +750,8 @@ impl App {
                 Color::RGB(70, 100, 120),
             ),
         ];
-
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Transport",
-            Rect::new(bounds.x + 8, bounds.y - 10, 54, 8),
-            1,
-            Color::RGB(170, 180, 196),
-        )?;
-
         let mut cursor_x = bounds.x + 6;
-        for (label, fill) in chips {
+        for (label, fill) in transport_chips {
             let width = crate::ui::text_width(&label, 1) + 12;
             let chip = Rect::new(
                 cursor_x,
@@ -778,10 +769,29 @@ impl App {
                 Color::RGB(244, 244, 236),
             )?;
             cursor_x += chip.width() as i32 + 6;
-            if cursor_x >= bounds.x + bounds.width() as i32 - 120 {
+            if cursor_x >= bounds.x + bounds.width() as i32 - 240 {
                 break;
             }
         }
+
+        let divider = Rect::new(
+            cursor_x + 4,
+            bounds.y + 4,
+            1,
+            bounds.height().saturating_sub(8),
+        );
+        canvas.set_draw_color(Color::RGB(86, 96, 114));
+        canvas.fill_rect(divider)?;
+        cursor_x = divider.x + 8;
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Sync",
+            Rect::new(cursor_x, bounds.y + 8, 22, 8),
+            1,
+            Color::RGB(170, 180, 196),
+        )?;
+        cursor_x += 28;
 
         let right_badges = [
             (
@@ -808,12 +818,10 @@ impl App {
                 Color::RGB(66, 80, 102),
             ),
         ];
-        let mut right_cursor = bounds.x + bounds.width() as i32 - 8;
-        for (label, fill) in right_badges.into_iter().rev() {
+        for (label, fill) in right_badges {
             let width = crate::ui::text_width(&label, 1) + 12;
-            right_cursor -= width as i32;
             let chip = Rect::new(
-                right_cursor,
+                cursor_x,
                 bounds.y + 4,
                 width,
                 bounds.height().saturating_sub(8),
@@ -827,7 +835,7 @@ impl App {
                 1,
                 Color::RGB(244, 244, 236),
             )?;
-            right_cursor -= 6;
+            cursor_x += chip.width() as i32 + 6;
         }
 
         let hint = if self.project.transport.link_enabled {
@@ -840,7 +848,7 @@ impl App {
             canvas,
             hint,
             Rect::new(
-                (right_cursor - hint_width as i32 - 4).max(cursor_x + 6),
+                bounds.x + bounds.width() as i32 - hint_width as i32 - 8,
                 bounds.y + 8,
                 hint_width,
                 8,
@@ -1426,8 +1434,8 @@ impl App {
             });
             canvas.fill_rect(status)?;
 
-            let selected_badge_width = if is_selected { 58 } else { 0 };
-            let active_badge_width = if is_active { 62 } else { 0 };
+            let selected_badge_width = if is_selected { 24 } else { 0 };
+            let active_badge_width = if is_active { 24 } else { 0 };
             let reserved_badge_width = selected_badge_width + active_badge_width;
             let header_rect = Rect::new(
                 status.x + status.width() as i32 + 8,
@@ -1467,7 +1475,7 @@ impl App {
                 canvas.fill_rect(active_badge)?;
                 crate::ui::draw_text_fitted(
                     canvas,
-                    &format!("Default {role_label}"),
+                    if role_label == "Input" { "Def" } else { "Def" },
                     Rect::new(
                         active_badge.x + 3,
                         active_badge.y,
@@ -1489,7 +1497,7 @@ impl App {
                 canvas.fill_rect(selected_badge)?;
                 crate::ui::draw_text_fitted(
                     canvas,
-                    "Selected",
+                    "Sel",
                     Rect::new(
                         selected_badge.x + 3,
                         selected_badge.y,
