@@ -3,13 +3,14 @@ use sdl3::{
     pixels::Color,
     render::{Canvas, RenderTarget},
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutMode {
     FixedFit,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimelineFlow {
     DownwardColumns,
     AcrossRows,

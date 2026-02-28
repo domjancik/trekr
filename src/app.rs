@@ -8,6 +8,7 @@ use crate::midi_io::{
 use crate::pages::{AppPage, AppPageState, MappingPageMode, MidiIoListFocus, RoutingField};
 use crate::project::{Project, Track};
 use crate::routing::MidiChannelFilter;
+use crate::state::PersistedAppState;
 use crate::transport::RecordMode;
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
@@ -54,26 +55,63 @@ pub struct UiCaptureOptions {
 
 impl App {
     pub fn new() -> Self {
+        Self::new_demo()
+    }
+
+    pub fn new_demo() -> Self {
+        let mut app = Self::with_project(Project::demo(), demo_mappings(), AppPageState::default());
+        app.seed_demo_routing();
+        app
+    }
+
+    pub fn new_empty() -> Self {
+        let mut app =
+            Self::with_project(Project::empty(), demo_mappings(), AppPageState::default());
+        app.seed_demo_routing();
+        for track in &mut app.project.tracks {
+            track.clear_content();
+        }
+        app
+    }
+
+    pub fn from_persisted_state(state: PersistedAppState) -> Self {
+        let mut app = Self::with_project(state.project, state.mappings, state.page_state);
+        app.timeline_flow = state.timeline_flow;
+        app.sync_midi_inputs();
+        app
+    }
+
+    pub fn persisted_state(&self) -> PersistedAppState {
+        PersistedAppState {
+            project: self.project.clone(),
+            page_state: self.page_state,
+            timeline_flow: self.timeline_flow,
+            mappings: self.mappings.clone(),
+        }
+    }
+
+    fn with_project(
+        project: Project,
+        mappings: Vec<MappingEntry>,
+        page_state: AppPageState,
+    ) -> Self {
         let scanned_devices = MidiDeviceCatalog::scan();
-        let mut app = Self {
-            project: Project::demo(),
+        Self {
+            project,
             engine_config: EngineConfig::default(),
             layout_mode: LayoutMode::FixedFit,
             timeline_flow: TimelineFlow::DownwardColumns,
             keyboard_bindings: KeyboardBindings,
-            page_state: AppPageState::default(),
+            page_state,
             midi_devices: scanned_devices,
             midi_input: MidiInputRuntime::default(),
             midi_output: MidiOutputRuntime::default(),
-            mappings: demo_mappings(),
+            mappings,
             overlay_state: OverlayState::default(),
             viewport_size: (1280, 720),
             transport_ticks: 0,
             playhead_ticks: 0,
-        };
-        app.seed_demo_routing();
-        app.sync_midi_inputs();
-        app
+        }
     }
 
     pub fn bootstrap_summary(&self) -> String {
@@ -814,7 +852,7 @@ impl App {
             canvas.fill_rect(scope_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.source_label,
+                &entry.source_label,
                 Rect::new(
                     trigger_rect.x + 4,
                     row.y + 5,
@@ -826,7 +864,7 @@ impl App {
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.target_label,
+                &entry.target_label,
                 Rect::new(
                     target_rect.x + 4,
                     row.y + 5,
@@ -838,7 +876,7 @@ impl App {
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                compact_scope_label(entry.scope_label),
+                compact_scope_label(&entry.scope_label),
                 Rect::new(
                     scope_rect.x + 4,
                     row.y + 5,
@@ -957,21 +995,21 @@ impl App {
 
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.source_label,
+                &entry.source_label,
                 Rect::new(row.x + 8, row.y + 5, 126, 8),
                 1,
                 Color::RGB(244, 244, 236),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                entry.target_label,
+                &entry.target_label,
                 Rect::new(row.x + 146, row.y + 5, 210, 8),
                 1,
                 Color::RGB(208, 220, 236),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                compact_scope_label(entry.scope_label),
+                compact_scope_label(&entry.scope_label),
                 Rect::new(row.x + row.width() as i32 - 126, row.y + 5, 90, 8),
                 1,
                 Color::RGB(182, 192, 210),
@@ -2029,12 +2067,16 @@ impl App {
                             track.record_note_on(pitch, velocity, input_ticks);
                         }
                         if track.state.passthrough {
-                            if let (Some(port), Some(channel)) =
-                                (track.routing.output_port.as_ref(), track.routing.output_channel)
-                            {
-                                let _ = self
-                                    .midi_output
-                                    .send_note_on(port, channel.clamp(1, 16), pitch, velocity);
+                            if let (Some(port), Some(channel)) = (
+                                track.routing.output_port.as_ref(),
+                                track.routing.output_channel,
+                            ) {
+                                let _ = self.midi_output.send_note_on(
+                                    port,
+                                    channel.clamp(1, 16),
+                                    pitch,
+                                    velocity,
+                                );
                             }
                         }
                     }
@@ -2043,12 +2085,15 @@ impl App {
                             track.record_note_off(pitch, input_ticks);
                         }
                         if track.state.passthrough {
-                            if let (Some(port), Some(channel)) =
-                                (track.routing.output_port.as_ref(), track.routing.output_channel)
-                            {
-                                let _ =
-                                    self.midi_output
-                                        .send_note_off(port, channel.clamp(1, 16), pitch);
+                            if let (Some(port), Some(channel)) = (
+                                track.routing.output_port.as_ref(),
+                                track.routing.output_channel,
+                            ) {
+                                let _ = self.midi_output.send_note_off(
+                                    port,
+                                    channel.clamp(1, 16),
+                                    pitch,
+                                );
                             }
                         }
                     }

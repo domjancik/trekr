@@ -21,7 +21,8 @@ Remove-Item -Path (Join-Path $outputRoot "manifest.json") -Force -ErrorAction Si
 
 $args = @(
     "--capture-ui",
-    "--capture-dir", $outputRoot
+    "--capture-dir", $outputRoot,
+    "--state-mode", "demo"
 )
 
 & $binaryPath @args | Out-Host

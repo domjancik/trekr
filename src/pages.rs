@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppPage {
     Timeline,
     Mappings,
@@ -37,7 +39,7 @@ impl AppPage {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MappingPageMode {
     Overview,
     Write,
@@ -59,7 +61,7 @@ impl MappingPageMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MidiIoListFocus {
     Inputs,
     Outputs,
@@ -74,7 +76,7 @@ impl MidiIoListFocus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiIoPageState {
     pub focus: MidiIoListFocus,
     pub selected_input_index: usize,
@@ -91,7 +93,7 @@ impl Default for MidiIoPageState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoutingField {
     InputDevice,
     InputChannel,
@@ -140,7 +142,7 @@ impl RoutingField {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppPageState {
     pub current_page: AppPage,
     pub midi_io: MidiIoPageState,

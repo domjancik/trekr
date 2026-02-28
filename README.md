@@ -33,6 +33,13 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - a moving playhead
 - per-track loop preview
 
+Launch state:
+
+- default interactive run uses persisted state from `artifacts/state/last-run.json` when available and saves back on clean exit
+- `cargo run -- --state-mode demo` forces the built-in demo state
+- `cargo run -- --state-mode empty` forces an empty deterministic state
+- `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
+
 Current controls:
 
 - `Tab` / `Shift+Tab`: next/previous page
@@ -87,6 +94,7 @@ The app also exposes a generic overlay layer, currently used for a quick mapping
 The repo includes a scripted screenshot-and-review loop for visual QA:
 
 - `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
+  - capture explicitly uses `--state-mode demo` so screenshots stay deterministic instead of depending on the last persisted interactive state
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`
 

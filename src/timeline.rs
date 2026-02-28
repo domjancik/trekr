@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Region {
     pub start_ticks: u64,
     pub length_ticks: u64,
@@ -21,7 +23,7 @@ impl Region {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoopRegion {
     pub start_ticks: u64,
     pub length_ticks: u64,
@@ -81,7 +83,7 @@ impl LoopRegion {
 }
 
 /// Hold-to-record captures a press/release span before it is committed as a region.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordingTake {
     pub pressed_at_ticks: u64,
     pub released_at_ticks: Option<u64>,
@@ -89,7 +91,7 @@ pub struct RecordingTake {
     pub pending_notes: Vec<PendingMidiNote>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordedMidiNote {
     pub pitch: u8,
     pub velocity: u8,
@@ -97,7 +99,7 @@ pub struct RecordedMidiNote {
     pub ended_at_ticks: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingMidiNote {
     pub pitch: u8,
     pub velocity: u8,
@@ -128,7 +130,11 @@ impl RecordingTake {
     }
 
     pub fn note_on(&mut self, pitch: u8, velocity: u8, started_at_ticks: u64) {
-        if let Some(existing) = self.pending_notes.iter_mut().find(|note| note.pitch == pitch) {
+        if let Some(existing) = self
+            .pending_notes
+            .iter_mut()
+            .find(|note| note.pitch == pitch)
+        {
             existing.velocity = velocity;
             existing.started_at_ticks = started_at_ticks;
             return;
@@ -142,7 +148,11 @@ impl RecordingTake {
     }
 
     pub fn note_off(&mut self, pitch: u8, ended_at_ticks: u64) {
-        if let Some(index) = self.pending_notes.iter().position(|note| note.pitch == pitch) {
+        if let Some(index) = self
+            .pending_notes
+            .iter()
+            .position(|note| note.pitch == pitch)
+        {
             let pending_note = self.pending_notes.remove(index);
             self.recorded_notes.push(RecordedMidiNote {
                 pitch: pending_note.pitch,

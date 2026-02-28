@@ -1,8 +1,9 @@
 use crate::routing::TrackRouting;
 use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{RecordMode, Transport};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
     pub transport: Transport,
@@ -20,6 +21,18 @@ impl Project {
             active_track_index: 0,
             tracks: (1..=6)
                 .map(|index| Track::new(&format!("Track {}", index), TrackKind::Midi))
+                .collect(),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            name: "Untitled".to_string(),
+            transport: Transport::default(),
+            loop_region: LoopRegion::new(0, 16 * 960),
+            active_track_index: 0,
+            tracks: (1..=6)
+                .map(|index| Track::new_empty(&format!("Track {}", index), TrackKind::Midi))
                 .collect(),
         }
     }
@@ -76,7 +89,7 @@ impl Project {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     pub name: String,
     pub kind: TrackKind,
@@ -102,6 +115,19 @@ impl Track {
         };
         track.seed_demo_notes();
         track
+    }
+
+    pub fn new_empty(name: &str, kind: TrackKind) -> Self {
+        Self {
+            name: name.to_string(),
+            kind,
+            state: TrackState::default(),
+            routing: TrackRouting::default(),
+            loop_region: LoopRegion::new(0, 4 * 960),
+            active_take: None,
+            midi_notes: Vec::new(),
+            regions: Vec::new(),
+        }
     }
 
     pub fn begin_recording(&mut self, pressed_at: u64) {
@@ -177,8 +203,12 @@ impl Track {
         record_range: Option<LoopRegion>,
     ) -> Option<Region> {
         self.active_take.as_ref().and_then(|take| {
-            let (start_ticks, end_ticks) =
-                normalized_record_span(transport, take.pressed_at_ticks, current_ticks, record_range);
+            let (start_ticks, end_ticks) = normalized_record_span(
+                transport,
+                take.pressed_at_ticks,
+                current_ticks,
+                record_range,
+            );
             let length_ticks = end_ticks.saturating_sub(start_ticks);
             (length_ticks > 0).then_some(Region::new(start_ticks, length_ticks))
         })
@@ -286,14 +316,14 @@ fn normalized_record_span(
     (start_ticks, end_ticks)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrackKind {
     Midi,
     Audio,
     Hybrid,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiNote {
     pub pitch: u8,
     pub start_ticks: u64,
@@ -320,7 +350,7 @@ impl MidiNote {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TrackState {
     pub armed: bool,
     pub loop_enabled: bool,
@@ -474,7 +504,10 @@ mod tests {
                 .any(|note| note.pitch == 60 && note.start_ticks == 0)
         );
         assert!(
-            track.midi_notes.iter().any(|note| note.pitch == 67 && note.start_ticks == 0)
+            track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 67 && note.start_ticks == 0)
         );
     }
 
