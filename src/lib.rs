@@ -3,6 +3,7 @@ pub mod app;
 pub mod engine;
 pub mod mapping;
 pub mod midi_io;
+pub mod pages;
 pub mod project;
 pub mod render;
 pub mod routing;

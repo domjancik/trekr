@@ -48,6 +48,57 @@ pub fn inset_rect(rect: Rect, inset_x: i32, inset_y: i32) -> Result<Rect, String
     ))
 }
 
+pub fn split_top_strip(rect: Rect, strip_height: u32, gap: i32) -> Result<(Rect, Rect), String> {
+    let remaining_height = rect.height() as i32 - strip_height as i32 - gap;
+    if remaining_height <= 0 {
+        return Err("split_top_strip produced a non-positive content rectangle".to_string());
+    }
+
+    Ok((
+        Rect::new(rect.x, rect.y, rect.width(), strip_height),
+        Rect::new(
+            rect.x,
+            rect.y + strip_height as i32 + gap,
+            rect.width(),
+            remaining_height as u32,
+        ),
+    ))
+}
+
+pub fn equal_columns(bounds: Rect, count: usize, gap: i32) -> Vec<Rect> {
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let total_gap = gap * count.saturating_sub(1) as i32;
+    let column_width = ((bounds.width() as i32 - total_gap) / count as i32).max(8);
+    let mut columns = Vec::with_capacity(count);
+
+    for index in 0..count {
+        let x = bounds.x + index as i32 * (column_width + gap);
+        columns.push(Rect::new(x, bounds.y, column_width as u32, bounds.height()));
+    }
+
+    columns
+}
+
+pub fn stacked_rows(bounds: Rect, count: usize, gap: i32) -> Vec<Rect> {
+    if count == 0 {
+        return Vec::new();
+    }
+
+    let total_gap = gap * count.saturating_sub(1) as i32;
+    let row_height = ((bounds.height() as i32 - total_gap) / count as i32).max(8);
+    let mut rows = Vec::with_capacity(count);
+
+    for index in 0..count {
+        let y = bounds.y + index as i32 * (row_height + gap);
+        rows.push(Rect::new(bounds.x, y, bounds.width(), row_height as u32));
+    }
+
+    rows
+}
+
 pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)> {
     if track_count == 0 {
         return Vec::new();
@@ -299,9 +350,10 @@ fn horizontal_note_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeaderBadgeKind, TimelineFlow, detail_badge_rect, header_badges, note_rects,
-        passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect, surface_rect,
-        timeline_guides, track_column_pairs, track_header_rect,
+        HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges,
+        note_rects, passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect,
+        split_top_strip, stacked_rows, surface_rect, timeline_guides, track_column_pairs,
+        track_header_rect,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -323,6 +375,31 @@ mod tests {
         assert!(detail.x > full.x);
         assert_eq!(full.height(), 400);
         assert_eq!(detail.height(), 400);
+    }
+
+    #[test]
+    fn split_top_strip_preserves_remaining_content() {
+        let (top, rest) = split_top_strip(Rect::new(0, 0, 320, 200), 24, 8).unwrap();
+
+        assert_eq!(top.height(), 24);
+        assert_eq!(rest.y, 32);
+        assert_eq!(rest.height(), 168);
+    }
+
+    #[test]
+    fn equal_columns_splits_bounds_evenly() {
+        let columns = equal_columns(Rect::new(0, 0, 300, 100), 3, 6);
+
+        assert_eq!(columns.len(), 3);
+        assert!(columns[1].x > columns[0].x);
+    }
+
+    #[test]
+    fn stacked_rows_splits_bounds_evenly() {
+        let rows = stacked_rows(Rect::new(0, 0, 100, 240), 4, 4);
+
+        assert_eq!(rows.len(), 4);
+        assert!(rows[1].y > rows[0].y);
     }
 
     #[test]

@@ -23,12 +23,18 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 
 - fixed-fit per-track paired columns in the form `full | detail | full | detail`
 - default vertical-time layout with time moving downward
+- a page shell for `Timeline`, `Mappings`, `MIDI I/O`, and `Routing`
 - active-track highlighting
 - a moving playhead
 - per-track loop preview
 
 Current controls:
 
+- `Tab` / `Shift+Tab`: next/previous page
+- `F1` / `F2` / `F3` / `F4`: show timeline, mappings, MIDI I/O, or routing page
+- `Up` / `Down`: select current page item
+- `Q` / `E`: adjust current page item
+- `Enter`: activate/toggle current page item
 - `Space`: play/stop
 - `[` / `]`: set current-track loop start/end at playhead
 - `,` / `.`: nudge current-track loop backward/forward by one quantize step
@@ -44,6 +50,6 @@ Current controls:
 - `M`: mute current track
 - `S`: solo current track
 - `I`: toggle current track passthrough
-- `Left` / `Right`: select previous/next track
+- `Left` / `Right`: select previous/next track directly
 - `1`-`9`: select track by absolute index
 - `Escape`: quit

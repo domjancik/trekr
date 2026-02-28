@@ -1,3 +1,4 @@
+use crate::pages::AppPage;
 use crate::ui::TimelineFlow;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
@@ -9,6 +10,14 @@ use sdl3::keyboard::{Keycode, Mod};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     Quit,
+    ShowPage(AppPage),
+    ShowNextPage,
+    ShowPreviousPage,
+    SelectPreviousPageItem,
+    SelectNextPageItem,
+    AdjustPageItemBackward,
+    AdjustPageItemForward,
+    ActivatePageItem,
     TogglePlayback,
     ToggleGlobalLoop,
     ToggleCurrentTrackLoop,
@@ -76,6 +85,51 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::TogglePlayback,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Tab),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ShowPreviousPage
+                } else {
+                    AppAction::ShowNextPage
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F1),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ShowPage(AppPage::Timeline),
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F2),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ShowPage(AppPage::Mappings),
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F3),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ShowPage(AppPage::MidiIo),
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F4),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ShowPage(AppPage::Routing),
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -231,6 +285,46 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
+                keycode: Some(Keycode::Up),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectPreviousPageItem,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Down),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectNextPageItem,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Q),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::AdjustPageItemBackward,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::E),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::AdjustPageItemForward,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Return),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ActivatePageItem,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
                 keycode: Some(Keycode::Right),
                 repeat: false,
                 ..
@@ -281,6 +375,7 @@ fn digit_track_index(keycode: Keycode) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::{ActionSource, AppAction, KeyboardBindings};
+    use crate::pages::AppPage;
     use sdl3::event::Event;
     use sdl3::keyboard::{Keycode, Mod};
 
@@ -333,6 +428,72 @@ mod tests {
 
         let resolved = KeyboardBindings.resolve(&event).expect("track select");
         assert_eq!(resolved.action, AppAction::SelectTrack(3));
+    }
+
+    #[test]
+    fn keyboard_bindings_map_page_shortcuts() {
+        let next = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Tab),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let direct = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F3),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&next).unwrap().action,
+            AppAction::ShowNextPage
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&direct).unwrap().action,
+            AppAction::ShowPage(AppPage::MidiIo)
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_page_navigation_controls() {
+        let up = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Up),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let adjust = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::E),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&up).unwrap().action,
+            AppAction::SelectPreviousPageItem
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&adjust).unwrap().action,
+            AppAction::AdjustPageItemForward
+        );
     }
 
     #[test]
