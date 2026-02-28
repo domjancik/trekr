@@ -39,6 +39,7 @@ Launch state:
 - `cargo run -- --state-mode demo` forces the built-in demo state
 - `cargo run -- --state-mode empty` forces an empty deterministic state
 - `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
+- committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Current controls:
 
@@ -117,4 +118,11 @@ Example:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-ui-review.ps1
+```
+
+Fixture examples:
+
+```powershell
+cargo run -- --state-mode persisted --state-file state-fixtures/ui-looped.json
+powershell -ExecutionPolicy Bypass -File .\scripts\run-ui-review.ps1 -StateMode persisted -StateFile state-fixtures/ui-looped.json
 ```

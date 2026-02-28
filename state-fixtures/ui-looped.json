@@ -1,0 +1,228 @@
+{
+  "project": {
+    "name": "UI Fixture",
+    "transport": {
+      "tempo_bpm": 120,
+      "ppqn": 960,
+      "quantize": "Sixteenth",
+      "record_mode": "Overdub",
+      "loop_enabled": true,
+      "playing": false,
+      "recording": false
+    },
+    "loop_region": {
+      "start_ticks": 1920,
+      "length_ticks": 3840
+    },
+    "active_track_index": 1,
+    "tracks": [
+      {
+        "name": "Track 1",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": true,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": { "name": "Keystep 37" },
+          "output_port": { "name": "Digitone" },
+          "input_channel": "Omni",
+          "output_channel": 1
+        },
+        "loop_region": {
+          "start_ticks": 1920,
+          "length_ticks": 1920
+        },
+        "active_take": null,
+        "midi_notes": [
+          { "pitch": 60, "start_ticks": 1920, "length_ticks": 240, "velocity": 104 },
+          { "pitch": 64, "start_ticks": 2400, "length_ticks": 240, "velocity": 100 },
+          { "pitch": 67, "start_ticks": 2880, "length_ticks": 480, "velocity": 96 }
+        ],
+        "regions": [
+          { "start_ticks": 1920, "length_ticks": 1920 }
+        ]
+      },
+      {
+        "name": "Track 2",
+        "kind": "Midi",
+        "state": {
+          "armed": true,
+          "loop_enabled": true,
+          "muted": false,
+          "soloed": false,
+          "passthrough": true
+        },
+        "routing": {
+          "input_port": { "name": "Keystep 37" },
+          "output_port": { "name": "Volca FM" },
+          "input_channel": { "Channel": 1 },
+          "output_channel": 2
+        },
+        "loop_region": {
+          "start_ticks": 960,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          { "pitch": 48, "start_ticks": 960, "length_ticks": 240, "velocity": 96 },
+          { "pitch": 55, "start_ticks": 1920, "length_ticks": 240, "velocity": 92 }
+        ],
+        "regions": [
+          { "start_ticks": 960, "length_ticks": 3840 }
+        ]
+      },
+      {
+        "name": "Track 3",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": { "name": "Launchpad Mini" },
+          "output_port": { "name": "DIN Out A" },
+          "input_channel": "Omni",
+          "output_channel": 3
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          { "pitch": 72, "start_ticks": 0, "length_ticks": 960, "velocity": 88 }
+        ],
+        "regions": [
+          { "start_ticks": 0, "length_ticks": 1920 }
+        ]
+      },
+      {
+        "name": "Track 4",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": true,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": null,
+          "output_port": { "name": "Digitone" },
+          "input_channel": "Omni",
+          "output_channel": 4
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          { "pitch": 52, "start_ticks": 3840, "length_ticks": 240, "velocity": 84 }
+        ],
+        "regions": []
+      },
+      {
+        "name": "Track 5",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": true,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": null,
+          "output_port": { "name": "Volca FM" },
+          "input_channel": "Omni",
+          "output_channel": 5
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          { "pitch": 57, "start_ticks": 5760, "length_ticks": 480, "velocity": 90 }
+        ],
+        "regions": [
+          { "start_ticks": 5760, "length_ticks": 960 }
+        ]
+      },
+      {
+        "name": "Track 6",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": { "name": "DIN In A" },
+          "output_port": { "name": "DIN Out A" },
+          "input_channel": "Omni",
+          "output_channel": 6
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [],
+        "regions": []
+      }
+    ]
+  },
+  "page_state": {
+    "current_page": "Timeline",
+    "midi_io": {
+      "focus": "Inputs",
+      "selected_input_index": 0,
+      "selected_output_index": 0
+    },
+    "selected_mapping_index": 1,
+    "mapping_mode": "Overview",
+    "selected_routing_field": "InputDevice"
+  },
+  "timeline_flow": "DownwardColumns",
+  "mappings": [
+    {
+      "source_kind": "Key",
+      "source_label": "Space",
+      "target_label": "Play/Stop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_label": "R",
+      "target_label": "Record",
+      "scope_label": "Armed/Active",
+      "enabled": true
+    },
+    {
+      "source_kind": "Midi",
+      "source_label": "CC20",
+      "target_label": "Track Arm",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Osc",
+      "source_label": "/transport/play",
+      "target_label": "Play/Stop",
+      "scope_label": "Global",
+      "enabled": true
+    }
+  ]
+}

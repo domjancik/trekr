@@ -2,14 +2,16 @@ param(
     [string]$OutputDir = "artifacts/screenshots",
     [string]$FindingsFile = "artifacts/reviews/ui-findings.md",
     [string]$ArchiveRoot = "artifacts/archive",
-    [string]$Model = ""
+    [string]$Model = "",
+    [string]$StateMode = "demo",
+    [string]$StateFile = ""
 )
 
 $ErrorActionPreference = "Stop"
 $scriptRoot = $PSScriptRoot
 $repoRoot = Split-Path -Parent $scriptRoot
 
-& (Join-Path $scriptRoot "capture-ui-screens.ps1") -OutputDir $OutputDir
+& (Join-Path $scriptRoot "capture-ui-screens.ps1") -OutputDir $OutputDir -StateMode $StateMode -StateFile $StateFile
 & (Join-Path $scriptRoot "review-ui-screens.ps1") -ScreenshotDir $OutputDir -OutputFile $FindingsFile -Model $Model
 
 $commit = (& git -c safe.directory=$repoRoot rev-parse --short HEAD).Trim()

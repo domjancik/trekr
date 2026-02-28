@@ -1,5 +1,7 @@
 param(
-    [string]$OutputDir = "artifacts/screenshots"
+    [string]$OutputDir = "artifacts/screenshots",
+    [string]$StateMode = "demo",
+    [string]$StateFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,8 +24,17 @@ Remove-Item -Path (Join-Path $outputRoot "manifest.json") -Force -ErrorAction Si
 $args = @(
     "--capture-ui",
     "--capture-dir", $outputRoot,
-    "--state-mode", "demo"
+    "--state-mode", $StateMode
 )
+
+if ($StateFile -ne "") {
+    $statePath = if ([System.IO.Path]::IsPathRooted($StateFile)) {
+        $StateFile
+    } else {
+        Join-Path $repoRoot $StateFile
+    }
+    $args += @("--state-file", $statePath)
+}
 
 & $binaryPath @args | Out-Host
 if ($LASTEXITCODE -ne 0) {
