@@ -32,8 +32,12 @@ Current controls:
 - `Space`: play/stop
 - `[` / `]`: set current-track loop start/end at playhead
 - `,` / `.`: nudge current-track loop backward/forward by one quantize step
+- `-` / `=`: shorten/extend current-track loop by one quantize step
+- `/` / `\`: half/double current-track loop length
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `Shift+,` / `Shift+.`: nudge global loop backward/forward by one quantize step
+- `Shift+-` / `Shift+=`: shorten/extend global loop by one quantize step
+- `Shift+/` / `Shift+\`: half/double global loop length
 - `G`: toggle global loop enable
 - `L`: toggle current track loop enable
 - `A`: arm current track

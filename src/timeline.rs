@@ -54,6 +54,22 @@ impl LoopRegion {
         };
         self.start_ticks = shifted_start;
     }
+
+    pub fn extend_by(&mut self, delta_ticks: u64) {
+        self.length_ticks = self.length_ticks.saturating_add(delta_ticks).max(1);
+    }
+
+    pub fn shorten_by(&mut self, delta_ticks: u64) {
+        self.length_ticks = self.length_ticks.saturating_sub(delta_ticks).max(1);
+    }
+
+    pub fn double_length(&mut self) {
+        self.length_ticks = self.length_ticks.saturating_mul(2).max(1);
+    }
+
+    pub fn half_length(&mut self) {
+        self.length_ticks = (self.length_ticks / 2).max(1);
+    }
 }
 
 /// Hold-to-record captures a press/release span before it is committed as a region.
@@ -106,5 +122,21 @@ mod tests {
 
         loop_region.shift_by(-200);
         assert_eq!(loop_region.start_ticks, 0);
+    }
+
+    #[test]
+    fn loop_region_can_resize_in_multiple_ways() {
+        let mut loop_region = LoopRegion::new(100, 80);
+        loop_region.extend_by(40);
+        assert_eq!(loop_region.length_ticks, 120);
+
+        loop_region.shorten_by(200);
+        assert_eq!(loop_region.length_ticks, 1);
+
+        loop_region.double_length();
+        assert_eq!(loop_region.length_ticks, 2);
+
+        loop_region.half_length();
+        assert_eq!(loop_region.length_ticks, 1);
     }
 }

@@ -325,7 +325,7 @@ impl App {
             .active_track()
             .expect("demo project always has tracks");
         let title = format!(
-            "trekr | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | , . Nudge | Shift+[ ] SongLoop:{}-{} | Shift+, . Nudge | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
+            "trekr | T{} {} | Tick:{} | Space Play:{} | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | Shift+, . Nudge | Shift+- = Resize | Shift+/ \\ Half/Double | G GlobalLoop:{} | L Loop:{} | A Arm:{} | M Mute:{} | S Solo:{} | I Thru:{}",
             self.project.active_track_index + 1,
             active.name,
             self.playhead_ticks,
@@ -410,6 +410,50 @@ impl App {
             AppAction::NudgeGlobalLoopForward => {
                 let delta = self.nudge_step_ticks() as i64;
                 self.project.loop_region.shift_by(delta);
+                AppControl::Continue
+            }
+            AppAction::ShortenCurrentTrackLoop => {
+                let step = self.nudge_step_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.shorten_by(step);
+                }
+                AppControl::Continue
+            }
+            AppAction::ExtendCurrentTrackLoop => {
+                let step = self.nudge_step_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.extend_by(step);
+                }
+                AppControl::Continue
+            }
+            AppAction::HalfCurrentTrackLoop => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.half_length();
+                }
+                AppControl::Continue
+            }
+            AppAction::DoubleCurrentTrackLoop => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.loop_region.double_length();
+                }
+                AppControl::Continue
+            }
+            AppAction::ShortenGlobalLoop => {
+                let step = self.nudge_step_ticks();
+                self.project.loop_region.shorten_by(step);
+                AppControl::Continue
+            }
+            AppAction::ExtendGlobalLoop => {
+                let step = self.nudge_step_ticks();
+                self.project.loop_region.extend_by(step);
+                AppControl::Continue
+            }
+            AppAction::HalfGlobalLoop => {
+                self.project.loop_region.half_length();
+                AppControl::Continue
+            }
+            AppAction::DoubleGlobalLoop => {
+                self.project.loop_region.double_length();
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackArm => {
@@ -660,5 +704,44 @@ mod tests {
             app.project.loop_region.start_ticks,
             start + app.nudge_step_ticks()
         );
+    }
+
+    #[test]
+    fn resize_actions_change_current_track_loop_length() {
+        let mut app = App::new();
+        let base = app.project.active_track().unwrap().loop_region.length_ticks;
+
+        app.apply_action(AppAction::ExtendCurrentTrackLoop);
+        assert_eq!(
+            app.project.active_track().unwrap().loop_region.length_ticks,
+            base + app.nudge_step_ticks()
+        );
+
+        app.apply_action(AppAction::HalfCurrentTrackLoop);
+        assert!(
+            app.project.active_track().unwrap().loop_region.length_ticks
+                <= base + app.nudge_step_ticks()
+        );
+
+        app.apply_action(AppAction::DoubleCurrentTrackLoop);
+        assert!(
+            app.project.active_track().unwrap().loop_region.length_ticks
+                >= base + app.nudge_step_ticks()
+        );
+    }
+
+    #[test]
+    fn resize_actions_change_global_loop_length() {
+        let mut app = App::new();
+        let base = app.project.loop_region.length_ticks;
+
+        app.apply_action(AppAction::ShortenGlobalLoop);
+        assert_eq!(
+            app.project.loop_region.length_ticks,
+            base.saturating_sub(app.nudge_step_ticks()).max(1)
+        );
+
+        app.apply_action(AppAction::DoubleGlobalLoop);
+        assert!(app.project.loop_region.length_ticks >= 2);
     }
 }

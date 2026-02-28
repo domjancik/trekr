@@ -20,6 +20,14 @@ pub enum AppAction {
     NudgeCurrentTrackLoopForward,
     NudgeGlobalLoopBackward,
     NudgeGlobalLoopForward,
+    ShortenCurrentTrackLoop,
+    ExtendCurrentTrackLoop,
+    HalfCurrentTrackLoop,
+    DoubleCurrentTrackLoop,
+    ShortenGlobalLoop,
+    ExtendGlobalLoop,
+    HalfGlobalLoop,
+    DoubleGlobalLoop,
     ToggleCurrentTrackArm,
     ToggleCurrentTrackMute,
     ToggleCurrentTrackSolo,
@@ -135,6 +143,58 @@ impl KeyboardBindings {
                     AppAction::NudgeGlobalLoopForward
                 } else {
                     AppAction::NudgeCurrentTrackLoopForward
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Minus),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ShortenGlobalLoop
+                } else {
+                    AppAction::ShortenCurrentTrackLoop
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Equals),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ExtendGlobalLoop
+                } else {
+                    AppAction::ExtendCurrentTrackLoop
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Slash),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::HalfGlobalLoop
+                } else {
+                    AppAction::HalfCurrentTrackLoop
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Backslash),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::DoubleGlobalLoop
+                } else {
+                    AppAction::DoubleCurrentTrackLoop
                 },
                 ActionSource::Keyboard,
             )),
@@ -338,6 +398,67 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&global).unwrap().action,
             AppAction::NudgeGlobalLoopForward
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_resize_shortcuts() {
+        let shorten = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Minus),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let extend = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Equals),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let half = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Slash),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let double = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Backslash),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&shorten).unwrap().action,
+            AppAction::ShortenCurrentTrackLoop
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&extend).unwrap().action,
+            AppAction::ExtendGlobalLoop
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&half).unwrap().action,
+            AppAction::HalfCurrentTrackLoop
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&double).unwrap().action,
+            AppAction::DoubleGlobalLoop
         );
     }
 }
