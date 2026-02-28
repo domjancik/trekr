@@ -306,9 +306,13 @@ impl App {
         });
         canvas.draw_rect(bounds)?;
 
-        let header = crate::ui::track_header_rect(bounds, self.timeline_flow);
+        let status_rect = crate::ui::track_status_rect(bounds, self.timeline_flow);
+        let label_rect = crate::ui::track_label_rect(bounds, self.timeline_flow);
+        let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
+        canvas.set_draw_color(Color::RGB(26, 34, 52));
+        canvas.fill_rect(status_rect)?;
         canvas.set_draw_color(accent);
-        canvas.fill_rect(header)?;
+        canvas.fill_rect(label_rect)?;
         if track.state.passthrough {
             let rail = crate::ui::passthrough_rail_rect(bounds);
             canvas.set_draw_color(Color::RGB(74, 210, 214));
@@ -317,7 +321,7 @@ impl App {
 
         if !detail && track.state.loop_enabled {
             let loop_highlight = crate::ui::range_highlight_rect(
-                bounds,
+                content_rect,
                 self.timeline_flow,
                 view_start_ticks,
                 range_ticks.max(1),
@@ -331,13 +335,13 @@ impl App {
             canvas.fill_rect(loop_highlight)?;
         }
 
-        for guide in crate::ui::timeline_guides(bounds, self.timeline_flow) {
+        for guide in crate::ui::timeline_guides(content_rect, self.timeline_flow) {
             canvas.set_draw_color(Color::RGB(52, 62, 84));
             canvas.fill_rect(guide)?;
         }
 
         if detail {
-            let loop_tag = crate::ui::detail_badge_rect(header);
+            let loop_tag = crate::ui::detail_badge_rect(label_rect);
             canvas.set_draw_color(
                 if track.state.loop_enabled && self.project.transport.loop_enabled {
                     Color::RGB(252, 192, 104)
@@ -348,7 +352,7 @@ impl App {
             canvas.fill_rect(loop_tag)?;
         }
 
-        for badge in crate::ui::header_badges(header) {
+        for badge in crate::ui::header_badges(status_rect) {
             let color = match badge.kind {
                 crate::ui::HeaderBadgeKind::TrackIndex => {
                     if is_active {
@@ -383,15 +387,15 @@ impl App {
             canvas.fill_rect(badge.rect)?;
         }
 
-        let label_left = header.x + 44;
+        let label_left = label_rect.x + 4;
         let label_right_margin = if detail { 26 } else { 4 };
         crate::ui::draw_text_fitted(
             canvas,
             &track.name,
             Rect::new(
                 label_left,
-                header.y + 6,
-                (header.width() as i32 - (label_left - header.x) - label_right_margin).max(0)
+                label_rect.y + 6,
+                (label_rect.width() as i32 - (label_left - label_rect.x) - label_right_margin).max(0)
                     as u32,
                 8,
             ),
@@ -400,7 +404,12 @@ impl App {
         )?;
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
-        for note in crate::ui::note_rects(bounds, &track.midi_notes, note_range, self.timeline_flow)
+        for note in crate::ui::note_rects(
+            content_rect,
+            &track.midi_notes,
+            note_range,
+            self.timeline_flow,
+        )
         {
             canvas.set_draw_color(if track.state.muted {
                 Color::RGB(92, 100, 112)
@@ -419,7 +428,7 @@ impl App {
         }
 
         let playhead = crate::ui::playhead_rect_in_range(
-            bounds,
+            content_rect,
             self.timeline_flow,
             view_start_ticks,
             range_ticks.max(1),

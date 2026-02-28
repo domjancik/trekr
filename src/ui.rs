@@ -315,8 +315,39 @@ pub fn note_rects(
 
 pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 20),
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 34),
         TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height()),
+    }
+}
+
+pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 14),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, 14),
+    }
+}
+
+pub fn track_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 14, lane.width(), 20),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y + 14, 56, lane.height().saturating_sub(14)),
+    }
+}
+
+pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + 34,
+            lane.width(),
+            lane.height().saturating_sub(34),
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x + 56,
+            lane.y,
+            lane.width().saturating_sub(56),
+            lane.height(),
+        ),
     }
 }
 
@@ -506,7 +537,8 @@ mod tests {
         HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges,
         note_rects, passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect,
         split_top_strip, stacked_rows, surface_rect, text_width, timeline_guides,
-        track_column_pairs, track_header_rect, truncate_text_to_width,
+        track_column_pairs, track_content_rect, track_header_rect, track_label_rect,
+        track_status_rect, truncate_text_to_width,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -591,8 +623,21 @@ mod tests {
     fn downward_columns_use_top_headers() {
         let header = track_header_rect(Rect::new(10, 20, 80, 240), TimelineFlow::DownwardColumns);
 
-        assert_eq!(header.height(), 20);
+        assert_eq!(header.height(), 34);
         assert_eq!(header.width(), 80);
+    }
+
+    #[test]
+    fn track_chrome_reserves_status_and_content_bands() {
+        let lane = Rect::new(10, 20, 80, 240);
+        let status = track_status_rect(lane, TimelineFlow::DownwardColumns);
+        let label = track_label_rect(lane, TimelineFlow::DownwardColumns);
+        let content = track_content_rect(lane, TimelineFlow::DownwardColumns);
+
+        assert_eq!(status.height(), 14);
+        assert_eq!(label.y, 34);
+        assert_eq!(content.y, 54);
+        assert_eq!(content.height(), 206);
     }
 
     #[test]
