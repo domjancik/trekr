@@ -1,5 +1,7 @@
 use midir::{MidiInput, MidiOutput, MidiOutputConnection};
 use std::collections::HashMap;
+use std::sync::mpsc::{self, Sender};
+use std::thread;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiPortRef {
@@ -142,11 +144,50 @@ fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> 
 }
 
 pub struct MidiOutputRuntime {
+    sender: Sender<MidiOutputCommand>,
+}
+
+enum MidiOutputCommand {
+    NoteOn {
+        port: MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        port: MidiPortRef,
+        channel: u8,
+        pitch: u8,
+    },
+    AllNotesOff {
+        port: MidiPortRef,
+        channel: u8,
+    },
+}
+
+struct MidiOutputWorker {
     app_name: &'static str,
     connections: HashMap<String, MidiOutputConnection>,
 }
 
 impl Default for MidiOutputRuntime {
+    fn default() -> Self {
+        let (sender, receiver) = mpsc::channel();
+        thread::Builder::new()
+            .name("trekr-midi-output".to_string())
+            .spawn(move || {
+                let mut worker = MidiOutputWorker::default();
+                while let Ok(command) = receiver.recv() {
+                    let _ = worker.handle(command);
+                }
+            })
+            .expect("midi output worker should start");
+
+        Self { sender }
+    }
+}
+
+impl Default for MidiOutputWorker {
     fn default() -> Self {
         Self {
             app_name: "trekr-midi-output",
@@ -163,7 +204,14 @@ impl MidiOutputRuntime {
         pitch: u8,
         velocity: u8,
     ) -> Result<(), String> {
-        self.send_message(port, [status_byte(0x90, channel), pitch, velocity])
+        self.sender
+            .send(MidiOutputCommand::NoteOn {
+                port: port.clone(),
+                channel,
+                pitch,
+                velocity,
+            })
+            .map_err(|error| error.to_string())
     }
 
     pub fn send_note_off(
@@ -172,7 +220,13 @@ impl MidiOutputRuntime {
         channel: u8,
         pitch: u8,
     ) -> Result<(), String> {
-        self.send_message(port, [status_byte(0x80, channel), pitch, 0])
+        self.sender
+            .send(MidiOutputCommand::NoteOff {
+                port: port.clone(),
+                channel,
+                pitch,
+            })
+            .map_err(|error| error.to_string())
     }
 
     pub fn send_all_notes_off(
@@ -180,12 +234,42 @@ impl MidiOutputRuntime {
         port: &MidiPortRef,
         channel: u8,
     ) -> Result<(), String> {
-        self.send_message(port, [status_byte(0xB0, channel), 123, 0])
+        self.sender
+            .send(MidiOutputCommand::AllNotesOff {
+                port: port.clone(),
+                channel,
+            })
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl MidiOutputWorker {
+    fn handle(&mut self, command: MidiOutputCommand) -> Result<(), String> {
+        match command {
+            MidiOutputCommand::NoteOn {
+                port,
+                channel,
+                pitch,
+                velocity,
+            } => self.send_message(&port, [status_byte(0x90, channel), pitch, velocity]),
+            MidiOutputCommand::NoteOff {
+                port,
+                channel,
+                pitch,
+            } => self.send_message(&port, [status_byte(0x80, channel), pitch, 0]),
+            MidiOutputCommand::AllNotesOff { port, channel } => {
+                self.send_message(&port, [status_byte(0xB0, channel), 123, 0])
+            }
+        }
     }
 
     fn send_message(&mut self, port: &MidiPortRef, message: [u8; 3]) -> Result<(), String> {
         let connection = self.connection_for(port)?;
-        connection.send(&message).map_err(|error| error.to_string())
+        let result = connection.send(&message).map_err(|error| error.to_string());
+        if result.is_err() {
+            self.connections.remove(&port.name);
+        }
+        result
     }
 
     fn connection_for(&mut self, port: &MidiPortRef) -> Result<&mut MidiOutputConnection, String> {

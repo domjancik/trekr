@@ -26,6 +26,7 @@ Native MIDI-first tracker/player/looper for small PCs with a portable path to mo
 - a page shell for `Timeline`, `Mappings`, `MIDI I/O`, and `Routing`
 - real MIDI device enumeration via `midir`
 - basic routed MIDI note playback on track output ports/channels
+- MIDI output runs on a dedicated worker thread so device stalls or hot-plug churn do not block the UI thread
 - in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
 - active-track highlighting
 - a moving playhead
