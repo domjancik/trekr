@@ -920,14 +920,20 @@ impl App {
             Color::RGB(244, 232, 146),
         )?;
         let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
-        canvas.set_draw_color(Color::RGB(50, 62, 88));
+        canvas.set_draw_color(if self.page_state.mapping_mode == MappingPageMode::Write {
+            Color::RGB(74, 96, 138)
+        } else {
+            Color::RGB(50, 62, 88)
+        });
         canvas.fill_rect(overview_badge)?;
+        canvas.set_draw_color(Color::RGB(244, 232, 146));
+        canvas.draw_rect(overview_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("Mode: {}", self.page_state.mapping_mode.label()),
+            &format!("Tap Mode: {}", self.page_state.mapping_mode.label()),
             Rect::new(content_bounds.x + 208, content_bounds.y + 12, 170, 8),
             1,
-            Color::RGB(206, 214, 224),
+            Color::RGB(236, 242, 248),
         )?;
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
         canvas.set_draw_color(if self.page_state.mapping_midi_learn_armed {
@@ -936,12 +942,22 @@ impl App {
             Color::RGB(44, 56, 78)
         });
         canvas.fill_rect(learn_badge)?;
+        canvas.set_draw_color(
+            if self.page_state.selected_mapping_field == MappingField::SourceValue
+                && self.page_state.mapping_mode == MappingPageMode::Write
+            {
+                Color::RGB(252, 232, 146)
+            } else {
+                Color::RGB(96, 108, 132)
+            },
+        );
+        canvas.draw_rect(learn_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
             if self.page_state.mapping_midi_learn_armed {
-                "Learn: waiting"
+                "Tap Learn: waiting"
             } else {
-                "Learn: idle"
+                "Tap Learn: idle"
             },
             Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
@@ -1087,6 +1103,19 @@ impl App {
             canvas.set_draw_color(Color::RGB(66, 74, 88));
             canvas.fill_rect(scope_rect)?;
             canvas.fill_rect(cells[5])?;
+            if selected && self.page_state.mapping_mode == MappingPageMode::Write {
+                let field_rect = cells[mapping_field_index(self.page_state.selected_mapping_field)];
+                canvas.set_draw_color(
+                    if self.page_state.mapping_midi_learn_armed
+                        && self.page_state.selected_mapping_field == MappingField::SourceValue
+                    {
+                        Color::RGB(120, 42, 42)
+                    } else {
+                        Color::RGB(92, 98, 64)
+                    },
+                );
+                canvas.fill_rect(field_rect)?;
+            }
             crate::ui::draw_text_fitted(
                 canvas,
                 mapping_source_label(entry.source_kind),
@@ -1180,18 +1209,68 @@ impl App {
                     },
                 );
                 canvas.draw_rect(field_rect)?;
+                let tap_tag = Rect::new(row.x + row.width() as i32 - 68, row.y + 3, 34, 12);
+                canvas.set_draw_color(Color::RGB(86, 98, 124));
+                canvas.fill_rect(tap_tag)?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    "Tap",
+                    Rect::new(
+                        tap_tag.x + 6,
+                        tap_tag.y + 2,
+                        tap_tag.width().saturating_sub(12),
+                        8,
+                    ),
+                    1,
+                    Color::RGB(244, 244, 236),
+                )?;
             }
         }
 
         canvas.set_draw_color(Color::RGB(26, 32, 46));
         canvas.fill_rect(footer_bounds)?;
+        let footer_tokens = [
+            ("Tap row", Color::RGB(62, 78, 106)),
+            ("Tap field", Color::RGB(74, 88, 118)),
+            ("Tap again act", Color::RGB(82, 100, 136)),
+            ("W Write", Color::RGB(96, 82, 52)),
+            ("N New", Color::RGB(66, 96, 84)),
+            ("Del Remove", Color::RGB(110, 74, 74)),
+        ];
+        let mut footer_x = footer_bounds.x + 6;
+        for (label, fill) in footer_tokens {
+            let token = Rect::new(
+                footer_x,
+                footer_bounds.y + 1,
+                crate::ui::text_width(label, 1) + 12,
+                footer_bounds.height().saturating_sub(2),
+            );
+            canvas.set_draw_color(fill);
+            canvas.fill_rect(token)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                label,
+                Rect::new(
+                    token.x + 6,
+                    token.y + 2,
+                    token.width().saturating_sub(12),
+                    8,
+                ),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            footer_x += token.width() as i32 + 6;
+        }
         crate::ui::draw_text_fitted(
             canvas,
-            "F5 Overlay  W Write  Shift+Left/Right Field  Q/E Adjust  Enter Learn/Toggle",
+            "Shift+Left/Right Field  Q/E Adjust  Enter Learn/Toggle",
             Rect::new(
-                footer_bounds.x + 6,
+                footer_x + 6,
                 footer_bounds.y + 2,
-                footer_bounds.width().saturating_sub(12),
+                footer_bounds
+                    .width()
+                    .saturating_sub((footer_x - footer_bounds.x) as u32)
+                    .saturating_sub(12),
                 8,
             ),
             1,
@@ -1229,20 +1308,41 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "F5 closes",
-            Rect::new(panel.x + 12, panel.y + 32, 70, 8),
+            "F5 Close",
+            Rect::new(panel.x + 12, panel.y + 32, 58, 8),
             1,
             Color::RGB(188, 198, 212),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "W write mode",
-            Rect::new(panel.x + 92, panel.y + 32, 86, 8),
+            "W Write",
+            Rect::new(panel.x + 80, panel.y + 32, 52, 8),
             1,
             Color::RGB(188, 198, 212),
         )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Trigger",
+            Rect::new(panel.x + 12, panel.y + 46, 56, 8),
+            1,
+            Color::RGB(150, 162, 180),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Action",
+            Rect::new(panel.x + 146, panel.y + 46, 48, 8),
+            1,
+            Color::RGB(150, 162, 180),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Scope",
+            Rect::new(panel.x + panel.width() as i32 - 126, panel.y + 46, 44, 8),
+            1,
+            Color::RGB(150, 162, 180),
+        )?;
 
-        let list_bounds = crate::ui::inset_rect(panel, 12, 54)?;
+        let list_bounds = crate::ui::inset_rect(panel, 12, 66)?;
         let row_height = 18_i32;
         let row_gap = 3_i32;
         let stride = row_height + row_gap;
@@ -1626,7 +1726,7 @@ impl App {
         canvas.fill_rect(state_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Q/E adjust",
+            "Tap value",
             Rect::new(
                 state_badge.x + 6,
                 state_badge.y + 4,
@@ -1709,8 +1809,25 @@ impl App {
                 62,
                 row.height().saturating_sub(16),
             );
+            let left_adjust = Rect::new(
+                value.x + 4,
+                value.y + 4,
+                20,
+                value.height().saturating_sub(8),
+            );
+            let right_adjust = Rect::new(
+                value.x + value.width() as i32 - 24,
+                value.y + 4,
+                20,
+                value.height().saturating_sub(8),
+            );
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
+            if field != RoutingField::Passthrough {
+                canvas.set_draw_color(Color::RGB(34, 42, 56));
+                canvas.fill_rect(left_adjust)?;
+                canvas.fill_rect(right_adjust)?;
+            }
             canvas.set_draw_color(if selected {
                 Color::RGB(244, 232, 146)
             } else {
@@ -1758,11 +1875,35 @@ impl App {
             } else {
                 crate::ui::draw_text_fitted(
                     canvas,
+                    "-",
+                    Rect::new(
+                        left_adjust.x + 7,
+                        left_adjust.y + 3,
+                        left_adjust.width().saturating_sub(14),
+                        8,
+                    ),
+                    1,
+                    Color::RGB(222, 228, 236),
+                )?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    "+",
+                    Rect::new(
+                        right_adjust.x + 7,
+                        right_adjust.y + 3,
+                        right_adjust.width().saturating_sub(14),
+                        8,
+                    ),
+                    1,
+                    Color::RGB(222, 228, 236),
+                )?;
+                crate::ui::draw_text_fitted(
+                    canvas,
                     &self.routing_field_value(active_track, field),
                     Rect::new(
-                        value.x + 8,
+                        value.x + 30,
                         value.y + 6,
-                        value.width().saturating_sub(16),
+                        value.width().saturating_sub(60),
                         8,
                     ),
                     1,
@@ -1774,9 +1915,9 @@ impl App {
                 if field == RoutingField::Passthrough {
                     "Toggle"
                 } else if selected {
-                    "Adjust"
+                    "Tap +/-"
                 } else {
-                    "Ready"
+                    "Select"
                 },
                 Rect::new(
                     affordance.x + 6,
