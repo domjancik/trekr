@@ -54,7 +54,7 @@ impl Default for Transport {
             ppqn: 960,
             quantize: QuantizeMode::Sixteenth,
             record_mode: RecordMode::Overdub,
-            loop_recording_extends_clip: false,
+            loop_recording_extends_clip: true,
             link_enabled: false,
             link_start_stop_sync: false,
             loop_enabled: true,
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn transport_defaults_loop_recording_extension_off() {
-        assert!(!Transport::default().loop_recording_extends_clip);
+    fn transport_defaults_loop_recording_extension_on() {
+        assert!(Transport::default().loop_recording_extends_clip);
     }
 }

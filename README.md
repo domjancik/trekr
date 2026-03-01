@@ -132,7 +132,7 @@ Recording flow notes:
 
 - armed tracks are the first recording targets; if none are armed, recording uses the active track
 - stopping playback while recording commits the active take instead of discarding it
-- `RecWrap Extend` keeps a looped recording going past the loop boundary by rebasing the clip to loop start and extending its length instead of clamping the take at the loop end
+- `RecWrap Extend` is the default and keeps a looped recording going past the loop boundary by rebasing the clip to loop start and extending its length instead of clamping the take at the loop end
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 - MIDI note content now comes from live input note-on/off events on each track's routed MIDI input, not a generated placeholder pattern
 
