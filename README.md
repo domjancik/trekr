@@ -67,6 +67,7 @@ Launch state:
 - `cargo run -- --state-mode demo` forces the built-in demo state
 - `cargo run -- --state-mode empty` forces an empty deterministic state
 - `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
+- `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Bootstrap and run:
@@ -74,6 +75,7 @@ Bootstrap and run:
 - fresh clones can use `cargo xtask run` as the single setup-and-run command
 - `cargo xtask setup` initializes the `vendor/ableton-link` git submodule
 - `cargo xtask run-demo` and `cargo xtask run-empty` do the same for the demo and empty launch modes
+- `cargo xtask run -- --ui-scale 2.0` forwards extra app flags after `--`
 - `cargo xtask check` initializes the submodule if needed, then runs `cargo check`
 - the Cargo alias lives in `.cargo/config.toml`, so no extra task runner install is required
 

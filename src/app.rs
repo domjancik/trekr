@@ -42,6 +42,7 @@ pub struct App {
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
     viewport_size: (u32, u32),
+    ui_scale_override: Option<f32>,
     transport_ticks: u64,
     playhead_ticks: u64,
     link_snapshot: LinkSnapshot,
@@ -122,10 +123,15 @@ impl App {
             mappings,
             overlay_state: OverlayState::default(),
             viewport_size: (1280, 720),
+            ui_scale_override: None,
             transport_ticks: 0,
             playhead_ticks: 0,
             link_snapshot,
         }
+    }
+
+    pub fn set_ui_scale_override(&mut self, scale: Option<f32>) {
+        self.ui_scale_override = scale.filter(|value| *value >= 1.0);
     }
 
     pub fn bootstrap_summary(&self) -> String {
@@ -260,10 +266,10 @@ impl App {
         &mut self,
         canvas: &mut Canvas<sdl3::video::Window>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let display_scale = canvas.window().display_scale().max(1.0);
+        let scale = effective_ui_scale(canvas.window().display_scale(), self.ui_scale_override);
         let output_size = canvas.output_size()?;
-        self.viewport_size = logical_viewport_size(output_size, display_scale);
-        canvas.set_scale(display_scale, display_scale)?;
+        self.viewport_size = logical_viewport_size(output_size, scale);
+        canvas.set_scale(scale, scale)?;
         Ok(())
     }
 
@@ -3540,6 +3546,10 @@ fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u
     (logical_width, logical_height)
 }
 
+fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
+    override_scale.unwrap_or(display_scale).max(1.0)
+}
+
 fn scheduled_note_events(
     track: &Track,
     previous_ticks: u64,
@@ -3858,6 +3868,13 @@ mod tests {
     fn logical_viewport_size_respects_display_scale() {
         assert_eq!(super::logical_viewport_size((2560, 1440), 2.0), (1280, 720));
         assert_eq!(super::logical_viewport_size((1920, 1080), 1.5), (1280, 720));
+    }
+
+    #[test]
+    fn ui_scale_override_wins_over_display_scale() {
+        assert_eq!(super::effective_ui_scale(1.5, Some(2.0)), 2.0);
+        assert_eq!(super::effective_ui_scale(1.5, None), 1.5);
+        assert_eq!(super::effective_ui_scale(0.5, None), 1.0);
     }
 
     #[test]

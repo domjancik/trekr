@@ -18,6 +18,7 @@ struct LaunchOptions {
     run_mode: RunMode,
     state_mode: StateMode,
     state_file: PathBuf,
+    ui_scale: Option<f32>,
 }
 
 fn parse_state_mode(value: &str) -> Result<StateMode, String> {
@@ -34,6 +35,7 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
     let mut capture_dir = None;
     let mut state_mode = StateMode::Persisted;
     let mut state_file = PathBuf::from("artifacts/state/last-run.json");
+    let mut ui_scale = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -60,6 +62,18 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
                     .ok_or_else(|| "--state-file requires a path".to_owned())?;
                 state_file = PathBuf::from(value);
             }
+            "--ui-scale" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--ui-scale requires a numeric value".to_owned())?;
+                let parsed = value
+                    .parse::<f32>()
+                    .map_err(|_| format!("invalid --ui-scale value: {value}"))?;
+                if parsed < 1.0 {
+                    return Err("--ui-scale must be at least 1.0".to_owned());
+                }
+                ui_scale = Some(parsed);
+            }
             other => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -75,6 +89,7 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
         run_mode,
         state_mode,
         state_file,
+        ui_scale,
     })
 }
 
@@ -94,6 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         StateMode::Demo => App::new_demo(),
         StateMode::Empty => App::new_empty(),
     };
+    app.set_ui_scale_override(options.ui_scale);
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
         RunMode::Interactive => {
