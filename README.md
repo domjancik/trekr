@@ -100,8 +100,8 @@ Current working KMSDRM init path:
 
 Bootstrap and run:
 
-- fresh clones can use `cargo xtask run` as the single setup-and-run command
-- `cargo xtask setup` initializes the `vendor/ableton-link` git submodule
+- prefer `cargo xtask run` as the single setup-and-run command
+- `cargo xtask setup` also initializes the `vendor/ableton-link` git submodule and its bundled `asio` dependency
 - `cargo xtask run-demo` and `cargo xtask run-empty` do the same for the demo and empty launch modes
 - `cargo xtask run -- --ui-scale 2.0` forwards extra app flags after `--`
 - `cargo xtask check` initializes the submodule if needed, then runs `cargo check`
@@ -202,7 +202,7 @@ MIDI learn notes:
 Ableton Link notes:
 
 - Ableton Link now uses the official Ableton source from the `vendor/ableton-link` git submodule through a small native bridge, instead of the broken third-party Rust wrapper
-- `cargo xtask run` will initialize that submodule automatically on first run, or you can run `cargo xtask setup` explicitly
+- use `cargo xtask run` for first-run bootstrap, or `cargo xtask setup` explicitly, so the submodule and bundled `asio` dependency are initialized
 - the transport strip shows Link enabled state, start/stop sync state, and peer count/status summary
 
 The app also exposes a generic overlay layer with two independent modes:
