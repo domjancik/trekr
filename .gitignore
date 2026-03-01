@@ -1,2 +1,5 @@
 /target
-/artifacts
+/artifacts/archive
+/artifacts/state
+/docs/artifacts
+/scripts/artifacts

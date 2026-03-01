@@ -1,0 +1,22 @@
+﻿[
+    {
+        "page":  "mappings",
+        "path":  "C:\\Users\\magne\\dev\\trekr\\artifacts\\screenshots\\mappings.png"
+    },
+    {
+        "page":  "mappings-overlay",
+        "path":  "C:\\Users\\magne\\dev\\trekr\\artifacts\\screenshots\\mappings-overlay.png"
+    },
+    {
+        "page":  "midi-io",
+        "path":  "C:\\Users\\magne\\dev\\trekr\\artifacts\\screenshots\\midi-io.png"
+    },
+    {
+        "page":  "routing",
+        "path":  "C:\\Users\\magne\\dev\\trekr\\artifacts\\screenshots\\routing.png"
+    },
+    {
+        "page":  "timeline",
+        "path":  "C:\\Users\\magne\\dev\\trekr\\artifacts\\screenshots\\timeline.png"
+    }
+]

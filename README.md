@@ -2,6 +2,30 @@
 
 Native MIDI-first tracker/player/looper for small PCs with a portable path to mobile-class targets.
 
+## Screenshots
+
+Latest renderer-owned captures from the demo state:
+
+### Timeline
+
+![Timeline](artifacts/screenshots/timeline.png)
+
+### Mappings
+
+![Mappings](artifacts/screenshots/mappings.png)
+
+### Mappings Overlay
+
+![Mappings Overlay](artifacts/screenshots/mappings-overlay.png)
+
+### MIDI I/O
+
+![MIDI I/O](artifacts/screenshots/midi-io.png)
+
+### Routing
+
+![Routing](artifacts/screenshots/routing.png)
+
 ## Docs
 
 - `docs/product-spec.md`: product behavior, UX model, workflows, and MVP scope.
@@ -126,6 +150,17 @@ The repo includes a scripted screenshot-and-review loop for visual QA:
   - capture explicitly uses `--state-mode demo` so screenshots stay deterministic instead of depending on the last persisted interactive state
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`
+
+Tracked artifacts:
+
+- `artifacts/screenshots/`: latest renderer-owned screenshots used by the README
+- `artifacts/reviews/ui-findings.md`: latest compact screenshot review findings
+
+Ignored artifacts:
+
+- `artifacts/archive/`: commit-keyed review history
+- `artifacts/state/`: last-run persisted state
+- `docs/artifacts/` and `scripts/artifacts/`: stray/generated script-state directories
 
 The capture path is renderer-owned rather than desktop-owned:
 
