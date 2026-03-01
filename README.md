@@ -152,6 +152,51 @@ Current planning note:
 - the remaining MVP checklist now lives in `docs/implementation-plan.md`
 - Ableton Link is planned as a near-term sync milestone after the core MVP workflow is comfortable, and its architecture notes live in `docs/architecture.md`
 
+## Raspberry Pi Zero 2 W Cross-Build
+
+The Raspberry Pi Zero 2 W is a Linux `aarch64` target, so the repo cross-build path is:
+
+- target triple: `aarch64-unknown-linux-gnu`
+- host flow: run the build inside WSL from Windows, rather than trying to drive a Linux linker from the Windows Rust toolchain
+
+Repo entrypoint:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release
+```
+
+Expected artifact:
+
+```text
+target\aarch64-unknown-linux-gnu\release\trekr
+```
+
+WSL prerequisites:
+
+- a working WSL distro with Rust installed inside that distro
+- the Rust target installed inside WSL: `rustup target add aarch64-unknown-linux-gnu`
+- Debian/Ubuntu package names for the Linux-side cross toolchain:
+  - `gcc-aarch64-linux-gnu`
+  - `g++-aarch64-linux-gnu`
+  - `binutils-aarch64-linux-gnu`
+  - `cmake`
+  - `ninja-build`
+  - `pkg-config`
+
+Example setup inside WSL:
+
+```bash
+rustup target add aarch64-unknown-linux-gnu
+sudo apt update
+sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu cmake ninja-build pkg-config
+```
+
+Notes:
+
+- `scripts/build-rpi-zero-2w.ps1` fails fast if WSL is unavailable or the required Linux-side toolchain is missing.
+- Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.
+- this path targets Pi Zero 2 W. The original Pi Zero / Zero W is a 32-bit ARMv6 device and needs a different target strategy.
+
 ## UI Review Loop
 
 The repo includes a scripted screenshot-and-review loop for visual QA:
