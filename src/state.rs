@@ -7,11 +7,27 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PersistedAppState {
     pub project: Project,
     pub page_state: AppPageState,
     pub timeline_flow: TimelineFlow,
     pub mappings: Vec<MappingEntry>,
+    pub transport_ticks: u64,
+    pub playhead_ticks: u64,
+}
+
+impl Default for PersistedAppState {
+    fn default() -> Self {
+        Self {
+            project: Project::demo(),
+            page_state: AppPageState::default(),
+            timeline_flow: TimelineFlow::DownwardColumns,
+            mappings: Vec::new(),
+            transport_ticks: 0,
+            playhead_ticks: 0,
+        }
+    }
 }
 
 pub fn load(path: &Path) -> Result<PersistedAppState, Box<dyn std::error::Error>> {
