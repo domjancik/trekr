@@ -748,38 +748,10 @@ impl App {
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(bounds)?;
 
-        let transport_chips = [
-            (
-                format!("Play {}", on_off(self.project.transport.playing)),
-                if self.project.transport.playing {
-                    Color::RGB(96, 162, 122)
-                } else {
-                    Color::RGB(74, 84, 102)
-                },
-            ),
-            (
-                format!("Rec {}", on_off(self.project.transport.recording)),
-                if self.project.transport.recording {
-                    Color::RGB(180, 76, 76)
-                } else {
-                    Color::RGB(88, 78, 82)
-                },
-            ),
-            (
-                format!("Mode {}", self.project.transport.record_mode.label()),
-                Color::RGB(76, 94, 136),
-            ),
-            (
-                format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
-                Color::RGB(116, 96, 54),
-            ),
-            (
-                format!("Tempo {}", self.project.transport.tempo_bpm),
-                Color::RGB(70, 100, 120),
-            ),
-        ];
+        let transport_chips = self.transport_chip_specs();
         let mut cursor_x = bounds.x + 6;
-        for (label, fill) in transport_chips {
+        for chip_spec in transport_chips {
+            let label = chip_spec.label.as_str();
             let width = crate::ui::text_width(&label, 1) + 12;
             let chip = Rect::new(
                 cursor_x,
@@ -787,11 +759,11 @@ impl App {
                 width,
                 bounds.height().saturating_sub(8),
             );
-            canvas.set_draw_color(fill);
+            canvas.set_draw_color(chip_spec.fill);
             canvas.fill_rect(chip)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                &label,
+                label,
                 Rect::new(chip.x + 6, chip.y + 4, chip.width().saturating_sub(12), 8),
                 1,
                 Color::RGB(244, 244, 236),
@@ -3442,22 +3414,33 @@ impl App {
         )
     }
 
-    fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
-        let chips = [
-            (
-                format!("Play {}", on_off(self.project.transport.playing)),
-                AppAction::TogglePlayback,
-            ),
-            (
-                format!("Rec {}", on_off(self.project.transport.recording)),
-                AppAction::ToggleRecording,
-            ),
-            (
-                format!("Mode {}", self.project.transport.record_mode.label()),
-                AppAction::CycleRecordMode,
-            ),
-            (
-                format!(
+    fn transport_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!("Play {}", on_off(self.project.transport.playing)),
+                action: Some(AppAction::TogglePlayback),
+                fill: if self.project.transport.playing {
+                    Color::RGB(96, 162, 122)
+                } else {
+                    Color::RGB(74, 84, 102)
+                },
+            },
+            TransportChipSpec {
+                label: format!("Rec {}", on_off(self.project.transport.recording)),
+                action: Some(AppAction::ToggleRecording),
+                fill: if self.project.transport.recording {
+                    Color::RGB(180, 76, 76)
+                } else {
+                    Color::RGB(88, 78, 82)
+                },
+            },
+            TransportChipSpec {
+                label: format!("Mode {}", self.project.transport.record_mode.label()),
+                action: Some(AppAction::CycleRecordMode),
+                fill: Color::RGB(76, 94, 136),
+            },
+            TransportChipSpec {
+                label: format!(
                     "RecWrap {}",
                     if self.project.transport.loop_recording_extends_clip {
                         "Extend"
@@ -3465,25 +3448,40 @@ impl App {
                         "Clamp"
                     }
                 ),
-                AppAction::ToggleLoopRecordingExtension,
-            ),
-            (
-                format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
-                AppAction::ToggleGlobalLoop,
-            ),
-        ];
+                action: Some(AppAction::ToggleLoopRecordingExtension),
+                fill: if self.project.transport.loop_recording_extends_clip {
+                    Color::RGB(126, 106, 60)
+                } else {
+                    Color::RGB(96, 82, 70)
+                },
+            },
+            TransportChipSpec {
+                label: format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
+                action: Some(AppAction::ToggleGlobalLoop),
+                fill: Color::RGB(116, 96, 54),
+            },
+            TransportChipSpec {
+                label: format!("Tempo {}", self.project.transport.tempo_bpm),
+                action: None,
+                fill: Color::RGB(70, 100, 120),
+            },
+        ]
+    }
 
+    fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut cursor_x = bounds.x + 6;
         let mut rects = Vec::new();
-        for (label, action) in chips {
-            let width = crate::ui::text_width(&label, 1) + 12;
+        for chip_spec in self.transport_chip_specs() {
+            let width = crate::ui::text_width(&chip_spec.label, 1) + 12;
             let chip = Rect::new(
                 cursor_x,
                 bounds.y + 4,
                 width,
                 bounds.height().saturating_sub(8),
             );
-            rects.push((chip, action));
+            if let Some(action) = chip_spec.action {
+                rects.push((chip, action));
+            }
             cursor_x += chip.width() as i32 + 6;
         }
 
@@ -3879,6 +3877,12 @@ enum AppControl {
     Quit,
 }
 
+struct TransportChipSpec {
+    label: String,
+    action: Option<AppAction>,
+    fill: Color,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3933,6 +3937,25 @@ mod tests {
 
         assert!(app.project.transport.playing);
         assert!(!app.project.transport.loop_enabled);
+    }
+
+    #[test]
+    fn transport_chip_specs_include_visible_loop_recording_wrap_status() {
+        let mut app = App::new();
+        let labels = app
+            .transport_chip_specs()
+            .into_iter()
+            .map(|chip| chip.label)
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "RecWrap Extend"));
+
+        app.apply_action(AppAction::ToggleLoopRecordingExtension);
+        let labels = app
+            .transport_chip_specs()
+            .into_iter()
+            .map(|chip| chip.label)
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "RecWrap Clamp"));
     }
 
     #[test]
