@@ -4523,7 +4523,7 @@ mod tests {
 
         assert_eq!(
             app.project.active_track().unwrap().regions,
-            vec![crate::timeline::Region::new(960, 480)]
+            vec![crate::timeline::Region::new(960, 960)]
         );
     }
 
@@ -4551,7 +4551,7 @@ mod tests {
             app.record_context(active_track),
         );
 
-        assert_eq!(preview, Some(crate::timeline::Region::new(960, 480)));
+        assert_eq!(preview, Some(crate::timeline::Region::new(960, 960)));
     }
 
     #[test]

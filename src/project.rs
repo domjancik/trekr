@@ -177,7 +177,7 @@ impl Track {
             return;
         };
 
-        let (start_ticks, end_ticks) = normalized_record_span(
+        let (start_ticks, end_ticks) = normalized_region_span(
             transport,
             take.pressed_at_ticks,
             released_at,
@@ -218,7 +218,7 @@ impl Track {
         record_context: Option<RecordContext>,
     ) -> Option<Region> {
         self.active_take.as_ref().and_then(|take| {
-            let (start_ticks, end_ticks) = normalized_record_span(
+            let (start_ticks, end_ticks) = normalized_region_span(
                 transport,
                 take.pressed_at_ticks,
                 current_ticks,
@@ -337,7 +337,7 @@ impl Track {
         end_ticks: u64,
     ) {
         for recorded_note in recorded_notes {
-            let (note_start, note_end) = normalized_record_span(
+            let (note_start, note_end) = normalized_note_span(
                 transport,
                 recorded_note.started_at_ticks,
                 recorded_note.ended_at_ticks,
@@ -361,7 +361,44 @@ impl Track {
     }
 }
 
-fn normalized_record_span(
+fn normalized_region_span(
+    transport: Transport,
+    pressed_at_ticks: u64,
+    released_at_ticks: u64,
+    record_context: Option<RecordContext>,
+    take_pressed_at_ticks: u64,
+    take_end_ticks: u64,
+) -> (u64, u64) {
+    let start_ticks = transport.quantize_to_nearest(pressed_at_ticks);
+    let end_ticks = transport.quantize_to_nearest(released_at_ticks.max(pressed_at_ticks));
+
+    let Some(record_context) = record_context else {
+        return (start_ticks, end_ticks);
+    };
+
+    let range_start = record_context.range.start_ticks;
+    let range_end = record_context.range.end_ticks();
+    let wrapped = loop_cycle(
+        transport.quantize_to_nearest(take_end_ticks.max(take_pressed_at_ticks)),
+        record_context,
+    ) > loop_cycle(take_pressed_at_ticks, record_context);
+
+    if record_context.extend_clip_on_wrap && wrapped {
+        return (range_start, range_end);
+    }
+
+    let projected_start = projected_loop_ticks(start_ticks, record_context);
+    let projected_end = projected_loop_ticks(end_ticks, record_context);
+    let start_ticks = projected_start.clamp(range_start, range_end.saturating_sub(1));
+    let mut end_ticks = projected_end.clamp(range_start, range_end);
+    if wrapped || end_ticks < start_ticks {
+        end_ticks = range_end;
+    }
+
+    (start_ticks, end_ticks)
+}
+
+fn normalized_note_span(
     transport: Transport,
     pressed_at_ticks: u64,
     released_at_ticks: u64,
@@ -380,23 +417,23 @@ fn normalized_record_span(
     let range_end = record_context.range.end_ticks();
     let projected_start = projected_loop_ticks(start_ticks, record_context);
     let projected_end = projected_loop_ticks(end_ticks, record_context);
-    let wrapped = loop_cycle(
+    let take_wrapped = loop_cycle(
         transport.quantize_to_nearest(take_end_ticks.max(take_pressed_at_ticks)),
         record_context,
     ) > loop_cycle(take_pressed_at_ticks, record_context);
 
-    if record_context.extend_clip_on_wrap && wrapped {
-        let offset_start = start_ticks.saturating_sub(take_pressed_at_ticks);
-        let offset_end = end_ticks.saturating_sub(take_pressed_at_ticks);
-        return (
-            range_start + offset_start,
-            (range_start + offset_end).max(range_start + offset_start),
-        );
+    if record_context.extend_clip_on_wrap && take_wrapped {
+        let start_ticks = projected_start.clamp(range_start, range_end.saturating_sub(1));
+        let mut end_ticks = projected_end.clamp(range_start, range_end);
+        if end_ticks < start_ticks {
+            end_ticks = range_end;
+        }
+        return (start_ticks, end_ticks);
     }
 
     let start_ticks = projected_start.clamp(range_start, range_end.saturating_sub(1));
     let mut end_ticks = projected_end.clamp(range_start, range_end);
-    if wrapped || end_ticks < start_ticks {
+    if take_wrapped || end_ticks < start_ticks {
         end_ticks = range_end;
     }
 
@@ -411,7 +448,7 @@ fn preview_midi_note(
     take_end_ticks: u64,
     current_ticks: u64,
 ) -> Option<MidiNote> {
-    let (note_start, note_end) = normalized_record_span(
+    let (note_start, note_end) = normalized_note_span(
         transport,
         recorded_note.started_at_ticks,
         recorded_note
@@ -681,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn loop_recording_extension_rebases_wrapped_take_to_loop_start() {
+    fn loop_recording_extension_keeps_notes_in_loop_positions() {
         let transport = Transport {
             quantize: QuantizeMode::Off,
             ..Transport::default()
@@ -700,12 +737,12 @@ mod tests {
 
         track.commit_take(transport, take.release(2_160), Some(record_context));
 
-        assert_eq!(track.regions.last().copied(), Some(Region::new(960, 480)));
+        assert_eq!(track.regions.last().copied(), Some(Region::new(960, 960)));
         assert_eq!(
             track.midi_notes,
             vec![
-                MidiNote::new(64, 980, 120, 100),
-                MidiNote::new(67, 1_320, 120, 100),
+                MidiNote::new(64, 1_700, 120, 100),
+                MidiNote::new(67, 1_080, 120, 100),
             ]
         );
     }
