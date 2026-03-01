@@ -173,7 +173,8 @@ impl App {
 
         'running: loop {
             for event in event_pump.poll_iter() {
-                if let Some(control) = self.handle_pointer_event(&event) {
+                let pointer_event = event.get_converted_coords(&canvas).unwrap_or(event.clone());
+                if let Some(control) = self.handle_pointer_event(&pointer_event) {
                     if control == AppControl::Quit {
                         break 'running;
                     }
@@ -3102,7 +3103,7 @@ impl App {
     }
 
     fn handle_pointer_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
-        let (x, y, source) = pointer_position(event, self.viewport_size)?;
+        let (x, y, source) = pointer_position(event)?;
         self.handle_pointer_down(x, y, source)
     }
 
@@ -3524,17 +3525,14 @@ fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
 
 fn pointer_position(
     event: &sdl3::event::Event,
-    viewport_size: (u32, u32),
 ) -> Option<(i32, i32, crate::actions::ActionSource)> {
     match event {
         sdl3::event::Event::MouseButtonDown { x, y, .. } => {
             Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer))
         }
-        sdl3::event::Event::FingerDown { x, y, .. } => Some((
-            (*x * viewport_size.0 as f32) as i32,
-            (*y * viewport_size.1 as f32) as i32,
-            crate::actions::ActionSource::Touch,
-        )),
+        sdl3::event::Event::FingerDown { x, y, .. } => {
+            Some((*x as i32, *y as i32, crate::actions::ActionSource::Touch))
+        }
         _ => None,
     }
 }
@@ -4480,6 +4478,43 @@ mod tests {
                 .tracks
                 .iter()
                 .all(|track| track.regions.is_empty())
+        );
+    }
+
+    #[test]
+    fn pointer_position_uses_render_coordinates_for_mouse() {
+        let event = sdl3::event::Event::MouseButtonDown {
+            timestamp: 0,
+            window_id: 1,
+            which: 0,
+            mouse_btn: sdl3::mouse::MouseButton::Left,
+            clicks: 1,
+            x: 512.5,
+            y: 288.25,
+        };
+
+        assert_eq!(
+            super::pointer_position(&event),
+            Some((512, 288, crate::actions::ActionSource::Pointer))
+        );
+    }
+
+    #[test]
+    fn pointer_position_uses_converted_render_coordinates_for_touch() {
+        let event = sdl3::event::Event::FingerDown {
+            timestamp: 0,
+            touch_id: 1,
+            finger_id: 1,
+            x: 640.0,
+            y: 360.0,
+            dx: 0.0,
+            dy: 0.0,
+            pressure: 1.0,
+        };
+
+        assert_eq!(
+            super::pointer_position(&event),
+            Some((640, 360, crate::actions::ActionSource::Touch))
         );
     }
 }
