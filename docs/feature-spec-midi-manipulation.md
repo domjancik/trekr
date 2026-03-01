@@ -43,7 +43,7 @@ Selection and manipulation should be available from:
 - `focus note`: the note currently used as the reference for relative selection actions
 - `selection anchor`: the stable edge used while extending or contracting a selection span
 - `selection span`: the ordered range of selected notes on a track
-- `playhead hit`: a note whose start/end range contains the current playhead tick
+- `playhead hit`: a note whose start/end range contains the current playhead tick, including notes already sustaining across the playhead
 
 ## Selection Rules
 
@@ -60,6 +60,7 @@ Expected behavior:
 - if no modifier/add mode is active, the previous note selection on that track is replaced
 - if add mode is active, playhead-hit notes are added to the existing selection
 - if multiple notes overlap the playhead, all matching notes are eligible
+- notes do not need to start exactly at the playhead; sustaining notes count as hits
 - if no notes intersect the playhead, the selection is unchanged
 
 This action should support hold behavior for controller mappings:
@@ -122,11 +123,11 @@ Add an action to contract the current selection span.
 
 Expected behavior:
 
-- contraction removes the most recently extended edge relative to the current focus/anchor state
+- contraction removes one note from the currently focused edge of the selection span
 - if the span has more than one note, it shrinks toward the focus note
 - if only one note remains selected, contract does nothing
 
-The implementation does not need fully general selection history. A deterministic edge-based rule is sufficient as long as it is documented and consistent.
+The implementation should not depend on remembering extension history across editor-state persistence. A deterministic focus-edge rule is sufficient as long as it is documented and consistent.
 
 ## Manipulation Rules
 
@@ -137,12 +138,13 @@ Add actions to move the selected notes earlier or later in time.
 Expected behavior:
 
 - movement applies to every selected note on the target track
-- the default delta is one current quantize step
+- when quantize is on, the default delta is one current quantize step
+- when quantize is off, the default delta is the unsnapped base note-move step chosen for the editor
 - negative movement clamps at tick zero unless later timeline rules allow earlier pickup space
 - note durations are preserved
 - moving notes should preserve relative spacing inside the selection
 
-Mapped variants may later expose larger or smaller step sizes, but the canonical action should assume one quantize step.
+Mapped variants may later expose larger or smaller step sizes, but the canonical action should follow the current quantize toggle.
 
 ### Nudge Selection In Pitch
 
@@ -160,6 +162,8 @@ Mapped octave variants can be added later as separate actions if needed.
 ## Interaction Constraints
 
 - actions must route through the canonical action layer, not page-specific shortcut code
+- note selection should persist per track when the active track changes
+- the action set should include an explicit deselect-track-notes action so persistence is reversible from mapped controls
 - selection state must be serializable with project/editor state if other timeline selections are already persisted
 - selection behavior must remain deterministic across keyboard and MIDI-triggered control paths
 - note selection should be visually obvious in the detail column and readable in the full column when density allows
@@ -181,6 +185,7 @@ The mappings system should expose note-editing actions as first-class targets, i
 
 - `Select Notes At Playhead`
 - `Select Notes At Playhead Add`
+- `Deselect Track Notes`
 - `Select Next Note`
 - `Select Previous Note`
 - `Focus First Selected Note`
@@ -196,12 +201,18 @@ The mappings system should expose note-editing actions as first-class targets, i
 
 Hold-capable inputs should be able to map to additive selection behavior without requiring a separate modal editor state.
 
+The action model should leave room to experiment with selection-targeted transforms in two forms:
+
+- actions that operate on all currently selected notes across tracks
+- actions that operate only on the selected notes for the addressed track
+
 ## Edge Cases
 
 - overlapping notes at the same pitch and time should all be selected if they intersect the playhead
 - empty tracks ignore note-selection and note-nudge actions
 - selecting across non-adjacent notes is out of scope for this slice; the model is span-based
 - nudging into collisions with unselected notes should not silently delete data
+- switching the active track does not implicitly clear note selections on other tracks
 - replace/overdub recording behavior must define whether an existing note selection is preserved, cleared, or suspended while recording
 
 ## Acceptance Criteria
@@ -215,7 +226,6 @@ Hold-capable inputs should be able to map to additive selection behavior without
 
 ## Open Questions
 
-- should select-at-playhead consider notes that start exactly at the playhead only, or any note sustaining across it
-- should contraction always shrink from the opposite edge of the current focus, or remember the last extension direction
-- should time nudge snap strictly to quantize, or allow unsnapped deltas when quantize is off
-- how should selection persistence behave when the active track changes
+- what should the exact unsnapped base time-nudge step be when quantize is off
+- should note-transform actions default to all selected notes across tracks, addressed-track selection only, or expose both forms side by side
+- how should record/overdub flows affect existing per-track note selections during capture and commit
