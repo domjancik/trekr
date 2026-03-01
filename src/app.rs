@@ -2453,7 +2453,7 @@ impl App {
         if track.state.loop_enabled {
             Some(crate::project::RecordContext {
                 range: track.loop_region,
-                wrap_basis_ticks: 0,
+                wrap_basis_ticks: track.loop_region.start_ticks,
                 extend_clip_on_wrap: self.project.transport.loop_recording_extends_clip,
             })
         } else if self.project.transport.loop_enabled {
@@ -4530,6 +4530,33 @@ mod tests {
     }
 
     #[test]
+    fn looped_track_recording_preview_rebases_to_loop_start_after_wrap() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        app.project.transport.quantize = crate::transport::QuantizeMode::Off;
+        app.project.transport.loop_enabled = false;
+        app.project.transport.loop_recording_extends_clip = true;
+        app.transport_ticks = 1_680;
+        app.playhead_ticks = 1_680;
+
+        app.apply_action(AppAction::ToggleRecording);
+        app.transport_ticks = 2_160;
+        app.playhead_ticks = 1_200;
+
+        let active_track = app.project.active_track().unwrap();
+        let preview = active_track.preview_region(
+            app.project.transport,
+            app.record_capture_ticks(active_track),
+            app.record_context(active_track),
+        );
+
+        assert_eq!(preview, Some(crate::timeline::Region::new(960, 480)));
+    }
+
+    #[test]
     fn detail_loop_range_uses_global_loop_when_track_loop_is_disabled() {
         let mut app = App::new();
         app.project.loop_region = crate::timeline::LoopRegion::new(960, 960);
@@ -4541,6 +4568,53 @@ mod tests {
         let detail_range = app.detail_loop_range(app.project.active_track().unwrap());
 
         assert_eq!(detail_range, crate::timeline::LoopRegion::new(960, 960));
+    }
+
+    #[test]
+    fn record_context_prefers_global_loop_over_track_loop_when_both_are_enabled() {
+        let mut app = App::new();
+        app.project.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        app.project.transport.loop_enabled = true;
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(0, 3_840);
+
+        let record_context = app
+            .record_context(app.project.active_track().unwrap())
+            .unwrap();
+
+        assert_eq!(
+            record_context.range,
+            crate::timeline::LoopRegion::new(0, 3_840)
+        );
+        assert_eq!(record_context.wrap_basis_ticks, 0);
+    }
+
+    #[test]
+    fn looped_track_preview_wraps_when_track_loop_starts_off_zero() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(2_880, 1_920);
+        app.project.transport.quantize = crate::transport::QuantizeMode::Off;
+        app.project.transport.loop_enabled = false;
+        app.project.transport.loop_recording_extends_clip = true;
+        app.transport_ticks = 4_600;
+        app.playhead_ticks = 4_600;
+
+        app.apply_action(AppAction::ToggleRecording);
+        app.transport_ticks = 4_900;
+        app.playhead_ticks = 2_980;
+
+        let active_track = app.project.active_track().unwrap();
+        let preview = active_track.preview_region(
+            app.project.transport,
+            app.record_capture_ticks(active_track),
+            app.record_context(active_track),
+        );
+
+        assert_eq!(preview, Some(crate::timeline::Region::new(2_880, 300)));
     }
 
     #[test]
