@@ -59,6 +59,25 @@ pub enum AppAction {
     SelectNextTrack,
     SelectPreviousTrack,
     SelectTrack(usize),
+    SelectNotesAtPlayhead,
+    SelectNotesAtPlayheadAdd,
+    DeselectTrackNotes,
+    SelectNextNote,
+    SelectPreviousNote,
+    FocusFirstSelectedNote,
+    FocusLastSelectedNote,
+    ExtendNoteSelectionForward,
+    ExtendNoteSelectionBackward,
+    ExtendNoteSelectionBoth,
+    ContractNoteSelection,
+    NudgeSelectedNotesEarlier,
+    NudgeSelectedNotesLater,
+    NudgeSelectedNotesUp,
+    NudgeSelectedNotesDown,
+    BeginNoteAdditiveSelectionHold,
+    EndNoteAdditiveSelectionHold,
+    StartRecording,
+    StopRecording,
     SetTimelineFlow(TimelineFlow),
 }
 
@@ -95,6 +114,123 @@ impl KeyboardBindings {
                 keycode: Some(Keycode::Escape),
                 ..
             } => Some(ActionEvent::new(AppAction::Quit, ActionSource::Keyboard)),
+            Event::KeyDown {
+                keycode: Some(Keycode::T),
+                keymod,
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SelectNotesAtPlayheadAdd
+                } else {
+                    AppAction::SelectNotesAtPlayhead
+                },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::V),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::DeselectTrackNotes,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::J),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectPreviousNote,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::K),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::SelectNextNote,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::U),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::FocusFirstSelectedNote,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::O),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::FocusLastSelectedNote,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::H),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ExtendNoteSelectionBackward,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::P),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ExtendNoteSelectionForward,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Y),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ExtendNoteSelectionBoth,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::B),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ContractNoteSelection,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::Z),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::NudgeSelectedNotesEarlier,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::X),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::NudgeSelectedNotesLater,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::D),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::NudgeSelectedNotesDown,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::NudgeSelectedNotesUp,
+                ActionSource::Keyboard,
+            )),
             Event::KeyDown {
                 keycode: Some(Keycode::Space),
                 repeat: false,
@@ -527,6 +663,25 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::SelectNextTrack => "Next Track",
         AppAction::SelectPreviousTrack => "Previous Track",
         AppAction::SelectTrack(_) => "Select Track",
+        AppAction::SelectNotesAtPlayhead => "Select Notes At Playhead",
+        AppAction::SelectNotesAtPlayheadAdd => "Add Notes At Playhead",
+        AppAction::DeselectTrackNotes => "Deselect Track Notes",
+        AppAction::SelectNextNote => "Select Next Note",
+        AppAction::SelectPreviousNote => "Select Previous Note",
+        AppAction::FocusFirstSelectedNote => "Focus First Selected Note",
+        AppAction::FocusLastSelectedNote => "Focus Last Selected Note",
+        AppAction::ExtendNoteSelectionForward => "Extend Note Selection Forward",
+        AppAction::ExtendNoteSelectionBackward => "Extend Note Selection Backward",
+        AppAction::ExtendNoteSelectionBoth => "Extend Note Selection Both",
+        AppAction::ContractNoteSelection => "Contract Note Selection",
+        AppAction::NudgeSelectedNotesEarlier => "Nudge Selected Notes Earlier",
+        AppAction::NudgeSelectedNotesLater => "Nudge Selected Notes Later",
+        AppAction::NudgeSelectedNotesUp => "Nudge Selected Notes Up",
+        AppAction::NudgeSelectedNotesDown => "Nudge Selected Notes Down",
+        AppAction::BeginNoteAdditiveSelectionHold => "Begin Note Additive Select",
+        AppAction::EndNoteAdditiveSelectionHold => "End Note Additive Select",
+        AppAction::StartRecording => "Start Recording",
+        AppAction::StopRecording => "Stop Recording",
         AppAction::SetTimelineFlow(_) => "Timeline Flow",
     }
 }
@@ -585,6 +740,25 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::SelectNextTrack => &["Right"],
         AppAction::SelectPreviousTrack => &["Left"],
         AppAction::SelectTrack(_) => &["1-9"],
+        AppAction::SelectNotesAtPlayhead => &["T"],
+        AppAction::SelectNotesAtPlayheadAdd => &["Shift+T"],
+        AppAction::DeselectTrackNotes => &["V"],
+        AppAction::SelectNextNote => &["K"],
+        AppAction::SelectPreviousNote => &["J"],
+        AppAction::FocusFirstSelectedNote => &["U"],
+        AppAction::FocusLastSelectedNote => &["O"],
+        AppAction::ExtendNoteSelectionForward => &["P"],
+        AppAction::ExtendNoteSelectionBackward => &["H"],
+        AppAction::ExtendNoteSelectionBoth => &["Y"],
+        AppAction::ContractNoteSelection => &["B"],
+        AppAction::NudgeSelectedNotesEarlier => &["Z"],
+        AppAction::NudgeSelectedNotesLater => &["X"],
+        AppAction::NudgeSelectedNotesUp => &["F"],
+        AppAction::NudgeSelectedNotesDown => &["D"],
+        AppAction::BeginNoteAdditiveSelectionHold => &[],
+        AppAction::EndNoteAdditiveSelectionHold => &[],
+        AppAction::StartRecording => &[],
+        AppAction::StopRecording => &[],
         AppAction::Quit => &["Escape"],
         AppAction::SetTimelineFlow(_) => &[],
     }
@@ -801,6 +975,53 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&adjust).unwrap().action,
             AppAction::AdjustPageItemForward
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_note_edit_controls() {
+        let select = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::T),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let add = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::T),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let nudge = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&select).unwrap().action,
+            AppAction::SelectNotesAtPlayhead
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&add).unwrap().action,
+            AppAction::SelectNotesAtPlayheadAdd
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&nudge).unwrap().action,
+            AppAction::NudgeSelectedNotesUp
         );
     }
 

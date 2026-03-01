@@ -57,6 +57,8 @@ Latest renderer-owned captures from the demo state:
 - active-track highlighting
 - a moving playhead
 - per-track loop preview
+- per-track MIDI note selection with focus/anchor highlighting in the timeline columns
+- action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
 - an in-canvas transport strip on the timeline page
 - a renderer-level footer/status bar that shows hover mapping summaries and falls back to the last performed action
 - hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
@@ -152,6 +154,16 @@ Current controls:
 - `M`: mute current track
 - `S`: solo current track
 - `I`: toggle current track passthrough
+- `T`: select notes intersecting the current track playhead
+- `Shift+T`: additive select notes at the playhead without clearing the existing track note selection
+- `V`: deselect notes on the active track
+- `J` / `K`: focus the previous/next note
+- `U` / `O`: focus the first/last selected note
+- `H` / `P`: extend note selection backward/forward
+- `Y`: extend note selection on both edges
+- `B`: contract note selection from the focused edge
+- `Z` / `X`: nudge selected notes earlier/later by the current quantize step, or `120` ticks when quantize is off
+- `D` / `F`: nudge selected notes down/up by one semitone
 - `Left` / `Right`: select previous/next track directly
 - `1`-`9`: select track by absolute index
 - `Escape`: quit
@@ -197,6 +209,7 @@ MIDI learn notes:
 - learned MIDI mappings store the device name of the input that triggered learn
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
+- note-edit targets are available in the mappings page for playhead selection, span focus/resize, deselect, and pitch/time nudging
 
 Ableton Link notes:
 

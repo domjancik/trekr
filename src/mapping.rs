@@ -1,4 +1,5 @@
 use crate::actions::AppAction;
+use crate::midi_io::{MidiInputEvent, MidiInputMessage};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +65,10 @@ const KEY_SOURCE_OPTIONS: &[&str] = &[
     "- =",
     "/ \\",
     "Left/Right",
+    "T Shift+T",
+    "V J K",
+    "U O H P Y B",
+    "Z X D F",
     "Tab/F1-F6",
 ];
 
@@ -91,6 +96,21 @@ const TARGET_OPTIONS: &[&str] = &[
     "Track Solo",
     "Passthrough",
     "Select Track",
+    "Select Notes At Playhead",
+    "Select Notes At Playhead Add",
+    "Deselect Track Notes",
+    "Select Next Note",
+    "Select Previous Note",
+    "Focus First Selected Note",
+    "Focus Last Selected Note",
+    "Extend Note Selection Forward",
+    "Extend Note Selection Backward",
+    "Extend Note Selection Both",
+    "Contract Note Selection",
+    "Nudge Selected Notes Earlier",
+    "Nudge Selected Notes Later",
+    "Nudge Selected Notes Up",
+    "Nudge Selected Notes Down",
     "Pages/Overlay",
     "Link Enable",
     "Link Start/Stop",
@@ -204,6 +224,25 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         }
         "Select Track" => {
             let mut options = vec!["Relative".to_string()];
+            options.extend(absolute_track_scopes(track_count));
+            options
+        }
+        "Select Notes At Playhead"
+        | "Select Notes At Playhead Add"
+        | "Deselect Track Notes"
+        | "Select Next Note"
+        | "Select Previous Note"
+        | "Focus First Selected Note"
+        | "Focus Last Selected Note"
+        | "Extend Note Selection Forward"
+        | "Extend Note Selection Backward"
+        | "Extend Note Selection Both"
+        | "Contract Note Selection"
+        | "Nudge Selected Notes Earlier"
+        | "Nudge Selected Notes Later"
+        | "Nudge Selected Notes Up"
+        | "Nudge Selected Notes Down" => {
+            let mut options = vec!["Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
             options
         }
@@ -339,6 +378,34 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
         ),
         entry(
             MappingSourceKind::Key,
+            "T Shift+T",
+            "Select Notes At Playhead",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "V J K",
+            "Select Next Note",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "U O H P Y B",
+            "Extend Note Selection Forward",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
+            "Z X D F",
+            "Nudge Selected Notes Up",
+            "Active Track",
+            true,
+        ),
+        entry(
+            MappingSourceKind::Key,
             "1-9",
             "Select Track",
             "Absolute",
@@ -371,7 +438,133 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
     ]
 }
 
-pub fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
+pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) -> Vec<AppAction> {
+    let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
+    match entry.target_label.as_str() {
+        "Play/Stop" => vec![AppAction::TogglePlayback],
+        "Record" => vec![AppAction::ToggleRecording],
+        "Record Hold" => hold_mapping_actions(
+            absolute_track_index,
+            event,
+            AppAction::StartRecording,
+            AppAction::StopRecording,
+        ),
+        "Record Mode" => vec![AppAction::CycleRecordMode],
+        "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
+        "Track Loop" | "Set Track Loop" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
+        }
+        "Clear Track" => {
+            track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
+        }
+        "Clear All" => vec![AppAction::ClearAllTrackContent],
+        "Track Arm" => track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackArm),
+        "Track Mute" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackMute)
+        }
+        "Track Solo" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackSolo)
+        }
+        "Passthrough" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleCurrentTrackPassthrough,
+        ),
+        "Select Track" => absolute_track_index
+            .map(AppAction::SelectTrack)
+            .or_else(|| match entry.scope_label.as_str() {
+                "Relative" => Some(AppAction::SelectNextTrack),
+                _ => None,
+            })
+            .into_iter()
+            .collect(),
+        "Select Notes At Playhead" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectNotesAtPlayhead)
+        }
+        "Select Notes At Playhead Add" => hold_mapping_actions(
+            absolute_track_index,
+            event,
+            AppAction::BeginNoteAdditiveSelectionHold,
+            AppAction::EndNoteAdditiveSelectionHold,
+        )
+        .into_iter()
+        .chain(
+            is_mapping_press_event(event)
+                .then(|| {
+                    track_scoped_actions(absolute_track_index, AppAction::SelectNotesAtPlayhead)
+                })
+                .into_iter()
+                .flatten(),
+        )
+        .collect(),
+        "Deselect Track Notes" => {
+            track_scoped_actions(absolute_track_index, AppAction::DeselectTrackNotes)
+        }
+        "Select Next Note" => track_scoped_actions(absolute_track_index, AppAction::SelectNextNote),
+        "Select Previous Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectPreviousNote)
+        }
+        "Focus First Selected Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::FocusFirstSelectedNote)
+        }
+        "Focus Last Selected Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::FocusLastSelectedNote)
+        }
+        "Extend Note Selection Forward" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionForward)
+        }
+        "Extend Note Selection Backward" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionBackward)
+        }
+        "Extend Note Selection Both" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionBoth)
+        }
+        "Contract Note Selection" => {
+            track_scoped_actions(absolute_track_index, AppAction::ContractNoteSelection)
+        }
+        "Nudge Selected Notes Earlier" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesEarlier)
+        }
+        "Nudge Selected Notes Later" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesLater)
+        }
+        "Nudge Selected Notes Up" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesUp)
+        }
+        "Nudge Selected Notes Down" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesDown)
+        }
+        "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
+        "Link Enable" => vec![AppAction::ToggleLinkEnabled],
+        "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
+        _ => Vec::new(),
+    }
+}
+
+pub fn mapping_entry_targets_action(entry: &MappingEntry, action: AppAction) -> bool {
+    entry.enabled
+        && mapping_entry_possible_actions(entry)
+            .into_iter()
+            .any(|candidate| candidate == action)
+}
+
+pub fn parse_absolute_track_scope(scope_label: &str) -> Option<usize> {
+    let scope = scope_label.trim();
+    scope
+        .strip_prefix("Track ")
+        .and_then(|suffix| suffix.parse::<usize>().ok())
+        .and_then(|index| index.checked_sub(1))
+}
+
+fn track_scoped_actions(
+    absolute_track_index: Option<usize>,
+    toggle_action: AppAction,
+) -> Vec<AppAction> {
+    absolute_track_index
+        .map(|index| vec![AppAction::SelectTrack(index), toggle_action])
+        .unwrap_or_else(|| vec![toggle_action])
+}
+
+fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
     let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
     match entry.target_label.as_str() {
         "Play/Stop" => vec![AppAction::TogglePlayback],
@@ -404,6 +597,46 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
             })
             .into_iter()
             .collect(),
+        "Select Notes At Playhead" | "Select Notes At Playhead Add" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectNotesAtPlayhead)
+        }
+        "Deselect Track Notes" => {
+            track_scoped_actions(absolute_track_index, AppAction::DeselectTrackNotes)
+        }
+        "Select Next Note" => track_scoped_actions(absolute_track_index, AppAction::SelectNextNote),
+        "Select Previous Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectPreviousNote)
+        }
+        "Focus First Selected Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::FocusFirstSelectedNote)
+        }
+        "Focus Last Selected Note" => {
+            track_scoped_actions(absolute_track_index, AppAction::FocusLastSelectedNote)
+        }
+        "Extend Note Selection Forward" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionForward)
+        }
+        "Extend Note Selection Backward" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionBackward)
+        }
+        "Extend Note Selection Both" => {
+            track_scoped_actions(absolute_track_index, AppAction::ExtendNoteSelectionBoth)
+        }
+        "Contract Note Selection" => {
+            track_scoped_actions(absolute_track_index, AppAction::ContractNoteSelection)
+        }
+        "Nudge Selected Notes Earlier" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesEarlier)
+        }
+        "Nudge Selected Notes Later" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesLater)
+        }
+        "Nudge Selected Notes Up" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesUp)
+        }
+        "Nudge Selected Notes Down" => {
+            track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesDown)
+        }
         "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
         "Link Enable" => vec![AppAction::ToggleLinkEnabled],
         "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
@@ -411,28 +644,25 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
     }
 }
 
-pub fn mapping_entry_targets_action(entry: &MappingEntry, action: AppAction) -> bool {
-    entry.enabled
-        && mapping_entry_to_actions(entry)
-            .into_iter()
-            .any(|candidate| candidate == action)
+fn is_mapping_press_event(event: &MidiInputEvent) -> bool {
+    match event.message {
+        MidiInputMessage::NoteOn { .. } => true,
+        MidiInputMessage::NoteOff { .. } => false,
+        MidiInputMessage::ControlChange { value, .. } => value > 0,
+    }
 }
 
-pub fn parse_absolute_track_scope(scope_label: &str) -> Option<usize> {
-    let scope = scope_label.trim();
-    scope
-        .strip_prefix("Track ")
-        .and_then(|suffix| suffix.parse::<usize>().ok())
-        .and_then(|index| index.checked_sub(1))
-}
-
-fn track_scoped_actions(
+fn hold_mapping_actions(
     absolute_track_index: Option<usize>,
-    toggle_action: AppAction,
+    event: &MidiInputEvent,
+    start_action: AppAction,
+    stop_action: AppAction,
 ) -> Vec<AppAction> {
-    absolute_track_index
-        .map(|index| vec![AppAction::SelectTrack(index), toggle_action])
-        .unwrap_or_else(|| vec![toggle_action])
+    if is_mapping_press_event(event) {
+        track_scoped_actions(absolute_track_index, start_action)
+    } else {
+        vec![stop_action]
+    }
 }
 
 fn entry(
@@ -478,6 +708,7 @@ mod tests {
         mapping_entry_targets_action, mapping_entry_to_actions, parse_absolute_track_scope,
     };
     use crate::actions::AppAction;
+    use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
 
     #[test]
     fn demo_mappings_cover_key_midi_and_osc_sources() {
@@ -548,9 +779,17 @@ mod tests {
             scope_label: "Track 3".to_string(),
             enabled: true,
         };
+        let event = MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        };
 
         assert_eq!(
-            mapping_entry_to_actions(&entry),
+            mapping_entry_to_actions(&entry, &event),
             vec![AppAction::SelectTrack(2), AppAction::ToggleCurrentTrackArm]
         );
         assert!(mapping_entry_targets_action(
