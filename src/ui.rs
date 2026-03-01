@@ -288,6 +288,7 @@ pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)>
 pub struct NoteRect {
     pub rect: Rect,
     pub clipped: bool,
+    pub source_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -304,7 +305,10 @@ pub fn note_rects(
 ) -> Vec<NoteRect> {
     let mut rects = Vec::new();
 
-    for note in notes.iter().copied().filter(|note| note.intersects(range)) {
+    for (source_index, note) in notes.iter().copied().enumerate() {
+        if !note.intersects(range) {
+            continue;
+        }
         let note_start = note.start_ticks.max(range.start_ticks);
         let note_end = note.end_ticks().min(range.end_ticks());
         let clipped = note_start != note.start_ticks || note_end != note.end_ticks();
@@ -317,8 +321,11 @@ pub fn note_rects(
                 horizontal_note_rect(lane, note, note_start, note_end, range)
             }
         };
-
-        rects.push(NoteRect { rect, clipped });
+        rects.push(NoteRect {
+            rect,
+            clipped,
+            source_index,
+        });
     }
 
     rects

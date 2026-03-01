@@ -50,6 +50,7 @@ pub struct App {
     transport_ticks: u64,
     playhead_ticks: u64,
     link_snapshot: LinkSnapshot,
+    note_additive_select_held: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +185,7 @@ impl App {
             transport_ticks: 0,
             playhead_ticks: 0,
             link_snapshot,
+            note_additive_select_held: false,
         }
     }
 
@@ -908,6 +910,9 @@ impl App {
         )?;
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
+        let selected_note_indices = track.selected_note_indices();
+        let focused_note_index = track.focused_note_index();
+        let anchor_note_index = track.anchor_note_index();
         for region in
             crate::ui::region_rects(content_rect, &track.regions, note_range, self.timeline_flow)
         {
@@ -971,7 +976,14 @@ impl App {
             note_range,
             self.timeline_flow,
         ) {
-            canvas.set_draw_color(if track.state.muted {
+            let selected = selected_note_indices.contains(&note.source_index);
+            let focused = focused_note_index == Some(note.source_index);
+            let anchored = anchor_note_index == Some(note.source_index);
+            canvas.set_draw_color(if selected && detail {
+                Color::RGB(112, 174, 228)
+            } else if selected {
+                Color::RGB(88, 136, 194)
+            } else if track.state.muted {
                 Color::RGB(92, 100, 112)
             } else if note.clipped {
                 Color::RGB(244, 204, 132)
@@ -979,12 +991,28 @@ impl App {
                 Color::RGB(210, 222, 236)
             });
             canvas.fill_rect(note.rect)?;
-            canvas.set_draw_color(if track.state.muted {
+            canvas.set_draw_color(if focused {
+                Color::RGB(252, 246, 158)
+            } else if anchored {
+                Color::RGB(180, 226, 176)
+            } else if selected {
+                Color::RGB(224, 238, 248)
+            } else if track.state.muted {
                 Color::RGB(128, 134, 144)
             } else {
                 Color::RGB(245, 247, 250)
             });
             canvas.draw_rect(note.rect)?;
+            if focused {
+                let inner = Rect::new(
+                    note.rect.x + 1,
+                    note.rect.y + 1,
+                    note.rect.width().saturating_sub(2).max(1),
+                    note.rect.height().saturating_sub(2).max(1),
+                );
+                canvas.set_draw_color(Color::RGB(252, 208, 88));
+                canvas.draw_rect(inner)?;
+            }
         }
 
         let playhead = crate::ui::playhead_rect_in_range(
@@ -2781,6 +2809,18 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::StartRecording => {
+                if !self.project.transport.recording {
+                    self.begin_recording();
+                }
+                AppControl::Continue
+            }
+            AppAction::StopRecording => {
+                if self.project.transport.recording {
+                    self.finish_recording();
+                }
+                AppControl::Continue
+            }
             AppAction::CycleRecordMode => {
                 self.project.transport.record_mode = self.project.transport.record_mode.next();
                 AppControl::Continue
@@ -2949,6 +2989,116 @@ impl App {
                 self.project.select_track(index);
                 AppControl::Continue
             }
+            AppAction::SelectNotesAtPlayhead => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                let additive = self.note_additive_select_held;
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_notes_at_playhead(playhead_ticks, additive);
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectNotesAtPlayheadAdd => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_notes_at_playhead(playhead_ticks, true);
+                }
+                AppControl::Continue
+            }
+            AppAction::DeselectTrackNotes => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.clear_note_selection();
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectNextNote => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                let additive = self.note_additive_select_held;
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_next_note(playhead_ticks, additive);
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectPreviousNote => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                let additive = self.note_additive_select_held;
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_previous_note(playhead_ticks, additive);
+                }
+                AppControl::Continue
+            }
+            AppAction::FocusFirstSelectedNote => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.focus_first_selected_note();
+                }
+                AppControl::Continue
+            }
+            AppAction::FocusLastSelectedNote => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.focus_last_selected_note();
+                }
+                AppControl::Continue
+            }
+            AppAction::ExtendNoteSelectionForward => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.extend_note_selection_forward(playhead_ticks);
+                }
+                AppControl::Continue
+            }
+            AppAction::ExtendNoteSelectionBackward => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.extend_note_selection_backward(playhead_ticks);
+                }
+                AppControl::Continue
+            }
+            AppAction::ExtendNoteSelectionBoth => {
+                let playhead_ticks = self.active_track_note_playhead_ticks();
+                if let Some(track) = self.project.active_track_mut() {
+                    track.extend_note_selection_both(playhead_ticks);
+                }
+                AppControl::Continue
+            }
+            AppAction::ContractNoteSelection => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.contract_note_selection();
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeSelectedNotesEarlier => {
+                let delta = -(self.note_time_nudge_step_ticks() as i64);
+                if let Some(track) = self.project.active_track_mut() {
+                    track.nudge_selected_notes_time(delta);
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeSelectedNotesLater => {
+                let delta = self.note_time_nudge_step_ticks() as i64;
+                if let Some(track) = self.project.active_track_mut() {
+                    track.nudge_selected_notes_time(delta);
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeSelectedNotesUp => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.nudge_selected_notes_pitch(1);
+                }
+                AppControl::Continue
+            }
+            AppAction::NudgeSelectedNotesDown => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.nudge_selected_notes_pitch(-1);
+                }
+                AppControl::Continue
+            }
+            AppAction::BeginNoteAdditiveSelectionHold => {
+                self.note_additive_select_held = true;
+                AppControl::Continue
+            }
+            AppAction::EndNoteAdditiveSelectionHold => {
+                self.note_additive_select_held = false;
+                AppControl::Continue
+            }
             AppAction::SetTimelineFlow(flow) => {
                 self.timeline_flow = flow;
                 AppControl::Continue
@@ -3031,6 +3181,21 @@ impl App {
             .quantize_step_ticks()
             .unwrap_or(1)
             .max(1)
+    }
+
+    fn note_time_nudge_step_ticks(&self) -> u64 {
+        self.project
+            .transport
+            .quantize_step_ticks()
+            .unwrap_or((u64::from(self.project.transport.ppqn) / 8).max(1))
+            .max(1)
+    }
+
+    fn active_track_note_playhead_ticks(&self) -> u64 {
+        self.project
+            .active_track()
+            .map(|track| self.effective_track_playhead(track))
+            .unwrap_or(self.playhead_ticks)
     }
 
     fn effective_track_playhead(&self, track: &Track) -> u64 {
@@ -3667,7 +3832,7 @@ impl App {
         self.mappings
             .iter()
             .filter(|entry| midi_mapping_matches_event(entry, event))
-            .flat_map(mapping_entry_to_actions)
+            .flat_map(|entry| mapping_entry_to_actions(entry, event))
             .collect()
     }
 
@@ -4297,6 +4462,15 @@ impl App {
                 action: None,
                 fill: Color::RGB(70, 100, 120),
             },
+            TransportChipSpec {
+                label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
+                action: None,
+                fill: if self.note_additive_select_held {
+                    Color::RGB(88, 130, 176)
+                } else {
+                    Color::RGB(62, 76, 94)
+                },
+            },
         ]
     }
 
@@ -4616,18 +4790,28 @@ fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> b
     }
 
     match event.message {
-        MidiInputMessage::NoteOn { pitch, .. } => {
+        MidiInputMessage::NoteOn { pitch, .. } | MidiInputMessage::NoteOff { pitch } => {
+            if matches!(event.message, MidiInputMessage::NoteOff { .. })
+                && !midi_mapping_target_supports_release(entry.target_label.as_str())
+            {
+                return false;
+            }
             entry.source_label == midi_note_label(pitch)
                 || entry.source_label == format!("{} Ch{}", midi_note_label(pitch), event.channel)
         }
-        MidiInputMessage::ControlChange { controller, .. } => {
+        MidiInputMessage::ControlChange { controller, value } => {
+            if value == 0 && !midi_mapping_target_supports_release(entry.target_label.as_str()) {
+                return false;
+            }
             entry.source_label == format!("CC{controller}")
                 || entry.source_label == format!("CC{controller} Ch{}", event.channel)
         }
-        MidiInputMessage::NoteOff { .. } => false,
     }
 }
 
+fn midi_mapping_target_supports_release(target_label: &str) -> bool {
+    matches!(target_label, "Record Hold" | "Select Notes At Playhead Add")
+}
 fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
     match quantize {
         crate::transport::QuantizeMode::Off => "Off",
@@ -4759,7 +4943,7 @@ mod tests {
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
-    use crate::transport::RecordMode;
+    use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
     use sdl3::rect::Rect;
 
@@ -4821,6 +5005,72 @@ mod tests {
             .map(|chip| chip.label)
             .collect::<Vec<_>>();
         assert!(labels.iter().any(|label| label == "RecWrap Clamp"));
+    }
+
+    #[test]
+    fn note_actions_select_and_nudge_active_track_notes() {
+        let mut app = App::new();
+        app.project.select_track(0);
+        app.playhead_ticks = 0;
+
+        app.apply_action(AppAction::SelectNotesAtPlayhead);
+        let selected = app.project.active_track().unwrap().selected_note_indices();
+        assert!(!selected.is_empty());
+
+        let before_start = app.project.active_track().unwrap().midi_notes[selected[0]].start_ticks;
+        let before_pitch = app.project.active_track().unwrap().midi_notes[selected[0]].pitch;
+        app.apply_action(AppAction::NudgeSelectedNotesLater);
+        app.apply_action(AppAction::NudgeSelectedNotesUp);
+
+        let active = app.project.active_track().unwrap();
+        assert_eq!(
+            active.midi_notes[selected[0]].start_ticks,
+            before_start + app.note_time_nudge_step_ticks()
+        );
+        assert_eq!(active.midi_notes[selected[0]].pitch, before_pitch + 1);
+    }
+
+    #[test]
+    fn note_additive_hold_mapping_uses_press_and_release() {
+        let mut app = App::new();
+        app.project.select_track(0);
+        app.playhead_ticks = 0;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Any MIDI".to_string(),
+            source_label: "Note C2".to_string(),
+            target_label: "Select Notes At Playhead Add".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 36,
+                velocity: 127,
+            },
+        });
+
+        assert!(app.note_additive_select_held);
+        assert!(app.project.active_track().unwrap().has_note_selection());
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 36 },
+        });
+
+        assert!(!app.note_additive_select_held);
+    }
+
+    #[test]
+    fn note_time_nudge_defaults_to_editor_step_when_quantize_is_off() {
+        let mut app = App::new();
+        app.project.transport.quantize = QuantizeMode::Off;
+
+        assert_eq!(app.note_time_nudge_step_ticks(), 120);
     }
 
     #[test]
@@ -5293,6 +5543,20 @@ mod tests {
     }
 
     #[test]
+    fn summarize_discoverability_target_includes_note_edit_shortcuts() {
+        let app = App::new();
+
+        let summary = app.summarize_discoverability_target(DiscoverabilityTarget {
+            action: AppAction::SelectNotesAtPlayhead,
+            display_scope: Some("Active Track"),
+            allowed_mapping_scopes: &["Active Track"],
+            overlay_slot: None,
+        });
+
+        assert!(summary.badges.iter().any(|badge| badge.text == "T"));
+    }
+
+    #[test]
     fn apply_action_with_source_updates_last_action_status() {
         let mut app = App::new();
 
@@ -5562,7 +5826,7 @@ mod tests {
     }
 
     #[test]
-    fn looped_track_preview_wraps_when_track_loop_starts_off_zero() {
+    fn looped_track_preview_clamps_to_loop_end_when_extension_is_off() {
         let mut app = App::new();
         let track = app.project.active_track_mut().unwrap();
         track.clear_content();

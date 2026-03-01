@@ -28,6 +28,16 @@ Keyboard mappings currently implemented:
 - `M`: toggle mute on active track
 - `S`: toggle solo on active track
 - `I`: toggle passthrough on active track
+- `T`: select notes at the active-track playhead
+- `Shift+T`: additive select notes at the active-track playhead
+- `V`: deselect notes on the active track
+- `J` / `K`: select previous/next note
+- `U` / `O`: focus first/last selected note
+- `H` / `P`: extend note selection backward/forward
+- `Y`: extend note selection on both sides
+- `B`: contract note selection from the focused edge
+- `Z` / `X`: nudge selected notes earlier/later
+- `D` / `F`: nudge selected notes down/up
 - `Left` / `Right`: select previous/next track
 - `1`-`9`: select track by absolute index
 - `Tab` / `Shift+Tab`: next/previous page
@@ -60,5 +70,7 @@ Notes:
 - MIDI mappings can now execute app actions from live MIDI input
 - MIDI mappings can be filtered to `Any MIDI` or a specific input device name
 - track-scoped mappings can now target absolute scopes like `Track 3` directly from the UI
+- note-edit mapping targets now include playhead select/add, deselect, previous/next, first/last focus, extend forward/backward/both, contract, and note pitch/time nudges
+- hold-capable MIDI note/CC mappings now support press/release behavior for `Record Hold` and `Select Notes At Playhead Add`
 - OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface

@@ -106,6 +106,8 @@ pub struct Track {
     pub active_take: Option<RecordingTake>,
     pub midi_notes: Vec<MidiNote>,
     pub regions: Vec<Region>,
+    #[serde(default)]
+    pub note_selection: NoteSelection,
 }
 
 impl Track {
@@ -119,6 +121,7 @@ impl Track {
             active_take: None,
             midi_notes: Vec::new(),
             regions: Vec::new(),
+            note_selection: NoteSelection::default(),
         };
         track.seed_demo_notes();
         track
@@ -134,6 +137,7 @@ impl Track {
             active_take: None,
             midi_notes: Vec::new(),
             regions: Vec::new(),
+            note_selection: NoteSelection::default(),
         }
     }
 
@@ -319,9 +323,225 @@ impl Track {
         self.active_take = None;
         self.midi_notes.clear();
         self.regions.clear();
+        self.clear_note_selection();
+    }
+
+    pub fn has_note_selection(&self) -> bool {
+        !self.selected_note_indices().is_empty()
+    }
+
+    pub fn selected_note_indices(&self) -> Vec<usize> {
+        self.valid_selection_indices()
+    }
+
+    pub fn focused_note_index(&self) -> Option<usize> {
+        let selected = self.valid_selection_indices();
+        let focus = self.note_selection.focus_note_index?;
+        selected.contains(&focus).then_some(focus)
+    }
+
+    pub fn anchor_note_index(&self) -> Option<usize> {
+        let selected = self.valid_selection_indices();
+        let anchor = self.note_selection.anchor_note_index?;
+        selected.contains(&anchor).then_some(anchor)
+    }
+
+    pub fn clear_note_selection(&mut self) {
+        self.note_selection = NoteSelection::default();
+    }
+
+    pub fn select_notes_at_playhead(&mut self, playhead_ticks: u64, additive: bool) -> bool {
+        let hit_indices = self.playhead_hit_indices(playhead_ticks);
+        if hit_indices.is_empty() {
+            return false;
+        }
+
+        let mut selected = if additive {
+            self.valid_selection_indices()
+        } else {
+            Vec::new()
+        };
+        selected.extend(hit_indices.iter().copied());
+        self.update_note_selection(selected, hit_indices.last().copied());
+        true
+    }
+
+    pub fn select_next_note(&mut self, playhead_ticks: u64, additive: bool) -> bool {
+        let ordered = self.ordered_note_indices();
+        let Some(candidate) = self.next_note_candidate(&ordered, playhead_ticks) else {
+            return false;
+        };
+        self.apply_note_focus(candidate, additive);
+        true
+    }
+
+    pub fn select_previous_note(&mut self, playhead_ticks: u64, additive: bool) -> bool {
+        let ordered = self.ordered_note_indices();
+        let Some(candidate) = self.previous_note_candidate(&ordered, playhead_ticks) else {
+            return false;
+        };
+        self.apply_note_focus(candidate, additive);
+        true
+    }
+
+    pub fn focus_first_selected_note(&mut self) -> bool {
+        let selected = self.ordered_selected_note_indices();
+        let Some(&focus) = selected.first() else {
+            return false;
+        };
+        self.update_note_selection(selected, Some(focus));
+        true
+    }
+
+    pub fn focus_last_selected_note(&mut self) -> bool {
+        let selected = self.ordered_selected_note_indices();
+        let Some(&focus) = selected.last() else {
+            return false;
+        };
+        self.update_note_selection(selected, Some(focus));
+        true
+    }
+
+    pub fn extend_note_selection_forward(&mut self, playhead_ticks: u64) -> bool {
+        if !self.has_note_selection() {
+            return self.select_notes_at_playhead(playhead_ticks, false);
+        }
+
+        let ordered = self.ordered_note_indices();
+        let selected = self.ordered_selected_note_indices();
+        let Some(&trailing) = selected.last() else {
+            return false;
+        };
+        let Some(position) = ordered.iter().position(|&index| index == trailing) else {
+            return false;
+        };
+        let Some(&candidate) = ordered.get(position + 1) else {
+            return false;
+        };
+
+        let mut next_selected = selected;
+        next_selected.push(candidate);
+        self.update_note_selection(next_selected, Some(candidate));
+        true
+    }
+
+    pub fn extend_note_selection_backward(&mut self, playhead_ticks: u64) -> bool {
+        if !self.has_note_selection() {
+            return self.select_notes_at_playhead(playhead_ticks, false);
+        }
+
+        let ordered = self.ordered_note_indices();
+        let selected = self.ordered_selected_note_indices();
+        let Some(&leading) = selected.first() else {
+            return false;
+        };
+        let Some(position) = ordered.iter().position(|&index| index == leading) else {
+            return false;
+        };
+        if position == 0 {
+            return false;
+        }
+        let candidate = ordered[position - 1];
+
+        let mut next_selected = selected;
+        next_selected.push(candidate);
+        self.update_note_selection(next_selected, Some(candidate));
+        true
+    }
+
+    pub fn extend_note_selection_both(&mut self, playhead_ticks: u64) -> bool {
+        if !self.has_note_selection() {
+            return self.select_notes_at_playhead(playhead_ticks, false);
+        }
+
+        let ordered = self.ordered_note_indices();
+        let selected = self.ordered_selected_note_indices();
+        let (Some(&leading), Some(&trailing)) = (selected.first(), selected.last()) else {
+            return false;
+        };
+        let Some(leading_position) = ordered.iter().position(|&index| index == leading) else {
+            return false;
+        };
+        let Some(trailing_position) = ordered.iter().position(|&index| index == trailing) else {
+            return false;
+        };
+
+        let mut next_selected = selected.clone();
+        let mut changed = false;
+        if leading_position > 0 {
+            next_selected.push(ordered[leading_position - 1]);
+            changed = true;
+        }
+        if trailing_position + 1 < ordered.len() {
+            next_selected.push(ordered[trailing_position + 1]);
+            changed = true;
+        }
+        if !changed {
+            return false;
+        }
+
+        let focus = self
+            .focused_note_index()
+            .or_else(|| selected.last().copied());
+        self.update_note_selection(next_selected, focus);
+        true
+    }
+
+    pub fn contract_note_selection(&mut self) -> bool {
+        let mut selected = self.ordered_selected_note_indices();
+        if selected.len() <= 1 {
+            return false;
+        }
+
+        let focus = self
+            .focused_note_index()
+            .or_else(|| selected.last().copied())
+            .unwrap_or(selected[0]);
+        if Some(&focus) == selected.first() {
+            selected.remove(0);
+            self.update_note_selection(selected.clone(), selected.first().copied());
+        } else {
+            selected.pop();
+            self.update_note_selection(selected.clone(), selected.last().copied());
+        }
+        true
+    }
+
+    pub fn nudge_selected_notes_time(&mut self, delta_ticks: i64) -> bool {
+        let selected = self.valid_selection_indices();
+        if selected.is_empty() {
+            return false;
+        }
+
+        for index in selected {
+            let note = &mut self.midi_notes[index];
+            note.start_ticks = if delta_ticks.is_negative() {
+                note.start_ticks.saturating_sub(delta_ticks.unsigned_abs())
+            } else {
+                note.start_ticks.saturating_add(delta_ticks as u64)
+            };
+        }
+        true
+    }
+
+    pub fn nudge_selected_notes_pitch(&mut self, delta: i16) -> bool {
+        let selected = self.valid_selection_indices();
+        if selected.is_empty() {
+            return false;
+        }
+
+        let mut changed = false;
+        for index in selected {
+            let note = &mut self.midi_notes[index];
+            let next_pitch = (i16::from(note.pitch) + delta).clamp(0, 127) as u8;
+            changed |= next_pitch != note.pitch;
+            note.pitch = next_pitch;
+        }
+        changed
     }
 
     fn remove_content_in_range(&mut self, range: LoopRegion) {
+        self.clear_note_selection();
         self.midi_notes.retain(|note| !note.intersects(range));
         self.regions.retain(|region| !region.intersects(range));
     }
@@ -358,6 +578,112 @@ impl Track {
                 recorded_note.velocity,
             ));
         }
+    }
+
+    fn valid_selection_indices(&self) -> Vec<usize> {
+        let mut indices = self.note_selection.selected_note_indices.clone();
+        indices.retain(|index| *index < self.midi_notes.len());
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
+
+    fn ordered_note_indices(&self) -> Vec<usize> {
+        let mut ordered: Vec<usize> = (0..self.midi_notes.len()).collect();
+        ordered.sort_by_key(|&index| {
+            let note = self.midi_notes[index];
+            (note.start_ticks, note.pitch, index)
+        });
+        ordered
+    }
+
+    fn ordered_selected_note_indices(&self) -> Vec<usize> {
+        let selected = self.valid_selection_indices();
+        self.ordered_note_indices()
+            .into_iter()
+            .filter(|index| selected.contains(index))
+            .collect()
+    }
+
+    fn playhead_hit_indices(&self, playhead_ticks: u64) -> Vec<usize> {
+        self.ordered_note_indices()
+            .into_iter()
+            .filter(|&index| {
+                let note = self.midi_notes[index];
+                note.start_ticks <= playhead_ticks && note.end_ticks() > playhead_ticks
+            })
+            .collect()
+    }
+
+    fn next_note_candidate(&self, ordered: &[usize], playhead_ticks: u64) -> Option<usize> {
+        if let Some(focus) = self.focused_note_index() {
+            let position = ordered.iter().position(|&index| index == focus)?;
+            return ordered.get(position + 1).copied();
+        }
+
+        ordered
+            .iter()
+            .copied()
+            .find(|&index| self.midi_notes[index].start_ticks >= playhead_ticks)
+    }
+
+    fn previous_note_candidate(&self, ordered: &[usize], playhead_ticks: u64) -> Option<usize> {
+        if let Some(focus) = self.focused_note_index() {
+            let position = ordered.iter().position(|&index| index == focus)?;
+            return position
+                .checked_sub(1)
+                .and_then(|index| ordered.get(index).copied());
+        }
+
+        ordered
+            .iter()
+            .rev()
+            .copied()
+            .find(|&index| self.midi_notes[index].start_ticks < playhead_ticks)
+    }
+
+    fn apply_note_focus(&mut self, candidate: usize, additive: bool) {
+        let mut selected = if additive {
+            self.valid_selection_indices()
+        } else {
+            Vec::new()
+        };
+        selected.push(candidate);
+        self.update_note_selection(selected, Some(candidate));
+    }
+
+    fn update_note_selection(&mut self, selected: Vec<usize>, focus: Option<usize>) {
+        let mut selected = selected;
+        selected.retain(|index| *index < self.midi_notes.len());
+        selected.sort_unstable();
+        selected.dedup();
+
+        if selected.is_empty() {
+            self.note_selection = NoteSelection::default();
+            return;
+        }
+
+        let ordered_selected: Vec<usize> = self
+            .ordered_note_indices()
+            .into_iter()
+            .filter(|index| selected.contains(index))
+            .collect();
+        let focus = focus
+            .filter(|index| ordered_selected.contains(index))
+            .unwrap_or_else(|| *ordered_selected.last().unwrap_or(&ordered_selected[0]));
+        let anchor = if ordered_selected.len() == 1 {
+            Some(focus)
+        } else if Some(&focus) == ordered_selected.first() {
+            ordered_selected.last().copied()
+        } else {
+            ordered_selected.first().copied()
+        };
+
+        self.note_selection = NoteSelection {
+            selected_note_indices: selected,
+            focus_note_index: Some(focus),
+            anchor_note_index: anchor,
+        };
     }
 }
 
@@ -497,6 +823,13 @@ pub struct MidiNote {
     pub start_ticks: u64,
     pub length_ticks: u64,
     pub velocity: u8,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NoteSelection {
+    pub selected_note_indices: Vec<usize>,
+    pub focus_note_index: Option<usize>,
+    pub anchor_note_index: Option<usize>,
 }
 
 impl MidiNote {
@@ -650,6 +983,54 @@ mod tests {
         assert!(track.active_take.is_none());
         assert!(track.midi_notes.is_empty());
         assert!(track.regions.is_empty());
+    }
+
+    #[test]
+    fn select_notes_at_playhead_captures_overlapping_hits() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.midi_notes = vec![
+            MidiNote::new(60, 0, 480, 100),
+            MidiNote::new(64, 120, 480, 100),
+            MidiNote::new(67, 720, 240, 100),
+        ];
+
+        assert!(track.select_notes_at_playhead(240, false));
+        assert_eq!(track.selected_note_indices(), vec![0, 1]);
+        assert_eq!(track.focused_note_index(), Some(1));
+        assert_eq!(track.anchor_note_index(), Some(0));
+    }
+
+    #[test]
+    fn extend_and_contract_note_selection_follow_edges() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.midi_notes = vec![
+            MidiNote::new(60, 0, 120, 100),
+            MidiNote::new(62, 240, 120, 100),
+            MidiNote::new(64, 480, 120, 100),
+        ];
+
+        assert!(track.select_notes_at_playhead(0, false));
+        assert!(track.extend_note_selection_forward(0));
+        assert_eq!(track.selected_note_indices(), vec![0, 1]);
+
+        assert!(track.contract_note_selection());
+        assert_eq!(track.selected_note_indices(), vec![0]);
+    }
+
+    #[test]
+    fn nudging_selected_notes_preserves_membership() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.midi_notes = vec![
+            MidiNote::new(60, 0, 240, 100),
+            MidiNote::new(64, 480, 240, 100),
+        ];
+
+        track.select_notes_at_playhead(0, false);
+        assert!(track.nudge_selected_notes_time(120));
+        assert!(track.nudge_selected_notes_pitch(2));
+
+        assert_eq!(track.selected_note_indices(), vec![0]);
+        assert_eq!(track.midi_notes[0], MidiNote::new(62, 120, 240, 100));
     }
 
     #[test]
