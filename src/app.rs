@@ -152,9 +152,11 @@ impl App {
             .window("trekr", 1280, 720)
             .position_centered()
             .resizable()
+            .high_pixel_density()
             .build()
             .map_err(|err| err.to_string())?;
         let mut canvas = window.into_canvas();
+        self.configure_window_canvas(&mut canvas)?;
         let mut event_pump = sdl_context.event_pump()?;
         let started_at = Instant::now();
         let mut last_frame_at = started_at;
@@ -187,7 +189,7 @@ impl App {
             let now = Instant::now();
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
-            self.viewport_size = canvas.output_size()?;
+            self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
             self.draw(&mut canvas)?;
@@ -211,6 +213,7 @@ impl App {
             self.overlay_state.active = spec.overlay;
             let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
             let mut canvas = surface.into_canvas()?;
+            canvas.set_scale(1.0, 1.0)?;
             self.draw(&mut canvas)?;
             let output_path = options.output_dir.join(spec.filename);
             self.capture_surface_to_png(canvas.surface(), &output_path)?;
@@ -225,7 +228,7 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (width, height) = canvas.output_size()?;
+        let (width, height) = self.viewport_size;
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
         let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
@@ -250,6 +253,17 @@ impl App {
         self.draw_overlay(canvas, inset)?;
 
         canvas.present();
+        Ok(())
+    }
+
+    fn configure_window_canvas(
+        &mut self,
+        canvas: &mut Canvas<sdl3::video::Window>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let display_scale = canvas.window().display_scale().max(1.0);
+        let output_size = canvas.output_size()?;
+        self.viewport_size = logical_viewport_size(output_size, display_scale);
+        canvas.set_scale(display_scale, display_scale)?;
         Ok(())
     }
 
@@ -3519,6 +3533,13 @@ fn pointer_position(
     }
 }
 
+fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u32) {
+    let scale = display_scale.max(1.0);
+    let logical_width = (output_size.0 as f32 / scale).round().max(1.0) as u32;
+    let logical_height = (output_size.1 as f32 / scale).round().max(1.0) as u32;
+    (logical_width, logical_height)
+}
+
 fn scheduled_note_events(
     track: &Track,
     previous_ticks: u64,
@@ -3831,6 +3852,12 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.loop_enabled);
         assert!(app.project.tracks[2].state.armed);
+    }
+
+    #[test]
+    fn logical_viewport_size_respects_display_scale() {
+        assert_eq!(super::logical_viewport_size((2560, 1440), 2.0), (1280, 720));
+        assert_eq!(super::logical_viewport_size((1920, 1080), 1.5), (1280, 720));
     }
 
     #[test]
