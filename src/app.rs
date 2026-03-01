@@ -4332,13 +4332,11 @@ fn pointer_down_position(
         sdl3::event::Event::MouseButtonDown { x, y, .. } => {
             Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer))
         }
-        sdl3::event::Event::FingerDown { x, y, .. } => {
-            Some((
-                (*x * viewport_size.0 as f32) as i32,
-                (*y * viewport_size.1 as f32) as i32,
-                crate::actions::ActionSource::Touch,
-            ))
-        }
+        sdl3::event::Event::FingerDown { x, y, .. } => Some((
+            (*x * viewport_size.0 as f32) as i32,
+            (*y * viewport_size.1 as f32) as i32,
+            crate::actions::ActionSource::Touch,
+        )),
         _ => None,
     }
 }
@@ -5365,6 +5363,7 @@ mod tests {
         track.loop_region = crate::timeline::LoopRegion::new(960, 960);
         app.project.transport.quantize = crate::transport::QuantizeMode::Off;
         app.project.transport.loop_enabled = false;
+        app.project.transport.loop_recording_extends_clip = false;
         app.transport_ticks = 1_680;
         app.playhead_ticks = 1_680;
 
@@ -5473,7 +5472,7 @@ mod tests {
         track.loop_region = crate::timeline::LoopRegion::new(2_880, 1_920);
         app.project.transport.quantize = crate::transport::QuantizeMode::Off;
         app.project.transport.loop_enabled = false;
-        app.project.transport.loop_recording_extends_clip = true;
+        app.project.transport.loop_recording_extends_clip = false;
         app.transport_ticks = 4_600;
         app.playhead_ticks = 4_600;
 
@@ -5488,7 +5487,7 @@ mod tests {
             app.record_context(active_track),
         );
 
-        assert_eq!(preview, Some(crate::timeline::Region::new(2_880, 300)));
+        assert_eq!(preview, Some(crate::timeline::Region::new(4_600, 200)));
     }
 
     #[test]
@@ -5529,7 +5528,7 @@ mod tests {
         };
 
         assert_eq!(
-            super::pointer_position(&event),
+            super::pointer_down_position(&event, (1280, 720)),
             Some((512, 288, crate::actions::ActionSource::Pointer))
         );
     }
@@ -5540,15 +5539,15 @@ mod tests {
             timestamp: 0,
             touch_id: 1,
             finger_id: 1,
-            x: 640.0,
-            y: 360.0,
+            x: 0.5,
+            y: 0.5,
             dx: 0.0,
             dy: 0.0,
             pressure: 1.0,
         };
 
         assert_eq!(
-            super::pointer_position(&event),
+            super::pointer_down_position(&event, (1280, 720)),
             Some((640, 360, crate::actions::ActionSource::Touch))
         );
     }
