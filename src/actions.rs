@@ -27,6 +27,7 @@ pub enum AppAction {
     TogglePlayback,
     ToggleRecording,
     CycleRecordMode,
+    ToggleLoopRecordingExtension,
     ToggleLinkEnabled,
     ToggleLinkStartStopSync,
     ToggleGlobalLoop,

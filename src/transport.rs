@@ -39,6 +39,7 @@ pub struct Transport {
     pub ppqn: u16,
     pub quantize: QuantizeMode,
     pub record_mode: RecordMode,
+    pub loop_recording_extends_clip: bool,
     pub link_enabled: bool,
     pub link_start_stop_sync: bool,
     pub loop_enabled: bool,
@@ -53,6 +54,7 @@ impl Default for Transport {
             ppqn: 960,
             quantize: QuantizeMode::Sixteenth,
             record_mode: RecordMode::Overdub,
+            loop_recording_extends_clip: false,
             link_enabled: false,
             link_start_stop_sync: false,
             loop_enabled: true,
@@ -130,5 +132,10 @@ mod tests {
     fn record_mode_cycles() {
         assert_eq!(RecordMode::Overdub.next(), RecordMode::Replace);
         assert_eq!(RecordMode::Replace.label(), "Replace");
+    }
+
+    #[test]
+    fn transport_defaults_loop_recording_extension_off() {
+        assert!(!Transport::default().loop_recording_extends_clip);
     }
 }

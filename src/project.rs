@@ -3,6 +3,13 @@ use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{RecordMode, Transport};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecordContext {
+    pub range: LoopRegion,
+    pub wrap_basis_ticks: u64,
+    pub extend_clip_on_wrap: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
@@ -151,27 +158,33 @@ impl Track {
         &mut self,
         transport: Transport,
         released_at: u64,
-        record_range: Option<LoopRegion>,
+        record_context: Option<RecordContext>,
     ) {
         let Some(take) = self.active_take.take() else {
             return;
         };
 
-        self.commit_take(transport, take.release(released_at), record_range);
+        self.commit_take(transport, take.release(released_at), record_context);
     }
 
     pub fn commit_take(
         &mut self,
         transport: Transport,
         take: RecordingTake,
-        record_range: Option<LoopRegion>,
+        record_context: Option<RecordContext>,
     ) {
         let Some(released_at) = take.released_at_ticks else {
             return;
         };
 
-        let (start_ticks, end_ticks) =
-            normalized_record_span(transport, take.pressed_at_ticks, released_at, record_range);
+        let (start_ticks, end_ticks) = normalized_record_span(
+            transport,
+            take.pressed_at_ticks,
+            released_at,
+            record_context,
+            take.pressed_at_ticks,
+            released_at,
+        );
         let length_ticks = end_ticks.saturating_sub(start_ticks);
 
         if length_ticks == 0 {
@@ -190,7 +203,9 @@ impl Track {
         self.append_recorded_notes(
             transport,
             &take.recorded_notes,
-            record_range,
+            record_context,
+            take.pressed_at_ticks,
+            released_at,
             start_ticks,
             end_ticks,
         );
@@ -200,14 +215,16 @@ impl Track {
         &self,
         transport: Transport,
         current_ticks: u64,
-        record_range: Option<LoopRegion>,
+        record_context: Option<RecordContext>,
     ) -> Option<Region> {
         self.active_take.as_ref().and_then(|take| {
             let (start_ticks, end_ticks) = normalized_record_span(
                 transport,
                 take.pressed_at_ticks,
                 current_ticks,
-                record_range,
+                record_context,
+                take.pressed_at_ticks,
+                current_ticks,
             );
             let length_ticks = end_ticks.saturating_sub(start_ticks);
             (length_ticks > 0).then_some(Region::new(start_ticks, length_ticks))
@@ -218,7 +235,7 @@ impl Track {
         &self,
         transport: Transport,
         current_ticks: u64,
-        record_range: Option<LoopRegion>,
+        record_context: Option<RecordContext>,
     ) -> Vec<MidiNote> {
         let Some(take) = self.active_take.as_ref() else {
             return Vec::new();
@@ -226,9 +243,14 @@ impl Track {
 
         let mut notes = Vec::new();
         for recorded_note in &take.recorded_notes {
-            if let Some(note) =
-                preview_midi_note(transport, *recorded_note, record_range, current_ticks)
-            {
+            if let Some(note) = preview_midi_note(
+                transport,
+                *recorded_note,
+                record_context,
+                take.pressed_at_ticks,
+                current_ticks,
+                current_ticks,
+            ) {
                 notes.push(note);
             }
         }
@@ -240,9 +262,14 @@ impl Track {
                 started_at_ticks: pending_note.started_at_ticks,
                 ended_at_ticks: current_ticks.max(pending_note.started_at_ticks),
             };
-            if let Some(note) =
-                preview_midi_note(transport, recorded_note, record_range, current_ticks)
-            {
+            if let Some(note) = preview_midi_note(
+                transport,
+                recorded_note,
+                record_context,
+                take.pressed_at_ticks,
+                current_ticks,
+                current_ticks,
+            ) {
                 notes.push(note);
             }
         }
@@ -303,7 +330,9 @@ impl Track {
         &mut self,
         transport: Transport,
         recorded_notes: &[RecordedMidiNote],
-        record_range: Option<LoopRegion>,
+        record_context: Option<RecordContext>,
+        take_pressed_at_ticks: u64,
+        take_released_at_ticks: u64,
         start_ticks: u64,
         end_ticks: u64,
     ) {
@@ -312,7 +341,9 @@ impl Track {
                 transport,
                 recorded_note.started_at_ticks,
                 recorded_note.ended_at_ticks,
-                record_range,
+                record_context,
+                take_pressed_at_ticks,
+                take_released_at_ticks,
             );
             let note_start = note_start.clamp(start_ticks, end_ticks.saturating_sub(1));
             let note_end = note_end.clamp(note_start.saturating_add(1), end_ticks);
@@ -334,19 +365,39 @@ fn normalized_record_span(
     transport: Transport,
     pressed_at_ticks: u64,
     released_at_ticks: u64,
-    record_range: Option<LoopRegion>,
+    record_context: Option<RecordContext>,
+    take_pressed_at_ticks: u64,
+    take_end_ticks: u64,
 ) -> (u64, u64) {
-    let mut start_ticks = transport.quantize_to_nearest(pressed_at_ticks);
-    let mut end_ticks = transport.quantize_to_nearest(released_at_ticks);
+    let start_ticks = transport.quantize_to_nearest(pressed_at_ticks);
+    let end_ticks = transport.quantize_to_nearest(released_at_ticks.max(pressed_at_ticks));
 
-    if let Some(range) = record_range {
-        let range_start = range.start_ticks;
-        let range_end = range.end_ticks();
-        start_ticks = start_ticks.clamp(range_start, range_end.saturating_sub(1));
-        end_ticks = end_ticks.clamp(range_start, range_end);
-        if end_ticks < start_ticks {
-            end_ticks = range_end;
-        }
+    let Some(record_context) = record_context else {
+        return (start_ticks, end_ticks);
+    };
+
+    let range_start = record_context.range.start_ticks;
+    let range_end = record_context.range.end_ticks();
+    let projected_start = projected_loop_ticks(start_ticks, record_context);
+    let projected_end = projected_loop_ticks(end_ticks, record_context);
+    let wrapped = loop_cycle(
+        transport.quantize_to_nearest(take_end_ticks.max(take_pressed_at_ticks)),
+        record_context,
+    ) > loop_cycle(take_pressed_at_ticks, record_context);
+
+    if record_context.extend_clip_on_wrap && wrapped {
+        let offset_start = start_ticks.saturating_sub(take_pressed_at_ticks);
+        let offset_end = end_ticks.saturating_sub(take_pressed_at_ticks);
+        return (
+            range_start + offset_start,
+            (range_start + offset_end).max(range_start + offset_start),
+        );
+    }
+
+    let start_ticks = projected_start.clamp(range_start, range_end.saturating_sub(1));
+    let mut end_ticks = projected_end.clamp(range_start, range_end);
+    if wrapped || end_ticks < start_ticks {
+        end_ticks = range_end;
     }
 
     (start_ticks, end_ticks)
@@ -355,7 +406,9 @@ fn normalized_record_span(
 fn preview_midi_note(
     transport: Transport,
     recorded_note: RecordedMidiNote,
-    record_range: Option<LoopRegion>,
+    record_context: Option<RecordContext>,
+    take_pressed_at_ticks: u64,
+    take_end_ticks: u64,
     current_ticks: u64,
 ) -> Option<MidiNote> {
     let (note_start, note_end) = normalized_record_span(
@@ -364,7 +417,9 @@ fn preview_midi_note(
         recorded_note
             .ended_at_ticks
             .min(current_ticks.max(recorded_note.started_at_ticks)),
-        record_range,
+        record_context,
+        take_pressed_at_ticks,
+        take_end_ticks,
     );
     let note_length = note_end.saturating_sub(note_start);
     (note_length > 0).then_some(MidiNote::new(
@@ -373,6 +428,23 @@ fn preview_midi_note(
         note_length,
         recorded_note.velocity,
     ))
+}
+
+fn loop_cycle(ticks: u64, record_context: RecordContext) -> u64 {
+    if record_context.range.length_ticks == 0 {
+        return 0;
+    }
+
+    ticks.saturating_sub(record_context.wrap_basis_ticks) / record_context.range.length_ticks
+}
+
+fn projected_loop_ticks(ticks: u64, record_context: RecordContext) -> u64 {
+    if record_context.range.length_ticks == 0 {
+        return record_context.range.start_ticks;
+    }
+
+    let relative = ticks.saturating_sub(record_context.wrap_basis_ticks);
+    record_context.range.start_ticks + (relative % record_context.range.length_ticks)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,7 +492,7 @@ pub struct TrackState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MidiNote, Project, Track, TrackKind};
+    use super::{MidiNote, Project, RecordContext, Track, TrackKind};
     use crate::timeline::{LoopRegion, RecordingTake, Region};
     use crate::transport::{QuantizeMode, RecordMode, Transport};
 
@@ -449,7 +521,7 @@ mod tests {
             quantize: QuantizeMode::Sixteenth,
             ..Transport::default()
         };
-        let mut track = Track::new("Track 1", TrackKind::Midi);
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
 
         track.commit_take(transport, RecordingTake::new(220).release(721), None);
 
@@ -459,7 +531,7 @@ mod tests {
     #[test]
     fn finish_recording_consumes_active_take() {
         let transport = Transport::default();
-        let mut track = Track::new("Track 1", TrackKind::Midi);
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
         track.begin_recording(960);
 
         track.finish_recording(transport, 1_920, None);
@@ -474,7 +546,7 @@ mod tests {
             quantize: QuantizeMode::Quarter,
             ..Transport::default()
         };
-        let mut track = Track::new("Track 1", TrackKind::Midi);
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
         track.begin_recording(110);
 
         assert_eq!(
@@ -593,14 +665,48 @@ mod tests {
             ..Transport::default()
         };
         let mut track = Track::new("Track 1", TrackKind::Midi);
-        let loop_range = LoopRegion::new(960, 960);
+        let record_context = RecordContext {
+            range: LoopRegion::new(960, 960),
+            wrap_basis_ticks: 0,
+            extend_clip_on_wrap: false,
+        };
 
         track.commit_take(
             transport,
-            RecordingTake::new(1_680).release(1_200),
-            Some(loop_range),
+            RecordingTake::new(1_680).release(2_160),
+            Some(record_context),
         );
 
         assert_eq!(track.regions.last().copied(), Some(Region::new(1_680, 240)));
+    }
+
+    #[test]
+    fn loop_recording_extension_rebases_wrapped_take_to_loop_start() {
+        let transport = Transport {
+            quantize: QuantizeMode::Off,
+            ..Transport::default()
+        };
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        let record_context = RecordContext {
+            range: LoopRegion::new(960, 960),
+            wrap_basis_ticks: 0,
+            extend_clip_on_wrap: true,
+        };
+        let mut take = RecordingTake::new(1_680);
+        take.note_on(64, 100, 1_700);
+        take.note_off(64, 1_820);
+        take.note_on(67, 100, 2_040);
+        take.note_off(67, 2_160);
+
+        track.commit_take(transport, take.release(2_160), Some(record_context));
+
+        assert_eq!(track.regions.last().copied(), Some(Region::new(960, 480)));
+        assert_eq!(
+            track.midi_notes,
+            vec![
+                MidiNote::new(64, 980, 120, 100),
+                MidiNote::new(67, 1_320, 120, 100),
+            ]
+        );
     }
 }
