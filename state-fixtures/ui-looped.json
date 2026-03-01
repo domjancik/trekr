@@ -6,6 +6,7 @@
       "ppqn": 960,
       "quantize": "Sixteenth",
       "record_mode": "Overdub",
+      "loop_recording_extends_clip": false,
       "loop_enabled": true,
       "playing": false,
       "recording": false

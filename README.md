@@ -122,7 +122,7 @@ The timeline page also exposes a clickable `Reset Song Loop` button that trigger
 Pointer/touch notes:
 
 - tabs are clickable/tappable
-- timeline transport chips are clickable/tappable for play, record, record mode, song loop, Link, and Link sync
+- timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
@@ -132,6 +132,7 @@ Recording flow notes:
 
 - armed tracks are the first recording targets; if none are armed, recording uses the active track
 - stopping playback while recording commits the active take instead of discarding it
+- `RecWrap Extend` keeps a looped recording going past the loop boundary by rebasing the clip to loop start and extending its length instead of clamping the take at the loop end
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 - MIDI note content now comes from live input note-on/off events on each track's routed MIDI input, not a generated placeholder pattern
 
