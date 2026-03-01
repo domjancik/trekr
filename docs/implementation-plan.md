@@ -120,6 +120,8 @@ Priority 2: MIDI authoring usability
 
 - editable MIDI regions on the timeline
 - note editing inside the detail column
+- action-driven note selection and manipulation from keyboard/MIDI mappings
+- playhead-based note selection, extend/contract, and pitch/time nudge operations
 - region move/resize/delete actions
 - safer overdub behavior when new notes overlap existing notes
 - explicit preview styling for pending recorded notes versus committed notes
