@@ -1113,7 +1113,11 @@ impl App {
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                &entry.source_device_label,
+                if entry.source_kind == MappingSourceKind::Midi {
+                    &entry.source_device_label
+                } else {
+                    "--"
+                },
                 Rect::new(
                     device_rect.x + 4,
                     row.y + 5,
@@ -1121,7 +1125,11 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(226, 234, 244),
+                if entry.source_kind == MappingSourceKind::Midi {
+                    Color::RGB(226, 234, 244)
+                } else {
+                    Color::RGB(124, 132, 146)
+                },
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -1935,6 +1943,8 @@ impl App {
                 self.page_state.mapping_midi_learn_armed = false;
                 if self.page_state.mapping_mode == MappingPageMode::Overview {
                     self.page_state.selected_mapping_field = MappingField::SourceValue;
+                } else {
+                    self.normalize_selected_mapping_field();
                 }
                 self.sync_midi_inputs();
                 AppControl::Continue
@@ -2355,6 +2365,7 @@ impl App {
                     let count = self.mappings.len();
                     self.page_state.selected_mapping_index =
                         (self.page_state.selected_mapping_index + count - 1) % count;
+                    self.normalize_selected_mapping_field();
                     self.page_state.mapping_midi_learn_armed = false;
                 }
             }
@@ -2384,6 +2395,7 @@ impl App {
                 if !self.mappings.is_empty() {
                     self.page_state.selected_mapping_index =
                         (self.page_state.selected_mapping_index + 1) % self.mappings.len();
+                    self.normalize_selected_mapping_field();
                     self.page_state.mapping_midi_learn_armed = false;
                 }
             }
@@ -2411,7 +2423,7 @@ impl App {
             && self.page_state.mapping_mode == MappingPageMode::Write
         {
             self.page_state.selected_mapping_field =
-                self.page_state.selected_mapping_field.previous();
+                self.previous_enabled_mapping_field(self.page_state.selected_mapping_field);
             self.page_state.mapping_midi_learn_armed = false;
         }
     }
@@ -2420,7 +2432,8 @@ impl App {
         if self.page_state.current_page == AppPage::Mappings
             && self.page_state.mapping_mode == MappingPageMode::Write
         {
-            self.page_state.selected_mapping_field = self.page_state.selected_mapping_field.next();
+            self.page_state.selected_mapping_field =
+                self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
             self.page_state.mapping_midi_learn_armed = false;
         }
     }
@@ -2494,6 +2507,7 @@ impl App {
                     entry.source_device_label = default_mapping_source_device();
                 }
                 entry.source_label = default_source_label(entry.source_kind).to_string();
+                self.normalize_selected_mapping_field();
             }
             MappingField::SourceDevice => {
                 if entry.source_kind == MappingSourceKind::Midi {
@@ -2544,6 +2558,7 @@ impl App {
                 }
                 entry.source_label = default_source_label(entry.source_kind).to_string();
                 self.page_state.mapping_midi_learn_armed = false;
+                self.normalize_selected_mapping_field();
             }
             MappingField::SourceDevice => {
                 if entry.source_kind == MappingSourceKind::Midi {
@@ -2615,6 +2630,7 @@ impl App {
             .insert(insert_index + usize::from(!self.mappings.is_empty()), entry);
         self.page_state.selected_mapping_index =
             (insert_index + usize::from(!self.mappings.is_empty())).min(self.mappings.len() - 1);
+        self.normalize_selected_mapping_field();
         self.page_state.mapping_midi_learn_armed = false;
     }
 
@@ -2634,7 +2650,44 @@ impl App {
             .page_state
             .selected_mapping_index
             .min(self.mappings.len().saturating_sub(1));
+        self.normalize_selected_mapping_field();
         self.page_state.mapping_midi_learn_armed = false;
+    }
+
+    fn next_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+        let mut field = start;
+        for _ in 0..MappingField::ALL.len() {
+            field = field.next();
+            if self.mapping_field_enabled(field) {
+                return field;
+            }
+        }
+        start
+    }
+
+    fn previous_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+        let mut field = start;
+        for _ in 0..MappingField::ALL.len() {
+            field = field.previous();
+            if self.mapping_field_enabled(field) {
+                return field;
+            }
+        }
+        start
+    }
+
+    fn normalize_selected_mapping_field(&mut self) {
+        if !self.mapping_field_enabled(self.page_state.selected_mapping_field) {
+            self.page_state.selected_mapping_field =
+                self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
+        }
+    }
+
+    fn mapping_field_enabled(&self, field: MappingField) -> bool {
+        let Some(entry) = self.mappings.get(self.page_state.selected_mapping_index) else {
+            return field != MappingField::SourceDevice;
+        };
+        !matches!(field, MappingField::SourceDevice) || entry.source_kind == MappingSourceKind::Midi
     }
 
     fn adjust_routing_field(&mut self, delta: i32) {
@@ -3262,7 +3315,7 @@ mod tests {
         cycle_output_channel, mapping_field_index,
     };
     use crate::actions::AppAction;
-    use crate::mapping::{MappingEntry, MappingSourceKind};
+    use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::routing::MidiChannelFilter;
@@ -3516,6 +3569,45 @@ mod tests {
 
         app.apply_action(AppAction::AdjustPageItemBackward);
         assert_eq!(app.mappings[0].scope_label, "Active Track");
+    }
+
+    #[test]
+    fn mappings_page_skips_device_field_for_non_midi_rows() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Key;
+        app.page_state.selected_mapping_field = MappingField::SourceKind;
+
+        app.apply_action(AppAction::SelectNextPageField);
+
+        assert_eq!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceValue
+        );
+    }
+
+    #[test]
+    fn switching_away_from_midi_disables_device_field() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.mappings[0].source_device_label = "Port A".to_string();
+        app.page_state.selected_mapping_field = MappingField::SourceDevice;
+
+        app.page_state.selected_mapping_field = MappingField::SourceKind;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert_ne!(app.mappings[0].source_kind, MappingSourceKind::Midi);
+        assert_eq!(
+            app.mappings[0].source_device_label,
+            default_mapping_source_device()
+        );
+        assert_ne!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceDevice
+        );
     }
 
     #[test]
