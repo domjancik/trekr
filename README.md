@@ -59,6 +59,7 @@ Latest renderer-owned captures from the demo state:
 - an in-canvas transport strip on the timeline page
 - a field-based mappings editor with MIDI learn for MIDI sources
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
+- direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
 
 Launch state:
 
@@ -107,6 +108,15 @@ Current controls:
 - `Escape`: quit
 
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
+
+Pointer/touch notes:
+
+- tabs are clickable/tappable
+- timeline transport chips are clickable/tappable for play, record, record mode, song loop, Link, and Link sync
+- mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
+- MIDI I/O rows are clickable/tappable to select and set the default input/output
+- routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
+- timeline note and region editing is still not implemented for pointer/touch input
 
 Recording flow notes:
 

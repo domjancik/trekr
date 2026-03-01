@@ -165,8 +165,8 @@ impl App {
 
         'running: loop {
             for event in event_pump.poll_iter() {
-                if let Some(action_event) = self.pointer_action(&event) {
-                    if self.apply_action(action_event.action) == AppControl::Quit {
+                if let Some(control) = self.handle_pointer_event(&event) {
+                    if control == AppControl::Quit {
                         break 'running;
                     }
                     continue;
@@ -2940,33 +2940,301 @@ impl App {
         }
     }
 
-    fn pointer_action(&self, event: &sdl3::event::Event) -> Option<crate::actions::ActionEvent> {
-        match event {
-            sdl3::event::Event::MouseButtonDown { x, y, .. }
-                if self.page_state.current_page == AppPage::Timeline
-                    && rect_contains(
-                        self.global_loop_reset_button_rect(self.timeline_header_bounds()),
-                        *x as i32,
-                        *y as i32,
-                    ) =>
-            {
-                Some(crate::actions::ActionEvent::new(
-                    AppAction::ResetGlobalLoop,
-                    crate::actions::ActionSource::Pointer,
-                ))
-            }
-            _ => None,
+    fn handle_pointer_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
+        let (x, y, source) = pointer_position(event, self.viewport_size)?;
+        self.handle_pointer_down(x, y, source)
+    }
+
+    fn handle_pointer_down(
+        &mut self,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
+
+        if let Some(page) = self.hit_page_tab(tabs_bounds, x, y) {
+            return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
+        }
+
+        match self.page_state.current_page {
+            AppPage::Timeline => self.handle_timeline_pointer(content_bounds, x, y, source),
+            AppPage::Mappings => self.handle_mappings_pointer(content_bounds, x, y, source),
+            AppPage::MidiIo => self.handle_midi_io_pointer(content_bounds, x, y, source),
+            AppPage::Routing => self.handle_routing_pointer(content_bounds, x, y, source),
         }
     }
 
-    fn timeline_header_bounds(&self) -> Rect {
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).expect("fixed app inset");
-        let (_, content_bounds) =
-            crate::ui::split_top_strip(inset, 28, 12).expect("fixed tabs split");
-        let (header_bounds, _) =
-            crate::ui::split_top_strip(content_bounds, 28, 10).expect("fixed timeline split");
-        header_bounds
+    fn handle_timeline_pointer(
+        &mut self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        let (header_bounds, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+        let (transport_bounds, _) = crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+        if rect_contains(self.global_loop_reset_button_rect(header_bounds), x, y) {
+            return Some(self.apply_action_with_source(AppAction::ResetGlobalLoop, source));
+        }
+
+        for (rect, action) in self.transport_chip_actions(transport_bounds) {
+            if rect_contains(rect, x, y) {
+                return Some(self.apply_action_with_source(action, source));
+            }
+        }
+
+        None
+    }
+
+    fn handle_mappings_pointer(
+        &mut self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
+        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        if rect_contains(overview_badge, x, y) {
+            return Some(self.apply_action_with_source(AppAction::ToggleMappingsWriteMode, source));
+        }
+        if rect_contains(learn_badge, x, y)
+            && self.page_state.mapping_mode == MappingPageMode::Write
+            && self.page_state.selected_mapping_field == MappingField::SourceValue
+        {
+            return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
+        }
+
+        let list_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + 44,
+            content_bounds.width().saturating_sub(16),
+            content_bounds.height().saturating_sub(68),
+        );
+        let row_gap = 3_i32;
+        let row_height = 18_i32;
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+
+        for visible_index in 0..visible_rows {
+            let index = start_index + visible_index;
+            if index >= self.mappings.len() {
+                break;
+            }
+            let row = Rect::new(
+                list_bounds.x,
+                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.width(),
+                row_height as u32,
+            );
+            if !rect_contains(row, x, y) {
+                continue;
+            }
+
+            self.page_state.selected_mapping_index = index;
+            self.normalize_selected_mapping_field();
+            self.page_state.mapping_midi_learn_armed = false;
+
+            if self.page_state.mapping_mode != MappingPageMode::Write {
+                return Some(AppControl::Continue);
+            }
+
+            let cells = self.mapping_row_cells(row);
+            for field in MappingField::ALL {
+                let rect = cells[mapping_field_index(field)];
+                if !rect_contains(rect, x, y) || !self.mapping_field_enabled(field) {
+                    continue;
+                }
+                let same_field = self.page_state.selected_mapping_field == field;
+                self.page_state.selected_mapping_field = field;
+                if same_field {
+                    self.activate_mapping_field();
+                }
+                return Some(AppControl::Continue);
+            }
+
+            return Some(AppControl::Continue);
+        }
+
+        None
+    }
+
+    fn handle_midi_io_pointer(
+        &mut self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        let (_, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10).ok()?;
+        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
+        let input_bounds = columns[0];
+        let output_bounds = columns[1];
+        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
+        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
+
+        if rect_contains(input_header, x, y) {
+            self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
+            return Some(AppControl::Continue);
+        }
+        if rect_contains(output_header, x, y) {
+            self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
+            return Some(AppControl::Continue);
+        }
+
+        let input_list = Rect::new(
+            input_bounds.x,
+            input_header.y + input_header.height() as i32 + 6,
+            input_bounds.width(),
+            input_bounds
+                .height()
+                .saturating_sub(input_header.height().saturating_add(28)),
+        );
+        let output_list = Rect::new(
+            output_bounds.x,
+            output_header.y + output_header.height() as i32 + 6,
+            output_bounds.width(),
+            output_bounds
+                .height()
+                .saturating_sub(output_header.height().saturating_add(28)),
+        );
+
+        if let Some(index) =
+            self.hit_device_list_row(input_list, self.midi_devices.inputs.len(), x, y)
+        {
+            self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
+            self.page_state.midi_io.selected_input_index = index;
+            self.midi_devices.set_selected_input(index);
+            self.sync_midi_inputs();
+            return Some(AppControl::Continue);
+        }
+
+        if let Some(index) =
+            self.hit_device_list_row(output_list, self.midi_devices.outputs.len(), x, y)
+        {
+            self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
+            self.page_state.midi_io.selected_output_index = index;
+            self.midi_devices.set_selected_output(index);
+            return Some(AppControl::Continue);
+        }
+
+        None
+    }
+
+    fn handle_routing_pointer(
+        &mut self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        let inner = crate::ui::inset_rect(content_bounds, 12, 32).ok()?;
+        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).ok()?;
+
+        let meta_active = Rect::new(
+            header.x + 8,
+            header.y + 8,
+            90,
+            header.height().saturating_sub(16),
+        );
+        let meta_thru = Rect::new(
+            header.x + 106,
+            header.y + 8,
+            92,
+            header.height().saturating_sub(16),
+        );
+        if rect_contains(meta_active, x, y) {
+            self.project.select_next_track();
+            return Some(AppControl::Continue);
+        }
+        if rect_contains(meta_thru, x, y) {
+            self.page_state.selected_routing_field = RoutingField::Passthrough;
+            self.activate_page_item();
+            return Some(AppControl::Continue);
+        }
+
+        let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
+        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
+            let row = rows[index];
+            if !rect_contains(row, x, y) {
+                continue;
+            }
+            self.page_state.selected_routing_field = field;
+            if field == RoutingField::Passthrough {
+                self.activate_page_item();
+                return Some(AppControl::Continue);
+            }
+            let value = Rect::new(
+                row.x + 156,
+                row.y + 8,
+                row.width().saturating_sub(220),
+                row.height().saturating_sub(16),
+            );
+            let affordance = Rect::new(
+                row.x + row.width() as i32 - 72,
+                row.y + 8,
+                62,
+                row.height().saturating_sub(16),
+            );
+            if rect_contains(value, x, y) {
+                let delta = if x < value.x + value.width() as i32 / 2 {
+                    -1
+                } else {
+                    1
+                };
+                self.adjust_routing_field(delta);
+            } else if rect_contains(affordance, x, y) {
+                self.adjust_routing_field(1);
+            }
+            return Some(AppControl::Continue);
+        }
+
+        None
+    }
+
+    fn hit_page_tab(&self, bounds: Rect, x: i32, y: i32) -> Option<AppPage> {
+        let tabs = crate::ui::equal_columns(bounds, AppPage::ALL.len(), 10);
+        AppPage::ALL
+            .iter()
+            .copied()
+            .zip(tabs)
+            .find_map(|(page, rect)| rect_contains(rect, x, y).then_some(page))
+    }
+
+    fn hit_device_list_row(&self, bounds: Rect, count: usize, x: i32, y: i32) -> Option<usize> {
+        let rows =
+            crate::ui::stacked_rows(crate::ui::inset_rect(bounds, 10, 10).ok()?, count.max(1), 8);
+        rows.into_iter()
+            .enumerate()
+            .take(count)
+            .find_map(|(index, rect)| rect_contains(rect, x, y).then_some(index))
+    }
+
+    fn apply_action_with_source(
+        &mut self,
+        action: AppAction,
+        source: crate::actions::ActionSource,
+    ) -> AppControl {
+        match source {
+            crate::actions::ActionSource::Pointer | crate::actions::ActionSource::Touch => {}
+            _ => {}
+        }
+        self.apply_action(action)
     }
 
     fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
@@ -2977,6 +3245,75 @@ impl App {
             width,
             header_bounds.height().saturating_sub(8),
         )
+    }
+
+    fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
+        let chips = [
+            (
+                format!("Play {}", on_off(self.project.transport.playing)),
+                AppAction::TogglePlayback,
+            ),
+            (
+                format!("Rec {}", on_off(self.project.transport.recording)),
+                AppAction::ToggleRecording,
+            ),
+            (
+                format!("Mode {}", self.project.transport.record_mode.label()),
+                AppAction::CycleRecordMode,
+            ),
+            (
+                format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
+                AppAction::ToggleGlobalLoop,
+            ),
+        ];
+
+        let mut cursor_x = bounds.x + 6;
+        let mut rects = Vec::new();
+        for (label, action) in chips {
+            let width = crate::ui::text_width(&label, 1) + 12;
+            let chip = Rect::new(
+                cursor_x,
+                bounds.y + 4,
+                width,
+                bounds.height().saturating_sub(8),
+            );
+            rects.push((chip, action));
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        let divider = Rect::new(
+            cursor_x + 4,
+            bounds.y + 4,
+            1,
+            bounds.height().saturating_sub(8),
+        );
+        cursor_x = divider.x + 8 + 28;
+        let sync_badges = [
+            (
+                format!("Link {}", on_off(self.project.transport.link_enabled)),
+                AppAction::ToggleLinkEnabled,
+            ),
+            (
+                format!(
+                    "Sync {}",
+                    on_off(self.project.transport.link_start_stop_sync)
+                ),
+                AppAction::ToggleLinkStartStopSync,
+            ),
+        ];
+        for (label, action) in sync_badges {
+            let width = crate::ui::text_width(&label, 1) + 12;
+            let chip = Rect::new(
+                cursor_x,
+                bounds.y + 4,
+                width,
+                bounds.height().saturating_sub(8),
+            );
+            rects.push((chip, action));
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        rects
     }
 }
 
@@ -3022,6 +3359,23 @@ fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
         && x < rect.x + rect.width() as i32
         && y >= rect.y
         && y < rect.y + rect.height() as i32
+}
+
+fn pointer_position(
+    event: &sdl3::event::Event,
+    viewport_size: (u32, u32),
+) -> Option<(i32, i32, crate::actions::ActionSource)> {
+    match event {
+        sdl3::event::Event::MouseButtonDown { x, y, .. } => {
+            Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer))
+        }
+        sdl3::event::Event::FingerDown { x, y, .. } => Some((
+            (*x * viewport_size.0 as f32) as i32,
+            (*y * viewport_size.1 as f32) as i32,
+            crate::actions::ActionSource::Touch,
+        )),
+        _ => None,
+    }
 }
 
 fn scheduled_note_events(
