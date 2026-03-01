@@ -71,11 +71,11 @@ Launch state:
 
 Bootstrap and run:
 
-- first local build needs the `vendor/ableton-link` git submodule checked out
-- `make setup` initializes that submodule
-- `make run` initializes the submodule if needed, then starts the app
-- `make run-demo` and `make run-empty` do the same for the demo and empty launch modes
-- `make check` initializes the submodule if needed, then runs `cargo check`
+- fresh clones can use `cargo xtask run` as the single setup-and-run command
+- `cargo xtask setup` initializes the `vendor/ableton-link` git submodule
+- `cargo xtask run-demo` and `cargo xtask run-empty` do the same for the demo and empty launch modes
+- `cargo xtask check` initializes the submodule if needed, then runs `cargo check`
+- the Cargo alias lives in `.cargo/config.toml`, so no extra task runner install is required
 
 Current controls:
 
@@ -150,7 +150,7 @@ MIDI learn notes:
 Ableton Link notes:
 
 - Ableton Link now uses the official Ableton source from the `vendor/ableton-link` git submodule through a small native bridge, instead of the broken third-party Rust wrapper
-- clone with submodules or run `git submodule update --init --recursive` so the bundled `asio` dependency is available on Linux, Windows, and macOS
+- `cargo xtask run` will initialize that submodule automatically on first run, or you can run `cargo xtask setup` explicitly
 - the transport strip shows Link enabled state, start/stop sync state, and peer count/status summary
 
 The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.

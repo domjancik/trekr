@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "xtask"]
+default-members = ["."]
+
 [package]
 name = "trekr"
 version = "0.1.0"
