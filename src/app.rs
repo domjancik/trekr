@@ -86,6 +86,8 @@ impl App {
     pub fn from_persisted_state(state: PersistedAppState) -> Self {
         let mut app = Self::with_project(state.project, state.mappings, state.page_state);
         app.timeline_flow = state.timeline_flow;
+        app.transport_ticks = state.transport_ticks;
+        app.playhead_ticks = state.playhead_ticks;
         app.sync_midi_inputs();
         app
     }
@@ -96,6 +98,8 @@ impl App {
             page_state: self.page_state,
             timeline_flow: self.timeline_flow,
             mappings: self.mappings.clone(),
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
         }
     }
 
@@ -430,6 +434,7 @@ impl App {
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let detail_range = self.detail_loop_range(track);
         let full_accent = if track.state.armed {
             Color::RGB(148, 54, 54)
         } else if is_active {
@@ -437,7 +442,9 @@ impl App {
         } else {
             Color::RGB(36, 58, 92)
         };
-        let detail_accent = if track.state.loop_enabled && self.project.transport.loop_enabled {
+        let detail_accent = if detail_range != track.loop_region {
+            Color::RGB(170, 120, 44)
+        } else if track.state.loop_enabled && self.project.transport.loop_enabled {
             Color::RGB(178, 104, 34)
         } else if is_active {
             Color::RGB(124, 82, 46)
@@ -460,8 +467,8 @@ impl App {
             canvas,
             detail_bounds,
             detail_accent,
-            track.loop_region.start_ticks,
-            track.loop_region.length_ticks,
+            detail_range.start_ticks,
+            detail_range.length_ticks,
             self.effective_track_playhead(track),
             is_active,
             true,
@@ -2459,6 +2466,12 @@ impl App {
         } else {
             None
         }
+    }
+
+    fn detail_loop_range(&self, track: &Track) -> crate::timeline::LoopRegion {
+        self.record_context(track)
+            .map(|context| context.range)
+            .unwrap_or(track.loop_region)
     }
 
     fn begin_recording(&mut self) {
@@ -4512,6 +4525,20 @@ mod tests {
             app.project.active_track().unwrap().regions,
             vec![crate::timeline::Region::new(960, 480)]
         );
+    }
+
+    #[test]
+    fn detail_loop_range_uses_global_loop_when_track_loop_is_disabled() {
+        let mut app = App::new();
+        app.project.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        app.project.transport.loop_enabled = true;
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = false;
+        track.loop_region = crate::timeline::LoopRegion::new(0, 3_840);
+
+        let detail_range = app.detail_loop_range(app.project.active_track().unwrap());
+
+        assert_eq!(detail_range, crate::timeline::LoopRegion::new(960, 960));
     }
 
     #[test]
