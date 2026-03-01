@@ -80,6 +80,7 @@ struct DiscoverabilityTarget {
     action: AppAction,
     display_scope: Option<&'static str>,
     allowed_mapping_scopes: &'static [&'static str],
+    overlay_slot: Option<Rect>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1395,6 +1396,10 @@ impl App {
             return Ok(());
         }
 
+        if let Some(slot) = target.overlay_slot {
+            return self.draw_compact_discoverability_slot(canvas, slot, &summary);
+        }
+
         let max_badges = if anchor.width() <= 24 || anchor.height() <= 12 {
             1
         } else {
@@ -1421,6 +1426,60 @@ impl App {
             max_badges,
             label_width,
         )
+    }
+
+    fn draw_compact_discoverability_slot<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        slot: Rect,
+        summary: &ActionDiscoverabilitySummary,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let built_in_count = summary.badges.iter().filter(|badge| badge.built_in).count();
+        let user_count = summary
+            .badges
+            .iter()
+            .filter(|badge| !badge.built_in)
+            .count();
+
+        if built_in_count > 0 && user_count > 0 {
+            let left_width = (slot.width() / 2).max(1);
+            let right_width = slot.width().saturating_sub(left_width);
+            canvas.set_draw_color(Color::RGB(64, 84, 126));
+            canvas.fill_rect(Rect::new(slot.x, slot.y, left_width, slot.height()))?;
+            canvas.set_draw_color(Color::RGB(88, 128, 76));
+            canvas.fill_rect(Rect::new(
+                slot.x + left_width as i32,
+                slot.y,
+                right_width,
+                slot.height(),
+            ))?;
+        } else if user_count > 0 {
+            canvas.set_draw_color(Color::RGB(88, 128, 76));
+            canvas.fill_rect(slot)?;
+        } else {
+            canvas.set_draw_color(Color::RGB(64, 84, 126));
+            canvas.fill_rect(slot)?;
+        }
+
+        let count_text = if summary.total_bindings >= 10 {
+            "+".to_string()
+        } else {
+            summary.total_bindings.to_string()
+        };
+        crate::ui::draw_text_fitted(
+            canvas,
+            &count_text,
+            Rect::new(
+                slot.x + 1,
+                slot.y + 1,
+                slot.width().saturating_sub(2),
+                slot.height().saturating_sub(2),
+            ),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
+
+        Ok(())
     }
 
     fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
@@ -4020,6 +4079,7 @@ impl App {
                 action: AppAction::ResetGlobalLoop,
                 display_scope: Some("Global"),
                 allowed_mapping_scopes: &["Global"],
+                overlay_slot: None,
             },
         ));
         for (rect, action) in self.transport_chip_actions(transport_bounds) {
@@ -4040,6 +4100,7 @@ impl App {
                     action,
                     display_scope,
                     allowed_mapping_scopes,
+                    overlay_slot: None,
                 },
             ));
         }
@@ -4060,14 +4121,21 @@ impl App {
         let mut targets = Vec::new();
         let status_rect = crate::ui::track_status_rect(full_bounds, self.timeline_flow);
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
+        let overlay_slots = track_header_discoverability_slots(status_rect);
         for badge in crate::ui::header_badges(status_rect) {
-            let action = match badge.kind {
+            let action_and_slot = match badge.kind {
                 crate::ui::HeaderBadgeKind::TrackIndex => None,
-                crate::ui::HeaderBadgeKind::Armed => Some(AppAction::ToggleCurrentTrackArm),
-                crate::ui::HeaderBadgeKind::Muted => Some(AppAction::ToggleCurrentTrackMute),
-                crate::ui::HeaderBadgeKind::Solo => Some(AppAction::ToggleCurrentTrackSolo),
+                crate::ui::HeaderBadgeKind::Armed => {
+                    Some((AppAction::ToggleCurrentTrackArm, Some(overlay_slots[0])))
+                }
+                crate::ui::HeaderBadgeKind::Muted => {
+                    Some((AppAction::ToggleCurrentTrackMute, Some(overlay_slots[1])))
+                }
+                crate::ui::HeaderBadgeKind::Solo => {
+                    Some((AppAction::ToggleCurrentTrackSolo, Some(overlay_slots[2])))
+                }
             };
-            if let Some(action) = action {
+            if let Some((action, overlay_slot)) = action_and_slot {
                 targets.push((
                     Rect::new(
                         badge.rect.x - 2,
@@ -4079,6 +4147,7 @@ impl App {
                         action,
                         display_scope: Some("Active Track"),
                         allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot,
                     },
                 ));
             }
@@ -4091,6 +4160,7 @@ impl App {
                 action: AppAction::ToggleCurrentTrackPassthrough,
                 display_scope: Some("Active Track"),
                 allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
             },
         ));
 
@@ -4101,6 +4171,7 @@ impl App {
                 action: AppAction::ToggleCurrentTrackLoop,
                 display_scope: Some("Active Track"),
                 allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
             },
         ));
 
@@ -4125,6 +4196,7 @@ impl App {
                 action: AppAction::ToggleCurrentTrackPassthrough,
                 display_scope: Some("Active Track"),
                 allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
             },
         ));
 
@@ -4146,6 +4218,7 @@ impl App {
                     action: AppAction::ToggleCurrentTrackPassthrough,
                     display_scope: Some("Active Track"),
                     allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
                 },
             ));
         }
@@ -4616,6 +4689,30 @@ fn compact_badge_text(text: &str, max_len: usize) -> String {
     } else {
         compact.chars().take(max_len).collect()
     }
+}
+
+fn track_header_discoverability_slots(status_rect: Rect) -> [Rect; 3] {
+    let slot_width = 8_u32;
+    let slot_height = status_rect.height().saturating_sub(4).max(6);
+    let gap = 2_i32;
+    let start_x =
+        status_rect.x + status_rect.width() as i32 - 4 - (slot_width as i32 * 3) - gap * 2;
+    let y = status_rect.y + ((status_rect.height() as i32 - slot_height as i32) / 2);
+    [
+        Rect::new(start_x, y, slot_width, slot_height),
+        Rect::new(
+            start_x + slot_width as i32 + gap,
+            y,
+            slot_width,
+            slot_height,
+        ),
+        Rect::new(
+            start_x + (slot_width as i32 + gap) * 2,
+            y,
+            slot_width,
+            slot_height,
+        ),
+    ]
 }
 
 fn port_name(port: Option<&MidiPortRef>) -> &str {
@@ -5181,6 +5278,7 @@ mod tests {
             action: AppAction::ToggleCurrentTrackArm,
             display_scope: Some("Active Track"),
             allowed_mapping_scopes: &["Active Track"],
+            overlay_slot: None,
         });
 
         assert!(summary.badges.iter().any(|badge| badge.text == "A"));
