@@ -1,3 +1,4 @@
+use crate::actions::AppAction;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,6 +371,70 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
     ]
 }
 
+pub fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
+    let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
+    match entry.target_label.as_str() {
+        "Play/Stop" => vec![AppAction::TogglePlayback],
+        "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
+        "Record Mode" => vec![AppAction::CycleRecordMode],
+        "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
+        "Track Loop" | "Set Track Loop" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
+        }
+        "Clear Track" => {
+            track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
+        }
+        "Clear All" => vec![AppAction::ClearAllTrackContent],
+        "Track Arm" => track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackArm),
+        "Track Mute" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackMute)
+        }
+        "Track Solo" => {
+            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackSolo)
+        }
+        "Passthrough" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleCurrentTrackPassthrough,
+        ),
+        "Select Track" => absolute_track_index
+            .map(AppAction::SelectTrack)
+            .or_else(|| match entry.scope_label.as_str() {
+                "Relative" => Some(AppAction::SelectNextTrack),
+                _ => None,
+            })
+            .into_iter()
+            .collect(),
+        "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
+        "Link Enable" => vec![AppAction::ToggleLinkEnabled],
+        "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
+        _ => Vec::new(),
+    }
+}
+
+pub fn mapping_entry_targets_action(entry: &MappingEntry, action: AppAction) -> bool {
+    entry.enabled
+        && mapping_entry_to_actions(entry)
+            .into_iter()
+            .any(|candidate| candidate == action)
+}
+
+pub fn parse_absolute_track_scope(scope_label: &str) -> Option<usize> {
+    let scope = scope_label.trim();
+    scope
+        .strip_prefix("Track ")
+        .and_then(|suffix| suffix.parse::<usize>().ok())
+        .and_then(|index| index.checked_sub(1))
+}
+
+fn track_scoped_actions(
+    absolute_track_index: Option<usize>,
+    toggle_action: AppAction,
+) -> Vec<AppAction> {
+    absolute_track_index
+        .map(|index| vec![AppAction::SelectTrack(index), toggle_action])
+        .unwrap_or_else(|| vec![toggle_action])
+}
+
 fn entry(
     source_kind: MappingSourceKind,
     source_label: &str,
@@ -410,7 +475,9 @@ mod tests {
         MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_scope_value,
         cycle_mapping_source_device_label, cycle_mapping_source_kind, cycle_mapping_target_label,
         default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
+        mapping_entry_targets_action, mapping_entry_to_actions, parse_absolute_track_scope,
     };
+    use crate::actions::AppAction;
 
     #[test]
     fn demo_mappings_cover_key_midi_and_osc_sources() {
@@ -469,5 +536,27 @@ mod tests {
         assert_eq!(entry.target_label, "Play/Stop");
         assert_eq!(entry.scope_label, "Global");
         assert!(!entry.enabled);
+    }
+
+    #[test]
+    fn mapping_entries_expand_track_scopes_into_actions() {
+        let entry = MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Port A".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Track 3".to_string(),
+            enabled: true,
+        };
+
+        assert_eq!(
+            mapping_entry_to_actions(&entry),
+            vec![AppAction::SelectTrack(2), AppAction::ToggleCurrentTrackArm]
+        );
+        assert!(mapping_entry_targets_action(
+            &entry,
+            AppAction::ToggleCurrentTrackArm
+        ));
+        assert_eq!(parse_absolute_track_scope("Track 3"), Some(2));
     }
 }

@@ -19,6 +19,7 @@ pub enum AppAction {
     AdjustPageItemForward,
     ActivatePageItem,
     ToggleMappingsOverlay,
+    ToggleDiscoverabilityOverlay,
     ToggleMappingsWriteMode,
     AddMappingRow,
     RemoveSelectedMapping,
@@ -166,6 +167,14 @@ impl KeyboardBindings {
                 } else {
                     AppAction::ToggleLinkEnabled
                 },
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F7),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleDiscoverabilityOverlay,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -461,6 +470,126 @@ impl KeyboardBindings {
     }
 }
 
+pub fn action_label(action: AppAction) -> &'static str {
+    match action {
+        AppAction::Quit => "Quit",
+        AppAction::ShowPage(page) => match page {
+            AppPage::Timeline => "Show Timeline",
+            AppPage::Mappings => "Show Mappings",
+            AppPage::MidiIo => "Show MIDI I/O",
+            AppPage::Routing => "Show Routing",
+        },
+        AppAction::ShowNextPage => "Next Page",
+        AppAction::ShowPreviousPage => "Previous Page",
+        AppAction::SelectPreviousPageItem => "Previous Page Item",
+        AppAction::SelectNextPageItem => "Next Page Item",
+        AppAction::AdjustPageItemBackward => "Adjust Page Item Backward",
+        AppAction::AdjustPageItemForward => "Adjust Page Item Forward",
+        AppAction::ActivatePageItem => "Activate Page Item",
+        AppAction::ToggleMappingsOverlay => "Mappings Overlay",
+        AppAction::ToggleDiscoverabilityOverlay => "Mapping Discoverability",
+        AppAction::ToggleMappingsWriteMode => "Mappings Write Mode",
+        AppAction::AddMappingRow => "Add Mapping",
+        AppAction::RemoveSelectedMapping => "Remove Mapping",
+        AppAction::SelectPreviousPageField => "Previous Mapping Field",
+        AppAction::SelectNextPageField => "Next Mapping Field",
+        AppAction::TogglePlayback => "Play/Stop",
+        AppAction::ToggleRecording => "Record",
+        AppAction::CycleRecordMode => "Record Mode",
+        AppAction::ToggleLoopRecordingExtension => "Loop Recording Wrap",
+        AppAction::ToggleLinkEnabled => "Link Enable",
+        AppAction::ToggleLinkStartStopSync => "Link Start/Stop",
+        AppAction::ToggleGlobalLoop => "Song Loop",
+        AppAction::ResetGlobalLoop => "Reset Song Loop",
+        AppAction::ClearCurrentTrackContent => "Clear Track",
+        AppAction::ClearAllTrackContent => "Clear All",
+        AppAction::ToggleCurrentTrackLoop => "Track Loop",
+        AppAction::SetCurrentTrackLoopStart => "Set Track Loop Start",
+        AppAction::SetCurrentTrackLoopEnd => "Set Track Loop End",
+        AppAction::SetGlobalLoopStart => "Set Song Loop Start",
+        AppAction::SetGlobalLoopEnd => "Set Song Loop End",
+        AppAction::NudgeCurrentTrackLoopBackward => "Nudge Track Loop Back",
+        AppAction::NudgeCurrentTrackLoopForward => "Nudge Track Loop Forward",
+        AppAction::NudgeGlobalLoopBackward => "Nudge Song Loop Back",
+        AppAction::NudgeGlobalLoopForward => "Nudge Song Loop Forward",
+        AppAction::ShortenCurrentTrackLoop => "Shorten Track Loop",
+        AppAction::ExtendCurrentTrackLoop => "Extend Track Loop",
+        AppAction::HalfCurrentTrackLoop => "Half Track Loop",
+        AppAction::DoubleCurrentTrackLoop => "Double Track Loop",
+        AppAction::ShortenGlobalLoop => "Shorten Song Loop",
+        AppAction::ExtendGlobalLoop => "Extend Song Loop",
+        AppAction::HalfGlobalLoop => "Half Song Loop",
+        AppAction::DoubleGlobalLoop => "Double Song Loop",
+        AppAction::ToggleCurrentTrackArm => "Track Arm",
+        AppAction::ToggleCurrentTrackMute => "Track Mute",
+        AppAction::ToggleCurrentTrackSolo => "Track Solo",
+        AppAction::ToggleCurrentTrackPassthrough => "Passthrough",
+        AppAction::SelectNextTrack => "Next Track",
+        AppAction::SelectPreviousTrack => "Previous Track",
+        AppAction::SelectTrack(_) => "Select Track",
+        AppAction::SetTimelineFlow(_) => "Timeline Flow",
+    }
+}
+
+pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static str] {
+    match action {
+        AppAction::ShowPage(AppPage::Timeline) => &["F1"],
+        AppAction::ShowPage(AppPage::Mappings) => &["F2"],
+        AppAction::ShowPage(AppPage::MidiIo) => &["F3"],
+        AppAction::ShowPage(AppPage::Routing) => &["F4"],
+        AppAction::ShowNextPage => &["Tab"],
+        AppAction::ShowPreviousPage => &["Shift+Tab"],
+        AppAction::SelectPreviousPageItem => &["Up"],
+        AppAction::SelectNextPageItem => &["Down"],
+        AppAction::AdjustPageItemBackward => &["Q"],
+        AppAction::AdjustPageItemForward => &["E"],
+        AppAction::ActivatePageItem => &["Enter"],
+        AppAction::ToggleMappingsOverlay => &["F5"],
+        AppAction::ToggleDiscoverabilityOverlay => &["F7"],
+        AppAction::ToggleMappingsWriteMode => &["W"],
+        AppAction::AddMappingRow => &["N"],
+        AppAction::RemoveSelectedMapping => &["Delete"],
+        AppAction::SelectPreviousPageField => &["Shift+Left"],
+        AppAction::SelectNextPageField => &["Shift+Right"],
+        AppAction::TogglePlayback => &["Space"],
+        AppAction::ToggleRecording => &["R"],
+        AppAction::CycleRecordMode => &["Shift+R"],
+        AppAction::ToggleLoopRecordingExtension => &[],
+        AppAction::ToggleLinkEnabled => &["F6"],
+        AppAction::ToggleLinkStartStopSync => &["Shift+F6"],
+        AppAction::ToggleGlobalLoop => &["G"],
+        AppAction::ResetGlobalLoop => &["Home"],
+        AppAction::ClearCurrentTrackContent => &["C"],
+        AppAction::ClearAllTrackContent => &["Shift+C"],
+        AppAction::ToggleCurrentTrackLoop => &["L"],
+        AppAction::SetCurrentTrackLoopStart => &["["],
+        AppAction::SetCurrentTrackLoopEnd => &["]"],
+        AppAction::SetGlobalLoopStart => &["Shift+["],
+        AppAction::SetGlobalLoopEnd => &["Shift+]"],
+        AppAction::NudgeCurrentTrackLoopBackward => &[","],
+        AppAction::NudgeCurrentTrackLoopForward => &["."],
+        AppAction::NudgeGlobalLoopBackward => &["Shift+,"],
+        AppAction::NudgeGlobalLoopForward => &["Shift+."],
+        AppAction::ShortenCurrentTrackLoop => &["-"],
+        AppAction::ExtendCurrentTrackLoop => &["="],
+        AppAction::HalfCurrentTrackLoop => &["/"],
+        AppAction::DoubleCurrentTrackLoop => &["\\"],
+        AppAction::ShortenGlobalLoop => &["Shift+-"],
+        AppAction::ExtendGlobalLoop => &["Shift+="],
+        AppAction::HalfGlobalLoop => &["Shift+/"],
+        AppAction::DoubleGlobalLoop => &["Shift+\\"],
+        AppAction::ToggleCurrentTrackArm => &["A"],
+        AppAction::ToggleCurrentTrackMute => &["M"],
+        AppAction::ToggleCurrentTrackSolo => &["S"],
+        AppAction::ToggleCurrentTrackPassthrough => &["I"],
+        AppAction::SelectNextTrack => &["Right"],
+        AppAction::SelectPreviousTrack => &["Left"],
+        AppAction::SelectTrack(_) => &["1-9"],
+        AppAction::Quit => &["Escape"],
+        AppAction::SetTimelineFlow(_) => &[],
+    }
+}
+
 fn digit_track_index(keycode: Keycode) -> Option<usize> {
     match keycode {
         Keycode::_1 => Some(0),
@@ -589,6 +718,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let discoverability = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F7),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
         let add_mapping = Event::KeyDown {
             timestamp: 0,
             window_id: 0,
@@ -617,6 +756,10 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&write_mode).unwrap().action,
             AppAction::ToggleMappingsWriteMode
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&discoverability).unwrap().action,
+            AppAction::ToggleDiscoverabilityOverlay
         );
         assert_eq!(
             KeyboardBindings.resolve(&add_mapping).unwrap().action,
