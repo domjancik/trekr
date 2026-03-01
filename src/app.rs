@@ -1066,8 +1066,8 @@ impl App {
             canvas.fill_rect(enabled_rect)?;
 
             let kind_rect = cells[0];
-            let trigger_rect = cells[1];
-            let device_rect = cells[2];
+            let device_rect = cells[1];
+            let trigger_rect = cells[2];
             let target_rect = cells[3];
             let scope_rect = cells[4];
             canvas.set_draw_color(if selected {
@@ -3241,7 +3241,8 @@ enum AppControl {
 #[cfg(test)]
 mod tests {
     use super::{
-        App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port, cycle_output_channel,
+        App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port,
+        cycle_output_channel, mapping_field_index,
     };
     use crate::actions::AppAction;
     use crate::mapping::{MappingEntry, MappingSourceKind};
@@ -3250,6 +3251,7 @@ mod tests {
     use crate::routing::MidiChannelFilter;
     use crate::transport::RecordMode;
     use crate::ui::TimelineFlow;
+    use sdl3::rect::Rect;
 
     #[test]
     fn apply_action_sets_active_track_and_current_track_flags() {
@@ -3497,6 +3499,17 @@ mod tests {
 
         app.apply_action(AppAction::AdjustPageItemBackward);
         assert_eq!(app.mappings[0].scope_label, "Active Track");
+    }
+
+    #[test]
+    fn mapping_row_cells_match_field_order_for_device_and_source() {
+        let app = App::new();
+        let cells = app.mapping_row_cells(Rect::new(0, 0, 400, 18));
+
+        assert!(
+            cells[mapping_field_index(MappingField::SourceDevice)].x
+                < cells[mapping_field_index(MappingField::SourceValue)].x
+        );
     }
 
     #[test]
