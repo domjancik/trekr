@@ -69,6 +69,14 @@ Launch state:
 - `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
+Bootstrap and run:
+
+- first local build needs the `vendor/ableton-link` git submodule checked out
+- `make setup` initializes that submodule
+- `make run` initializes the submodule if needed, then starts the app
+- `make run-demo` and `make run-empty` do the same for the demo and empty launch modes
+- `make check` initializes the submodule if needed, then runs `cargo check`
+
 Current controls:
 
 - `Tab` / `Shift+Tab`: next/previous page
