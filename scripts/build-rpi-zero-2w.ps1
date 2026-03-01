@@ -34,42 +34,31 @@ if ($Release) {
     $cargoArgs += "--release"
 }
 
-$linuxCommand = @"
-set -euo pipefail
-cd '$linuxRepoRoot'
+$linuxCommand = @(
+    "set -euo pipefail"
+    "cd '$linuxRepoRoot'"
+    'if [ -f "$HOME/.cargo/env" ]; then . "$HOME/.cargo/env"; fi'
+    'command -v cargo >/dev/null 2>&1 || { echo "Missing WSL prerequisite: cargo" >&2; exit 1; }'
+    'command -v rustup >/dev/null 2>&1 || { echo "Missing WSL prerequisite: rustup" >&2; exit 1; }'
+    'command -v aarch64-linux-gnu-gcc >/dev/null 2>&1 || { echo "Missing WSL prerequisite: aarch64-linux-gnu-gcc" >&2; exit 1; }'
+    'command -v aarch64-linux-gnu-g++ >/dev/null 2>&1 || { echo "Missing WSL prerequisite: aarch64-linux-gnu-g++" >&2; exit 1; }'
+    'command -v aarch64-linux-gnu-ar >/dev/null 2>&1 || { echo "Missing WSL prerequisite: aarch64-linux-gnu-ar" >&2; exit 1; }'
+    'command -v cmake >/dev/null 2>&1 || { echo "Missing WSL prerequisite: cmake" >&2; exit 1; }'
+    'command -v ninja >/dev/null 2>&1 || { echo "Missing WSL prerequisite: ninja" >&2; exit 1; }'
+    'command -v pkg-config >/dev/null 2>&1 || { echo "Missing WSL prerequisite: pkg-config" >&2; exit 1; }'
+    "if ! rustup target list --installed | grep -qx '$Target'; then echo 'Rust target $Target is not installed in WSL.' >&2; echo 'Run inside WSL: rustup target add $Target' >&2; exit 1; fi"
+    'export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc'
+    'export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++'
+    'export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar'
+    'export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-g++'
+    'export PKG_CONFIG_ALLOW_CROSS=1'
+    'export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig'
+    'export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig'
+    "cargo $($cargoArgs -join ' ')"
+) -join '; '
+$encodedLinuxCommand = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($linuxCommand))
 
-need_cmd() {
-    if ! command -v "`$1" >/dev/null 2>&1; then
-        echo "Missing WSL prerequisite: `$1" >&2
-        exit 1
-    fi
-}
-
-need_cmd cargo
-need_cmd rustup
-need_cmd aarch64-linux-gnu-gcc
-need_cmd aarch64-linux-gnu-g++
-need_cmd aarch64-linux-gnu-ar
-need_cmd cmake
-need_cmd ninja
-need_cmd pkg-config
-
-if ! rustup target list --installed | grep -qx '$Target'; then
-    echo "Rust target $Target is not installed in WSL." >&2
-    echo "Run inside WSL: rustup target add $Target" >&2
-    exit 1
-fi
-
-export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
-export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
-export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-g++
-export PKG_CONFIG_ALLOW_CROSS=1
-
-cargo $($cargoArgs -join ' ')
-"@
-
-$linuxCommand | & wsl.exe bash -s -- | Out-Host
+& wsl.exe bash -lc "printf '%s' '$encodedLinuxCommand' | base64 -d | bash" | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "WSL cross-build failed with exit code $LASTEXITCODE"
 }
