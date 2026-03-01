@@ -9,7 +9,7 @@ The feature adds lightweight mapping discoverability to action-bearing UI elemen
 The recommended shape is:
 
 - default behavior: hover an action element to show its current mappings in a status bar
-- optional secondary behavior: toggle an inline mappings overlay that renders compact mapping badges next to eligible action elements
+- optional secondary behavior: toggle an inline mappings overlay with its own dedicated shortcut that renders compact mapping badges next to eligible action elements
 
 This keeps the default interface clean while still supporting faster visual lookup when the user explicitly wants persistent mapping hints.
 
@@ -90,28 +90,32 @@ Example badge content:
 Behavior:
 
 - overlay is off by default
+- overlay has a dedicated shortcut rather than reusing the existing mappings quick overlay
 - overlay is page-local in rendering but action-global in meaning
 - badges should prefer the most recognizable bindings first: keyboard, then MIDI, then OSC
 - crowded controls may collapse into a count badge rather than rendering every mapping
 - hover can still refine the summary in the status area even when overlay is on
+- default and user-defined mappings should be visually distinguished by color so user-created bindings read as additive rather than canonical
 
 ## Interaction Model
 
 ### Status Source
 
-There are two viable status surfaces:
+V1 should add a renderer-level footer/status bar inside the app.
 
-- preferred long-term: a renderer-level footer/status bar inside the app
-- acceptable first slice: reuse the existing window-title status channel and inject hover-specific mapping text while hovered
+The footer should support at least two message types:
 
-The first slice does not need to solve the full footer design if the window-title path is materially cheaper.
+- hover-driven mapping summary
+- last performed action when no hover-specific message is active
+
+The current window-title status path can remain as a redundant desktop convenience, but it should not be the primary discoverability surface.
 
 ### Discoverability Trigger
 
 Desktop V1:
 
 - mouse hover shows status summary
-- optional keyboard toggle enables/disables the inline overlay
+- a dedicated keyboard shortcut enables/disables the inline overlay
 
 Later touch-friendly fallback:
 
@@ -132,10 +136,14 @@ The discoverability layer should summarize mappings against the same canonical a
 ## Information Rules
 
 - show only currently active mappings from the in-memory mapping list plus built-in keyboard bindings
-- show disabled mappings separately only if that can be done without clutter; otherwise omit them in V1
+- hide disabled mappings in the default discoverability surface
 - preserve scope information when it matters, such as `Track Arm (Active Track)` versus `Track Arm (Track 3)`
 - where an on-screen control implies active-track scope, active-track mappings should be listed first
 - conflict state can be summarized as `Overlapping bindings` or `N bindings` instead of full conflict diagnostics
+
+Future note:
+
+- a later mapping-focused overlay mode may surface disabled mappings in a dimmed treatment, but that is out of scope for this slice
 
 ## Visual Constraints
 
@@ -143,6 +151,7 @@ The discoverability layer should summarize mappings against the same canonical a
 - status bar text should stay single-line and clipped predictably
 - inline badges must not shift layout; they should occupy reserved micro-slots or draw in adjacent dead space
 - overlay density must degrade gracefully on narrow track columns
+- color is the default visual marker distinguishing built-in versus user-defined mappings
 
 ## Implementation Notes
 
@@ -151,8 +160,8 @@ Suggested incremental implementation:
 1. Add a small action-discoverability model that maps rendered hit targets to canonical actions.
 2. Add mapping-summary helpers that collect matching keyboard, MIDI, and OSC bindings for an action/scope pair.
 3. Surface hover state from pointer movement, not only pointer down.
-4. Render the summary in the cheapest available status surface.
-5. Add an optional overlay toggle once the summary model is stable.
+4. Add a renderer footer that can show either hover mapping summaries or last-action feedback.
+5. Add an optional discoverability overlay toggle with its own dedicated shortcut once the summary model is stable.
 
 Likely code touch points:
 
@@ -166,13 +175,31 @@ Likely code touch points:
 - Hovering an eligible action element surfaces a mapping summary without changing pages.
 - The summary includes keyboard bindings and any enabled MIDI/OSC mappings targeting the same action.
 - Elements with no mapping still surface their action name and an explicit unmapped state.
+- Built-in/default mappings and user-defined mappings are visually distinguishable by color.
+- Disabled mappings are not shown in the default discoverability footer or overlay.
 - The default UI remains readable with discoverability overlay disabled.
+- The footer can show the last performed action when there is no hover-specific mapping summary.
 - If the overlay is enabled, badges do not break fixed-fit layout on the supported demo viewport.
 
-## Open Questions
+## Scope Decision: Track Controls
 
-- Should the overlay be controlled by a dedicated shortcut, or should it reuse/extend the existing mappings quick overlay?
-- Should built-in keyboard bindings be visually distinguished from user-managed MIDI/OSC mappings?
-- Should disabled mappings be shown dimmed, hidden, or only available on the mappings page?
-- Do track-column controls need per-track absolute mapping hints, or is active-track scope enough for V1?
-- Is a renderer footer worth adding now, or should the first slice ship on top of the current window-title status path?
+Track-column controls should use active-track scope only in V1.
+
+Rationale:
+
+- the current interaction model is active-track-centric for arm, mute, solo, passthrough, and loop actions
+- rendering per-column absolute mapping hints would imply a stronger direct-manipulation contract than the current action model actually guarantees
+- active-track-only discoverability is simpler, less ambiguous, and fits the fixed-fit layout better
+
+Absolute per-track bindings still exist in the mapping model, but they should remain discoverable through the mappings page until a later direct mapping mode is designed.
+
+## Follow-On Feature
+
+This discoverability work should be treated as a foundation for a later direct mapping mode:
+
+- enter mapping mode
+- select an actionable UI element
+- capture the next input
+- create or replace a mapping for that element's canonical action
+
+That follow-on flow is intentionally out of scope for this spec and should be designed separately on top of the same action-hit-target model.
