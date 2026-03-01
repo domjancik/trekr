@@ -1,10 +1,13 @@
-use crate::actions::{AppAction, KeyboardBindings};
+use crate::actions::{
+    ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
+};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
     MappingEntry, MappingSourceKind, cycle_mapping_scope_value, cycle_mapping_source_device_label,
     cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
     default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
+    mapping_entry_targets_action, mapping_entry_to_actions,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -41,6 +44,7 @@ pub struct App {
     link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
+    status_state: StatusState,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     transport_ticks: u64,
@@ -51,11 +55,45 @@ pub struct App {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppOverlay {
     MappingsQuickView,
+    Discoverability,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct OverlayState {
     active: Option<AppOverlay>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct StatusState {
+    hovered_target: Option<DiscoverabilityTarget>,
+    last_action: Option<LastActionStatus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LastActionStatus {
+    action: AppAction,
+    source: ActionSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DiscoverabilityTarget {
+    action: AppAction,
+    display_scope: Option<&'static str>,
+    allowed_mapping_scopes: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActionDiscoverabilitySummary {
+    title: String,
+    badges: Vec<MappingBadge>,
+    total_bindings: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MappingBadge {
+    text: String,
+    source_kind: MappingSourceKind,
+    built_in: bool,
 }
 
 pub struct UiCaptureOptions {
@@ -139,6 +177,7 @@ impl App {
             link,
             mappings,
             overlay_state: OverlayState::default(),
+            status_state: StatusState::default(),
             viewport_size: (1280, 720),
             ui_scale_override: None,
             transport_ticks: 0,
@@ -234,7 +273,9 @@ impl App {
                 }
 
                 if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
-                    if self.apply_action(action_event.action) == AppControl::Quit {
+                    if self.apply_action_with_source(action_event.action, action_event.source)
+                        == AppControl::Quit
+                    {
                         break 'running;
                     }
                 }
@@ -423,7 +464,24 @@ impl App {
         };
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
-        let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
+        let (tabs_bounds, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
+        let footer_height = 22_u32;
+        let footer_gap = 8_i32;
+        let footer_bounds = Rect::new(
+            page_area_bounds.x,
+            page_area_bounds.y + page_area_bounds.height() as i32 - footer_height as i32,
+            page_area_bounds.width(),
+            footer_height,
+        );
+        let content_bounds = Rect::new(
+            page_area_bounds.x,
+            page_area_bounds.y,
+            page_area_bounds.width(),
+            page_area_bounds
+                .height()
+                .saturating_sub(footer_height)
+                .saturating_sub(footer_gap as u32),
+        );
 
         canvas.set_draw_color(Color::RGB(18, 24, 38));
         canvas.clear();
@@ -443,6 +501,7 @@ impl App {
         }
 
         self.draw_overlay(canvas, inset)?;
+        self.draw_footer(canvas, footer_bounds)?;
 
         canvas.present();
         Ok(())
@@ -486,7 +545,7 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         match self.overlay_state.active {
             Some(AppOverlay::MappingsQuickView) => self.draw_mappings_overlay(canvas, bounds),
-            None => Ok(()),
+            Some(AppOverlay::Discoverability) | None => Ok(()),
         }
     }
 
@@ -622,6 +681,10 @@ impl App {
                 let is_active = index == self.project.active_track_index;
                 self.draw_track_column(canvas, full_bounds, detail_bounds, track, is_active)?;
             }
+        }
+
+        if self.overlay_state.active == Some(AppOverlay::Discoverability) {
+            self.draw_timeline_discoverability_overlay(canvas, content_bounds)?;
         }
 
         Ok(())
@@ -1060,6 +1123,304 @@ impl App {
         )?;
 
         Ok(())
+    }
+
+    fn draw_footer<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGB(20, 26, 38));
+        canvas.fill_rect(bounds)?;
+        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.draw_rect(bounds)?;
+
+        let overlay_chips = [
+            (
+                "F5 Mappings",
+                self.overlay_state.active == Some(AppOverlay::MappingsQuickView),
+                Color::RGB(156, 122, 68),
+            ),
+            (
+                "F7 Discover",
+                self.overlay_state.active == Some(AppOverlay::Discoverability),
+                Color::RGB(72, 136, 166),
+            ),
+        ];
+        let mut right_edge = bounds.x + bounds.width() as i32 - 6;
+        for (label, active, color) in overlay_chips.into_iter().rev() {
+            let width = crate::ui::text_width(label, 1) + 10;
+            let chip = Rect::new(
+                right_edge - width as i32,
+                bounds.y + 5,
+                width,
+                bounds.height().saturating_sub(10),
+            );
+            canvas.set_draw_color(if active {
+                color
+            } else {
+                Color::RGB(56, 66, 84)
+            });
+            canvas.fill_rect(chip)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                label,
+                Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+                1,
+                if active {
+                    Color::RGB(248, 244, 214)
+                } else {
+                    Color::RGB(180, 190, 204)
+                },
+            )?;
+            right_edge = chip.x - 6;
+        }
+
+        if let Some(target) = self.status_state.hovered_target {
+            let summary = self.summarize_discoverability_target(target);
+            let label_width = crate::ui::text_width(&summary.title, 1) + 4;
+            let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
+            crate::ui::draw_text_fitted(
+                canvas,
+                &summary.title,
+                label_rect,
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+            let badges_left = label_rect.x + label_rect.width() as i32 + 8;
+            let badges_width = (right_edge - badges_left).max(0) as u32;
+            if summary.badges.is_empty() {
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    "No mappings",
+                    Rect::new(badges_left, bounds.y + 7, badges_width, 8),
+                    1,
+                    Color::RGB(168, 178, 194),
+                )?;
+            } else {
+                self.draw_mapping_badges(
+                    canvas,
+                    Rect::new(
+                        badges_left,
+                        bounds.y + 3,
+                        badges_width,
+                        bounds.height().saturating_sub(6),
+                    ),
+                    &summary.badges,
+                    summary.total_bindings,
+                    4,
+                    10,
+                )?;
+            }
+        } else {
+            let last_action = self
+                .status_state
+                .last_action
+                .map(|status| {
+                    format!(
+                        "Last Action: {} via {}",
+                        action_label(status.action),
+                        action_source_label(status.source)
+                    )
+                })
+                .unwrap_or_else(|| "Last Action: Ready".to_string());
+            crate::ui::draw_text_fitted(
+                canvas,
+                &last_action,
+                Rect::new(
+                    bounds.x + 8,
+                    bounds.y + 7,
+                    (right_edge - bounds.x - 12).max(0) as u32,
+                    8,
+                ),
+                1,
+                Color::RGB(188, 198, 212),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn summarize_discoverability_target(
+        &self,
+        target: DiscoverabilityTarget,
+    ) -> ActionDiscoverabilitySummary {
+        let mut badges = built_in_keyboard_binding_labels(target.action)
+            .iter()
+            .map(|label| MappingBadge {
+                text: (*label).to_string(),
+                source_kind: MappingSourceKind::Key,
+                built_in: true,
+            })
+            .collect::<Vec<_>>();
+
+        badges.extend(self.mappings.iter().filter_map(|entry| {
+            if !mapping_entry_targets_action(entry, target.action) {
+                return None;
+            }
+            if !target.allowed_mapping_scopes.is_empty()
+                && !target
+                    .allowed_mapping_scopes
+                    .iter()
+                    .any(|scope| *scope == entry.scope_label.as_str())
+            {
+                return None;
+            }
+            Some(MappingBadge {
+                text: entry.source_label.clone(),
+                source_kind: entry.source_kind,
+                built_in: false,
+            })
+        }));
+
+        badges.sort_by_key(|badge| {
+            (
+                mapping_source_sort_key(badge.source_kind),
+                if badge.built_in { 0 } else { 1 },
+                badge.text.clone(),
+            )
+        });
+        badges.dedup_by(|left, right| {
+            left.text == right.text
+                && left.source_kind == right.source_kind
+                && left.built_in == right.built_in
+        });
+
+        let title = match target.display_scope {
+            Some(scope) => format!("{} ({scope})", action_label(target.action)),
+            None => action_label(target.action).to_string(),
+        };
+        let total_bindings = badges.len();
+
+        ActionDiscoverabilitySummary {
+            title,
+            badges,
+            total_bindings,
+        }
+    }
+
+    fn draw_mapping_badges<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+        badges: &[MappingBadge],
+        total_bindings: usize,
+        max_badges: usize,
+        max_label_width: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut cursor_x = bounds.x;
+        let visible = badges.len().min(max_badges);
+        for badge in badges.iter().take(visible) {
+            let label = compact_badge_text(&badge.text, max_label_width);
+            let draw_label = format!("{} {}", badge_kind_prefix(badge.source_kind), label);
+            let width = crate::ui::text_width(&draw_label, 1) + 10;
+            if cursor_x + width as i32 > bounds.x + bounds.width() as i32 {
+                break;
+            }
+            let chip = Rect::new(
+                cursor_x,
+                bounds.y + 2,
+                width,
+                bounds.height().saturating_sub(4),
+            );
+            let (fill, text) = mapping_badge_palette(badge);
+            canvas.set_draw_color(fill);
+            canvas.fill_rect(chip)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &draw_label,
+                Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+                1,
+                text,
+            )?;
+            cursor_x += chip.width() as i32 + 4;
+        }
+
+        let remaining = total_bindings.saturating_sub(visible);
+        if remaining > 0 {
+            let draw_label = format!("+{remaining}");
+            let width = crate::ui::text_width(&draw_label, 1) + 10;
+            if cursor_x + width as i32 <= bounds.x + bounds.width() as i32 {
+                let chip = Rect::new(
+                    cursor_x,
+                    bounds.y + 2,
+                    width,
+                    bounds.height().saturating_sub(4),
+                );
+                canvas.set_draw_color(Color::RGB(56, 64, 80));
+                canvas.fill_rect(chip)?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    &draw_label,
+                    Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+                    1,
+                    Color::RGB(228, 232, 238),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn draw_timeline_discoverability_overlay<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (rect, target) in self.timeline_discoverability_targets(content_bounds) {
+            self.draw_inline_discoverability_badges(canvas, rect, target)?;
+        }
+        Ok(())
+    }
+
+    fn draw_routing_discoverability_overlay<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (rect, target) in self.routing_discoverability_targets(content_bounds) {
+            self.draw_inline_discoverability_badges(canvas, rect, target)?;
+        }
+        Ok(())
+    }
+
+    fn draw_inline_discoverability_badges<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        anchor: Rect,
+        target: DiscoverabilityTarget,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let summary = self.summarize_discoverability_target(target);
+        if summary.badges.is_empty() {
+            return Ok(());
+        }
+
+        let max_badges = if anchor.width() <= 24 || anchor.height() <= 12 {
+            1
+        } else {
+            2
+        };
+        let badge_height = 10_u32;
+        let label_width = if max_badges == 1 { 4 } else { 6 };
+        let y = if anchor.height() <= 12 {
+            anchor.y - badge_height as i32 - 2
+        } else {
+            anchor.y + 2
+        };
+        let x = if anchor.width() >= 44 {
+            anchor.x + anchor.width() as i32 - 32
+        } else {
+            anchor.x + anchor.width() as i32 + 3
+        };
+        let bounds = Rect::new(x, y, 72, badge_height + 4);
+        self.draw_mapping_badges(
+            canvas,
+            bounds,
+            &summary.badges,
+            summary.total_bindings,
+            max_badges,
+            label_width,
+        )
     }
 
     fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
@@ -2131,6 +2492,10 @@ impl App {
             )?;
         }
 
+        if self.overlay_state.active == Some(AppOverlay::Discoverability) {
+            self.draw_routing_discoverability_overlay(canvas, content_bounds)?;
+        }
+
         Ok(())
     }
 
@@ -2144,7 +2509,7 @@ impl App {
             .expect("demo project always has tracks");
         let title = match self.page_state.current_page {
             AppPage::Timeline => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | F6 Link:{} Shift+F6 Sync:{} Peers:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | F6 Link:{} Shift+F6 Sync:{} | F7 Discover:{} | Peers:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
@@ -2154,6 +2519,7 @@ impl App {
                 self.project.transport.record_mode.label(),
                 on_off(self.project.transport.link_enabled),
                 on_off(self.project.transport.link_start_stop_sync),
+                on_off(self.overlay_state.active == Some(AppOverlay::Discoverability)),
                 self.link_snapshot.peers,
                 active.loop_region.start_ticks,
                 active.loop_region.end_ticks(),
@@ -2169,10 +2535,11 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | F7 Discover:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     self.page_state.mapping_mode.label(),
                     on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
+                    on_off(self.overlay_state.active == Some(AppOverlay::Discoverability)),
                     self.page_state.selected_mapping_field.label(),
                     on_off(self.page_state.mapping_midi_learn_armed),
                     mapping_source_label(selected.source_kind),
@@ -2278,6 +2645,15 @@ impl App {
                         Some(AppOverlay::MappingsQuickView)
                     };
                 self.sync_midi_inputs();
+                AppControl::Continue
+            }
+            AppAction::ToggleDiscoverabilityOverlay => {
+                self.overlay_state.active =
+                    if self.overlay_state.active == Some(AppOverlay::Discoverability) {
+                        None
+                    } else {
+                        Some(AppOverlay::Discoverability)
+                    };
                 AppControl::Continue
             }
             AppAction::ToggleMappingsWriteMode => {
@@ -3138,7 +3514,7 @@ impl App {
 
         let mapping_actions = self.resolve_midi_mapping_actions(&event);
         for action in mapping_actions {
-            let _ = self.apply_action(action);
+            let _ = self.apply_action_with_source(action, ActionSource::Midi);
         }
 
         let matching_tracks: Vec<usize> = self
@@ -3310,7 +3686,12 @@ impl App {
     }
 
     fn handle_pointer_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
-        let (x, y, source) = pointer_position(event)?;
+        if let Some((x, y)) = pointer_hover_position(event, self.viewport_size) {
+            self.status_state.hovered_target = self.discoverability_target_at(x, y);
+            return Some(AppControl::Continue);
+        }
+
+        let (x, y, source) = pointer_down_position(event, self.viewport_size)?;
         self.handle_pointer_down(x, y, source)
     }
 
@@ -3594,15 +3975,191 @@ impl App {
             .find_map(|(index, rect)| rect_contains(rect, x, y).then_some(index))
     }
 
+    fn discoverability_target_at(&self, x: i32, y: i32) -> Option<DiscoverabilityTarget> {
+        if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+            return None;
+        }
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
+        let footer_height = 22_u32;
+        let footer_gap = 8_i32;
+        let content_bounds = Rect::new(
+            page_area_bounds.x,
+            page_area_bounds.y,
+            page_area_bounds.width(),
+            page_area_bounds
+                .height()
+                .saturating_sub(footer_height)
+                .saturating_sub(footer_gap as u32),
+        );
+
+        let targets = match self.page_state.current_page {
+            AppPage::Timeline => self.timeline_discoverability_targets(content_bounds),
+            AppPage::Routing => self.routing_discoverability_targets(content_bounds),
+            AppPage::Mappings | AppPage::MidiIo => Vec::new(),
+        };
+
+        targets
+            .into_iter()
+            .find_map(|(rect, target)| rect_contains(rect, x, y).then_some(target))
+    }
+
+    fn timeline_discoverability_targets(
+        &self,
+        content_bounds: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let mut targets = Vec::new();
+        let (header_bounds, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline layout");
+        let (transport_bounds, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline transport");
+        targets.push((
+            self.global_loop_reset_button_rect(header_bounds),
+            DiscoverabilityTarget {
+                action: AppAction::ResetGlobalLoop,
+                display_scope: Some("Global"),
+                allowed_mapping_scopes: &["Global"],
+            },
+        ));
+        for (rect, action) in self.transport_chip_actions(transport_bounds) {
+            let display_scope = if action == AppAction::ToggleRecording {
+                Some("Armed/Active")
+            } else {
+                Some("Global")
+            };
+            let allowed_mapping_scopes: &'static [&'static str] =
+                if action == AppAction::ToggleRecording {
+                    &["Armed/Active", "Active Track"]
+                } else {
+                    &["Global"]
+                };
+            targets.push((
+                rect,
+                DiscoverabilityTarget {
+                    action,
+                    display_scope,
+                    allowed_mapping_scopes,
+                },
+            ));
+        }
+
+        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
+        for (full_bounds, detail_bounds) in columns {
+            targets.extend(self.track_discoverability_targets(full_bounds, detail_bounds));
+        }
+
+        targets
+    }
+
+    fn track_discoverability_targets(
+        &self,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let mut targets = Vec::new();
+        let status_rect = crate::ui::track_status_rect(full_bounds, self.timeline_flow);
+        let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
+        for badge in crate::ui::header_badges(status_rect) {
+            let action = match badge.kind {
+                crate::ui::HeaderBadgeKind::TrackIndex => None,
+                crate::ui::HeaderBadgeKind::Armed => Some(AppAction::ToggleCurrentTrackArm),
+                crate::ui::HeaderBadgeKind::Muted => Some(AppAction::ToggleCurrentTrackMute),
+                crate::ui::HeaderBadgeKind::Solo => Some(AppAction::ToggleCurrentTrackSolo),
+            };
+            if let Some(action) = action {
+                targets.push((
+                    Rect::new(
+                        badge.rect.x - 2,
+                        badge.rect.y - 2,
+                        badge.rect.width().saturating_add(4),
+                        badge.rect.height().saturating_add(4),
+                    ),
+                    DiscoverabilityTarget {
+                        action,
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                    },
+                ));
+            }
+        }
+
+        let passthrough_hit = Rect::new(full_bounds.x, label_rect.y, 14, label_rect.height());
+        targets.push((
+            passthrough_hit,
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackPassthrough,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+            },
+        ));
+
+        let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
+        targets.push((
+            crate::ui::detail_badge_rect(detail_label_rect),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackLoop,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+            },
+        ));
+
+        targets
+    }
+
+    fn routing_discoverability_targets(
+        &self,
+        content_bounds: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let mut targets = Vec::new();
+        let inner = crate::ui::inset_rect(content_bounds, 12, 32).expect("routing inner");
+        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).expect("routing layout");
+        targets.push((
+            Rect::new(
+                header.x + 106,
+                header.y + 8,
+                92,
+                header.height().saturating_sub(16),
+            ),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackPassthrough,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+            },
+        ));
+
+        let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
+        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
+            if field != RoutingField::Passthrough {
+                continue;
+            }
+            let row = rows[index];
+            let value = Rect::new(
+                row.x + 156,
+                row.y + 8,
+                row.width().saturating_sub(220),
+                row.height().saturating_sub(16),
+            );
+            targets.push((
+                value,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleCurrentTrackPassthrough,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                },
+            ));
+        }
+
+        targets
+    }
+
     fn apply_action_with_source(
         &mut self,
         action: AppAction,
         source: crate::actions::ActionSource,
     ) -> AppControl {
-        match source {
-            crate::actions::ActionSource::Pointer | crate::actions::ActionSource::Touch => {}
-            _ => {}
-        }
+        self.status_state.hovered_target = None;
+        self.status_state.last_action = Some(LastActionStatus { action, source });
         self.apply_action(action)
     }
 
@@ -3767,15 +4324,20 @@ fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
         && y < rect.y + rect.height() as i32
 }
 
-fn pointer_position(
+fn pointer_down_position(
     event: &sdl3::event::Event,
+    viewport_size: (u32, u32),
 ) -> Option<(i32, i32, crate::actions::ActionSource)> {
     match event {
         sdl3::event::Event::MouseButtonDown { x, y, .. } => {
             Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer))
         }
         sdl3::event::Event::FingerDown { x, y, .. } => {
-            Some((*x as i32, *y as i32, crate::actions::ActionSource::Touch))
+            Some((
+                (*x * viewport_size.0 as f32) as i32,
+                (*y * viewport_size.1 as f32) as i32,
+                crate::actions::ActionSource::Touch,
+            ))
         }
         _ => None,
     }
@@ -3790,6 +4352,20 @@ fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u
 
 fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
     override_scale.unwrap_or(display_scale).max(1.0)
+}
+
+fn pointer_hover_position(
+    event: &sdl3::event::Event,
+    viewport_size: (u32, u32),
+) -> Option<(i32, i32)> {
+    match event {
+        sdl3::event::Event::MouseMotion { x, y, .. } => Some((*x as i32, *y as i32)),
+        sdl3::event::Event::FingerMotion { x, y, .. } => Some((
+            (*x * viewport_size.0 as f32) as i32,
+            (*y * viewport_size.1 as f32) as i32,
+        )),
+        _ => None,
+    }
 }
 
 fn scheduled_note_events(
@@ -3981,63 +4557,6 @@ fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> b
     }
 }
 
-fn mapping_entry_to_actions(entry: &MappingEntry) -> Vec<AppAction> {
-    let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
-    match entry.target_label.as_str() {
-        "Play/Stop" => vec![AppAction::TogglePlayback],
-        "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
-        "Record Mode" => vec![AppAction::CycleRecordMode],
-        "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
-        "Track Loop" | "Set Track Loop" => {
-            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
-        }
-        "Clear Track" => {
-            track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
-        }
-        "Clear All" => vec![AppAction::ClearAllTrackContent],
-        "Track Arm" => track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackArm),
-        "Track Mute" => {
-            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackMute)
-        }
-        "Track Solo" => {
-            track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackSolo)
-        }
-        "Passthrough" => track_scoped_actions(
-            absolute_track_index,
-            AppAction::ToggleCurrentTrackPassthrough,
-        ),
-        "Select Track" => absolute_track_index
-            .map(AppAction::SelectTrack)
-            .or_else(|| match entry.scope_label.as_str() {
-                "Relative" => Some(AppAction::SelectNextTrack),
-                _ => None,
-            })
-            .into_iter()
-            .collect(),
-        "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
-        "Link Enable" => vec![AppAction::ToggleLinkEnabled],
-        "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
-        _ => Vec::new(),
-    }
-}
-
-fn track_scoped_actions(
-    absolute_track_index: Option<usize>,
-    toggle_action: AppAction,
-) -> Vec<AppAction> {
-    absolute_track_index
-        .map(|index| vec![AppAction::SelectTrack(index), toggle_action])
-        .unwrap_or_else(|| vec![toggle_action])
-}
-
-fn parse_absolute_track_scope(scope_label: &str) -> Option<usize> {
-    let scope = scope_label.trim();
-    scope
-        .strip_prefix("Track ")
-        .and_then(|suffix| suffix.parse::<usize>().ok())
-        .and_then(|index| index.checked_sub(1))
-}
-
 fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
     match quantize {
         crate::transport::QuantizeMode::Off => "Off",
@@ -4046,6 +4565,58 @@ fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
         crate::transport::QuantizeMode::Eighth => "1/8",
         crate::transport::QuantizeMode::Quarter => "1/4",
         crate::transport::QuantizeMode::Bar => "Bar",
+    }
+}
+
+fn action_source_label(source: ActionSource) -> &'static str {
+    match source {
+        ActionSource::Keyboard => "Keyboard",
+        ActionSource::Pointer => "Pointer",
+        ActionSource::Midi => "MIDI",
+        ActionSource::Touch => "Touch",
+        ActionSource::Remote => "Remote",
+        ActionSource::Internal => "Internal",
+    }
+}
+
+fn mapping_source_sort_key(source_kind: MappingSourceKind) -> usize {
+    match source_kind {
+        MappingSourceKind::Key => 0,
+        MappingSourceKind::Midi => 1,
+        MappingSourceKind::Osc => 2,
+    }
+}
+
+fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str {
+    match source_kind {
+        MappingSourceKind::Key => "K",
+        MappingSourceKind::Midi => "M",
+        MappingSourceKind::Osc => "O",
+    }
+}
+
+fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
+    match (badge.built_in, badge.source_kind) {
+        (true, MappingSourceKind::Key) => (Color::RGB(64, 84, 126), Color::RGB(244, 244, 236)),
+        (true, MappingSourceKind::Midi) => (Color::RGB(88, 94, 116), Color::RGB(236, 240, 246)),
+        (true, MappingSourceKind::Osc) => (Color::RGB(84, 90, 112), Color::RGB(236, 240, 246)),
+        (false, MappingSourceKind::Key) => (Color::RGB(88, 128, 76), Color::RGB(246, 248, 232)),
+        (false, MappingSourceKind::Midi) => (Color::RGB(170, 104, 62), Color::RGB(250, 242, 228)),
+        (false, MappingSourceKind::Osc) => (Color::RGB(148, 82, 104), Color::RGB(248, 238, 244)),
+    }
+}
+
+fn compact_badge_text(text: &str, max_len: usize) -> String {
+    let compact = text
+        .replace("Shift+", "S+")
+        .replace("Space", "Spc")
+        .replace("Left", "Lf")
+        .replace("Right", "Rt")
+        .replace("Active", "Act");
+    if compact.chars().count() <= max_len {
+        compact
+    } else {
+        compact.chars().take(max_len).collect()
     }
 }
 
@@ -4085,10 +4656,10 @@ struct TransportChipSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        App, AppControl, AppOverlay, cycle_input_channel, cycle_optional_port,
-        cycle_output_channel, mapping_field_index,
+        App, AppControl, AppOverlay, DiscoverabilityTarget, LastActionStatus, cycle_input_channel,
+        cycle_optional_port, cycle_output_channel, mapping_field_index,
     };
-    use crate::actions::AppAction;
+    use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
@@ -4565,8 +5136,86 @@ mod tests {
     }
 
     #[test]
+    fn discoverability_overlay_toggles_separately_from_quick_overlay() {
+        let mut app = App::new();
+
+        app.apply_action(AppAction::ToggleDiscoverabilityOverlay);
+        assert_eq!(app.overlay_state.active, Some(AppOverlay::Discoverability));
+
+        app.apply_action(AppAction::ToggleMappingsOverlay);
+        assert_eq!(
+            app.overlay_state.active,
+            Some(AppOverlay::MappingsQuickView)
+        );
+    }
+
+    #[test]
+    fn discoverability_summary_hides_disabled_and_absolute_track_mappings() {
+        let mut app = App::new();
+        app.mappings = vec![
+            MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Any MIDI".to_string(),
+                source_label: "CC20".to_string(),
+                target_label: "Track Arm".to_string(),
+                scope_label: "Active Track".to_string(),
+                enabled: true,
+            },
+            MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Any MIDI".to_string(),
+                source_label: "CC21".to_string(),
+                target_label: "Track Arm".to_string(),
+                scope_label: "Track 3".to_string(),
+                enabled: true,
+            },
+            MappingEntry {
+                source_kind: MappingSourceKind::Osc,
+                source_device_label: default_mapping_source_device(),
+                source_label: "/track/active/arm".to_string(),
+                target_label: "Track Arm".to_string(),
+                scope_label: "Active Track".to_string(),
+                enabled: false,
+            },
+        ];
+
+        let summary = app.summarize_discoverability_target(DiscoverabilityTarget {
+            action: AppAction::ToggleCurrentTrackArm,
+            display_scope: Some("Active Track"),
+            allowed_mapping_scopes: &["Active Track"],
+        });
+
+        assert!(summary.badges.iter().any(|badge| badge.text == "A"));
+        assert!(summary.badges.iter().any(|badge| badge.text == "CC20"));
+        assert!(!summary.badges.iter().any(|badge| badge.text == "CC21"));
+        assert!(
+            !summary
+                .badges
+                .iter()
+                .any(|badge| badge.text == "/track/active/arm")
+        );
+    }
+
+    #[test]
+    fn apply_action_with_source_updates_last_action_status() {
+        let mut app = App::new();
+
+        app.apply_action_with_source(AppAction::TogglePlayback, ActionSource::Keyboard);
+
+        assert_eq!(
+            app.status_state.last_action,
+            Some(LastActionStatus {
+                action: AppAction::TogglePlayback,
+                source: ActionSource::Keyboard,
+            })
+        );
+    }
+
+    #[test]
     fn midi_io_page_can_switch_focus_and_commit_default_ports() {
         let mut app = App::new();
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
+        app.midi_devices.outputs = vec![MidiPortRef::new("Out A"), MidiPortRef::new("Out B")];
         app.apply_action(AppAction::ShowPage(AppPage::MidiIo));
         app.apply_action(AppAction::SelectNextPageItem);
         app.apply_action(AppAction::ActivatePageItem);

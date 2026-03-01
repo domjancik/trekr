@@ -57,6 +57,9 @@ Latest renderer-owned captures from the demo state:
 - a moving playhead
 - per-track loop preview
 - an in-canvas transport strip on the timeline page
+- a renderer-level footer/status bar that shows hover mapping summaries and falls back to the last performed action
+- hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
+- an inline mapping discoverability overlay with compact built-in vs user-defined badges
 - a field-based mappings editor with MIDI learn for MIDI sources
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
@@ -106,6 +109,7 @@ Current controls:
 - `Tab` / `Shift+Tab`: next/previous page
 - `F1` / `F2` / `F3` / `F4`: show timeline, mappings, MIDI I/O, or routing page
 - `F5`: toggle the quick mappings overlay from any page
+- `F7`: toggle the inline mapping discoverability overlay from any page
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `Up` / `Down`: select current page item
@@ -140,6 +144,15 @@ Current controls:
 - `Escape`: quit
 
 The timeline page also exposes a clickable `Reset Song Loop` button that triggers the same action as `Home`.
+
+Mapping discoverability notes:
+
+- hovering supported action elements now uses the in-app footer as the primary mapping status surface
+- the footer falls back to the last performed action when nothing discoverable is hovered
+- `F7` enables a separate discoverability overlay with compact inline badges
+- discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
+- disabled mappings are hidden from the footer and discoverability overlay
+- track-column discoverability is active-track scoped in V1, even when hovering non-active columns
 
 Pointer/touch notes:
 
@@ -178,7 +191,10 @@ Ableton Link notes:
 - `cargo xtask run` will initialize that submodule automatically on first run, or you can run `cargo xtask setup` explicitly
 - the transport strip shows Link enabled state, start/stop sync state, and peer count/status summary
 
-The app also exposes a generic overlay layer, currently used for a quick mappings overlay that can be triggered independently of the current page.
+The app also exposes a generic overlay layer with two independent modes:
+
+- `F5`: quick mappings overlay
+- `F7`: inline mapping discoverability overlay
 
 Current planning note:
 
