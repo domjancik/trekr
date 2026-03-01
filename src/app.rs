@@ -1887,14 +1887,17 @@ impl App {
             AppAction::Quit => AppControl::Quit,
             AppAction::ShowPage(page) => {
                 self.page_state.current_page = page;
+                self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowNextPage => {
                 self.page_state.current_page = self.page_state.current_page.next();
+                self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowPreviousPage => {
                 self.page_state.current_page = self.page_state.current_page.previous();
+                self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::SelectPreviousPageItem => {
@@ -1924,6 +1927,7 @@ impl App {
                     } else {
                         Some(AppOverlay::MappingsQuickView)
                     };
+                self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ToggleMappingsWriteMode => {
@@ -1932,6 +1936,7 @@ impl App {
                 if self.page_state.mapping_mode == MappingPageMode::Overview {
                     self.page_state.selected_mapping_field = MappingField::SourceValue;
                 }
+                self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::AddMappingRow => {
@@ -2560,6 +2565,7 @@ impl App {
                 if entry.source_kind == MappingSourceKind::Midi {
                     self.page_state.mapping_midi_learn_armed =
                         !self.page_state.mapping_midi_learn_armed;
+                    self.sync_midi_inputs();
                 } else {
                     entry.source_label =
                         cycle_mapping_source_label(entry.source_kind, &entry.source_label, 1)
@@ -2679,6 +2685,17 @@ impl App {
             if let Some(port) = track.routing.input_port.clone() {
                 if !ports.iter().any(|existing: &MidiPortRef| existing == &port) {
                     ports.push(port);
+                }
+            }
+        }
+        if self.page_state.current_page == AppPage::Mappings
+            || self.page_state.current_page == AppPage::MidiIo
+            || self.overlay_state.active == Some(AppOverlay::MappingsQuickView)
+            || self.page_state.mapping_midi_learn_armed
+        {
+            for port in &self.midi_devices.inputs {
+                if !ports.iter().any(|existing: &MidiPortRef| existing == port) {
+                    ports.push(port.clone());
                 }
             }
         }
@@ -3534,6 +3551,25 @@ mod tests {
         assert_eq!(app.mappings[0].source_label, "CC24 Ch3");
         assert_eq!(app.mappings[0].source_device_label, "In A");
         assert!(!app.page_state.mapping_midi_learn_armed);
+    }
+
+    #[test]
+    fn mappings_page_syncs_all_inputs_for_midi_learn() {
+        let mut app = App::new();
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
+        for track in &mut app.project.tracks {
+            track.routing.input_port = None;
+        }
+
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.page_state.selected_mapping_field = MappingField::SourceValue;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        let connected = app.midi_input.requested_port_names();
+        assert!(app.page_state.mapping_midi_learn_armed);
+        assert_eq!(connected, vec!["In A".to_string(), "In B".to_string()]);
     }
 
     #[test]

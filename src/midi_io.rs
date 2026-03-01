@@ -167,6 +167,8 @@ pub struct MidiInputRuntime {
     sender: Sender<MidiInputEvent>,
     receiver: Receiver<MidiInputEvent>,
     connections: HashMap<String, MidiInputConnection<()>>,
+    #[cfg(test)]
+    requested_ports: Vec<String>,
 }
 
 enum MidiOutputCommand {
@@ -217,6 +219,8 @@ impl Default for MidiInputRuntime {
             sender,
             receiver,
             connections: HashMap::new(),
+            #[cfg(test)]
+            requested_ports: Vec::new(),
         }
     }
 }
@@ -276,6 +280,10 @@ impl MidiOutputRuntime {
 impl MidiInputRuntime {
     pub fn sync_ports(&mut self, ports: &[MidiPortRef]) {
         let wanted: Vec<String> = ports.iter().map(|port| port.name.clone()).collect();
+        #[cfg(test)]
+        {
+            self.requested_ports = wanted.clone();
+        }
         self.connections
             .retain(|name, _| wanted.iter().any(|wanted_name| wanted_name == name));
 
@@ -298,6 +306,20 @@ impl MidiInputRuntime {
             events.push(event);
         }
         events
+    }
+
+    #[cfg(test)]
+    pub fn connected_port_names(&self) -> Vec<String> {
+        let mut names = self.connections.keys().cloned().collect::<Vec<_>>();
+        names.sort();
+        names
+    }
+
+    #[cfg(test)]
+    pub fn requested_port_names(&self) -> Vec<String> {
+        let mut names = self.requested_ports.clone();
+        names.sort();
+        names
     }
 }
 
