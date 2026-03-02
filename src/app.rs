@@ -459,10 +459,7 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (width, height) = match canvas.output_size()? {
-            (0, 0) => self.viewport_size,
-            size => size,
-        };
+        let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
         let (tabs_bounds, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
@@ -4421,6 +4418,14 @@ fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u
     (logical_width, logical_height)
 }
 
+fn active_draw_size(canvas_output_size: (u32, u32), viewport_size: (u32, u32)) -> (u32, u32) {
+    if viewport_size.0 > 0 && viewport_size.1 > 0 {
+        viewport_size
+    } else {
+        canvas_output_size
+    }
+}
+
 fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
     override_scale.unwrap_or(display_scale).max(1.0)
 }
@@ -4782,6 +4787,15 @@ mod tests {
     fn logical_viewport_size_respects_display_scale() {
         assert_eq!(super::logical_viewport_size((2560, 1440), 2.0), (1280, 720));
         assert_eq!(super::logical_viewport_size((1920, 1080), 1.5), (1280, 720));
+    }
+
+    #[test]
+    fn active_draw_size_prefers_logical_viewport_over_output_pixels() {
+        assert_eq!(
+            super::active_draw_size((2560, 1440), (1280, 720)),
+            (1280, 720)
+        );
+        assert_eq!(super::active_draw_size((1280, 720), (0, 0)), (1280, 720));
     }
 
     #[test]
