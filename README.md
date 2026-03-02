@@ -303,6 +303,7 @@ This flow is intended for a local capture device such as `Cam Link 4K` connected
 Committed files:
 
 - `scripts/capture-pi-output-camera.ps1`: captures one frame from a local DirectShow camera device into `artifacts/camera-debug`
+- `scripts/capture-pi-output-camera-clip.ps1`: records a short local HDMI capture clip into `artifacts/camera-debug`
 - `scripts/review-pi-output-camera.ps1`: sends the captured image to `codex exec` for a compact diagnostic review
 - `scripts/run-pi-output-camera-review.ps1`: runs capture and review together and archives the result under `artifacts/archive/<git-commit>/camera-debug`
 - `scripts/pi-camera-debug.example.psd1`: example local camera config
@@ -311,7 +312,8 @@ Local setup:
 
 - copy `scripts/pi-camera-debug.example.psd1` to `scripts/pi-camera-debug.local.psd1` if you want to override the default local capture device or format
 - the local config is ignored by git
-- the default device name is `Cam Link 4K`
+- the current default device name is `usb video`
+- set `VideoCodec` for devices that expose compressed capture modes such as `mjpeg`; otherwise use `PixelFormat`
 - if DirectShow is flaky with the friendly device name during active capture, set `DeviceInput` to the camera's alternative PnP selector from `-ListDevices`
 
 Useful commands:
@@ -320,6 +322,7 @@ Useful commands:
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 -ListDevices
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 -ListOptions
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera-clip.ps1 -DurationSeconds 10
 powershell -ExecutionPolicy Bypass -File .\scripts\review-pi-output-camera.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\run-pi-output-camera-review.ps1
 ```

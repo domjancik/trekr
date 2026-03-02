@@ -414,26 +414,6 @@ impl App {
         Ok(canvas.into_surface())
     }
 
-    fn draw_kmsdrm_test_pattern(
-        &self,
-        surface: &mut sdl3::video::WindowSurfaceRef<'_>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let width = self.viewport_size.0.max(1);
-        let height = self.viewport_size.1.max(1);
-        let stripe_width = (width / 3).max(1);
-        surface.fill_rect(None, Color::RGB(12, 12, 12))?;
-        surface.fill_rect(Rect::new(0, 0, stripe_width, height), Color::RGB(220, 32, 32))?;
-        surface.fill_rect(
-            Rect::new(stripe_width as i32, 0, stripe_width, height),
-            Color::RGB(32, 220, 32),
-        )?;
-        surface.fill_rect(
-            Rect::new((stripe_width * 2) as i32, 0, width - stripe_width * 2, height),
-            Color::RGB(32, 64, 220),
-        )?;
-        Ok(())
-    }
-
     fn draw<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -477,6 +457,26 @@ impl App {
         let output_size = canvas.output_size()?;
         self.viewport_size = logical_viewport_size(output_size, scale);
         canvas.set_scale(scale, scale)?;
+        Ok(())
+    }
+
+    fn draw_kmsdrm_test_pattern(
+        &self,
+        surface: &mut sdl3::video::WindowSurfaceRef<'_>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let width = self.viewport_size.0.max(1);
+        let height = self.viewport_size.1.max(1);
+        let stripe_width = (width / 3).max(1);
+        surface.fill_rect(None, Color::RGB(12, 12, 12))?;
+        surface.fill_rect(Rect::new(0, 0, stripe_width, height), Color::RGB(220, 32, 32))?;
+        surface.fill_rect(
+            Rect::new(stripe_width as i32, 0, stripe_width, height),
+            Color::RGB(32, 220, 32),
+        )?;
+        surface.fill_rect(
+            Rect::new((stripe_width * 2) as i32, 0, width - stripe_width * 2, height),
+            Color::RGB(32, 64, 220),
+        )?;
         Ok(())
     }
 

@@ -7,6 +7,7 @@ param(
     [string]$DeviceInput = "",
     [string]$VideoSize = "",
     [int]$FrameRate = 0,
+    [string]$VideoCodec = "",
     [string]$PixelFormat = "",
     [int]$SelectFrame = -1,
     [switch]$ListDevices,
@@ -117,8 +118,16 @@ $deviceName = Resolve-Setting -Value $DeviceName -Fallback (Resolve-Setting -Val
 $deviceInput = Resolve-Setting -Value $DeviceInput -Fallback (Resolve-Setting -Value $config.DeviceInput -Fallback "")
 $videoSize = Resolve-Setting -Value $VideoSize -Fallback (Resolve-Setting -Value $config.VideoSize -Fallback "1920x1080")
 $frameRate = Resolve-Setting -Value $FrameRate -Fallback (Resolve-Setting -Value $config.FrameRate -Fallback 60)
+$videoCodec = Resolve-Setting -Value $VideoCodec -Fallback (Resolve-Setting -Value $config.VideoCodec -Fallback "")
 $pixelFormat = Resolve-Setting -Value $PixelFormat -Fallback (Resolve-Setting -Value $config.PixelFormat -Fallback "nv12")
 $selectFrame = if ($SelectFrame -ge 0) { $SelectFrame } else { [int](Resolve-Setting -Value $config.SelectFrame -Fallback 0) }
+$videoInput = if ([string]::IsNullOrWhiteSpace($deviceInput)) {
+    "video=$deviceName"
+} elseif ($deviceInput.StartsWith("video=")) {
+    $deviceInput
+} else {
+    "video=$deviceInput"
+}
 
 if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     throw "ffmpeg was not found on PATH. Install ffmpeg before using the camera capture flow."
@@ -156,9 +165,30 @@ $ffmpegArgs = @(
     "-f", "dshow",
     "-video_size", $videoSize,
     "-framerate", [string]$frameRate,
-    "-pixel_format", $pixelFormat,
-    "-i", $(if ([string]::IsNullOrWhiteSpace($deviceInput)) { "video=$deviceName" } else { $deviceInput })
+    "-i", $videoInput
 )
+
+if (-not [string]::IsNullOrWhiteSpace($videoCodec)) {
+    $ffmpegArgs = @(
+        "-hide_banner",
+        "-y",
+        "-f", "dshow",
+        "-video_size", $videoSize,
+        "-framerate", [string]$frameRate,
+        "-vcodec", $videoCodec,
+        "-i", $videoInput
+    )
+} elseif (-not [string]::IsNullOrWhiteSpace($pixelFormat)) {
+    $ffmpegArgs = @(
+        "-hide_banner",
+        "-y",
+        "-f", "dshow",
+        "-video_size", $videoSize,
+        "-framerate", [string]$frameRate,
+        "-pixel_format", $pixelFormat,
+        "-i", $videoInput
+    )
+}
 
 if ($selectFrame -gt 0) {
     $ffmpegArgs += @("-vf", "select=gte(n\,$selectFrame)")
@@ -218,6 +248,7 @@ $manifest = [pscustomobject]@{
     device_input = $deviceInput
     video_size = $videoSize
     frame_rate = $frameRate
+    video_codec = $videoCodec
     pixel_format = $pixelFormat
     select_frame = $selectFrame
     pi_status_path = if ($hasPiStatus) { $statusPath } else { "" }
