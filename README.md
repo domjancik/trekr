@@ -80,6 +80,7 @@ Pi console launch on-device:
 ```
 
 This wrapper starts `trekr` with `--video-mode kmsdrm-console` for a minimal Raspberry Pi console session.
+It also pins `SDL_VIDEODRIVER=kmsdrm`, `SDL_RENDER_DRIVER=software`, and `LD_LIBRARY_PATH` so the deployed binary uses the shipped SDL runtime and console-safe renderer defaults.
 
 Bootstrap and run:
 
@@ -199,6 +200,12 @@ SSH deployment entrypoint:
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1
 ```
 
+Pi runtime package setup:
+
+```bash
+sudo ./setup-rpi-zero-2w-runtime.sh
+```
+
 Expected artifact:
 
 ```text
@@ -232,6 +239,9 @@ Notes:
 - Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.
 - Runtime on a minimal Pi console is opt-in: launch the binary with `--video-mode kmsdrm-console` to force SDL onto the `kmsdrm` backend. Desktop targets should stay on the default `windowed` mode.
 - `scripts/deploy-rpi-zero-2w.ps1` reads untracked local SSH settings from `scripts/rpi-deploy.local.psd1`. Start from the committed example file at `scripts/rpi-deploy.example.psd1`.
+- the deploy flow copies `trekr`, `libSDL3.so.0`, and `launch-rpi-zero-2w.sh` into the remote app directory so the Pi does not need a system-installed SDL3 runtime.
+- `scripts/setup-rpi-zero-2w-runtime.sh` installs the minimal Pi runtime packages needed for SDL KMSDRM, EGL/GLES loader discovery, and ALSA on a console-first image.
+- `scripts/deploy-rpi-zero-2w.ps1 -InstallRuntimeDeps` can run that package setup remotely. If the local deploy config has no `Password`, the remote user needs passwordless `sudo`; otherwise the configured password is passed to `sudo -S`.
 - Leaving `Password` blank in the deploy config uses normal OpenSSH key or agent auth through `ssh.exe` and `scp.exe`.
 - Setting `Password` in the deploy config is supported only when `plink.exe` and `pscp.exe` are available on `PATH`.
 - this path targets Pi Zero 2 W. The original Pi Zero / Zero W is a 32-bit ARMv6 device and needs a different target strategy.
@@ -283,3 +293,38 @@ Fixture examples:
 cargo run -- --state-mode persisted --state-file state-fixtures/ui-looped.json
 powershell -ExecutionPolicy Bypass -File .\scripts\run-ui-review.ps1 -StateMode persisted -StateFile state-fixtures/ui-looped.json
 ```
+
+## Pi Camera Debug Review
+
+The repo also includes a separate physical-camera debug path for reviewing the deployed Pi's actual screen output from the development machine.
+
+This flow is intended for a local capture device such as `Cam Link 4K` connected to the development machine, pointed at the Pi display. It does not run on the Pi itself.
+
+Committed files:
+
+- `scripts/capture-pi-output-camera.ps1`: captures one frame from a local DirectShow camera device into `artifacts/camera-debug`
+- `scripts/review-pi-output-camera.ps1`: sends the captured image to `codex exec` for a compact diagnostic review
+- `scripts/run-pi-output-camera-review.ps1`: runs capture and review together and archives the result under `artifacts/archive/<git-commit>/camera-debug`
+- `scripts/pi-camera-debug.example.psd1`: example local camera config
+
+Local setup:
+
+- copy `scripts/pi-camera-debug.example.psd1` to `scripts/pi-camera-debug.local.psd1` if you want to override the default local capture device or format
+- the local config is ignored by git
+- the default device name is `Cam Link 4K`
+
+Useful commands:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 -ListDevices
+powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 -ListOptions
+powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\review-pi-output-camera.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run-pi-output-camera-review.ps1
+```
+
+Notes:
+
+- this flow uses local `ffmpeg` DirectShow capture, not renderer-owned screenshots
+- by default it also records a small remote Pi status snapshot into `artifacts/camera-debug/pi-status.txt` using `scripts/rpi-deploy.local.psd1` if that config exists
+- if `ffmpeg` reports `Could not run graph`, the capture device is usually already in use by another app such as OBS
