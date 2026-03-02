@@ -4,6 +4,7 @@ param(
     [string]$OutputDir = "artifacts/camera-debug",
     [string]$OutputName = "pi-output.png",
     [string]$DeviceName = "",
+    [string]$DeviceInput = "",
     [string]$VideoSize = "",
     [int]$FrameRate = 0,
     [string]$PixelFormat = "",
@@ -113,6 +114,7 @@ $repoRoot = Get-RepoRoot
 $config = Get-OptionalConfig -Path $ConfigPath
 
 $deviceName = Resolve-Setting -Value $DeviceName -Fallback (Resolve-Setting -Value $config.DeviceName -Fallback "Cam Link 4K")
+$deviceInput = Resolve-Setting -Value $DeviceInput -Fallback (Resolve-Setting -Value $config.DeviceInput -Fallback "")
 $videoSize = Resolve-Setting -Value $VideoSize -Fallback (Resolve-Setting -Value $config.VideoSize -Fallback "1920x1080")
 $frameRate = Resolve-Setting -Value $FrameRate -Fallback (Resolve-Setting -Value $config.FrameRate -Fallback 60)
 $pixelFormat = Resolve-Setting -Value $PixelFormat -Fallback (Resolve-Setting -Value $config.PixelFormat -Fallback "nv12")
@@ -155,7 +157,7 @@ $ffmpegArgs = @(
     "-video_size", $videoSize,
     "-framerate", [string]$frameRate,
     "-pixel_format", $pixelFormat,
-    "-i", "video=$deviceName"
+    "-i", $(if ([string]::IsNullOrWhiteSpace($deviceInput)) { "video=$deviceName" } else { $deviceInput })
 )
 
 if ($selectFrame -gt 0) {
@@ -213,6 +215,7 @@ $manifest = [pscustomobject]@{
     captured_at = [DateTimeOffset]::Now.ToString("o")
     image_path = (Resolve-Path $outputPath).Path
     device_name = $deviceName
+    device_input = $deviceInput
     video_size = $videoSize
     frame_rate = $frameRate
     pixel_format = $pixelFormat
