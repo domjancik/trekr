@@ -312,6 +312,7 @@ Local setup:
 - copy `scripts/pi-camera-debug.example.psd1` to `scripts/pi-camera-debug.local.psd1` if you want to override the default local capture device or format
 - the local config is ignored by git
 - the default device name is `Cam Link 4K`
+- if DirectShow is flaky with the friendly device name during active capture, set `DeviceInput` to the camera's alternative PnP selector from `-ListDevices`
 
 Useful commands:
 
