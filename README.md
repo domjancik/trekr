@@ -67,8 +67,19 @@ Launch state:
 - `cargo run -- --state-mode demo` forces the built-in demo state
 - `cargo run -- --state-mode empty` forces an empty deterministic state
 - `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
+- `cargo run -- --video-mode windowed` keeps the existing resizable desktop window behavior
+- `cargo run -- --video-mode fullscreen` requests fullscreen rendering on the active SDL video backend
+- `cargo run -- --video-mode kmsdrm-console` requests SDL's `kmsdrm` backend for direct fullscreen rendering from a Linux console session without X11/Wayland
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - committed fixture state lives in `state-fixtures/ui-looped.json`
+
+Pi console launch on-device:
+
+```bash
+./launch-rpi-zero-2w.sh
+```
+
+This wrapper starts `trekr` with `--video-mode kmsdrm-console` for a minimal Raspberry Pi console session.
 
 Bootstrap and run:
 
@@ -176,6 +187,18 @@ Repo entrypoint:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release
 ```
 
+Pi console / KMSDRM entrypoint:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release -SdlUnixConsoleBuild
+```
+
+SSH deployment entrypoint:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1
+```
+
 Expected artifact:
 
 ```text
@@ -205,7 +228,12 @@ sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64
 Notes:
 
 - `scripts/build-rpi-zero-2w.ps1` fails fast if WSL is unavailable or the required Linux-side toolchain is missing.
+- `-SdlUnixConsoleBuild` exports `SDL_UNIX_CONSOLE_BUILD=ON` during the SDL build so the Pi-targeted binary can be built for a minimal console-first Linux image without requiring X11/Wayland at build time.
 - Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.
+- Runtime on a minimal Pi console is opt-in: launch the binary with `--video-mode kmsdrm-console` to force SDL onto the `kmsdrm` backend. Desktop targets should stay on the default `windowed` mode.
+- `scripts/deploy-rpi-zero-2w.ps1` reads untracked local SSH settings from `scripts/rpi-deploy.local.psd1`. Start from the committed example file at `scripts/rpi-deploy.example.psd1`.
+- Leaving `Password` blank in the deploy config uses normal OpenSSH key or agent auth through `ssh.exe` and `scp.exe`.
+- Setting `Password` in the deploy config is supported only when `plink.exe` and `pscp.exe` are available on `PATH`.
 - this path targets Pi Zero 2 W. The original Pi Zero / Zero W is a 32-bit ARMv6 device and needs a different target strategy.
 
 ## UI Review Loop
