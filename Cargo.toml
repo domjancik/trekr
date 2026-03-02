@@ -7,6 +7,7 @@ name = "trekr"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+default-run = "trekr"
 
 [dependencies]
 image = { version = "0.25.6", default-features = false, features = ["png"] }

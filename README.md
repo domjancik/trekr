@@ -66,15 +66,27 @@ Latest renderer-owned captures from the demo state:
 
 Launch state:
 
+- `cargo run -- help` prints the CLI reference, option details, and suggested commands
+- `cargo run -- commands` prints the recommended documented launch commands only
+- `cargo run -- run` explicitly launches the interactive app
 - default interactive run uses persisted state from `artifacts/state/last-run.json` when available and saves back on clean exit
 - `cargo run -- --state-mode demo` forces the built-in demo state
 - `cargo run -- --state-mode empty` forces an empty deterministic state
+- `cargo run -- run --state-mode demo` is the subcommand form of the same demo launch
 - `cargo run -- --state-file path\\to\\state.json` uses a specific persisted state path
 - `cargo run -- --video-mode windowed` keeps the existing resizable desktop window behavior
 - `cargo run -- --video-mode fullscreen` requests fullscreen rendering on the active SDL video backend
 - `cargo run -- --video-mode kmsdrm-console` requests SDL's `kmsdrm` backend for direct fullscreen rendering from a Linux console session without X11/Wayland
+- `cargo run -- capture-ui --state-mode demo --capture-dir artifacts/screenshots` renders deterministic screenshots without opening the interactive app
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
+- `cargo run --bin trekr-tui` opens a terminal menu for selecting launch mode, state, video mode, scale, and capture path
 - committed fixture state lives in `state-fixtures/ui-looped.json`
+
+CLI notes:
+
+- `run`, `capture-ui`, `commands`, and `help` are the first-class app commands
+- the older flag-only form is still supported for compatibility, so existing commands like `cargo run -- --state-mode demo` still work
+- `capture-ui` accepts launch-state options plus `--capture-dir`; `--video-mode` remains interactive-only
 
 Pi console launch on-device:
 
