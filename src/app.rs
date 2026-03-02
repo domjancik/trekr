@@ -360,7 +360,7 @@ impl App {
             if show_test_pattern {
                 self.draw_kmsdrm_test_pattern(&mut window_surface)?;
             } else {
-                let frame = self.draw_frame_surface()?;
+                let frame = self.draw_frame_surface(window.window_pixel_format())?;
                 frame.blit_scaled(
                     None,
                     &mut window_surface,
@@ -404,10 +404,11 @@ impl App {
 
     fn draw_frame_surface(
         &self,
+        pixel_format: PixelFormat,
     ) -> Result<sdl3::surface::Surface<'static>, Box<dyn std::error::Error>> {
         let width = self.viewport_size.0.max(1);
         let height = self.viewport_size.1.max(1);
-        let surface = sdl3::surface::Surface::new(width, height, PixelFormat::RGBA32)?;
+        let surface = sdl3::surface::Surface::new(width, height, pixel_format)?;
         let mut canvas = surface.into_canvas()?;
         self.draw(&mut canvas)?;
         Ok(canvas.into_surface())
@@ -437,7 +438,10 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (width, height) = self.viewport_size;
+        let (width, height) = match canvas.output_size()? {
+            (0, 0) => self.viewport_size,
+            size => size,
+        };
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
         let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
