@@ -153,7 +153,7 @@ $runtimeSetupPath = Join-Path $repoRoot "scripts\setup-rpi-zero-2w-runtime.sh"
 if (-not $SkipBuild) {
     $buildScriptPath = Join-Path $repoRoot "scripts\build-rpi-zero-2w.ps1"
     if ($PSCmdlet.ShouldProcess($artifactPath, "Build Pi Zero 2 W release artifact")) {
-        & $buildScriptPath -Release -SdlUnixConsoleBuild
+        & $buildScriptPath -Release
     }
 }
 

@@ -311,7 +311,6 @@ impl App {
 
         Ok(())
     }
-
     fn run_kmsdrm_surface_console(
         &mut self,
         sdl_context: sdl3::Sdl,

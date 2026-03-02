@@ -80,7 +80,17 @@ Pi console launch on-device:
 ```
 
 This wrapper starts `trekr` with `--video-mode kmsdrm-console` for a minimal Raspberry Pi console session.
-It also pins `SDL_VIDEODRIVER=kmsdrm`, `SDL_RENDER_DRIVER=software`, and `LD_LIBRARY_PATH` so the deployed binary uses the shipped SDL runtime and console-safe renderer defaults.
+It pins `SDL_VIDEODRIVER=kmsdrm`, `SDL_KMSDRM_REQUIRE_DRM_MASTER=1`, `SDL_KMSDRM_ATOMIC=0`, GLES loader hints, and `LD_LIBRARY_PATH` so the deployed binary uses the shipped SDL runtime and a Pi-oriented KMSDRM launch path.
+It prefers `SDL_RENDER_DRIVER=opengles2` and you can override that to `software` only if the Pi image cannot initialize GLES.
+
+Current working KMSDRM init path:
+
+- build with the standard SDL path via `powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release`
+- deploy with `powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1`
+- launch from a Linux virtual console, not from X11 or Wayland, via `./launch-rpi-zero-2w.sh`
+- let the launcher provide `SDL_VIDEODRIVER=kmsdrm`, `SDL_KMSDRM_REQUIRE_DRM_MASTER=1`, `SDL_KMSDRM_ATOMIC=0`, `SDL_RENDER_DRIVER=opengles2`, `SDL_EGL_LIBRARY=libEGL.so.1`, `SDL_OPENGL_LIBRARY=libGLESv2.so.2`, and `LD_LIBRARY_PATH`
+- `trekr` then sets the SDL KMSDRM hints, creates a fullscreen borderless window, calls `window.sync()`, and uses the renderer-backed KMSDRM loop by default
+- keep `TREKR_KMSDRM_PRESENT_MODE=surface` only as a diagnostic fallback when the renderer path is not usable on a given Pi image
 
 Bootstrap and run:
 
@@ -194,6 +204,12 @@ Pi console / KMSDRM entrypoint:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release -SdlUnixConsoleBuild
 ```
 
+Recommended deployed Pi build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release
+```
+
 SSH deployment entrypoint:
 
 ```powershell
@@ -235,9 +251,10 @@ sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64
 Notes:
 
 - `scripts/build-rpi-zero-2w.ps1` fails fast if WSL is unavailable or the required Linux-side toolchain is missing.
-- `-SdlUnixConsoleBuild` exports `SDL_UNIX_CONSOLE_BUILD=ON` during the SDL build so the Pi-targeted binary can be built for a minimal console-first Linux image without requiring X11/Wayland at build time.
+- the normal deployed Pi path should use the standard SDL build. `-SdlUnixConsoleBuild` is retained as a diagnostic/experimental option, but it is not the recommended default for the fullscreen KMSDRM app path.
 - Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.
 - Runtime on a minimal Pi console is opt-in: launch the binary with `--video-mode kmsdrm-console` to force SDL onto the `kmsdrm` backend. Desktop targets should stay on the default `windowed` mode.
+- the deployed Pi launcher currently prefers `SDL_RENDER_DRIVER=opengles2` and sets `SDL_KMSDRM_ATOMIC=0`, which is the first compatibility path to try on Raspberry Pi when KMSDRM presents a black screen.
 - `scripts/deploy-rpi-zero-2w.ps1` reads untracked local SSH settings from `scripts/rpi-deploy.local.psd1`. Start from the committed example file at `scripts/rpi-deploy.example.psd1`.
 - the deploy flow copies `trekr`, `libSDL3.so.0`, and `launch-rpi-zero-2w.sh` into the remote app directory so the Pi does not need a system-installed SDL3 runtime.
 - `scripts/setup-rpi-zero-2w-runtime.sh` installs the minimal Pi runtime packages needed for SDL KMSDRM, EGL/GLES loader discovery, and ALSA on a console-first image.
@@ -304,6 +321,7 @@ Committed files:
 
 - `scripts/capture-pi-output-camera.ps1`: captures one frame from a local DirectShow camera device into `artifacts/camera-debug`
 - `scripts/capture-pi-output-camera-clip.ps1`: records a short local HDMI capture clip into `artifacts/camera-debug`
+- `scripts/analyze-pi-output-camera-clip.ps1`: downsamples a captured clip and writes brightness/frame-diff metrics into `artifacts/camera-debug/clip-analysis`
 - `scripts/review-pi-output-camera.ps1`: sends the captured image to `codex exec` for a compact diagnostic review
 - `scripts/run-pi-output-camera-review.ps1`: runs capture and review together and archives the result under `artifacts/archive/<git-commit>/camera-debug`
 - `scripts/pi-camera-debug.example.psd1`: example local camera config
@@ -323,6 +341,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1 -ListOptions
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\capture-pi-output-camera-clip.ps1 -DurationSeconds 10
+powershell -ExecutionPolicy Bypass -File .\scripts\analyze-pi-output-camera-clip.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\review-pi-output-camera.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\run-pi-output-camera-review.ps1
 ```
