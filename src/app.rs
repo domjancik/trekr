@@ -97,6 +97,7 @@ struct MappingBadge {
     built_in: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiCaptureOptions {
     pub output_dir: PathBuf,
 }
@@ -218,7 +219,11 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
-            sdl3::hint::set_with_priority("SDL_VIDEO_DRIVER", "kmsdrm", &sdl3::hint::Hint::Override);
+            sdl3::hint::set_with_priority(
+                "SDL_VIDEO_DRIVER",
+                "kmsdrm",
+                &sdl3::hint::Hint::Override,
+            );
             sdl3::hint::set_with_priority(
                 "SDL_KMSDRM_REQUIRE_DRM_MASTER",
                 "1",
@@ -234,10 +239,16 @@ impl App {
         let mut window_builder = video.window("trekr", 1280, 720);
         match options.video_mode {
             VideoMode::Windowed => {
-                window_builder.position_centered().resizable().high_pixel_density();
+                window_builder
+                    .position_centered()
+                    .resizable()
+                    .high_pixel_density();
             }
             VideoMode::Fullscreen | VideoMode::KmsDrmConsole => {
-                window_builder.fullscreen().borderless().high_pixel_density();
+                window_builder
+                    .fullscreen()
+                    .borderless()
+                    .high_pixel_density();
             }
         }
         let window = window_builder.build().map_err(|err| err.to_string())?;
@@ -524,13 +535,21 @@ impl App {
         let height = self.viewport_size.1.max(1);
         let stripe_width = (width / 3).max(1);
         surface.fill_rect(None, Color::RGB(12, 12, 12))?;
-        surface.fill_rect(Rect::new(0, 0, stripe_width, height), Color::RGB(220, 32, 32))?;
+        surface.fill_rect(
+            Rect::new(0, 0, stripe_width, height),
+            Color::RGB(220, 32, 32),
+        )?;
         surface.fill_rect(
             Rect::new(stripe_width as i32, 0, stripe_width, height),
             Color::RGB(32, 220, 32),
         )?;
         surface.fill_rect(
-            Rect::new((stripe_width * 2) as i32, 0, width - stripe_width * 2, height),
+            Rect::new(
+                (stripe_width * 2) as i32,
+                0,
+                width - stripe_width * 2,
+                height,
+            ),
             Color::RGB(32, 64, 220),
         )?;
         Ok(())
