@@ -62,6 +62,19 @@ pub struct UiCaptureOptions {
     pub output_dir: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VideoMode {
+    #[default]
+    Windowed,
+    Fullscreen,
+    KmsDrmConsole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RunOptions {
+    pub video_mode: VideoMode,
+}
+
 impl App {
     pub fn new() -> Self {
         Self::new_demo()
@@ -156,15 +169,50 @@ impl App {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.run_with_options(RunOptions::default())
+    }
+
+    pub fn run_with_options(
+        &mut self,
+        options: RunOptions,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if options.video_mode == VideoMode::KmsDrmConsole {
+            // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
+            sdl3::hint::set_with_priority("SDL_VIDEO_DRIVER", "kmsdrm", &sdl3::hint::Hint::Override);
+            sdl3::hint::set_with_priority(
+                "SDL_KMSDRM_REQUIRE_DRM_MASTER",
+                "1",
+                &sdl3::hint::Hint::Override,
+            );
+            sdl3::hint::set_video_minimize_on_focus_loss(false);
+        }
+
         let sdl_context = sdl3::init()?;
         let video = sdl_context.video()?;
-        let window = video
-            .window("trekr", 1280, 720)
-            .position_centered()
-            .resizable()
-            .high_pixel_density()
-            .build()
-            .map_err(|err| err.to_string())?;
+        println!("trekr video driver: {}", video.current_video_driver());
+
+        let mut window_builder = video.window("trekr", 1280, 720);
+        match options.video_mode {
+            VideoMode::Windowed => {
+                window_builder.position_centered().resizable().high_pixel_density();
+            }
+            VideoMode::Fullscreen | VideoMode::KmsDrmConsole => {
+                window_builder.fullscreen().borderless().high_pixel_density();
+            }
+        }
+        let window = window_builder.build().map_err(|err| err.to_string())?;
+        if options.video_mode != VideoMode::Windowed {
+            let _ = window.sync();
+        }
+        if options.video_mode == VideoMode::KmsDrmConsole {
+            let present_mode = std::env::var("TREKR_KMSDRM_PRESENT_MODE")
+                .unwrap_or_else(|_| "renderer".to_owned());
+            if present_mode.eq_ignore_ascii_case("surface") {
+                return self.run_kmsdrm_surface_console(sdl_context, window);
+            }
+            return self.run_kmsdrm_renderer_console(sdl_context, window);
+        }
+
         let mut canvas = window.into_canvas();
         self.configure_window_canvas(&mut canvas)?;
         let mut event_pump = sdl_context.event_pump()?;
@@ -204,6 +252,125 @@ impl App {
 
             self.update_window_title(canvas.window_mut())?;
             self.draw(&mut canvas)?;
+            if options.video_mode != VideoMode::Windowed {
+                let _ = canvas.window_mut().sync();
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
+
+        Ok(())
+    }
+
+    fn run_kmsdrm_renderer_console(
+        &mut self,
+        sdl_context: sdl3::Sdl,
+        window: sdl3::video::Window,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut canvas = window.into_canvas();
+        self.configure_window_canvas(&mut canvas)?;
+        let mut event_pump = sdl_context.event_pump()?;
+        let started_at = Instant::now();
+        let mut last_frame_at = started_at;
+        let auto_exit_after = std::env::var("TREKR_EXIT_AFTER_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_millis);
+
+        'running: loop {
+            for event in event_pump.poll_iter() {
+                let pointer_event = event.get_converted_coords(&canvas).unwrap_or(event.clone());
+                if let Some(control) = self.handle_pointer_event(&pointer_event) {
+                    if control == AppControl::Quit {
+                        break 'running;
+                    }
+                    continue;
+                }
+
+                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
+                    if self.apply_action(action_event.action) == AppControl::Quit {
+                        break 'running;
+                    }
+                }
+            }
+
+            if auto_exit_after.is_some_and(|limit| started_at.elapsed() >= limit) {
+                break 'running;
+            }
+
+            self.poll_midi_input();
+            let now = Instant::now();
+            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            last_frame_at = now;
+            self.configure_window_canvas(&mut canvas)?;
+
+            self.update_window_title(canvas.window_mut())?;
+            self.draw(&mut canvas)?;
+            let _ = canvas.window_mut().sync();
+            std::thread::sleep(Duration::from_millis(16));
+        }
+
+        Ok(())
+    }
+
+    fn run_kmsdrm_surface_console(
+        &mut self,
+        sdl_context: sdl3::Sdl,
+        mut window: sdl3::video::Window,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut event_pump = sdl_context.event_pump()?;
+        let started_at = Instant::now();
+        let mut last_frame_at = started_at;
+        let auto_exit_after = std::env::var("TREKR_EXIT_AFTER_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_millis);
+        let show_test_pattern = std::env::var("TREKR_KMSDRM_TEST_PATTERN")
+            .ok()
+            .is_some_and(|value| value != "0");
+
+        'running: loop {
+            for event in event_pump.poll_iter() {
+                if let Some(control) = self.handle_pointer_event(&event) {
+                    if control == AppControl::Quit {
+                        break 'running;
+                    }
+                    continue;
+                }
+
+                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
+                    if self.apply_action(action_event.action) == AppControl::Quit {
+                        break 'running;
+                    }
+                }
+            }
+
+            if auto_exit_after.is_some_and(|limit| started_at.elapsed() >= limit) {
+                break 'running;
+            }
+
+            self.poll_midi_input();
+            let now = Instant::now();
+            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            last_frame_at = now;
+            self.viewport_size = window.size_in_pixels();
+
+            self.update_window_title(&mut window)?;
+
+            let mut window_surface = window.surface(&event_pump)?;
+            if show_test_pattern {
+                self.draw_kmsdrm_test_pattern(&mut window_surface)?;
+            } else {
+                let frame = self.draw_frame_surface()?;
+                frame.blit_scaled(
+                    None,
+                    &mut window_surface,
+                    None,
+                    sdl3::sys::surface::SDL_SCALEMODE_LINEAR,
+                )?;
+            }
+            window_surface.finish()?;
+            let _ = window.sync();
+
             std::thread::sleep(Duration::from_millis(16));
         }
 
@@ -232,6 +399,37 @@ impl App {
 
         self.overlay_state.active = None;
 
+        Ok(())
+    }
+
+    fn draw_frame_surface(
+        &self,
+    ) -> Result<sdl3::surface::Surface<'static>, Box<dyn std::error::Error>> {
+        let width = self.viewport_size.0.max(1);
+        let height = self.viewport_size.1.max(1);
+        let surface = sdl3::surface::Surface::new(width, height, PixelFormat::RGBA32)?;
+        let mut canvas = surface.into_canvas()?;
+        self.draw(&mut canvas)?;
+        Ok(canvas.into_surface())
+    }
+
+    fn draw_kmsdrm_test_pattern(
+        &self,
+        surface: &mut sdl3::video::WindowSurfaceRef<'_>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let width = self.viewport_size.0.max(1);
+        let height = self.viewport_size.1.max(1);
+        let stripe_width = (width / 3).max(1);
+        surface.fill_rect(None, Color::RGB(12, 12, 12))?;
+        surface.fill_rect(Rect::new(0, 0, stripe_width, height), Color::RGB(220, 32, 32))?;
+        surface.fill_rect(
+            Rect::new(stripe_width as i32, 0, stripe_width, height),
+            Color::RGB(32, 220, 32),
+        )?;
+        surface.fill_rect(
+            Rect::new((stripe_width * 2) as i32, 0, width - stripe_width * 2, height),
+            Color::RGB(32, 64, 220),
+        )?;
         Ok(())
     }
 
@@ -4369,7 +4567,10 @@ mod tests {
         app.apply_action(AppAction::ShowPage(AppPage::MidiIo));
         app.apply_action(AppAction::SelectNextPageItem);
         app.apply_action(AppAction::ActivatePageItem);
-        assert_eq!(app.midi_devices.selected_input, Some(1));
+        assert_eq!(
+            app.midi_devices.selected_input,
+            Some(app.page_state.midi_io.selected_input_index)
+        );
 
         app.apply_action(AppAction::AdjustPageItemForward);
         assert_eq!(app.page_state.midi_io.focus, MidiIoListFocus::Outputs);

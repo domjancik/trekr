@@ -1,9 +1,9 @@
 use std::path::PathBuf;
-use trekr::app::{App, UiCaptureOptions};
+use trekr::app::{App, RunOptions, UiCaptureOptions, VideoMode};
 use trekr::state;
 
 enum RunMode {
-    Interactive,
+    Interactive(RunOptions),
     Capture(UiCaptureOptions),
 }
 
@@ -21,6 +21,15 @@ struct LaunchOptions {
     ui_scale: Option<f32>,
 }
 
+fn parse_video_mode(value: &str) -> Result<VideoMode, String> {
+    match value {
+        "windowed" => Ok(VideoMode::Windowed),
+        "fullscreen" => Ok(VideoMode::Fullscreen),
+        "kmsdrm-console" | "kmsdrm" => Ok(VideoMode::KmsDrmConsole),
+        other => Err(format!("unknown video mode: {other}")),
+    }
+}
+
 fn parse_state_mode(value: &str) -> Result<StateMode, String> {
     match value {
         "persisted" => Ok(StateMode::Persisted),
@@ -30,12 +39,16 @@ fn parse_state_mode(value: &str) -> Result<StateMode, String> {
     }
 }
 
-fn parse_launch_options() -> Result<LaunchOptions, String> {
-    let mut args = std::env::args().skip(1);
+fn parse_launch_options_from<I>(args: I) -> Result<LaunchOptions, String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut args = args.into_iter();
     let mut capture_dir = None;
     let mut state_mode = StateMode::Persisted;
     let mut state_file = PathBuf::from("artifacts/state/last-run.json");
     let mut ui_scale = None;
+    let mut run_options = RunOptions::default();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -74,6 +87,12 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
                 }
                 ui_scale = Some(parsed);
             }
+            "--video-mode" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--video-mode requires windowed|fullscreen|kmsdrm-console".to_owned())?;
+                run_options.video_mode = parse_video_mode(&value)?;
+            }
             other => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -82,7 +101,7 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
 
     let run_mode = match capture_dir {
         Some(output_dir) => RunMode::Capture(UiCaptureOptions { output_dir }),
-        None => RunMode::Interactive,
+        None => RunMode::Interactive(run_options),
     };
 
     Ok(LaunchOptions {
@@ -91,6 +110,10 @@ fn parse_launch_options() -> Result<LaunchOptions, String> {
         state_file,
         ui_scale,
     })
+}
+
+fn parse_launch_options() -> Result<LaunchOptions, String> {
+    parse_launch_options_from(std::env::args().skip(1))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,13 +135,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.set_ui_scale_override(options.ui_scale);
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
-        RunMode::Interactive => {
-            let result = app.run();
+        RunMode::Interactive(run_options) => {
+            let result = app.run_with_options(run_options);
             if result.is_ok() && options.state_mode == StateMode::Persisted {
                 state::save(&options.state_file, &app.persisted_state())?;
             }
             result
         }
         RunMode::Capture(capture) => app.capture_ui_pages(capture),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RunMode, StateMode, parse_launch_options_from};
+    use trekr::app::VideoMode;
+
+    #[test]
+    fn launch_options_default_to_windowed_interactive_mode() {
+        let options = parse_launch_options_from(Vec::<String>::new()).expect("parse launch options");
+        assert_eq!(options.state_mode, StateMode::Persisted);
+        match options.run_mode {
+            RunMode::Interactive(run_options) => {
+                assert_eq!(run_options.video_mode, VideoMode::Windowed);
+            }
+            RunMode::Capture(_) => panic!("expected interactive mode"),
+        }
+    }
+
+    #[test]
+    fn launch_options_accept_kmsdrm_console_mode() {
+        let options = parse_launch_options_from(vec![
+            "--state-mode".to_owned(),
+            "demo".to_owned(),
+            "--video-mode".to_owned(),
+            "kmsdrm-console".to_owned(),
+        ])
+        .expect("parse launch options");
+        assert_eq!(options.state_mode, StateMode::Demo);
+        match options.run_mode {
+            RunMode::Interactive(run_options) => {
+                assert_eq!(run_options.video_mode, VideoMode::KmsDrmConsole);
+            }
+            RunMode::Capture(_) => panic!("expected interactive mode"),
+        }
     }
 }
