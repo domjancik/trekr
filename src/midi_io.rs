@@ -2,6 +2,8 @@ use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnec
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,6 +170,8 @@ fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> 
 
 pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
+    #[cfg(test)]
+    sent_commands: Arc<Mutex<Vec<MidiOutputCommand>>>,
 }
 
 pub struct MidiInputRuntime {
@@ -179,6 +183,7 @@ pub struct MidiInputRuntime {
     requested_ports: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum MidiOutputCommand {
     NoteOn {
         port: MidiPortRef,
@@ -205,6 +210,8 @@ struct MidiOutputWorker {
 impl Default for MidiOutputRuntime {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
+        #[cfg(test)]
+        let sent_commands = Arc::new(Mutex::new(Vec::new()));
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
             .spawn(move || {
@@ -215,7 +222,11 @@ impl Default for MidiOutputRuntime {
             })
             .expect("midi output worker should start");
 
-        Self { sender }
+        Self {
+            sender,
+            #[cfg(test)]
+            sent_commands,
+        }
     }
 }
 
@@ -250,14 +261,14 @@ impl MidiOutputRuntime {
         pitch: u8,
         velocity: u8,
     ) -> Result<(), String> {
-        self.sender
-            .send(MidiOutputCommand::NoteOn {
-                port: port.clone(),
-                channel,
-                pitch,
-                velocity,
-            })
-            .map_err(|error| error.to_string())
+        let command = MidiOutputCommand::NoteOn {
+            port: port.clone(),
+            channel,
+            pitch,
+            velocity,
+        };
+        self.record_command_for_test(&command);
+        self.sender.send(command).map_err(|error| error.to_string())
     }
 
     pub fn send_note_off(
@@ -266,22 +277,43 @@ impl MidiOutputRuntime {
         channel: u8,
         pitch: u8,
     ) -> Result<(), String> {
-        self.sender
-            .send(MidiOutputCommand::NoteOff {
-                port: port.clone(),
-                channel,
-                pitch,
-            })
-            .map_err(|error| error.to_string())
+        let command = MidiOutputCommand::NoteOff {
+            port: port.clone(),
+            channel,
+            pitch,
+        };
+        self.record_command_for_test(&command);
+        self.sender.send(command).map_err(|error| error.to_string())
     }
 
     pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
-        self.sender
-            .send(MidiOutputCommand::AllNotesOff {
-                port: port.clone(),
-                channel,
-            })
-            .map_err(|error| error.to_string())
+        let command = MidiOutputCommand::AllNotesOff {
+            port: port.clone(),
+            channel,
+        };
+        self.record_command_for_test(&command);
+        self.sender.send(command).map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    fn record_command_for_test(&self, command: &MidiOutputCommand) {
+        self.sent_commands
+            .lock()
+            .expect("test midi output log should lock")
+            .push(command.clone());
+    }
+
+    #[cfg(not(test))]
+    fn record_command_for_test(&self, _command: &MidiOutputCommand) {}
+
+    #[cfg(test)]
+    pub fn sent_all_notes_off_count(&self) -> usize {
+        self.sent_commands
+            .lock()
+            .expect("test midi output log should lock")
+            .iter()
+            .filter(|command| matches!(command, MidiOutputCommand::AllNotesOff { .. }))
+            .count()
     }
 }
 

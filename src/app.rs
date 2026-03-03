@@ -4464,6 +4464,7 @@ impl App {
             }
             AppAction::ToggleGlobalLoop => {
                 self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ResetGlobalLoop => {
@@ -4473,6 +4474,7 @@ impl App {
                     self.project.loop_region.start_ticks,
                     self.project.loop_region.end_ticks(),
                 );
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ClearCurrentTrackContent => {
@@ -4489,6 +4491,7 @@ impl App {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.loop_enabled = !track.state.loop_enabled;
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ToggleStoredLoopRecallQuantize => {
@@ -4570,6 +4573,7 @@ impl App {
                     track.loop_region.set_start_preserving_end(edit_ticks);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::SetCurrentTrackLoopEnd => {
@@ -4578,6 +4582,7 @@ impl App {
                     track.loop_region.set_end(edit_ticks);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::SetGlobalLoopStart => {
@@ -4585,11 +4590,13 @@ impl App {
                 self.project
                     .loop_region
                     .set_start_preserving_end(edit_ticks);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::SetGlobalLoopEnd => {
                 let edit_ticks = self.current_edit_ticks();
                 self.project.loop_region.set_end(edit_ticks);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::NudgeCurrentTrackLoopBackward => {
@@ -4598,6 +4605,7 @@ impl App {
                     track.loop_region.shift_by(delta);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::NudgeCurrentTrackLoopForward => {
@@ -4606,16 +4614,19 @@ impl App {
                     track.loop_region.shift_by(delta);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::NudgeGlobalLoopBackward => {
                 let delta = -(self.nudge_step_ticks() as i64);
                 self.project.loop_region.shift_by(delta);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::NudgeGlobalLoopForward => {
                 let delta = self.nudge_step_ticks() as i64;
                 self.project.loop_region.shift_by(delta);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ShortenCurrentTrackLoop => {
@@ -4624,6 +4635,7 @@ impl App {
                     track.loop_region.shorten_by(step);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ExtendCurrentTrackLoop => {
@@ -4632,6 +4644,7 @@ impl App {
                     track.loop_region.extend_by(step);
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::HalfCurrentTrackLoop => {
@@ -4639,6 +4652,7 @@ impl App {
                     track.loop_region.half_length();
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::DoubleCurrentTrackLoop => {
@@ -4646,24 +4660,29 @@ impl App {
                     track.loop_region.double_length();
                     track.sync_active_stored_loop_slot();
                 }
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ShortenGlobalLoop => {
                 let step = self.nudge_step_ticks();
                 self.project.loop_region.shorten_by(step);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ExtendGlobalLoop => {
                 let step = self.nudge_step_ticks();
                 self.project.loop_region.extend_by(step);
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::HalfGlobalLoop => {
                 self.project.loop_region.half_length();
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::DoubleGlobalLoop => {
                 self.project.loop_region.double_length();
+                self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackArm => {
@@ -5885,6 +5904,10 @@ impl App {
                 self.refresh_midi_devices_now();
             }
         }
+    }
+
+    fn silence_tracks_for_loop_change(&mut self) {
+        self.silence_all_tracks();
     }
 
     fn routing_field_value(&self, track: &Track, field: RoutingField) -> String {
@@ -9230,6 +9253,32 @@ mod tests {
 
         assert_eq!(app.project.loop_region, app.project.full_song_range());
         assert!(app.project.transport.loop_enabled);
+    }
+
+    #[test]
+    fn changing_global_loop_sends_all_notes_off() {
+        let mut app = App::new();
+        let baseline = app.midi_output.sent_all_notes_off_count();
+
+        app.apply_action(AppAction::SetGlobalLoopStart);
+
+        assert_eq!(
+            app.midi_output.sent_all_notes_off_count(),
+            baseline + app.project.tracks.len()
+        );
+    }
+
+    #[test]
+    fn changing_track_loop_sends_all_notes_off() {
+        let mut app = App::new();
+        let baseline = app.midi_output.sent_all_notes_off_count();
+
+        app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
+
+        assert_eq!(
+            app.midi_output.sent_all_notes_off_count(),
+            baseline + app.project.tracks.len()
+        );
     }
 
     #[test]
