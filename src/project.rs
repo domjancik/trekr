@@ -96,6 +96,30 @@ impl Project {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RecordingView {
+    #[default]
+    Overlay,
+    Stacked,
+}
+
+impl RecordingView {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Overlay => Self::Stacked,
+            Self::Stacked => Self::Overlay,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordingClip {
+    pub id: u64,
+    pub region: Region,
+    #[serde(default)]
+    pub muted: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     pub name: String,
@@ -107,7 +131,19 @@ pub struct Track {
     pub midi_notes: Vec<MidiNote>,
     pub regions: Vec<Region>,
     #[serde(default)]
+    pub recording_clips: Vec<RecordingClip>,
+    #[serde(default)]
+    pub recording_view: RecordingView,
+    #[serde(default)]
+    pub selected_recording_clip_id: Option<u64>,
+    #[serde(default = "default_next_recording_clip_id")]
+    pub next_recording_clip_id: u64,
+    #[serde(default)]
     pub note_selection: NoteSelection,
+}
+
+fn default_next_recording_clip_id() -> u64 {
+    1
 }
 
 impl Track {
@@ -121,6 +157,10 @@ impl Track {
             active_take: None,
             midi_notes: Vec::new(),
             regions: Vec::new(),
+            recording_clips: Vec::new(),
+            recording_view: RecordingView::default(),
+            selected_recording_clip_id: None,
+            next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
         };
         track.seed_demo_notes();
@@ -137,6 +177,10 @@ impl Track {
             active_take: None,
             midi_notes: Vec::new(),
             regions: Vec::new(),
+            recording_clips: Vec::new(),
+            recording_view: RecordingView::default(),
+            selected_recording_clip_id: None,
+            next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
         }
     }
@@ -195,7 +239,8 @@ impl Track {
             return;
         }
 
-        let committed_region = Region::new(start_ticks, length_ticks);
+        let recording_clip_id = self.allocate_recording_clip_id();
+        let committed_region = Region::new_recorded(start_ticks, length_ticks, recording_clip_id);
         if transport.record_mode == RecordMode::Replace {
             self.remove_content_in_range(LoopRegion::new(
                 committed_region.start_ticks,
@@ -203,6 +248,12 @@ impl Track {
             ));
         }
 
+        self.recording_clips.push(RecordingClip {
+            id: recording_clip_id,
+            region: committed_region,
+            muted: false,
+        });
+        self.selected_recording_clip_id = Some(recording_clip_id);
         self.regions.push(committed_region);
         self.append_recorded_notes(
             transport,
@@ -212,6 +263,7 @@ impl Track {
             released_at,
             start_ticks,
             end_ticks,
+            recording_clip_id,
         );
     }
 
@@ -298,6 +350,108 @@ impl Track {
         notes_end.max(regions_end).max(self.loop_region.end_ticks())
     }
 
+    pub fn recording_clips(&self) -> &[RecordingClip] {
+        &self.recording_clips
+    }
+
+    pub fn recording_clip(&self, clip_id: u64) -> Option<&RecordingClip> {
+        self.recording_clips.iter().find(|clip| clip.id == clip_id)
+    }
+
+    pub fn selected_recording_clip(&self) -> Option<&RecordingClip> {
+        self.selected_recording_clip_id
+            .and_then(|clip_id| self.recording_clip(clip_id))
+    }
+
+    pub fn toggle_recording_view(&mut self) {
+        self.recording_view = self.recording_view.toggle();
+    }
+
+    pub fn select_recording_clip(&mut self, clip_id: u64) -> bool {
+        if self.recording_clip(clip_id).is_none() {
+            return false;
+        }
+
+        self.selected_recording_clip_id = Some(clip_id);
+        true
+    }
+
+    pub fn select_next_recording_clip(&mut self) -> bool {
+        if self.recording_clips.is_empty() {
+            self.selected_recording_clip_id = None;
+            return false;
+        }
+
+        let selected_index = self.selected_recording_clip_id.and_then(|clip_id| {
+            self.recording_clips
+                .iter()
+                .position(|clip| clip.id == clip_id)
+        });
+        let next_index = selected_index
+            .map(|index| (index + 1) % self.recording_clips.len())
+            .unwrap_or(0);
+        self.selected_recording_clip_id = Some(self.recording_clips[next_index].id);
+        true
+    }
+
+    pub fn select_previous_recording_clip(&mut self) -> bool {
+        if self.recording_clips.is_empty() {
+            self.selected_recording_clip_id = None;
+            return false;
+        }
+
+        let previous_index = self
+            .selected_recording_clip_id
+            .and_then(|clip_id| {
+                self.recording_clips
+                    .iter()
+                    .position(|clip| clip.id == clip_id)
+            })
+            .map(|index| {
+                if index == 0 {
+                    self.recording_clips.len() - 1
+                } else {
+                    index - 1
+                }
+            })
+            .unwrap_or(self.recording_clips.len() - 1);
+        self.selected_recording_clip_id = Some(self.recording_clips[previous_index].id);
+        true
+    }
+
+    pub fn toggle_selected_recording_clip_mute(&mut self) -> bool {
+        let Some(selected_id) = self.selected_recording_clip_id else {
+            return false;
+        };
+        let Some(clip) = self
+            .recording_clips
+            .iter_mut()
+            .find(|clip| clip.id == selected_id)
+        else {
+            self.selected_recording_clip_id = None;
+            return false;
+        };
+
+        clip.muted = !clip.muted;
+        true
+    }
+
+    pub fn delete_selected_recording_clip(&mut self) -> bool {
+        let Some(selected_id) = self.selected_recording_clip_id else {
+            return false;
+        };
+
+        self.remove_recording_clips_by_ids(&[selected_id]);
+        true
+    }
+
+    pub fn recording_clip_is_muted(&self, recording_clip_id: Option<u64>) -> bool {
+        recording_clip_id
+            .and_then(|clip_id| self.recording_clip(clip_id))
+            .map(|clip| clip.muted)
+            .unwrap_or(false)
+    }
+
     fn seed_demo_notes(&mut self) {
         let base_pitch = 48 + ((self.name.len() as u8) % 12);
         let motif = [0_u8, 4, 7, 11, 7, 4, 2, 5];
@@ -323,6 +477,8 @@ impl Track {
         self.active_take = None;
         self.midi_notes.clear();
         self.regions.clear();
+        self.recording_clips.clear();
+        self.selected_recording_clip_id = None;
         self.clear_note_selection();
     }
 
@@ -542,8 +698,29 @@ impl Track {
 
     fn remove_content_in_range(&mut self, range: LoopRegion) {
         self.clear_note_selection();
-        self.midi_notes.retain(|note| !note.intersects(range));
-        self.regions.retain(|region| !region.intersects(range));
+        let mut owned_clip_ids: Vec<u64> = self
+            .midi_notes
+            .iter()
+            .filter(|note| note.intersects(range))
+            .filter_map(|note| note.recording_clip_id)
+            .collect();
+        owned_clip_ids.extend(
+            self.regions
+                .iter()
+                .filter(|region| region.intersects(range))
+                .filter_map(|region| region.recording_clip_id),
+        );
+        owned_clip_ids.sort_unstable();
+        owned_clip_ids.dedup();
+
+        if !owned_clip_ids.is_empty() {
+            self.remove_recording_clips_by_ids(&owned_clip_ids);
+        }
+
+        self.midi_notes
+            .retain(|note| note.recording_clip_id.is_some() || !note.intersects(range));
+        self.regions
+            .retain(|region| region.recording_clip_id.is_some() || !region.intersects(range));
     }
 
     fn append_recorded_notes(
@@ -555,6 +732,7 @@ impl Track {
         take_released_at_ticks: u64,
         start_ticks: u64,
         end_ticks: u64,
+        recording_clip_id: u64,
     ) {
         for recorded_note in recorded_notes {
             let (note_start, note_end) = normalized_note_span(
@@ -571,13 +749,73 @@ impl Track {
             if note_length == 0 {
                 continue;
             }
-            self.midi_notes.push(MidiNote::new(
+            self.midi_notes.push(MidiNote::new_recorded(
                 recorded_note.pitch,
                 note_start,
                 note_length,
                 recorded_note.velocity,
+                recording_clip_id,
             ));
         }
+    }
+
+    fn allocate_recording_clip_id(&mut self) -> u64 {
+        let clip_id = self.next_recording_clip_id.max(1);
+        self.next_recording_clip_id = clip_id.saturating_add(1);
+        clip_id
+    }
+
+    fn remove_recording_clips_by_ids(&mut self, clip_ids: &[u64]) {
+        if clip_ids.is_empty() {
+            return;
+        }
+
+        let next_selection = self.next_recording_selection_after_delete(clip_ids);
+        self.clear_note_selection();
+        self.midi_notes.retain(|note| {
+            !note
+                .recording_clip_id
+                .is_some_and(|id| clip_ids.contains(&id))
+        });
+        self.regions.retain(|region| {
+            !region
+                .recording_clip_id
+                .is_some_and(|id| clip_ids.contains(&id))
+        });
+        self.recording_clips
+            .retain(|clip| !clip_ids.contains(&clip.id));
+        self.selected_recording_clip_id =
+            next_selection.filter(|clip_id| self.recording_clip(*clip_id).is_some());
+    }
+
+    fn next_recording_selection_after_delete(&self, deleted_ids: &[u64]) -> Option<u64> {
+        let Some(selected_id) = self.selected_recording_clip_id else {
+            return None;
+        };
+        if !deleted_ids.contains(&selected_id) {
+            return Some(selected_id);
+        }
+
+        let Some(selected_index) = self
+            .recording_clips
+            .iter()
+            .position(|clip| clip.id == selected_id)
+        else {
+            return None;
+        };
+
+        self.recording_clips
+            .iter()
+            .skip(selected_index + 1)
+            .find(|clip| !deleted_ids.contains(&clip.id))
+            .or_else(|| {
+                self.recording_clips
+                    .iter()
+                    .take(selected_index)
+                    .rev()
+                    .find(|clip| !deleted_ids.contains(&clip.id))
+            })
+            .map(|clip| clip.id)
     }
 
     fn valid_selection_indices(&self) -> Vec<usize> {
@@ -823,6 +1061,8 @@ pub struct MidiNote {
     pub start_ticks: u64,
     pub length_ticks: u64,
     pub velocity: u8,
+    #[serde(default)]
+    pub recording_clip_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -839,6 +1079,23 @@ impl MidiNote {
             start_ticks,
             length_ticks,
             velocity,
+            recording_clip_id: None,
+        }
+    }
+
+    pub fn new_recorded(
+        pitch: u8,
+        start_ticks: u64,
+        length_ticks: u64,
+        velocity: u8,
+        recording_clip_id: u64,
+    ) -> Self {
+        Self {
+            pitch,
+            start_ticks,
+            length_ticks,
+            velocity,
+            recording_clip_id: Some(recording_clip_id),
         }
     }
 
@@ -865,6 +1122,10 @@ mod tests {
     use super::{MidiNote, Project, RecordContext, Track, TrackKind};
     use crate::timeline::{LoopRegion, RecordingTake, Region};
     use crate::transport::{QuantizeMode, RecordMode, Transport};
+
+    fn region_span(region: Region) -> (u64, u64) {
+        (region.start_ticks, region.length_ticks)
+    }
 
     #[test]
     fn full_song_range_uses_loop_region_when_no_regions_exist() {
@@ -895,7 +1156,9 @@ mod tests {
 
         track.commit_take(transport, RecordingTake::new(220).release(721), None);
 
-        assert_eq!(track.regions, vec![Region::new(240, 480)]);
+        assert_eq!(track.regions.len(), 1);
+        assert_eq!(region_span(track.regions[0]), (240, 480));
+        assert!(track.regions[0].recording_clip_id.is_some());
     }
 
     #[test]
@@ -907,7 +1170,9 @@ mod tests {
         track.finish_recording(transport, 1_920, None);
 
         assert!(track.active_take.is_none());
-        assert_eq!(track.regions, vec![Region::new(960, 960)]);
+        assert_eq!(track.regions.len(), 1);
+        assert_eq!(region_span(track.regions[0]), (960, 960));
+        assert!(track.regions[0].recording_clip_id.is_some());
     }
 
     #[test]
@@ -920,8 +1185,10 @@ mod tests {
         track.begin_recording(110);
 
         assert_eq!(
-            track.preview_region(transport, 1_120, None),
-            Some(Region::new(0, 960))
+            track
+                .preview_region(transport, 1_120, None)
+                .map(region_span),
+            Some((0, 960))
         );
     }
 
@@ -1052,10 +1319,9 @@ mod tests {
 
         track.commit_take(transport, take.release(1_000), None);
 
-        assert_eq!(
-            track.regions,
-            vec![Region::new(1_920, 960), Region::new(0, 960)]
-        );
+        assert_eq!(track.regions.len(), 2);
+        assert_eq!(region_span(track.regions[0]), (1_920, 960));
+        assert_eq!(region_span(track.regions[1]), (0, 960));
         assert!(
             track
                 .midi_notes
@@ -1095,7 +1361,10 @@ mod tests {
             Some(record_context),
         );
 
-        assert_eq!(track.regions.last().copied(), Some(Region::new(1_680, 240)));
+        assert_eq!(
+            track.regions.last().copied().map(region_span),
+            Some((1_680, 240))
+        );
     }
 
     #[test]
@@ -1118,13 +1387,52 @@ mod tests {
 
         track.commit_take(transport, take.release(2_160), Some(record_context));
 
-        assert_eq!(track.regions.last().copied(), Some(Region::new(960, 960)));
+        assert_eq!(
+            track.regions.last().copied().map(region_span),
+            Some((960, 960))
+        );
         assert_eq!(
             track.midi_notes,
             vec![
-                MidiNote::new(64, 1_700, 120, 100),
-                MidiNote::new(67, 1_080, 120, 100),
+                MidiNote::new_recorded(
+                    64,
+                    1_700,
+                    120,
+                    100,
+                    track.regions[0].recording_clip_id.unwrap()
+                ),
+                MidiNote::new_recorded(
+                    67,
+                    1_080,
+                    120,
+                    100,
+                    track.regions[0].recording_clip_id.unwrap()
+                ),
             ]
         );
+    }
+
+    #[test]
+    fn recording_clip_muting_and_delete_follow_clip_selection() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+
+        track.commit_take(transport, RecordingTake::new(0).release(480), None);
+        track.commit_take(transport, RecordingTake::new(960).release(1_440), None);
+
+        assert_eq!(track.recording_clips.len(), 2);
+        let first_id = track.recording_clips[0].id;
+        let second_id = track.recording_clips[1].id;
+        assert_eq!(track.selected_recording_clip_id, Some(second_id));
+
+        assert!(track.select_previous_recording_clip());
+        assert_eq!(track.selected_recording_clip_id, Some(first_id));
+        assert!(track.toggle_selected_recording_clip_mute());
+        assert!(track.recording_clip_is_muted(Some(first_id)));
+
+        assert!(track.delete_selected_recording_clip());
+        assert_eq!(track.recording_clips.len(), 1);
+        assert_eq!(track.recording_clips[0].id, second_id);
+        assert_eq!(track.selected_recording_clip_id, Some(second_id));
     }
 }

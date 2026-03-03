@@ -57,6 +57,8 @@ Latest renderer-owned captures from the demo state:
 - active-track highlighting
 - a moving playhead
 - per-track loop preview
+- per-track recording clip ownership with `Overlay` and `Stacked` timeline views
+- per-recording clip selection, mute, and delete on the timeline
 - per-track MIDI note selection with focus/anchor highlighting in the timeline columns
 - action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
 - an in-canvas transport strip on the timeline page
@@ -187,6 +189,9 @@ Pointer/touch notes:
 
 - tabs are clickable/tappable
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
+- each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
+- in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
+- when a recording clip is selected, its header-level `MUT` / `DEL` controls are clickable/tappable
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
 - the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
@@ -198,6 +203,9 @@ Recording flow notes:
 - armed tracks are the first recording targets; if none are armed, recording uses the active track
 - stopping playback while recording commits the active take instead of discarding it
 - `RecWrap Extend` is the default and keeps a looped recording going past the loop boundary by rebasing the clip to loop start and extending its length instead of clamping the take at the loop end
+- each committed record pass now becomes its own recording clip with stable ownership over its committed region and notes
+- the timeline can show committed recording clips overlaid or stacked side by side per track while preserving record order
+- selected recording clips can be muted or deleted without clearing unrelated track content
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 - MIDI note content now comes from live input note-on/off events on each track's routed MIDI input, not a generated placeholder pattern
 
@@ -222,6 +230,7 @@ MIDI learn notes:
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
 - note-edit targets are available in the mappings page for playhead selection, span focus/resize, deselect, and pitch/time nudging
+- recording-stack targets are available in the mappings page for recording view toggle, clip-step selection, selected clip mute, and selected clip delete
 
 Ableton Link notes:
 

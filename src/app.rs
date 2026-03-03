@@ -16,7 +16,7 @@ use crate::midi_io::{
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
-use crate::project::{Project, Track};
+use crate::project::{Project, RecordingView, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
 use crate::ui::{LayoutMode, TimelineFlow};
@@ -128,6 +128,14 @@ struct MappingBadge {
     text: String,
     source_kind: MappingSourceKind,
     built_in: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RecordingLaneLayout {
+    clip_id: u64,
+    rect: Rect,
+    selected: bool,
+    muted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1004,28 +1012,25 @@ impl App {
             Color::RGB(244, 244, 236),
         )?;
 
+        if !detail {
+            self.draw_recording_view_controls(canvas, label_rect, track)?;
+        }
+
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
         let selected_note_indices = track.selected_note_indices();
         let focused_note_index = track.focused_note_index();
         let anchor_note_index = track.anchor_note_index();
-        for region in
-            crate::ui::region_rects(content_rect, &track.regions, note_range, self.timeline_flow)
-        {
-            canvas.set_draw_color(if region.clipped {
-                Color::RGB(108, 88, 56)
-            } else if track.state.muted {
-                Color::RGB(42, 46, 56)
-            } else {
-                Color::RGB(44, 54, 76)
-            });
-            canvas.fill_rect(region.rect)?;
-            canvas.set_draw_color(if is_active {
-                Color::RGB(212, 196, 122)
-            } else {
-                Color::RGB(96, 106, 126)
-            });
-            canvas.draw_rect(region.rect)?;
-        }
+        self.draw_track_recording_content(
+            canvas,
+            content_rect,
+            track,
+            note_range,
+            is_active,
+            detail,
+            selected_note_indices.as_slice(),
+            focused_note_index,
+            anchor_note_index,
+        )?;
 
         if let Some(preview_region) = track.preview_region(
             self.project.transport,
@@ -1065,20 +1070,280 @@ impl App {
             canvas.draw_rect(note.rect)?;
         }
 
-        for note in crate::ui::note_rects(
+        let playhead = crate::ui::playhead_rect_in_range(
             content_rect,
-            &track.midi_notes,
-            note_range,
             self.timeline_flow,
-        ) {
-            let selected = selected_note_indices.contains(&note.source_index);
-            let focused = focused_note_index == Some(note.source_index);
-            let anchored = anchor_note_index == Some(note.source_index);
+            view_start_ticks,
+            range_ticks.max(1),
+            playhead_ticks,
+        )?;
+        canvas.set_draw_color(if self.project.transport.playing {
+            Color::RGB(248, 240, 132)
+        } else {
+            Color::RGB(140, 150, 162)
+        });
+        canvas.fill_rect(playhead)?;
+
+        Ok(())
+    }
+
+    fn draw_recording_view_controls<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        label_rect: Rect,
+        track: &Track,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let view_rect = self.recording_view_chip_rect(label_rect);
+        canvas.set_draw_color(match track.recording_view {
+            RecordingView::Overlay => Color::RGB(50, 84, 126),
+            RecordingView::Stacked => Color::RGB(124, 98, 48),
+        });
+        canvas.fill_rect(view_rect)?;
+        canvas.set_draw_color(Color::RGB(232, 228, 208));
+        canvas.draw_rect(view_rect)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            match track.recording_view {
+                RecordingView::Overlay => "OVR",
+                RecordingView::Stacked => "STK",
+            },
+            Rect::new(
+                view_rect.x + 3,
+                view_rect.y + 1,
+                view_rect.width().saturating_sub(6),
+                view_rect.height().saturating_sub(2),
+            ),
+            1,
+            Color::RGB(248, 244, 236),
+        )?;
+
+        if let Some(selected_clip) = track.selected_recording_clip() {
+            let (mute_rect, delete_rect) = self.recording_clip_control_rects(label_rect);
+            canvas.set_draw_color(if selected_clip.muted {
+                Color::RGB(120, 118, 112)
+            } else {
+                Color::RGB(84, 122, 92)
+            });
+            canvas.fill_rect(mute_rect)?;
+            canvas.set_draw_color(Color::RGB(228, 232, 216));
+            canvas.draw_rect(mute_rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                if selected_clip.muted { "ON" } else { "MUT" },
+                Rect::new(
+                    mute_rect.x + 2,
+                    mute_rect.y + 1,
+                    mute_rect.width().saturating_sub(4),
+                    mute_rect.height().saturating_sub(2),
+                ),
+                1,
+                Color::RGB(246, 244, 236),
+            )?;
+
+            canvas.set_draw_color(Color::RGB(132, 74, 70));
+            canvas.fill_rect(delete_rect)?;
+            canvas.set_draw_color(Color::RGB(240, 220, 210));
+            canvas.draw_rect(delete_rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                "DEL",
+                Rect::new(
+                    delete_rect.x + 2,
+                    delete_rect.y + 1,
+                    delete_rect.width().saturating_sub(4),
+                    delete_rect.height().saturating_sub(2),
+                ),
+                1,
+                Color::RGB(250, 242, 236),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn draw_track_recording_content<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_rect: Rect,
+        track: &Track,
+        note_range: crate::timeline::LoopRegion,
+        is_active: bool,
+        detail: bool,
+        selected_note_indices: &[usize],
+        focused_note_index: Option<usize>,
+        anchor_note_index: Option<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if track.recording_view == RecordingView::Stacked && !track.recording_clips().is_empty() {
+            let unowned_regions: Vec<_> = track
+                .regions
+                .iter()
+                .copied()
+                .filter(|region| region.recording_clip_id.is_none())
+                .collect();
+            let unowned_notes = indexed_notes(track, None);
+            self.draw_region_entries(
+                canvas,
+                content_rect,
+                &unowned_regions,
+                note_range,
+                track,
+                is_active,
+                track.state.muted,
+            )?;
+            self.draw_note_entries(
+                canvas,
+                content_rect,
+                &unowned_notes,
+                note_range,
+                track,
+                detail,
+                track.state.muted,
+                selected_note_indices,
+                focused_note_index,
+                anchor_note_index,
+            )?;
+
+            for lane in self.recording_lane_layouts(content_rect, track) {
+                canvas.set_draw_color(if lane.selected {
+                    Color::RGB(46, 62, 94)
+                } else {
+                    Color::RGB(26, 34, 48)
+                });
+                canvas.fill_rect(lane.rect)?;
+                canvas.set_draw_color(if lane.selected {
+                    Color::RGB(248, 226, 134)
+                } else {
+                    Color::RGB(76, 92, 118)
+                });
+                canvas.draw_rect(lane.rect)?;
+
+                let lane_muted = track.state.muted || lane.muted;
+                let lane_regions: Vec<_> = track
+                    .regions
+                    .iter()
+                    .copied()
+                    .filter(|region| region.recording_clip_id == Some(lane.clip_id))
+                    .collect();
+                let lane_notes = indexed_notes(track, Some(lane.clip_id));
+                self.draw_region_entries(
+                    canvas,
+                    lane.rect,
+                    &lane_regions,
+                    note_range,
+                    track,
+                    is_active,
+                    lane_muted,
+                )?;
+                self.draw_note_entries(
+                    canvas,
+                    lane.rect,
+                    &lane_notes,
+                    note_range,
+                    track,
+                    detail,
+                    lane_muted,
+                    selected_note_indices,
+                    focused_note_index,
+                    anchor_note_index,
+                )?;
+            }
+
+            return Ok(());
+        }
+
+        self.draw_region_entries(
+            canvas,
+            content_rect,
+            &track.regions,
+            note_range,
+            track,
+            is_active,
+            track.state.muted,
+        )?;
+        self.draw_note_entries(
+            canvas,
+            content_rect,
+            &indexed_all_notes(track),
+            note_range,
+            track,
+            detail,
+            track.state.muted,
+            selected_note_indices,
+            focused_note_index,
+            anchor_note_index,
+        )?;
+        Ok(())
+    }
+
+    fn draw_region_entries<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        lane_rect: Rect,
+        regions: &[crate::timeline::Region],
+        note_range: crate::timeline::LoopRegion,
+        track: &Track,
+        is_active: bool,
+        muted_override: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for source_region in regions.iter().copied() {
+            let region_muted =
+                muted_override || track.recording_clip_is_muted(source_region.recording_clip_id);
+            let Some(region) = crate::ui::region_rects(
+                lane_rect,
+                &[source_region],
+                note_range,
+                self.timeline_flow,
+            )
+            .into_iter()
+            .next() else {
+                continue;
+            };
+            canvas.set_draw_color(if region.clipped {
+                Color::RGB(108, 88, 56)
+            } else if region_muted {
+                Color::RGB(42, 46, 56)
+            } else {
+                Color::RGB(44, 54, 76)
+            });
+            canvas.fill_rect(region.rect)?;
+            canvas.set_draw_color(if is_active {
+                Color::RGB(212, 196, 122)
+            } else {
+                Color::RGB(96, 106, 126)
+            });
+            canvas.draw_rect(region.rect)?;
+        }
+
+        Ok(())
+    }
+
+    fn draw_note_entries<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        lane_rect: Rect,
+        note_entries: &[(usize, crate::project::MidiNote)],
+        note_range: crate::timeline::LoopRegion,
+        track: &Track,
+        detail: bool,
+        muted_override: bool,
+        selected_note_indices: &[usize],
+        focused_note_index: Option<usize>,
+        anchor_note_index: Option<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let notes: Vec<_> = note_entries.iter().map(|(_, note)| *note).collect();
+        for note in crate::ui::note_rects(lane_rect, &notes, note_range, self.timeline_flow) {
+            let absolute_index = note_entries[note.source_index].0;
+            let note_muted = muted_override
+                || track
+                    .recording_clip_is_muted(note_entries[note.source_index].1.recording_clip_id);
+            let selected = selected_note_indices.contains(&absolute_index);
+            let focused = focused_note_index == Some(absolute_index);
+            let anchored = anchor_note_index == Some(absolute_index);
             canvas.set_draw_color(if selected && detail {
                 Color::RGB(112, 174, 228)
             } else if selected {
                 Color::RGB(88, 136, 194)
-            } else if track.state.muted {
+            } else if note_muted {
                 Color::RGB(92, 100, 112)
             } else if note.clipped {
                 Color::RGB(244, 204, 132)
@@ -1092,7 +1357,7 @@ impl App {
                 Color::RGB(180, 226, 176)
             } else if selected {
                 Color::RGB(224, 238, 248)
-            } else if track.state.muted {
+            } else if note_muted {
                 Color::RGB(128, 134, 144)
             } else {
                 Color::RGB(245, 247, 250)
@@ -1110,21 +1375,73 @@ impl App {
             }
         }
 
-        let playhead = crate::ui::playhead_rect_in_range(
-            content_rect,
-            self.timeline_flow,
-            view_start_ticks,
-            range_ticks.max(1),
-            playhead_ticks,
-        )?;
-        canvas.set_draw_color(if self.project.transport.playing {
-            Color::RGB(248, 240, 132)
-        } else {
-            Color::RGB(140, 150, 162)
-        });
-        canvas.fill_rect(playhead)?;
-
         Ok(())
+    }
+
+    fn recording_lane_layouts(
+        &self,
+        content_rect: Rect,
+        track: &Track,
+    ) -> Vec<RecordingLaneLayout> {
+        let lane_rects = match self.timeline_flow {
+            TimelineFlow::DownwardColumns => {
+                crate::ui::equal_columns(content_rect, track.recording_clips().len(), 4)
+            }
+            TimelineFlow::AcrossRows => {
+                crate::ui::stacked_rows(content_rect, track.recording_clips().len(), 4)
+            }
+        };
+
+        track
+            .recording_clips()
+            .iter()
+            .zip(lane_rects)
+            .map(|(clip, rect)| RecordingLaneLayout {
+                clip_id: clip.id,
+                rect,
+                selected: track.selected_recording_clip_id == Some(clip.id),
+                muted: clip.muted,
+            })
+            .collect()
+    }
+
+    fn recording_lane_hit_clip(
+        &self,
+        content_rect: Rect,
+        track: &Track,
+        x: i32,
+        y: i32,
+    ) -> Option<u64> {
+        self.recording_lane_layouts(content_rect, track)
+            .into_iter()
+            .find_map(|lane| rect_contains(lane.rect, x, y).then_some(lane.clip_id))
+    }
+
+    fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
+        Rect::new(
+            label_rect.x + label_rect.width() as i32 - 30,
+            label_rect.y + 3,
+            26,
+            8,
+        )
+    }
+
+    fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
+        let bottom_y = label_rect.y + label_rect.height() as i32 - 10;
+        (
+            Rect::new(
+                label_rect.x + label_rect.width() as i32 - 48,
+                bottom_y,
+                20,
+                8,
+            ),
+            Rect::new(
+                label_rect.x + label_rect.width() as i32 - 24,
+                bottom_y,
+                20,
+                8,
+            ),
+        )
     }
 
     fn draw_transport_strip<T: RenderTarget>(
@@ -3273,6 +3590,42 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::ToggleCurrentTrackRecordingView => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.toggle_recording_view();
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectRecordingClip(clip_id) => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_recording_clip(clip_id);
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectPreviousRecordingClip => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_previous_recording_clip();
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectNextRecordingClip => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.select_next_recording_clip();
+                }
+                AppControl::Continue
+            }
+            AppAction::ToggleSelectedRecordingClipMute => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.toggle_selected_recording_clip_mute();
+                }
+                AppControl::Continue
+            }
+            AppAction::DeleteSelectedRecordingClip => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.delete_selected_recording_clip();
+                }
+                AppControl::Continue
+            }
             AppAction::SelectNextTrack => {
                 self.project.select_next_track();
                 AppControl::Continue
@@ -4532,6 +4885,7 @@ impl App {
 
         let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
         for (index, (full_bounds, detail_bounds)) in columns.into_iter().enumerate() {
+            let full_label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
             let status_rect = crate::ui::track_status_rect(
                 crate::ui::union_rect(full_bounds, detail_bounds),
                 self.timeline_flow,
@@ -4544,6 +4898,52 @@ impl App {
                 self.project.active_track_index = index;
                 let target = track_indicator_target(indicator.kind, Some(indicator.rect))?;
                 return Some(self.apply_action_with_source(target.action, source));
+            }
+
+            if rect_contains(self.recording_view_chip_rect(full_label_rect), x, y) {
+                self.project.active_track_index = index;
+                return Some(
+                    self.apply_action_with_source(
+                        AppAction::ToggleCurrentTrackRecordingView,
+                        source,
+                    ),
+                );
+            }
+
+            if self.project.tracks[index]
+                .selected_recording_clip()
+                .is_some()
+            {
+                let (mute_rect, delete_rect) = self.recording_clip_control_rects(full_label_rect);
+                if rect_contains(mute_rect, x, y) {
+                    self.project.active_track_index = index;
+                    return Some(self.apply_action_with_source(
+                        AppAction::ToggleSelectedRecordingClipMute,
+                        source,
+                    ));
+                }
+                if rect_contains(delete_rect, x, y) {
+                    self.project.active_track_index = index;
+                    return Some(
+                        self.apply_action_with_source(
+                            AppAction::DeleteSelectedRecordingClip,
+                            source,
+                        ),
+                    );
+                }
+            }
+
+            for bounds in [full_bounds, detail_bounds] {
+                let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
+                if let Some(clip_id) =
+                    self.recording_lane_hit_clip(content_rect, &self.project.tracks[index], x, y)
+                {
+                    self.project.active_track_index = index;
+                    return Some(self.apply_action_with_source(
+                        AppAction::SelectRecordingClip(clip_id),
+                        source,
+                    ));
+                }
             }
         }
 
@@ -4861,8 +5261,10 @@ impl App {
         }
 
         let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
-        for (full_bounds, detail_bounds) in columns {
-            targets.extend(self.track_discoverability_targets(full_bounds, detail_bounds));
+        for ((full_bounds, detail_bounds), track) in
+            columns.into_iter().zip(self.project.tracks.iter())
+        {
+            targets.extend(self.track_discoverability_targets(full_bounds, detail_bounds, track));
         }
 
         targets
@@ -4872,6 +5274,7 @@ impl App {
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
+        track: &Track,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         let mut targets = Vec::new();
         let status_rect = crate::ui::track_status_rect(
@@ -4879,6 +5282,36 @@ impl App {
             self.timeline_flow,
         );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
+        targets.push((
+            self.recording_view_chip_rect(label_rect),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackRecordingView,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+        if track.selected_recording_clip().is_some() {
+            let (mute_rect, delete_rect) = self.recording_clip_control_rects(label_rect);
+            targets.push((
+                mute_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleSelectedRecordingClipMute,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                delete_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::DeleteSelectedRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
         for indicator in crate::ui::track_indicators(status_rect) {
             if let Some(target) = track_indicator_target(indicator.kind, Some(indicator.rect)) {
                 targets.push((
@@ -5219,6 +5652,9 @@ fn scheduled_note_events(
     let mut events = Vec::new();
     for (segment_start, segment_end) in segments {
         for note in &track.midi_notes {
+            if track.recording_clip_is_muted(note.recording_clip_id) {
+                continue;
+            }
             if note.start_ticks >= segment_start && note.start_ticks < segment_end {
                 events.push((note.start_ticks, true, note.pitch, note.velocity));
             }
@@ -5259,6 +5695,26 @@ fn ranged_segments(
     }
 
     segments
+}
+
+fn indexed_notes(
+    track: &Track,
+    recording_clip_id: Option<u64>,
+) -> Vec<(usize, crate::project::MidiNote)> {
+    track
+        .midi_notes
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, note)| match recording_clip_id {
+            Some(clip_id) => note.recording_clip_id == Some(clip_id),
+            None => note.recording_clip_id.is_none(),
+        })
+        .collect()
+}
+
+fn indexed_all_notes(track: &Track) -> Vec<(usize, crate::project::MidiNote)> {
+    track.midi_notes.iter().copied().enumerate().collect()
 }
 
 fn cycle_optional_port(
@@ -5667,10 +6123,16 @@ mod tests {
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
+    use crate::project::RecordingView;
     use crate::routing::MidiChannelFilter;
+    use crate::timeline::RecordingTake;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
     use sdl3::rect::Rect;
+
+    fn region_span(region: crate::timeline::Region) -> (u64, u64) {
+        (region.start_ticks, region.length_ticks)
+    }
 
     #[test]
     fn apply_action_sets_active_track_and_current_track_flags() {
@@ -5685,6 +6147,46 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.loop_enabled);
         assert!(app.project.tracks[2].state.armed);
+    }
+
+    #[test]
+    fn recording_clip_actions_update_active_track_clip_state() {
+        let mut app = App::new();
+        let transport = app.project.transport;
+        {
+            let track = app.project.active_track_mut().unwrap();
+            track.clear_content();
+            track.commit_take(transport, RecordingTake::new(0).release(480), None);
+            track.commit_take(transport, RecordingTake::new(960).release(1_440), None);
+        }
+
+        app.apply_action(AppAction::ToggleCurrentTrackRecordingView);
+        assert_eq!(
+            app.project.active_track().unwrap().recording_view,
+            RecordingView::Stacked
+        );
+
+        app.apply_action(AppAction::SelectPreviousRecordingClip);
+        let selected_before_delete = app
+            .project
+            .active_track()
+            .unwrap()
+            .selected_recording_clip_id
+            .expect("selected clip");
+        app.apply_action(AppAction::ToggleSelectedRecordingClipMute);
+        assert!(
+            app.project
+                .active_track()
+                .unwrap()
+                .selected_recording_clip()
+                .unwrap()
+                .muted
+        );
+
+        app.apply_action(AppAction::DeleteSelectedRecordingClip);
+        let active = app.project.active_track().unwrap();
+        assert_eq!(active.recording_clips.len(), 1);
+        assert_ne!(active.recording_clips[0].id, selected_before_delete);
     }
 
     #[test]
@@ -6791,10 +7293,9 @@ mod tests {
         app.playhead_ticks = 1_200;
         app.apply_action(AppAction::ToggleRecording);
 
-        assert_eq!(
-            app.project.active_track().unwrap().regions,
-            vec![crate::timeline::Region::new(1_680, 240)]
-        );
+        let regions = &app.project.active_track().unwrap().regions;
+        assert_eq!(regions.len(), 1);
+        assert_eq!(region_span(regions[0]), (1_680, 240));
     }
 
     #[test]
@@ -6815,10 +7316,9 @@ mod tests {
         app.playhead_ticks = 1_200;
         app.apply_action(AppAction::ToggleRecording);
 
-        assert_eq!(
-            app.project.active_track().unwrap().regions,
-            vec![crate::timeline::Region::new(960, 960)]
-        );
+        let regions = &app.project.active_track().unwrap().regions;
+        assert_eq!(regions.len(), 1);
+        assert_eq!(region_span(regions[0]), (960, 960));
     }
 
     #[test]
@@ -6845,7 +7345,7 @@ mod tests {
             app.record_context(active_track),
         );
 
-        assert_eq!(preview, Some(crate::timeline::Region::new(960, 960)));
+        assert_eq!(preview.map(region_span), Some((960, 960)));
     }
 
     #[test]
