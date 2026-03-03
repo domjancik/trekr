@@ -7,7 +7,7 @@ use crate::mapping::{
     MappingEntry, MappingSourceKind, cycle_mapping_scope_value, cycle_mapping_source_device_label,
     cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
     default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
-    mapping_entry_targets_action, mapping_entry_to_actions,
+    mapping_entry_key_actions, mapping_entry_targets_action, mapping_entry_to_actions,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -4100,14 +4100,29 @@ impl App {
             MidiInputMessage::NoteOff { .. } => return false,
         }
 
-        let target_index = self
-            .find_unique_direct_mapping_target_row(target.target_label, target.scope_label)
-            .filter(|index| self.mappings[*index].source_kind == MappingSourceKind::Midi);
-        let source_index = self.find_direct_mapping_source_row(
+        self.commit_direct_mapping_source(
             MappingSourceKind::Midi,
+            target,
             &event.port.name,
             &midi_learn_label(event),
         );
+        true
+    }
+
+    fn commit_direct_mapping_source(
+        &mut self,
+        source_kind: MappingSourceKind,
+        target: DirectMappingTarget,
+        source_device_label: &str,
+        source_label: &str,
+    ) {
+        let target_index = self.find_unique_direct_mapping_target_row(
+            source_kind,
+            target.target_label,
+            target.scope_label,
+        );
+        let source_index =
+            self.find_direct_mapping_source_row(source_kind, source_device_label, source_label);
 
         let index = if let Some(index) = source_index {
             if let Some(target_index) = target_index.filter(|target_index| *target_index != index) {
@@ -4120,9 +4135,9 @@ impl App {
             index
         } else {
             let entry = MappingEntry {
-                source_kind: MappingSourceKind::Midi,
-                source_device_label: event.port.name.clone(),
-                source_label: midi_learn_label(event),
+                source_kind,
+                source_device_label: source_device_label.to_string(),
+                source_label: source_label.to_string(),
                 target_label: target.target_label.to_string(),
                 scope_label: target.scope_label.to_string(),
                 enabled: true,
@@ -4135,9 +4150,9 @@ impl App {
             entry.target_label == target.target_label && entry.scope_label == target.scope_label
         });
         if let Some(entry) = self.mappings.get_mut(index) {
-            entry.source_kind = MappingSourceKind::Midi;
-            entry.source_device_label = event.port.name.clone();
-            entry.source_label = midi_learn_label(event);
+            entry.source_kind = source_kind;
+            entry.source_device_label = source_device_label.to_string();
+            entry.source_label = source_label.to_string();
             entry.target_label = target.target_label.to_string();
             entry.scope_label = target.scope_label.to_string();
             entry.enabled = true;
@@ -4148,20 +4163,15 @@ impl App {
         self.direct_mapping_state.status_message = Some(if same_target {
             format!(
                 "Updated {} ({}) to {}.",
-                target.target_label,
-                target.scope_label,
-                midi_learn_label(event)
+                target.target_label, target.scope_label, source_label
             )
         } else {
             format!(
                 "Mapped {} ({}) to {}.",
-                target.target_label,
-                target.scope_label,
-                midi_learn_label(event)
+                target.target_label, target.scope_label, source_label
             )
         });
         self.sync_midi_inputs();
-        true
     }
 
     fn capture_mapping_midi_learn(&mut self, event: &MidiInputEvent) -> bool {
@@ -4190,6 +4200,18 @@ impl App {
             .iter()
             .filter(|entry| midi_mapping_matches_event(entry, event))
             .flat_map(|entry| mapping_entry_to_actions(entry, event))
+            .collect()
+    }
+
+    fn resolve_key_mapping_actions(&self, source_label: &str) -> Vec<AppAction> {
+        self.mappings
+            .iter()
+            .filter(|entry| {
+                entry.enabled
+                    && entry.source_kind == MappingSourceKind::Key
+                    && entry.source_label == source_label
+            })
+            .flat_map(mapping_entry_key_actions)
             .collect()
     }
 
@@ -4296,6 +4318,31 @@ impl App {
         {
             self.cancel_direct_mapping("Canceled direct mapping.");
             return Some(AppControl::Continue);
+        }
+
+        if let Some(source_label) = direct_mapping_key_label(event) {
+            if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
+                if let DirectMappingMode::AwaitingInput(target) = self.direct_mapping_state.mode {
+                    self.commit_direct_mapping_source(
+                        MappingSourceKind::Key,
+                        target,
+                        &default_mapping_source_device(),
+                        &source_label,
+                    );
+                }
+                return Some(AppControl::Continue);
+            }
+
+            let mapping_actions = self.resolve_key_mapping_actions(&source_label);
+            if !mapping_actions.is_empty() {
+                for action in mapping_actions {
+                    let control = self.apply_action_with_source(action, ActionSource::Keyboard);
+                    if control == AppControl::Quit {
+                        return Some(control);
+                    }
+                }
+                return Some(AppControl::Continue);
+            }
         }
 
         self.keyboard_bindings.resolve(event).map(|action_event| {
@@ -4412,6 +4459,7 @@ impl App {
 
     fn find_unique_direct_mapping_target_row(
         &self,
+        source_kind: MappingSourceKind,
         target_label: &str,
         scope_label: &str,
     ) -> Option<usize> {
@@ -4422,7 +4470,7 @@ impl App {
             .filter(|(_, entry)| {
                 entry.target_label == target_label
                     && entry.scope_label == scope_label
-                    && entry.source_kind == MappingSourceKind::Midi
+                    && entry.source_kind == source_kind
             })
             .map(|(index, _)| index);
         let first = matches.next()?;
@@ -5275,6 +5323,119 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::ToggleCurrentTrackPassthrough => Some("Passthrough"),
         AppAction::ToggleLinkEnabled => Some("Link Enable"),
         AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
+        _ => None,
+    }
+}
+
+fn direct_mapping_key_label(event: &sdl3::event::Event) -> Option<String> {
+    let sdl3::event::Event::KeyDown {
+        keycode: Some(keycode),
+        keymod,
+        repeat: false,
+        ..
+    } = event
+    else {
+        return None;
+    };
+
+    if matches!(
+        keycode,
+        sdl3::keyboard::Keycode::LShift
+            | sdl3::keyboard::Keycode::RShift
+            | sdl3::keyboard::Keycode::LCtrl
+            | sdl3::keyboard::Keycode::RCtrl
+            | sdl3::keyboard::Keycode::LAlt
+            | sdl3::keyboard::Keycode::RAlt
+            | sdl3::keyboard::Keycode::LGui
+            | sdl3::keyboard::Keycode::RGui
+            | sdl3::keyboard::Keycode::Mode
+            | sdl3::keyboard::Keycode::Escape
+            | sdl3::keyboard::Keycode::F8
+    ) {
+        return None;
+    }
+
+    let key_label = keycode_mapping_label(*keycode)?;
+    Some(with_modifier_prefixes(key_label, *keymod))
+}
+
+fn with_modifier_prefixes(key_label: &str, keymod: sdl3::keyboard::Mod) -> String {
+    let mut label = String::new();
+    if keymod.intersects(sdl3::keyboard::Mod::LCTRLMOD | sdl3::keyboard::Mod::RCTRLMOD) {
+        label.push_str("Ctrl+");
+    }
+    if keymod.intersects(sdl3::keyboard::Mod::LALTMOD | sdl3::keyboard::Mod::RALTMOD) {
+        label.push_str("Alt+");
+    }
+    if keymod.intersects(sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD) {
+        label.push_str("Shift+");
+    }
+    label.push_str(key_label);
+    label
+}
+
+fn keycode_mapping_label(keycode: sdl3::keyboard::Keycode) -> Option<&'static str> {
+    match keycode {
+        sdl3::keyboard::Keycode::Space => Some("Space"),
+        sdl3::keyboard::Keycode::Tab => Some("Tab"),
+        sdl3::keyboard::Keycode::Return => Some("Enter"),
+        sdl3::keyboard::Keycode::Delete => Some("Delete"),
+        sdl3::keyboard::Keycode::Home => Some("Home"),
+        sdl3::keyboard::Keycode::Left => Some("Left"),
+        sdl3::keyboard::Keycode::Right => Some("Right"),
+        sdl3::keyboard::Keycode::Up => Some("Up"),
+        sdl3::keyboard::Keycode::Down => Some("Down"),
+        sdl3::keyboard::Keycode::LeftBracket => Some("["),
+        sdl3::keyboard::Keycode::RightBracket => Some("]"),
+        sdl3::keyboard::Keycode::Comma => Some(","),
+        sdl3::keyboard::Keycode::Period => Some("."),
+        sdl3::keyboard::Keycode::Minus => Some("-"),
+        sdl3::keyboard::Keycode::Equals => Some("="),
+        sdl3::keyboard::Keycode::Slash => Some("/"),
+        sdl3::keyboard::Keycode::Backslash => Some("\\"),
+        sdl3::keyboard::Keycode::F1 => Some("F1"),
+        sdl3::keyboard::Keycode::F2 => Some("F2"),
+        sdl3::keyboard::Keycode::F3 => Some("F3"),
+        sdl3::keyboard::Keycode::F4 => Some("F4"),
+        sdl3::keyboard::Keycode::F5 => Some("F5"),
+        sdl3::keyboard::Keycode::F6 => Some("F6"),
+        sdl3::keyboard::Keycode::F7 => Some("F7"),
+        sdl3::keyboard::Keycode::_0 => Some("0"),
+        sdl3::keyboard::Keycode::_1 => Some("1"),
+        sdl3::keyboard::Keycode::_2 => Some("2"),
+        sdl3::keyboard::Keycode::_3 => Some("3"),
+        sdl3::keyboard::Keycode::_4 => Some("4"),
+        sdl3::keyboard::Keycode::_5 => Some("5"),
+        sdl3::keyboard::Keycode::_6 => Some("6"),
+        sdl3::keyboard::Keycode::_7 => Some("7"),
+        sdl3::keyboard::Keycode::_8 => Some("8"),
+        sdl3::keyboard::Keycode::_9 => Some("9"),
+        sdl3::keyboard::Keycode::A => Some("A"),
+        sdl3::keyboard::Keycode::B => Some("B"),
+        sdl3::keyboard::Keycode::C => Some("C"),
+        sdl3::keyboard::Keycode::D => Some("D"),
+        sdl3::keyboard::Keycode::E => Some("E"),
+        sdl3::keyboard::Keycode::F => Some("F"),
+        sdl3::keyboard::Keycode::G => Some("G"),
+        sdl3::keyboard::Keycode::H => Some("H"),
+        sdl3::keyboard::Keycode::I => Some("I"),
+        sdl3::keyboard::Keycode::J => Some("J"),
+        sdl3::keyboard::Keycode::K => Some("K"),
+        sdl3::keyboard::Keycode::L => Some("L"),
+        sdl3::keyboard::Keycode::M => Some("M"),
+        sdl3::keyboard::Keycode::N => Some("N"),
+        sdl3::keyboard::Keycode::O => Some("O"),
+        sdl3::keyboard::Keycode::P => Some("P"),
+        sdl3::keyboard::Keycode::Q => Some("Q"),
+        sdl3::keyboard::Keycode::R => Some("R"),
+        sdl3::keyboard::Keycode::S => Some("S"),
+        sdl3::keyboard::Keycode::T => Some("T"),
+        sdl3::keyboard::Keycode::U => Some("U"),
+        sdl3::keyboard::Keycode::V => Some("V"),
+        sdl3::keyboard::Keycode::W => Some("W"),
+        sdl3::keyboard::Keycode::X => Some("X"),
+        sdl3::keyboard::Keycode::Y => Some("Y"),
+        sdl3::keyboard::Keycode::Z => Some("Z"),
         _ => None,
     }
 }
@@ -6260,6 +6421,121 @@ mod tests {
         });
 
         assert!(app.direct_mapping_footer_content().is_none());
+    }
+
+    #[test]
+    fn direct_mapping_keyboard_capture_supports_modifiers() {
+        let mut app = App::new();
+        app.mappings.clear();
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::R),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::LCTRLMOD | sdl3::keyboard::Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.mappings.len(), 1);
+        assert_eq!(app.mappings[0].source_kind, MappingSourceKind::Key);
+        assert_eq!(app.mappings[0].source_label, "Ctrl+Shift+R");
+        assert_eq!(app.mappings[0].target_label, "Play/Stop");
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_keyboard_path_reserves_escape_and_f8_for_cancel() {
+        let mut app = App::new();
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let escape = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::Escape),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+        assert_eq!(escape, Some(AppControl::Continue));
+        assert!(
+            app.mappings.is_empty()
+                || app
+                    .mappings
+                    .iter()
+                    .all(|entry| entry.target_label != "Play/Stop"
+                        || entry.source_kind != MappingSourceKind::Key
+                        || entry.source_label != "Escape")
+        );
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+        let f8 = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::F8),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+        assert_eq!(f8, Some(AppControl::Continue));
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn key_mappings_execute_before_built_in_keyboard_bindings() {
+        let mut app = App::new();
+        app.project.transport.playing = false;
+        app.project.transport.recording = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_device_label: default_mapping_source_device(),
+            source_label: "Space".to_string(),
+            target_label: "Record".to_string(),
+            scope_label: "Armed/Active".to_string(),
+            enabled: true,
+        }];
+
+        let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::Space),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert!(app.project.transport.recording);
+        assert!(app.project.transport.playing);
     }
 
     #[test]
