@@ -658,6 +658,10 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
     }
 }
 
+pub fn mapping_entry_key_actions(entry: &MappingEntry) -> Vec<AppAction> {
+    mapping_entry_possible_actions(entry)
+}
+
 fn is_mapping_press_event(event: &MidiInputEvent) -> bool {
     match event.message {
         MidiInputMessage::NoteOn { .. } => true,

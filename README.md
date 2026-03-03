@@ -178,6 +178,7 @@ Mapping discoverability notes:
 - the footer falls back to the last performed action when nothing discoverable is hovered
 - `F7` enables a separate discoverability overlay with compact inline badges
 - `F8` enters a direct mapping mode that highlights supported controls and captures the next MIDI note or CC for the selected target
+- direct mapping now also accepts the next keyboard keypress, including `Ctrl`, `Alt`, and `Shift` modifier combinations
 - discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
 - disabled mappings are hidden from the footer and discoverability overlay
 - track-column discoverability is active-track scoped in V1, even when hovering non-active columns
@@ -212,6 +213,8 @@ MIDI learn notes:
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
 - in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row and returns to the mappings page
+- direct mapping also accepts keyboard capture for the selected control and stores normalized labels such as `Shift+R` or `Ctrl+Alt+M`
+- `Escape` and `F8` stay reserved for cancel while direct mapping is armed
 - learned MIDI mappings store the device name of the input that triggered learn
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields

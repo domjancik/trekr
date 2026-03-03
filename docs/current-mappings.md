@@ -70,8 +70,10 @@ Notes:
 - the mappings page can now add/remove rows in write mode
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
-- direct UI mapping currently captures the next MIDI note or CC, then creates or replaces a mapping row for that selected control
+- direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
+- `Escape` and `F8` remain reserved to cancel direct mapping instead of being captured as mapping sources
 - MIDI mappings can now execute app actions from live MIDI input
+- key mappings can now execute app actions from live keyboard input before the built-in fallback bindings
 - MIDI mappings can be filtered to `Any MIDI` or a specific input device name
 - track-scoped mappings can now target absolute scopes like `Track 3` directly from the UI
 - note-edit mapping targets now include playhead select/add, deselect, previous/next, first/last focus, extend forward/backward/both, contract, and note pitch/time nudges
