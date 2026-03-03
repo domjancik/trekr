@@ -757,6 +757,104 @@ impl App {
             true,
             track,
         )?;
+        self.draw_track_status_strip(canvas, full_bounds, detail_bounds, track, is_active)?;
+
+        Ok(())
+    }
+
+    fn draw_track_status_strip<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track: &Track,
+        is_active: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
+        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
+        canvas.set_draw_color(Color::RGB(26, 34, 52));
+        canvas.fill_rect(status_rect)?;
+        canvas.set_draw_color(if is_active {
+            Color::RGB(98, 110, 136)
+        } else {
+            Color::RGB(68, 78, 98)
+        });
+        canvas.draw_rect(status_rect)?;
+
+        for indicator in crate::ui::track_indicators(status_rect) {
+            let (enabled, fill, border, label) = match indicator.kind {
+                crate::ui::TrackIndicatorKind::Armed => (
+                    track.state.armed,
+                    Color::RGB(188, 72, 72),
+                    Color::RGB(238, 138, 138),
+                    if indicator.rect.width() >= 24 {
+                        "ARM"
+                    } else {
+                        "A"
+                    },
+                ),
+                crate::ui::TrackIndicatorKind::Recording => (
+                    track.active_take.is_some(),
+                    Color::RGB(214, 64, 64),
+                    Color::RGB(248, 132, 132),
+                    if indicator.rect.width() >= 24 {
+                        "REC"
+                    } else {
+                        "R"
+                    },
+                ),
+                crate::ui::TrackIndicatorKind::Muted => (
+                    track.state.muted,
+                    Color::RGB(114, 120, 132),
+                    Color::RGB(180, 186, 198),
+                    if indicator.rect.width() >= 24 {
+                        "MUTE"
+                    } else {
+                        "M"
+                    },
+                ),
+                crate::ui::TrackIndicatorKind::Solo => (
+                    track.state.soloed,
+                    Color::RGB(82, 162, 92),
+                    Color::RGB(144, 224, 154),
+                    if indicator.rect.width() >= 24 {
+                        "SOLO"
+                    } else {
+                        "S"
+                    },
+                ),
+            };
+            canvas.set_draw_color(if enabled {
+                fill
+            } else if is_active {
+                Color::RGB(44, 52, 68)
+            } else {
+                Color::RGB(34, 42, 56)
+            });
+            canvas.fill_rect(indicator.rect)?;
+            canvas.set_draw_color(if enabled {
+                border
+            } else {
+                Color::RGB(76, 86, 104)
+            });
+            canvas.draw_rect(indicator.rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                label,
+                Rect::new(
+                    indicator.rect.x + 3,
+                    indicator.rect.y + 1,
+                    indicator.rect.width().saturating_sub(6),
+                    indicator.rect.height().saturating_sub(2),
+                ),
+                1,
+                if enabled {
+                    Color::RGB(248, 244, 236)
+                } else {
+                    Color::RGB(160, 170, 186)
+                },
+            )?;
+        }
 
         Ok(())
     }
@@ -788,11 +886,8 @@ impl App {
         });
         canvas.draw_rect(bounds)?;
 
-        let status_rect = crate::ui::track_status_rect(bounds, self.timeline_flow);
         let label_rect = crate::ui::track_label_rect(bounds, self.timeline_flow);
         let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
-        canvas.set_draw_color(Color::RGB(26, 34, 52));
-        canvas.fill_rect(status_rect)?;
         canvas.set_draw_color(accent);
         canvas.fill_rect(label_rect)?;
         if track.state.passthrough {
@@ -863,62 +958,14 @@ impl App {
             Color::RGB(244, 244, 236),
         )?;
 
-        for badge in crate::ui::header_badges(status_rect) {
-            let color = match badge.kind {
-                crate::ui::HeaderBadgeKind::TrackIndex => {
-                    if is_active {
-                        Color::RGB(250, 244, 200)
-                    } else {
-                        Color::RGB(208, 216, 228)
-                    }
-                }
-                crate::ui::HeaderBadgeKind::Armed => {
-                    if track.state.armed {
-                        Color::RGB(250, 110, 110)
-                    } else {
-                        Color::RGB(82, 74, 74)
-                    }
-                }
-                crate::ui::HeaderBadgeKind::Muted => {
-                    if track.state.muted {
-                        Color::RGB(136, 140, 150)
-                    } else {
-                        Color::RGB(72, 76, 86)
-                    }
-                }
-                crate::ui::HeaderBadgeKind::Solo => {
-                    if track.state.soloed {
-                        Color::RGB(124, 214, 132)
-                    } else {
-                        Color::RGB(70, 84, 70)
-                    }
-                }
-            };
-            canvas.set_draw_color(color);
-            canvas.fill_rect(badge.rect)?;
-        }
-
-        if track.active_take.is_some() {
-            let record_badge = Rect::new(
-                status_rect.x + status_rect.width() as i32 - 18,
-                status_rect.y + 4,
-                14,
-                status_rect.height().saturating_sub(8),
-            );
-            canvas.set_draw_color(Color::RGB(238, 88, 88));
-            canvas.fill_rect(record_badge)?;
-        }
-
         let label_left = label_rect.x + 4;
-        let label_right_margin = if detail { 26 } else { 4 };
         crate::ui::draw_text_fitted(
             canvas,
             if detail { "Loop" } else { &track.name },
             Rect::new(
                 label_left,
                 label_rect.y + 14,
-                (label_rect.width() as i32 - (label_left - label_rect.x) - label_right_margin)
-                    .max(0) as u32,
+                (label_rect.width() as i32 - (label_left - label_rect.x) - 4).max(0) as u32,
                 8,
             ),
             1,
@@ -4300,35 +4347,31 @@ impl App {
         detail_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         let mut targets = Vec::new();
-        let status_rect = crate::ui::track_status_rect(full_bounds, self.timeline_flow);
+        let status_rect = crate::ui::track_status_rect(
+            crate::ui::union_rect(full_bounds, detail_bounds),
+            self.timeline_flow,
+        );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
-        let overlay_slots = track_header_discoverability_slots(status_rect);
-        for badge in crate::ui::header_badges(status_rect) {
-            let action_and_slot = match badge.kind {
-                crate::ui::HeaderBadgeKind::TrackIndex => None,
-                crate::ui::HeaderBadgeKind::Armed => {
-                    Some((AppAction::ToggleCurrentTrackArm, Some(overlay_slots[0])))
-                }
-                crate::ui::HeaderBadgeKind::Muted => {
-                    Some((AppAction::ToggleCurrentTrackMute, Some(overlay_slots[1])))
-                }
-                crate::ui::HeaderBadgeKind::Solo => {
-                    Some((AppAction::ToggleCurrentTrackSolo, Some(overlay_slots[2])))
-                }
+        for indicator in crate::ui::track_indicators(status_rect) {
+            let action = match indicator.kind {
+                crate::ui::TrackIndicatorKind::Armed => Some(AppAction::ToggleCurrentTrackArm),
+                crate::ui::TrackIndicatorKind::Recording => None,
+                crate::ui::TrackIndicatorKind::Muted => Some(AppAction::ToggleCurrentTrackMute),
+                crate::ui::TrackIndicatorKind::Solo => Some(AppAction::ToggleCurrentTrackSolo),
             };
-            if let Some((action, overlay_slot)) = action_and_slot {
+            if let Some(action) = action {
                 targets.push((
                     Rect::new(
-                        badge.rect.x - 2,
-                        badge.rect.y - 2,
-                        badge.rect.width().saturating_add(4),
-                        badge.rect.height().saturating_add(4),
+                        indicator.rect.x - 2,
+                        indicator.rect.y - 2,
+                        indicator.rect.width().saturating_add(4),
+                        indicator.rect.height().saturating_add(4),
                     ),
                     DiscoverabilityTarget {
                         action,
                         display_scope: Some("Active Track"),
                         allowed_mapping_scopes: &["Active Track"],
-                        overlay_slot,
+                        overlay_slot: Some(indicator.rect),
                     },
                 ));
             }
@@ -4897,30 +4940,6 @@ fn compact_badge_text(text: &str, max_len: usize) -> String {
     } else {
         compact.chars().take(max_len).collect()
     }
-}
-
-fn track_header_discoverability_slots(status_rect: Rect) -> [Rect; 3] {
-    let slot_width = 8_u32;
-    let slot_height = status_rect.height().saturating_sub(4).max(6);
-    let gap = 2_i32;
-    let start_x =
-        status_rect.x + status_rect.width() as i32 - 4 - (slot_width as i32 * 3) - gap * 2;
-    let y = status_rect.y + ((status_rect.height() as i32 - slot_height as i32) / 2);
-    [
-        Rect::new(start_x, y, slot_width, slot_height),
-        Rect::new(
-            start_x + slot_width as i32 + gap,
-            y,
-            slot_width,
-            slot_height,
-        ),
-        Rect::new(
-            start_x + (slot_width as i32 + gap) * 2,
-            y,
-            slot_width,
-            slot_height,
-        ),
-    ]
 }
 
 fn port_name(port: Option<&MidiPortRef>) -> &str {
