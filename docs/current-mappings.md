@@ -81,5 +81,7 @@ Notes:
 - track-scoped mappings can now target absolute scopes like `Track 3` directly from the UI
 - note-edit mapping targets now include playhead select/add, deselect, previous/next, first/last focus, extend forward/backward/both, contract, and note pitch/time nudges
 - hold-capable MIDI note/CC mappings now support press/release behavior for `Record Hold` and `Select Notes At Playhead Add`
+- recording-stack mapping targets now include `Recording View`, `Select Next Recording Clip`, `Select Previous Recording Clip`, `Recording Clip Mute`, and `Delete Recording Clip`
+- recording-stack actions do not have default keyboard bindings in V1; they are exposed through timeline pointer controls and the mappings system
 - OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface

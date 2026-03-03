@@ -97,6 +97,11 @@ const TARGET_OPTIONS: &[&str] = &[
     "Track Mute",
     "Track Solo",
     "Passthrough",
+    "Recording View",
+    "Select Next Recording Clip",
+    "Select Previous Recording Clip",
+    "Recording Clip Mute",
+    "Delete Recording Clip",
     "Select Track",
     "Select Notes At Playhead",
     "Select Notes At Playhead Add",
@@ -252,6 +257,15 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Nudge Selected Notes Later"
         | "Nudge Selected Notes Up"
         | "Nudge Selected Notes Down" => {
+            let mut options = vec!["Active Track".to_string()];
+            options.extend(absolute_track_scopes(track_count));
+            options
+        }
+        "Recording View"
+        | "Select Next Recording Clip"
+        | "Select Previous Recording Clip"
+        | "Recording Clip Mute"
+        | "Delete Recording Clip" => {
             let mut options = vec!["Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
             options
@@ -481,6 +495,23 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
             absolute_track_index,
             AppAction::ToggleCurrentTrackPassthrough,
         ),
+        "Recording View" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleCurrentTrackRecordingView,
+        ),
+        "Select Next Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectNextRecordingClip)
+        }
+        "Select Previous Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectPreviousRecordingClip)
+        }
+        "Recording Clip Mute" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleSelectedRecordingClipMute,
+        ),
+        "Delete Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
+        }
         "Select Track" => absolute_track_index
             .map(AppAction::SelectTrack)
             .or_else(|| match entry.scope_label.as_str() {
@@ -603,6 +634,23 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
             absolute_track_index,
             AppAction::ToggleCurrentTrackPassthrough,
         ),
+        "Recording View" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleCurrentTrackRecordingView,
+        ),
+        "Select Next Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectNextRecordingClip)
+        }
+        "Select Previous Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::SelectPreviousRecordingClip)
+        }
+        "Recording Clip Mute" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::ToggleSelectedRecordingClipMute,
+        ),
+        "Delete Recording Clip" => {
+            track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
+        }
         "Select Track" => absolute_track_index
             .map(AppAction::SelectTrack)
             .or_else(|| match entry.scope_label.as_str() {

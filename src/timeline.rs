@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct Region {
     pub start_ticks: u64,
     pub length_ticks: u64,
+    #[serde(default)]
+    pub recording_clip_id: Option<u64>,
 }
 
 impl Region {
@@ -11,6 +13,15 @@ impl Region {
         Self {
             start_ticks,
             length_ticks,
+            recording_clip_id: None,
+        }
+    }
+
+    pub fn new_recorded(start_ticks: u64, length_ticks: u64, recording_clip_id: u64) -> Self {
+        Self {
+            start_ticks,
+            length_ticks,
+            recording_clip_id: Some(recording_clip_id),
         }
     }
 
