@@ -188,7 +188,7 @@ Pointer/touch notes:
 - tabs are clickable/tappable
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
-- the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects the mapping target instead of triggering it
+- the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
 - timeline note and region editing is still not implemented for pointer/touch input
@@ -212,7 +212,9 @@ MIDI learn notes:
 
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
-- in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row and returns to the mappings page
+- in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row
+- direct mapping entered from the mappings page returns to `Mappings` after commit; direct mapping entered in place keeps the current page so multiple controls can be mapped in sequence
+- while direct mapping is awaiting input, selecting a different supported control retargets the pending mapping instead of requiring cancel first
 - direct mapping also accepts keyboard capture for the selected control and stores normalized labels such as `Shift+R` or `Ctrl+Alt+M`
 - `Escape` and `F8` stay reserved for cancel while direct mapping is armed
 - learned MIDI mappings store the device name of the input that triggered learn

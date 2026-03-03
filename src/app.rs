@@ -74,6 +74,7 @@ struct StatusState {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct DirectMappingState {
     mode: DirectMappingMode,
+    origin: DirectMappingOrigin,
     status_message: Option<String>,
 }
 
@@ -83,6 +84,13 @@ enum DirectMappingMode {
     Inactive,
     Targeting,
     AwaitingInput(DirectMappingTarget),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum DirectMappingOrigin {
+    #[default]
+    InPlace,
+    MappingsPage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2943,6 +2951,12 @@ impl App {
     fn toggle_direct_mapping_mode(&mut self) {
         if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
             self.direct_mapping_state.mode = DirectMappingMode::Targeting;
+            self.direct_mapping_state.origin = if self.page_state.current_page == AppPage::Mappings
+            {
+                DirectMappingOrigin::MappingsPage
+            } else {
+                DirectMappingOrigin::InPlace
+            };
             self.direct_mapping_state.status_message = None;
             self.page_state.mapping_midi_learn_armed = false;
             if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
@@ -2956,6 +2970,7 @@ impl App {
 
     fn cancel_direct_mapping(&mut self, message: &str) {
         self.direct_mapping_state.mode = DirectMappingMode::Inactive;
+        self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
         self.direct_mapping_state.status_message = Some(message.to_string());
         self.sync_midi_inputs();
     }
@@ -4158,8 +4173,11 @@ impl App {
             entry.enabled = true;
         }
         self.page_state.selected_mapping_index = index;
-        self.page_state.current_page = AppPage::Mappings;
+        if self.direct_mapping_state.origin == DirectMappingOrigin::MappingsPage {
+            self.page_state.current_page = AppPage::Mappings;
+        }
         self.direct_mapping_state.mode = DirectMappingMode::Inactive;
+        self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
         self.direct_mapping_state.status_message = Some(if same_target {
             format!(
                 "Updated {} ({}) to {}.",
@@ -4403,12 +4421,10 @@ impl App {
             return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
         }
 
-        if self.direct_mapping_state.mode == DirectMappingMode::Targeting {
-            if let Some(target) = self.direct_mapping_target_at(content_bounds, x, y) {
-                self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
-                self.direct_mapping_state.status_message = None;
-                self.sync_midi_inputs();
-            }
+        if let Some(target) = self.direct_mapping_target_at(content_bounds, x, y) {
+            self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
+            self.direct_mapping_state.status_message = None;
+            self.sync_midi_inputs();
             return Some(AppControl::Continue);
         }
 
@@ -5640,9 +5656,9 @@ struct TransportChipSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        App, AppControl, AppOverlay, DirectMappingMode, DirectMappingTarget, DiscoverabilityTarget,
-        LastActionStatus, cycle_input_channel, cycle_optional_port, cycle_output_channel,
-        mapping_field_index,
+        App, AppControl, AppOverlay, DirectMappingMode, DirectMappingOrigin, DirectMappingTarget,
+        DiscoverabilityTarget, LastActionStatus, cycle_input_channel, cycle_optional_port,
+        cycle_output_channel, mapping_field_index,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -6324,8 +6340,34 @@ mod tests {
         assert_eq!(app.mappings[0].source_device_label, "In A");
         assert_eq!(app.mappings[0].source_label, "CC24 Ch1");
         assert!(app.mappings[0].enabled);
-        assert_eq!(app.page_state.current_page, AppPage::Mappings);
+        assert_eq!(app.page_state.current_page, AppPage::Timeline);
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_from_mappings_page_returns_to_mappings() {
+        let mut app = App::new();
+        app.mappings.clear();
+        app.page_state.current_page = AppPage::Mappings;
+        app.direct_mapping_state.origin = DirectMappingOrigin::MappingsPage;
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 24,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.page_state.current_page, AppPage::Mappings);
     }
 
     #[test]
@@ -6506,6 +6548,50 @@ mod tests {
         });
         assert_eq!(f8, Some(AppControl::Continue));
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_pointer_can_retarget_while_awaiting_input() {
+        let mut app = App::new();
+        let surface = crate::ui::surface_rect(app.viewport_size.0, app.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).expect("surface inset");
+        let (tabs_bounds, page_area_bounds) =
+            crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+        let content_bounds = Rect::new(
+            page_area_bounds.x(),
+            page_area_bounds.y(),
+            page_area_bounds.width(),
+            page_area_bounds.height().saturating_sub(30),
+        );
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let record_target = app
+            .direct_mapping_targets(content_bounds)
+            .into_iter()
+            .find(|target| target.target_label == "Record" && target.scope_label == "Armed/Active")
+            .expect("record target");
+        let point_x = record_target.hit_rect.x() + (record_target.hit_rect.width() / 2) as i32;
+        let point_y = record_target.hit_rect.y() + (record_target.hit_rect.height() / 2) as i32;
+
+        let control = app.handle_direct_mapping_pointer_down(
+            tabs_bounds,
+            content_bounds,
+            point_x,
+            point_y,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(
+            app.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(record_target)
+        );
     }
 
     #[test]

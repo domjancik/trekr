@@ -64,10 +64,12 @@ Support two entry points into the same direct mapping mode:
 1. Mappings page primary entry
    - Add a `Direct Map` chip near the existing `Tap Mode` and `Tap Learn` controls.
    - Entering the mode from here keeps the mappings page as the current page, but enables cross-page target selection.
+   - After a successful mapping capture, return to the mappings page and select the resulting row.
 2. Inline discoverability overlay entry
    - When the mapping hints overlay is visible, include a clear `Map Control` affordance in the overlay/footer copy for actionable elements.
    - On desktop this can be activated from hover context.
    - On touch it must be reachable via tap without requiring hover.
+   - After a successful mapping capture, stay on the current page so the user can continue mapping nearby controls without re-entering context.
 
 Recommended action-level behavior:
 
@@ -117,6 +119,7 @@ Selection behavior:
 - Desktop pointer: hover shows the hint text; click selects the actionable element instead of activating it.
 - Touch: first tap while direct mapping mode is active selects the element and shows a pinned inline hint card near the selection; it must not rely on hover or footer-only messaging.
 - Keyboard: if direct mapping mode is entered while focus is already on a page item, `Enter` may select the focused actionable item, but pointer/touch targeting remains the primary interaction.
+- If `AwaitingInput` is already active, selecting another actionable element retargets the pending capture instead of forcing an explicit cancel first.
 
 ### Canonical Target Resolution
 
@@ -217,7 +220,8 @@ On successful commit:
 
 - flash the selected control highlight once
 - show footer/overlay confirmation naming source, target, and scope
-- select the resulting row on the mappings page state so the user can immediately inspect or refine it later
+- always update the selected mapping row in mappings-page state so the user can inspect or refine it later
+- return to `Mappings` only when direct mode was entered from the mappings page; otherwise keep the user on the current page
 - exit direct mapping mode automatically
 
 ## Desktop vs Touch
@@ -293,9 +297,11 @@ Rules to avoid surprises:
 5. The next MIDI note or CC input creates a new mapping when no matching target row exists.
 6. The next MIDI note or CC input replaces a unique existing row for the same target and scope when appropriate.
 7. If the captured source is already bound elsewhere, the app shows explicit conflict resolution instead of silently creating a duplicate active source.
-8. On success, the resulting mapping is enabled and immediately works through the existing mapping dispatch path.
-9. Canceling the mode leaves mappings unchanged.
-10. The resulting mapping is visible and editable on the existing mappings page.
+8. While `AwaitingInput` is active, the user can select a different supported control and the pending mapping target updates immediately.
+9. On success, the resulting mapping is enabled and immediately works through the existing mapping dispatch path.
+10. Canceling the mode leaves mappings unchanged.
+11. A mapping committed from mappings-page-initiated direct mode returns to `Mappings`; a mapping committed from in-place direct mode keeps the current page.
+12. The resulting mapping is visible and editable on the existing mappings page.
 
 ## Likely Code Touch Points
 
