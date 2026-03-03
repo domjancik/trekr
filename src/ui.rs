@@ -284,6 +284,14 @@ pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)>
     pairs
 }
 
+pub fn union_rect(a: Rect, b: Rect) -> Rect {
+    let x = a.x.min(b.x);
+    let y = a.y.min(b.y);
+    let right = (a.x + a.width() as i32).max(b.x + b.width() as i32);
+    let bottom = (a.y + a.height() as i32).max(b.y + b.height() as i32);
+    Rect::new(x, y, (right - x).max(0) as u32, (bottom - y).max(0) as u32)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoteRect {
     pub rect: Rect,
@@ -473,38 +481,52 @@ pub fn range_highlight_rect(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HeaderBadgeKind {
-    TrackIndex,
+pub enum TrackIndicatorKind {
     Armed,
+    Recording,
     Muted,
     Solo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeaderBadge {
-    pub kind: HeaderBadgeKind,
+pub struct TrackIndicator {
+    pub kind: TrackIndicatorKind,
     pub rect: Rect,
 }
 
-pub fn header_badges(header: Rect) -> [HeaderBadge; 4] {
-    let size = (header.height().saturating_sub(8)).max(6) as i32;
-    let y = header.y + 4;
+pub fn track_indicators(status_rect: Rect) -> [TrackIndicator; 4] {
+    let inset_x = 2_i32;
+    let inset_y = 2_i32;
+    let gap = 2_i32;
+    let inner_width = (status_rect.width() as i32 - inset_x * 2).max(4);
+    let height = status_rect
+        .height()
+        .saturating_sub((inset_y * 2) as u32)
+        .max(6);
+    let y = status_rect.y + inset_y;
+    let segment_rect = |index: i32| {
+        let start = status_rect.x + inset_x + (inner_width * index) / 4;
+        let end = status_rect.x + inset_x + (inner_width * (index + 1)) / 4;
+        let width = (end - start - if index == 3 { 0 } else { gap }).max(4) as u32;
+        Rect::new(start, y, width, height)
+    };
+
     [
-        HeaderBadge {
-            kind: HeaderBadgeKind::TrackIndex,
-            rect: Rect::new(header.x + 4, y, size as u32, size as u32),
+        TrackIndicator {
+            kind: TrackIndicatorKind::Armed,
+            rect: segment_rect(0),
         },
-        HeaderBadge {
-            kind: HeaderBadgeKind::Armed,
-            rect: Rect::new(header.x + 8 + size, y, size as u32, size as u32),
+        TrackIndicator {
+            kind: TrackIndicatorKind::Recording,
+            rect: segment_rect(1),
         },
-        HeaderBadge {
-            kind: HeaderBadgeKind::Muted,
-            rect: Rect::new(header.x + 12 + size * 2, y, size as u32, size as u32),
+        TrackIndicator {
+            kind: TrackIndicatorKind::Muted,
+            rect: segment_rect(2),
         },
-        HeaderBadge {
-            kind: HeaderBadgeKind::Solo,
-            rect: Rect::new(header.x + 16 + size * 3, y, size as u32, size as u32),
+        TrackIndicator {
+            kind: TrackIndicatorKind::Solo,
+            rect: segment_rect(3),
         },
     ]
 }
@@ -632,11 +654,11 @@ fn horizontal_note_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        HeaderBadgeKind, TimelineFlow, detail_badge_rect, equal_columns, header_badges, note_rects,
+        TimelineFlow, TrackIndicatorKind, detail_badge_rect, equal_columns, note_rects,
         passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect, split_top_strip,
         stacked_rows, surface_rect, text_width, timeline_guides, timeline_ruler_ticks,
-        track_column_pairs, track_content_rect, track_header_rect, track_label_rect,
-        track_status_rect, truncate_text_to_width,
+        track_column_pairs, track_content_rect, track_header_rect, track_indicators,
+        track_label_rect, track_status_rect, truncate_text_to_width, union_rect,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -767,10 +789,19 @@ mod tests {
     }
 
     #[test]
-    fn header_badges_include_track_and_state_markers() {
-        let badges = header_badges(Rect::new(10, 10, 80, 20));
-        assert_eq!(badges[0].kind, HeaderBadgeKind::TrackIndex);
-        assert_eq!(badges[3].kind, HeaderBadgeKind::Solo);
+    fn track_indicators_cover_arm_record_mute_and_solo() {
+        let indicators = track_indicators(Rect::new(10, 10, 80, 20));
+        assert_eq!(indicators[0].kind, TrackIndicatorKind::Armed);
+        assert_eq!(indicators[1].kind, TrackIndicatorKind::Recording);
+        assert_eq!(indicators[3].kind, TrackIndicatorKind::Solo);
+        assert!(indicators[3].rect.x > indicators[0].rect.x);
+    }
+
+    #[test]
+    fn union_rect_spans_both_track_columns() {
+        let union = union_rect(Rect::new(10, 20, 40, 200), Rect::new(56, 20, 40, 200));
+        assert_eq!(union.x, 10);
+        assert_eq!(union.width(), 86);
     }
 
     #[test]
