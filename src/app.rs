@@ -45,6 +45,7 @@ pub struct App {
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
     status_state: StatusState,
+    direct_mapping_state: DirectMappingState,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     transport_ticks: u64,
@@ -68,6 +69,29 @@ struct OverlayState {
 struct StatusState {
     hovered_target: Option<DiscoverabilityTarget>,
     last_action: Option<LastActionStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct DirectMappingState {
+    mode: DirectMappingMode,
+    status_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum DirectMappingMode {
+    #[default]
+    Inactive,
+    Targeting,
+    AwaitingInput(DirectMappingTarget),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DirectMappingTarget {
+    action: AppAction,
+    target_label: &'static str,
+    scope_label: &'static str,
+    display_scope: Option<&'static str>,
+    hit_rect: Rect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,6 +205,7 @@ impl App {
             mappings,
             overlay_state: OverlayState::default(),
             status_state: StatusState::default(),
+            direct_mapping_state: DirectMappingState::default(),
             viewport_size: (1280, 720),
             ui_scale_override: None,
             transport_ticks: 0,
@@ -286,10 +311,8 @@ impl App {
                     continue;
                 }
 
-                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
-                    if self.apply_action_with_source(action_event.action, action_event.source)
-                        == AppControl::Quit
-                    {
+                if let Some(control) = self.handle_keyboard_event(&event) {
+                    if control == AppControl::Quit {
                         break 'running;
                     }
                 }
@@ -341,8 +364,8 @@ impl App {
                     continue;
                 }
 
-                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
-                    if self.apply_action(action_event.action) == AppControl::Quit {
+                if let Some(control) = self.handle_keyboard_event(&event) {
+                    if control == AppControl::Quit {
                         break 'running;
                     }
                 }
@@ -391,8 +414,8 @@ impl App {
                     continue;
                 }
 
-                if let Some(action_event) = self.keyboard_bindings.resolve(&event) {
-                    if self.apply_action(action_event.action) == AppControl::Quit {
+                if let Some(control) = self.handle_keyboard_event(&event) {
+                    if control == AppControl::Quit {
                         break 'running;
                     }
                 }
@@ -511,6 +534,7 @@ impl App {
             AppPage::Routing => self.draw_routing_page(canvas, content_bounds)?,
         }
 
+        self.draw_direct_mapping_targets(canvas, tabs_bounds, content_bounds)?;
         self.draw_overlay(canvas, inset)?;
         self.draw_footer(canvas, footer_bounds)?;
 
@@ -1238,6 +1262,11 @@ impl App {
                 self.overlay_state.active == Some(AppOverlay::Discoverability),
                 Color::RGB(72, 136, 166),
             ),
+            (
+                "F8 Direct",
+                self.direct_mapping_state.mode != DirectMappingMode::Inactive,
+                Color::RGB(188, 82, 82),
+            ),
         ];
         let mut right_edge = bounds.x + bounds.width() as i32 - 6;
         for (label, active, color) in overlay_chips.into_iter().rev() {
@@ -1268,7 +1297,36 @@ impl App {
             right_edge = chip.x - 6;
         }
 
-        if let Some(target) = self.status_state.hovered_target {
+        if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
+            let label_width = crate::ui::text_width(&title, 1) + 4;
+            let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
+            crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, Color::RGB(248, 228, 208))?;
+            let detail_left = label_rect.x + label_rect.width() as i32 + 8;
+            let detail_width = (right_edge - detail_left).max(0) as u32;
+            if !badges.is_empty() {
+                self.draw_mapping_badges(
+                    canvas,
+                    Rect::new(
+                        detail_left,
+                        bounds.y + 3,
+                        detail_width,
+                        bounds.height().saturating_sub(6),
+                    ),
+                    &badges,
+                    badges.len(),
+                    4,
+                    10,
+                )?;
+            } else {
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    &detail,
+                    Rect::new(detail_left, bounds.y + 7, detail_width, 8),
+                    1,
+                    Color::RGB(214, 200, 188),
+                )?;
+            }
+        } else if let Some(target) = self.status_state.hovered_target {
             let summary = self.summarize_discoverability_target(target);
             let label_width = crate::ui::text_width(&summary.title, 1) + 4;
             let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
@@ -1331,6 +1389,64 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn direct_mapping_footer_content(&self) -> Option<(String, String, Vec<MappingBadge>)> {
+        match self.direct_mapping_state.mode {
+            DirectMappingMode::Inactive => self
+                .direct_mapping_state
+                .status_message
+                .as_ref()
+                .map(|message| ("Direct Map".to_string(), message.clone(), Vec::new())),
+            DirectMappingMode::Targeting => Some((
+                "Direct Map".to_string(),
+                "Select a highlighted control, then move a MIDI control. Esc cancels.".to_string(),
+                Vec::new(),
+            )),
+            DirectMappingMode::AwaitingInput(target) => {
+                let title = match target.display_scope {
+                    Some(scope) => format!("Direct Map: {} ({scope})", target.target_label),
+                    None => format!("Direct Map: {}", target.target_label),
+                };
+                Some((
+                    title,
+                    "Move a MIDI note or CC now. Esc cancels.".to_string(),
+                    self.summarize_direct_mapping_target(target).badges,
+                ))
+            }
+        }
+    }
+
+    fn summarize_direct_mapping_target(
+        &self,
+        target: DirectMappingTarget,
+    ) -> ActionDiscoverabilitySummary {
+        let mut summary = self.summarize_discoverability_target(DiscoverabilityTarget {
+            action: target.action,
+            display_scope: target.display_scope,
+            allowed_mapping_scopes: &[],
+            overlay_slot: None,
+        });
+        summary.badges.retain(|badge| {
+            badge.built_in || self.direct_mapping_badge_matches_scope(badge, target)
+        });
+        summary.total_bindings = summary.badges.len();
+        summary
+    }
+
+    fn direct_mapping_badge_matches_scope(
+        &self,
+        badge: &MappingBadge,
+        target: DirectMappingTarget,
+    ) -> bool {
+        self.mappings.iter().any(|entry| {
+            !badge.built_in
+                && entry.enabled
+                && entry.scope_label == target.scope_label
+                && entry.source_kind == badge.source_kind
+                && entry.source_label == badge.text
+                && mapping_entry_targets_action(entry, target.action)
+        })
     }
 
     fn summarize_discoverability_target(
@@ -1473,6 +1589,43 @@ impl App {
         for (rect, target) in self.routing_discoverability_targets(content_bounds) {
             self.draw_inline_discoverability_badges(canvas, rect, target)?;
         }
+        Ok(())
+    }
+
+    fn draw_direct_mapping_targets<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        tabs_bounds: Rect,
+        content_bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+            return Ok(());
+        }
+
+        for page in self.direct_mapping_tab_targets(tabs_bounds) {
+            canvas.set_draw_color(Color::RGB(132, 84, 84));
+            canvas.draw_rect(page.hit_rect)?;
+        }
+
+        for target in self.direct_mapping_targets(content_bounds) {
+            canvas.set_draw_color(Color::RGB(176, 116, 72));
+            canvas.draw_rect(Rect::new(
+                target.hit_rect.x - 1,
+                target.hit_rect.y - 1,
+                target.hit_rect.width().saturating_add(2),
+                target.hit_rect.height().saturating_add(2),
+            ))?;
+            if self.direct_mapping_state.mode == DirectMappingMode::AwaitingInput(target) {
+                canvas.set_draw_color(Color::RGB(252, 146, 126));
+                canvas.draw_rect(Rect::new(
+                    target.hit_rect.x - 3,
+                    target.hit_rect.y - 3,
+                    target.hit_rect.width().saturating_add(6),
+                    target.hit_rect.height().saturating_add(6),
+                ))?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1674,6 +1827,34 @@ impl App {
             Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
             Color::RGB(236, 240, 246),
+        )?;
+        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+        canvas.set_draw_color(
+            if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+                Color::RGB(54, 62, 82)
+            } else {
+                Color::RGB(140, 74, 74)
+            },
+        );
+        canvas.fill_rect(direct_badge)?;
+        canvas.set_draw_color(
+            if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+                Color::RGB(108, 118, 138)
+            } else {
+                Color::RGB(252, 214, 194)
+            },
+        );
+        canvas.draw_rect(direct_badge)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+                "Tap Direct Map"
+            } else {
+                "Tap Direct: armed"
+            },
+            Rect::new(direct_badge.x + 8, direct_badge.y + 4, 138, 8),
+            1,
+            Color::RGB(242, 238, 234),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -1946,6 +2127,7 @@ impl App {
             ("Tap field", Color::RGB(74, 88, 118)),
             ("Tap again act", Color::RGB(82, 100, 136)),
             ("W Write", Color::RGB(96, 82, 52)),
+            ("F8 Direct", Color::RGB(128, 78, 78)),
             ("N New", Color::RGB(66, 96, 84)),
             ("Del Remove", Color::RGB(110, 74, 74)),
         ];
@@ -2659,7 +2841,7 @@ impl App {
             .expect("demo project always has tracks");
         let title = match self.page_state.current_page {
             AppPage::Timeline => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | F6 Link:{} Shift+F6 Sync:{} | F7 Discover:{} | Peers:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Tick:{} | Space Play:{} | R Rec:{} | Shift+R Mode:{} | F6 Link:{} Shift+F6 Sync:{} | F7 Discover:{} | F8 Direct:{} | Peers:{} | C Clear Track | Shift+C Clear All | [ ] TrackLoop:{}-{} | , . Nudge | - = Resize | / \\ Half/Double | Shift+[ ] SongLoop:{}-{} | G:{} L:{} A:{} M:{} S:{} I:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
@@ -2670,6 +2852,7 @@ impl App {
                 on_off(self.project.transport.link_enabled),
                 on_off(self.project.transport.link_start_stop_sync),
                 on_off(self.overlay_state.active == Some(AppOverlay::Discoverability)),
+                on_off(self.direct_mapping_state.mode != DirectMappingMode::Inactive),
                 self.link_snapshot.peers,
                 active.loop_region.start_ticks,
                 active.loop_region.end_ticks(),
@@ -2685,11 +2868,12 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | F7 Discover:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | F7 Discover:{} | F8 Direct:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     self.page_state.mapping_mode.label(),
                     on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
                     on_off(self.overlay_state.active == Some(AppOverlay::Discoverability)),
+                    on_off(self.direct_mapping_state.mode != DirectMappingMode::Inactive),
                     self.page_state.selected_mapping_field.label(),
                     on_off(self.page_state.mapping_midi_learn_armed),
                     mapping_source_label(selected.source_kind),
@@ -2718,9 +2902,10 @@ impl App {
                         .unwrap_or("none"),
                 };
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Focus:{} | Up/Down Select | Q/E Switch List | Enter Set Default | Selected:{} | Default In:{} | Default Out:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Focus:{} | F8 Direct:{} | Up/Down Select | Q/E Switch List | Enter Set Default | Selected:{} | Default In:{} | Default Out:{}",
                     self.page_state.current_page.label(),
                     focus,
+                    on_off(self.direct_mapping_state.mode != DirectMappingMode::Inactive),
                     selected,
                     self.midi_devices
                         .selected_input_port()
@@ -2733,10 +2918,11 @@ impl App {
                 )
             }
             AppPage::Routing => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | Up/Down Field | Q/E Adjust | Enter Toggle | Field:{} | In:{} {} | Out:{} {} | Thru:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | F8 Direct:{} | Up/Down Field | Q/E Adjust | Enter Toggle | Field:{} | In:{} {} | Out:{} {} | Thru:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
+                on_off(self.direct_mapping_state.mode != DirectMappingMode::Inactive),
                 self.page_state.selected_routing_field.label(),
                 port_name(active.routing.input_port.as_ref()),
                 input_channel_label(active.routing.input_channel),
@@ -2747,6 +2933,26 @@ impl App {
         };
         window.set_title(&title)?;
         Ok(())
+    }
+
+    fn toggle_direct_mapping_mode(&mut self) {
+        if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+            self.direct_mapping_state.mode = DirectMappingMode::Targeting;
+            self.direct_mapping_state.status_message = None;
+            self.page_state.mapping_midi_learn_armed = false;
+            if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+                self.overlay_state.active = None;
+            }
+        } else {
+            self.cancel_direct_mapping("Canceled direct mapping.");
+        }
+        self.sync_midi_inputs();
+    }
+
+    fn cancel_direct_mapping(&mut self, message: &str) {
+        self.direct_mapping_state.mode = DirectMappingMode::Inactive;
+        self.direct_mapping_state.status_message = Some(message.to_string());
+        self.sync_midi_inputs();
     }
 
     fn apply_action(&mut self, action: AppAction) -> AppControl {
@@ -2804,6 +3010,10 @@ impl App {
                     } else {
                         Some(AppOverlay::Discoverability)
                     };
+                AppControl::Continue
+            }
+            AppAction::ToggleDirectMappingMode => {
+                self.toggle_direct_mapping_mode();
                 AppControl::Continue
             }
             AppAction::ToggleMappingsWriteMode => {
@@ -3777,6 +3987,7 @@ impl App {
             || self.page_state.current_page == AppPage::MidiIo
             || self.overlay_state.active == Some(AppOverlay::MappingsQuickView)
             || self.page_state.mapping_midi_learn_armed
+            || self.direct_mapping_state.mode != DirectMappingMode::Inactive
         {
             for port in &self.midi_devices.inputs {
                 if !ports.iter().any(|existing: &MidiPortRef| existing == port) {
@@ -3795,6 +4006,10 @@ impl App {
     }
 
     fn handle_midi_input_event(&mut self, event: MidiInputEvent) {
+        if self.capture_direct_mapping_input(&event) {
+            return;
+        }
+
         if self.capture_mapping_midi_learn(&event) {
             return;
         }
@@ -3868,6 +4083,80 @@ impl App {
                 }
             }
         }
+    }
+
+    fn capture_direct_mapping_input(&mut self, event: &MidiInputEvent) -> bool {
+        let DirectMappingMode::AwaitingInput(target) = self.direct_mapping_state.mode else {
+            return false;
+        };
+
+        match event.message {
+            MidiInputMessage::NoteOn { .. } | MidiInputMessage::ControlChange { .. } => {}
+            MidiInputMessage::NoteOff { .. } => return false,
+        }
+
+        let target_index = self
+            .find_unique_direct_mapping_target_row(target.target_label, target.scope_label)
+            .filter(|index| self.mappings[*index].source_kind == MappingSourceKind::Midi);
+        let source_index = self.find_direct_mapping_source_row(
+            MappingSourceKind::Midi,
+            &event.port.name,
+            &midi_learn_label(event),
+        );
+
+        let index = if let Some(index) = source_index {
+            if let Some(target_index) = target_index.filter(|target_index| *target_index != index) {
+                if let Some(entry) = self.mappings.get_mut(target_index) {
+                    entry.enabled = false;
+                }
+            }
+            index
+        } else if let Some(index) = target_index {
+            index
+        } else {
+            let entry = MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: event.port.name.clone(),
+                source_label: midi_learn_label(event),
+                target_label: target.target_label.to_string(),
+                scope_label: target.scope_label.to_string(),
+                enabled: true,
+            };
+            self.mappings.push(entry);
+            self.mappings.len() - 1
+        };
+
+        let same_target = self.mappings.get(index).is_some_and(|entry| {
+            entry.target_label == target.target_label && entry.scope_label == target.scope_label
+        });
+        if let Some(entry) = self.mappings.get_mut(index) {
+            entry.source_kind = MappingSourceKind::Midi;
+            entry.source_device_label = event.port.name.clone();
+            entry.source_label = midi_learn_label(event);
+            entry.target_label = target.target_label.to_string();
+            entry.scope_label = target.scope_label.to_string();
+            entry.enabled = true;
+        }
+        self.page_state.selected_mapping_index = index;
+        self.page_state.current_page = AppPage::Mappings;
+        self.direct_mapping_state.mode = DirectMappingMode::Inactive;
+        self.direct_mapping_state.status_message = Some(if same_target {
+            format!(
+                "Updated {} ({}) to {}.",
+                target.target_label,
+                target.scope_label,
+                midi_learn_label(event)
+            )
+        } else {
+            format!(
+                "Mapped {} ({}) to {}.",
+                target.target_label,
+                target.scope_label,
+                midi_learn_label(event)
+            )
+        });
+        self.sync_midi_inputs();
+        true
     }
 
     fn capture_mapping_midi_learn(&mut self, event: &MidiInputEvent) -> bool {
@@ -3974,12 +4263,36 @@ impl App {
 
     fn handle_pointer_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
         if let Some((x, y)) = pointer_hover_position(event, self.viewport_size) {
-            self.status_state.hovered_target = self.discoverability_target_at(x, y);
+            self.status_state.hovered_target =
+                if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+                    self.discoverability_target_at(x, y)
+                } else {
+                    None
+                };
             return Some(AppControl::Continue);
         }
 
         let (x, y, source) = pointer_down_position(event, self.viewport_size)?;
         self.handle_pointer_down(x, y, source)
+    }
+
+    fn handle_keyboard_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
+        if matches!(
+            event,
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Escape),
+                repeat: false,
+                ..
+            }
+        ) && self.direct_mapping_state.mode != DirectMappingMode::Inactive
+        {
+            self.cancel_direct_mapping("Canceled direct mapping.");
+            return Some(AppControl::Continue);
+        }
+
+        self.keyboard_bindings.resolve(event).map(|action_event| {
+            self.apply_action_with_source(action_event.action, action_event.source)
+        })
     }
 
     fn handle_pointer_down(
@@ -3992,6 +4305,12 @@ impl App {
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
 
+        if let Some(control) =
+            self.handle_direct_mapping_pointer_down(tabs_bounds, content_bounds, x, y, source)
+        {
+            return Some(control);
+        }
+
         if let Some(page) = self.hit_page_tab(tabs_bounds, x, y) {
             return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
         }
@@ -4002,6 +4321,117 @@ impl App {
             AppPage::MidiIo => self.handle_midi_io_pointer(content_bounds, x, y, source),
             AppPage::Routing => self.handle_routing_pointer(content_bounds, x, y, source),
         }
+    }
+
+    fn handle_direct_mapping_pointer_down(
+        &mut self,
+        tabs_bounds: Rect,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+            return None;
+        }
+
+        if self.page_state.current_page == AppPage::Mappings {
+            let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+            if rect_contains(direct_badge, x, y) {
+                return Some(
+                    self.apply_action_with_source(AppAction::ToggleDirectMappingMode, source),
+                );
+            }
+        }
+
+        if let Some(page) = self.hit_page_tab(tabs_bounds, x, y) {
+            return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
+        }
+
+        if self.direct_mapping_state.mode == DirectMappingMode::Targeting {
+            if let Some(target) = self.direct_mapping_target_at(content_bounds, x, y) {
+                self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
+                self.direct_mapping_state.status_message = None;
+                self.sync_midi_inputs();
+            }
+            return Some(AppControl::Continue);
+        }
+
+        Some(AppControl::Continue)
+    }
+
+    fn direct_mapping_target_at(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+    ) -> Option<DirectMappingTarget> {
+        self.direct_mapping_targets(content_bounds)
+            .into_iter()
+            .find(|target| rect_contains(target.hit_rect, x, y))
+    }
+
+    fn direct_mapping_targets(&self, content_bounds: Rect) -> Vec<DirectMappingTarget> {
+        let raw_targets = match self.page_state.current_page {
+            AppPage::Timeline => self.timeline_discoverability_targets(content_bounds),
+            AppPage::Routing => self.routing_discoverability_targets(content_bounds),
+            AppPage::Mappings | AppPage::MidiIo => Vec::new(),
+        };
+
+        raw_targets
+            .into_iter()
+            .filter_map(|(rect, target)| {
+                mapping_target_label_for_action(target.action).map(|target_label| {
+                    DirectMappingTarget {
+                        action: target.action,
+                        target_label,
+                        scope_label: target
+                            .allowed_mapping_scopes
+                            .first()
+                            .copied()
+                            .unwrap_or("Global"),
+                        display_scope: target.display_scope,
+                        hit_rect: rect,
+                    }
+                })
+            })
+            .collect()
+    }
+
+    fn direct_mapping_tab_targets(&self, _tabs_bounds: Rect) -> Vec<DirectMappingTarget> {
+        Vec::new()
+    }
+
+    fn find_unique_direct_mapping_target_row(
+        &self,
+        target_label: &str,
+        scope_label: &str,
+    ) -> Option<usize> {
+        let mut matches = self
+            .mappings
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                entry.target_label == target_label
+                    && entry.scope_label == scope_label
+                    && entry.source_kind == MappingSourceKind::Midi
+            })
+            .map(|(index, _)| index);
+        let first = matches.next()?;
+        matches.next().is_none().then_some(first)
+    }
+
+    fn find_direct_mapping_source_row(
+        &self,
+        source_kind: MappingSourceKind,
+        device_label: &str,
+        source_label: &str,
+    ) -> Option<usize> {
+        self.mappings.iter().position(|entry| {
+            entry.source_kind == source_kind
+                && entry.source_device_label == device_label
+                && entry.source_label == source_label
+        })
     }
 
     fn handle_timeline_pointer(
@@ -4054,6 +4484,7 @@ impl App {
     ) -> Option<AppControl> {
         let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
         if rect_contains(overview_badge, x, y) {
             return Some(self.apply_action_with_source(AppAction::ToggleMappingsWriteMode, source));
         }
@@ -4062,6 +4493,9 @@ impl App {
             && self.page_state.selected_mapping_field == MappingField::SourceValue
         {
             return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
+        }
+        if rect_contains(direct_badge, x, y) {
+            return Some(self.apply_action_with_source(AppAction::ToggleDirectMappingMode, source));
         }
 
         let list_bounds = Rect::new(
@@ -4463,6 +4897,7 @@ impl App {
         source: crate::actions::ActionSource,
     ) -> AppControl {
         self.status_state.hovered_target = None;
+        self.direct_mapping_state.status_message = None;
         self.status_state.last_action = Some(LastActionStatus { action, source });
         self.apply_action(action)
     }
@@ -4817,6 +5252,25 @@ fn compact_scope_label(scope: &str) -> &str {
     }
 }
 
+fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
+    match action {
+        AppAction::TogglePlayback => Some("Play/Stop"),
+        AppAction::ToggleRecording => Some("Record"),
+        AppAction::CycleRecordMode => Some("Record Mode"),
+        AppAction::ToggleLoopRecordingExtension => Some("Loop Recording Wrap"),
+        AppAction::ToggleGlobalLoop => Some("Song Loop"),
+        AppAction::ResetGlobalLoop => Some("Reset Song Loop"),
+        AppAction::ToggleCurrentTrackLoop => Some("Track Loop"),
+        AppAction::ToggleCurrentTrackArm => Some("Track Arm"),
+        AppAction::ToggleCurrentTrackMute => Some("Track Mute"),
+        AppAction::ToggleCurrentTrackSolo => Some("Track Solo"),
+        AppAction::ToggleCurrentTrackPassthrough => Some("Passthrough"),
+        AppAction::ToggleLinkEnabled => Some("Link Enable"),
+        AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
+        _ => None,
+    }
+}
+
 fn mapping_field_index(field: MappingField) -> usize {
     match field {
         MappingField::SourceKind => 0,
@@ -5017,8 +5471,9 @@ struct TransportChipSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        App, AppControl, AppOverlay, DiscoverabilityTarget, LastActionStatus, cycle_input_channel,
-        cycle_optional_port, cycle_output_channel, mapping_field_index,
+        App, AppControl, AppOverlay, DirectMappingMode, DirectMappingTarget, DiscoverabilityTarget,
+        LastActionStatus, cycle_input_channel, cycle_optional_port, cycle_output_channel,
+        mapping_field_index,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -5660,6 +6115,129 @@ mod tests {
                 source: ActionSource::Keyboard,
             })
         );
+    }
+
+    #[test]
+    fn direct_mapping_shortcut_toggles_targeting_mode() {
+        let mut app = App::new();
+
+        app.apply_action(AppAction::ToggleDirectMappingMode);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
+
+        app.apply_action(AppAction::ToggleDirectMappingMode);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_input_creates_new_mapping_for_target() {
+        let mut app = App::new();
+        app.mappings.clear();
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 24,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.mappings.len(), 1);
+        assert_eq!(app.mappings[0].target_label, "Play/Stop");
+        assert_eq!(app.mappings[0].scope_label, "Global");
+        assert_eq!(app.mappings[0].source_device_label, "In A");
+        assert_eq!(app.mappings[0].source_label, "CC24 Ch1");
+        assert!(app.mappings[0].enabled);
+        assert_eq!(app.page_state.current_page, AppPage::Mappings);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_reuses_unique_target_row() {
+        let mut app = App::new();
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Old Port".to_string(),
+            source_label: "CC20 Ch1".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::ToggleCurrentTrackArm,
+            target_label: "Track Arm",
+            scope_label: "Active Track",
+            display_scope: Some("Active Track"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("New Port"),
+            channel: 2,
+            message: MidiInputMessage::ControlChange {
+                controller: 21,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.mappings.len(), 1);
+        assert_eq!(app.mappings[0].source_device_label, "New Port");
+        assert_eq!(app.mappings[0].source_label, "CC21 Ch2");
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
+        assert!(app.mappings[0].enabled);
+    }
+
+    #[test]
+    fn direct_mapping_moves_existing_source_and_disables_old_target_row() {
+        let mut app = App::new();
+        app.mappings = vec![
+            MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Port A".to_string(),
+                source_label: "CC20 Ch1".to_string(),
+                target_label: "Play/Stop".to_string(),
+                scope_label: "Global".to_string(),
+                enabled: true,
+            },
+            MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Port B".to_string(),
+                source_label: "CC21 Ch1".to_string(),
+                target_label: "Track Arm".to_string(),
+                scope_label: "Active Track".to_string(),
+                enabled: true,
+            },
+        ];
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::ToggleCurrentTrackArm,
+            target_label: "Track Arm",
+            scope_label: "Active Track",
+            display_scope: Some("Active Track"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.mappings.len(), 2);
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
+        assert!(app.mappings[0].enabled);
+        assert!(!app.mappings[1].enabled);
     }
 
     #[test]

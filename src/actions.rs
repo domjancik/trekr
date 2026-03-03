@@ -20,6 +20,7 @@ pub enum AppAction {
     ActivatePageItem,
     ToggleMappingsOverlay,
     ToggleDiscoverabilityOverlay,
+    ToggleDirectMappingMode,
     ToggleMappingsWriteMode,
     AddMappingRow,
     RemoveSelectedMapping,
@@ -311,6 +312,14 @@ impl KeyboardBindings {
                 ..
             } => Some(ActionEvent::new(
                 AppAction::ToggleDiscoverabilityOverlay,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::F8),
+                repeat: false,
+                ..
+            } => Some(ActionEvent::new(
+                AppAction::ToggleDirectMappingMode,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -624,6 +633,7 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::ActivatePageItem => "Activate Page Item",
         AppAction::ToggleMappingsOverlay => "Mappings Overlay",
         AppAction::ToggleDiscoverabilityOverlay => "Mapping Discoverability",
+        AppAction::ToggleDirectMappingMode => "Direct Mapping Mode",
         AppAction::ToggleMappingsWriteMode => "Mappings Write Mode",
         AppAction::AddMappingRow => "Add Mapping",
         AppAction::RemoveSelectedMapping => "Remove Mapping",
@@ -701,6 +711,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ActivatePageItem => &["Enter"],
         AppAction::ToggleMappingsOverlay => &["F5"],
         AppAction::ToggleDiscoverabilityOverlay => &["F7"],
+        AppAction::ToggleDirectMappingMode => &["F8"],
         AppAction::ToggleMappingsWriteMode => &["W"],
         AppAction::AddMappingRow => &["N"],
         AppAction::RemoveSelectedMapping => &["Delete"],
@@ -902,6 +913,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let direct_mapping = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F8),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
         let add_mapping = Event::KeyDown {
             timestamp: 0,
             window_id: 0,
@@ -934,6 +955,10 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&discoverability).unwrap().action,
             AppAction::ToggleDiscoverabilityOverlay
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&direct_mapping).unwrap().action,
+            AppAction::ToggleDirectMappingMode
         );
         assert_eq!(
             KeyboardBindings.resolve(&add_mapping).unwrap().action,

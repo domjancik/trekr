@@ -87,7 +87,9 @@ const TARGET_OPTIONS: &[&str] = &[
     "Play/Stop",
     "Record",
     "Record Mode",
+    "Loop Recording Wrap",
     "Song Loop",
+    "Reset Song Loop",
     "Track Loop",
     "Clear Track",
     "Clear All",
@@ -215,8 +217,16 @@ fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str
 
 fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<String> {
     match target_label {
-        "Play/Stop" | "Record Mode" | "Song Loop" | "Set Song Loop" | "Clear All"
-        | "Pages/Overlay" | "Link Enable" | "Link Start/Stop" => vec!["Global".to_string()],
+        "Play/Stop"
+        | "Record Mode"
+        | "Loop Recording Wrap"
+        | "Song Loop"
+        | "Set Song Loop"
+        | "Reset Song Loop"
+        | "Clear All"
+        | "Pages/Overlay"
+        | "Link Enable"
+        | "Link Start/Stop" => vec!["Global".to_string()],
         "Record" | "Record Hold" => {
             let mut options = vec!["Armed/Active".to_string(), "Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
@@ -450,7 +460,9 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
             AppAction::StopRecording,
         ),
         "Record Mode" => vec![AppAction::CycleRecordMode],
+        "Loop Recording Wrap" => vec![AppAction::ToggleLoopRecordingExtension],
         "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
+        "Reset Song Loop" => vec![AppAction::ResetGlobalLoop],
         "Track Loop" | "Set Track Loop" => {
             track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
         }
@@ -570,7 +582,9 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Play/Stop" => vec![AppAction::TogglePlayback],
         "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
         "Record Mode" => vec![AppAction::CycleRecordMode],
+        "Loop Recording Wrap" => vec![AppAction::ToggleLoopRecordingExtension],
         "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
+        "Reset Song Loop" => vec![AppAction::ResetGlobalLoop],
         "Track Loop" | "Set Track Loop" => {
             track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
         }

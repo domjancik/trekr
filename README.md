@@ -64,6 +64,7 @@ Latest renderer-owned captures from the demo state:
 - hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
 - an inline mapping discoverability overlay with compact built-in vs user-defined badges
 - a field-based mappings editor with MIDI learn for MIDI sources
+- a direct UI mapping mode for supported timeline and routing controls, driven from discoverability targets
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
 
@@ -125,6 +126,7 @@ Current controls:
 - `F1` / `F2` / `F3` / `F4`: show timeline, mappings, MIDI I/O, or routing page
 - `F5`: toggle the quick mappings overlay from any page
 - `F7`: toggle the inline mapping discoverability overlay from any page
+- `F8`: toggle direct UI mapping mode from any page
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `Up` / `Down`: select current page item
@@ -175,6 +177,7 @@ Mapping discoverability notes:
 - hovering supported action elements now uses the in-app footer as the primary mapping status surface
 - the footer falls back to the last performed action when nothing discoverable is hovered
 - `F7` enables a separate discoverability overlay with compact inline badges
+- `F8` enters a direct mapping mode that highlights supported controls and captures the next MIDI note or CC for the selected target
 - discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
 - disabled mappings are hidden from the footer and discoverability overlay
 - track-column discoverability is active-track scoped in V1, even when hovering non-active columns
@@ -184,6 +187,7 @@ Pointer/touch notes:
 - tabs are clickable/tappable
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
+- the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
 - timeline note and region editing is still not implemented for pointer/touch input
@@ -201,11 +205,13 @@ The `Mappings` page now supports two modes:
 - `Read Only`: compact overview
 - `Write`: field-based editing for source type, source device, source value, target, scope, and enabled state
 - `Write` mode also supports adding/removing rows and cycling track-scoped mappings into concrete `Track 1`, `Track 2`, ... scopes
+- direct UI mapping entry through `F8` or the `Tap Direct Map` chip, with target selection on supported timeline and routing controls
 
 MIDI learn notes:
 
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
+- in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row and returns to the mappings page
 - learned MIDI mappings store the device name of the input that triggered learn
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
