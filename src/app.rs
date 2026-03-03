@@ -1393,11 +1393,16 @@ impl App {
 
     fn direct_mapping_footer_content(&self) -> Option<(String, String, Vec<MappingBadge>)> {
         match self.direct_mapping_state.mode {
-            DirectMappingMode::Inactive => self
-                .direct_mapping_state
-                .status_message
-                .as_ref()
-                .map(|message| ("Direct Map".to_string(), message.clone(), Vec::new())),
+            DirectMappingMode::Inactive => {
+                if self.status_state.hovered_target.is_some() {
+                    None
+                } else {
+                    self.direct_mapping_state
+                        .status_message
+                        .as_ref()
+                        .map(|message| ("Direct Map".to_string(), message.clone(), Vec::new()))
+                }
+            }
             DirectMappingMode::Targeting => Some((
                 "Direct Map".to_string(),
                 "Select a highlighted control, then move a MIDI control. Esc cancels.".to_string(),
@@ -4269,6 +4274,9 @@ impl App {
                 } else {
                     None
                 };
+            if self.status_state.hovered_target.is_some() {
+                self.direct_mapping_state.status_message = None;
+            }
             return Some(AppControl::Continue);
         }
 
@@ -6238,6 +6246,20 @@ mod tests {
         assert_eq!(app.mappings[0].scope_label, "Active Track");
         assert!(app.mappings[0].enabled);
         assert!(!app.mappings[1].enabled);
+    }
+
+    #[test]
+    fn direct_mapping_cancel_message_yields_to_hover_summary() {
+        let mut app = App::new();
+        app.cancel_direct_mapping("Canceled direct mapping.");
+        app.status_state.hovered_target = Some(DiscoverabilityTarget {
+            action: AppAction::TogglePlayback,
+            display_scope: Some("Global"),
+            allowed_mapping_scopes: &["Global"],
+            overlay_slot: None,
+        });
+
+        assert!(app.direct_mapping_footer_content().is_none());
     }
 
     #[test]
