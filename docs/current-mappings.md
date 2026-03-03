@@ -43,6 +43,8 @@ Keyboard mappings currently implemented:
 - `Tab` / `Shift+Tab`: next/previous page
 - `F1` / `F2` / `F3` / `F4`: timeline / mappings / MIDI I/O / routing page
 - `F5`: toggle mappings overlay
+- `F7`: toggle inline mapping discoverability overlay
+- `F8`: toggle direct UI mapping mode
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `W`: toggle mappings page mode
@@ -67,6 +69,8 @@ Notes:
 - the mappings page now has a basic write mode with field selection and MIDI learn
 - the mappings page can now add/remove rows in write mode
 - MIDI learn currently captures MIDI note and CC sources
+- direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
+- direct UI mapping currently captures the next MIDI note or CC, then creates or replaces a mapping row for that selected control
 - MIDI mappings can now execute app actions from live MIDI input
 - MIDI mappings can be filtered to `Any MIDI` or a specific input device name
 - track-scoped mappings can now target absolute scopes like `Track 3` directly from the UI
