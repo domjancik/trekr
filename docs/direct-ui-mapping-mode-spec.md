@@ -75,7 +75,7 @@ Recommended action-level behavior:
 
 - Add a dedicated `AppAction::ToggleDirectMappingMode`.
 - `Escape` should cancel direct mapping mode without mutating mappings.
-- Completing a mapping capture exits the mode by default.
+- Completing a mapping capture should keep direct mapping mode active in `Targeting` so the user can continue mapping adjacent controls without re-entering the mode.
 
 ### Mode States
 
@@ -92,7 +92,7 @@ The mode should be modeled as a short explicit state machine:
    - A source conflict or ambiguous replacement target was found.
    - The app presents explicit choices.
 5. `Committed`
-   - Mapping row created or replaced, user gets a short success confirmation, mode exits.
+   - Mapping row created or replaced, user gets a short success confirmation, and the mode returns to `Targeting`.
 
 ### Selecting Actionable UI Elements
 
@@ -222,7 +222,7 @@ On successful commit:
 - show footer/overlay confirmation naming source, target, and scope
 - always update the selected mapping row in mappings-page state so the user can inspect or refine it later
 - return to `Mappings` only when direct mode was entered from the mappings page; otherwise keep the user on the current page
-- exit direct mapping mode automatically
+- keep direct mapping mode active in `Targeting` so the next control can be selected immediately
 
 ## Desktop vs Touch
 
@@ -300,8 +300,9 @@ Rules to avoid surprises:
 8. While `AwaitingInput` is active, the user can select a different supported control and the pending mapping target updates immediately.
 9. On success, the resulting mapping is enabled and immediately works through the existing mapping dispatch path.
 10. Canceling the mode leaves mappings unchanged.
-11. A mapping committed from mappings-page-initiated direct mode returns to `Mappings`; a mapping committed from in-place direct mode keeps the current page.
-12. The resulting mapping is visible and editable on the existing mappings page.
+11. After a successful mapping commit, direct mapping remains active in target-selection state until the user cancels it.
+12. A mapping committed from mappings-page-initiated direct mode returns to `Mappings`; a mapping committed from in-place direct mode keeps the current page.
+13. The resulting mapping is visible and editable on the existing mappings page.
 
 ## Likely Code Touch Points
 

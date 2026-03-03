@@ -1413,7 +1413,10 @@ impl App {
             }
             DirectMappingMode::Targeting => Some((
                 "Direct Map".to_string(),
-                "Select a highlighted control, then move a MIDI control. Esc cancels.".to_string(),
+                self.direct_mapping_state.status_message.clone().unwrap_or_else(|| {
+                    "Select a highlighted control, then move the next MIDI control or key. Esc cancels."
+                        .to_string()
+                }),
                 Vec::new(),
             )),
             DirectMappingMode::AwaitingInput(target) => {
@@ -1423,7 +1426,7 @@ impl App {
                 };
                 Some((
                     title,
-                    "Move a MIDI note or CC now. Esc cancels.".to_string(),
+                    "Move the next MIDI note, CC, or key now. Esc cancels.".to_string(),
                     self.summarize_direct_mapping_target(target).badges,
                 ))
             }
@@ -4176,19 +4179,19 @@ impl App {
         if self.direct_mapping_state.origin == DirectMappingOrigin::MappingsPage {
             self.page_state.current_page = AppPage::Mappings;
         }
-        self.direct_mapping_state.mode = DirectMappingMode::Inactive;
-        self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
-        self.direct_mapping_state.status_message = Some(if same_target {
+        let message = if same_target {
             format!(
-                "Updated {} ({}) to {}.",
+                "Updated {} ({}) to {}. Select another control to continue, or press Esc to finish.",
                 target.target_label, target.scope_label, source_label
             )
         } else {
             format!(
-                "Mapped {} ({}) to {}.",
+                "Mapped {} ({}) to {}. Select another control to continue, or press Esc to finish.",
                 target.target_label, target.scope_label, source_label
             )
-        });
+        };
+        self.direct_mapping_state.mode = DirectMappingMode::Targeting;
+        self.direct_mapping_state.status_message = Some(message);
         self.sync_midi_inputs();
     }
 
@@ -6341,7 +6344,7 @@ mod tests {
         assert_eq!(app.mappings[0].source_label, "CC24 Ch1");
         assert!(app.mappings[0].enabled);
         assert_eq!(app.page_state.current_page, AppPage::Timeline);
-        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
     }
 
     #[test]
@@ -6368,6 +6371,7 @@ mod tests {
         });
 
         assert_eq!(app.page_state.current_page, AppPage::Mappings);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
     }
 
     #[test]
@@ -6493,7 +6497,7 @@ mod tests {
         assert_eq!(app.mappings[0].source_kind, MappingSourceKind::Key);
         assert_eq!(app.mappings[0].source_label, "Ctrl+Shift+R");
         assert_eq!(app.mappings[0].target_label, "Play/Stop");
-        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
     }
 
     #[test]
