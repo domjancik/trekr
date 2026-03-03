@@ -72,6 +72,7 @@ Notes:
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
 - direct mapping entered from the mappings page returns there after commit, while in-place direct mapping stays on the current page so multiple controls can be mapped in sequence
+- after each direct mapping commit, the mode stays armed in target-selection state until canceled so full-surface mapping is faster
 - selecting a different supported control while direct mapping is awaiting input retargets the pending capture instead of requiring a cancel
 - `Escape` and `F8` remain reserved to cancel direct mapping instead of being captured as mapping sources
 - MIDI mappings can now execute app actions from live MIDI input

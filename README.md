@@ -213,6 +213,7 @@ MIDI learn notes:
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
 - in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row
+- after each direct mapping commit, the app stays in direct mapping mode so you can keep selecting controls and map a full surface quickly
 - direct mapping entered from the mappings page returns to `Mappings` after commit; direct mapping entered in place keeps the current page so multiple controls can be mapped in sequence
 - while direct mapping is awaiting input, selecting a different supported control retargets the pending mapping instead of requiring cancel first
 - direct mapping also accepts keyboard capture for the selected control and stores normalized labels such as `Shift+R` or `Ctrl+Alt+M`
