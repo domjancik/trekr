@@ -4013,7 +4013,8 @@ impl App {
     ) -> Option<AppControl> {
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (transport_bounds, _) = crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+        let (transport_bounds, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
         if rect_contains(self.global_loop_reset_button_rect(header_bounds), x, y) {
             return Some(self.apply_action_with_source(AppAction::ResetGlobalLoop, source));
         }
@@ -4021,6 +4022,23 @@ impl App {
         for (rect, action) in self.transport_chip_actions(transport_bounds) {
             if rect_contains(rect, x, y) {
                 return Some(self.apply_action_with_source(action, source));
+            }
+        }
+
+        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
+        for (index, (full_bounds, detail_bounds)) in columns.into_iter().enumerate() {
+            let status_rect = crate::ui::track_status_rect(
+                crate::ui::union_rect(full_bounds, detail_bounds),
+                self.timeline_flow,
+            );
+            for indicator in crate::ui::track_indicators(status_rect) {
+                if !rect_contains(indicator.rect, x, y) {
+                    continue;
+                }
+
+                self.project.active_track_index = index;
+                let target = track_indicator_target(indicator.kind, Some(indicator.rect))?;
+                return Some(self.apply_action_with_source(target.action, source));
             }
         }
 
@@ -4353,13 +4371,7 @@ impl App {
         );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
         for indicator in crate::ui::track_indicators(status_rect) {
-            let action = match indicator.kind {
-                crate::ui::TrackIndicatorKind::Armed => Some(AppAction::ToggleCurrentTrackArm),
-                crate::ui::TrackIndicatorKind::Recording => None,
-                crate::ui::TrackIndicatorKind::Muted => Some(AppAction::ToggleCurrentTrackMute),
-                crate::ui::TrackIndicatorKind::Solo => Some(AppAction::ToggleCurrentTrackSolo),
-            };
-            if let Some(action) = action {
+            if let Some(target) = track_indicator_target(indicator.kind, Some(indicator.rect)) {
                 targets.push((
                     Rect::new(
                         indicator.rect.x - 2,
@@ -4367,12 +4379,7 @@ impl App {
                         indicator.rect.width().saturating_add(4),
                         indicator.rect.height().saturating_add(4),
                     ),
-                    DiscoverabilityTarget {
-                        action,
-                        display_scope: Some("Active Track"),
-                        allowed_mapping_scopes: &["Active Track"],
-                        overlay_slot: Some(indicator.rect),
-                    },
+                    target,
                 ));
             }
         }
@@ -4939,6 +4946,38 @@ fn compact_badge_text(text: &str, max_len: usize) -> String {
         compact
     } else {
         compact.chars().take(max_len).collect()
+    }
+}
+
+fn track_indicator_target(
+    kind: crate::ui::TrackIndicatorKind,
+    overlay_slot: Option<Rect>,
+) -> Option<DiscoverabilityTarget> {
+    match kind {
+        crate::ui::TrackIndicatorKind::Armed => Some(DiscoverabilityTarget {
+            action: AppAction::ToggleCurrentTrackArm,
+            display_scope: Some("Active Track"),
+            allowed_mapping_scopes: &["Active Track"],
+            overlay_slot,
+        }),
+        crate::ui::TrackIndicatorKind::Recording => Some(DiscoverabilityTarget {
+            action: AppAction::ToggleRecording,
+            display_scope: Some("Armed/Active"),
+            allowed_mapping_scopes: &["Armed/Active", "Active Track"],
+            overlay_slot,
+        }),
+        crate::ui::TrackIndicatorKind::Muted => Some(DiscoverabilityTarget {
+            action: AppAction::ToggleCurrentTrackMute,
+            display_scope: Some("Active Track"),
+            allowed_mapping_scopes: &["Active Track"],
+            overlay_slot,
+        }),
+        crate::ui::TrackIndicatorKind::Solo => Some(DiscoverabilityTarget {
+            action: AppAction::ToggleCurrentTrackSolo,
+            display_scope: Some("Active Track"),
+            allowed_mapping_scopes: &["Active Track"],
+            overlay_slot,
+        }),
     }
 }
 
@@ -5927,6 +5966,63 @@ mod tests {
                 .iter()
                 .all(|track| track.regions.is_empty())
         );
+    }
+
+    #[test]
+    fn timeline_track_arm_indicator_is_clickable() {
+        let mut app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[1];
+        let status_rect = crate::ui::track_status_rect(
+            crate::ui::union_rect(full_bounds, detail_bounds),
+            app.timeline_flow,
+        );
+        let arm_rect = crate::ui::track_indicators(status_rect)[0].rect;
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            arm_rect.x + arm_rect.width() as i32 / 2,
+            arm_rect.y + arm_rect.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.project.active_track_index, 1);
+        assert!(app.project.tracks[1].state.armed);
+    }
+
+    #[test]
+    fn timeline_track_record_indicator_starts_recording_for_clicked_track() {
+        let mut app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[2];
+        let status_rect = crate::ui::track_status_rect(
+            crate::ui::union_rect(full_bounds, detail_bounds),
+            app.timeline_flow,
+        );
+        let record_rect = crate::ui::track_indicators(status_rect)[1].rect;
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            record_rect.x + record_rect.width() as i32 / 2,
+            record_rect.y + record_rect.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.project.active_track_index, 2);
+        assert!(app.project.transport.recording);
+        assert!(app.project.transport.playing);
     }
 
     #[test]
