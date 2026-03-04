@@ -216,6 +216,7 @@ Recording flow notes:
 - each committed record pass now becomes its own recording clip with stable ownership over its committed region and notes
 - the timeline can show committed recording clips overlaid or stacked side by side per track while preserving record order
 - stacked view keeps recording clips inside the track bounds with a per-track clip viewport and header scroll controls
+- while recording in stacked view, the in-progress take appears immediately as a temporary last lane before commit
 - selected recording clips can be muted or deleted without clearing unrelated track content
 - in stacked view, note-selection actions only operate on the currently selected recording clip
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
