@@ -1177,14 +1177,12 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
         label_rect: Rect,
-        content_rect: Rect,
+        _content_rect: Rect,
         track: &Track,
         clip_controls: Option<(Rect, Rect)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let capacity = self.recording_lane_capacity(content_rect);
-        let can_scroll_left = track.recording_clip_scroll > 0;
-        let can_scroll_right =
-            track.recording_clip_scroll + capacity < track.recording_clips().len();
+        let can_scroll_left = self.can_select_previous_recording_clip(track);
+        let can_scroll_right = self.can_select_next_recording_clip(track);
         let (left_rect, right_rect, view_rect) = self.recording_view_control_rects(label_rect);
         canvas.set_draw_color(if can_scroll_left {
             Color::RGB(74, 82, 98)
@@ -1571,7 +1569,7 @@ impl App {
     fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
         match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
-                let min_lane_width = 28_i32;
+                let min_lane_width = 22_i32;
                 let gap = 2_i32;
                 (((content_rect.width() as i32 + gap) / (min_lane_width + gap)).max(1)) as usize
             }
@@ -1619,13 +1617,25 @@ impl App {
         (left_rect, right_rect, view_rect)
     }
 
-    fn recording_scroll_has_hidden_before(&self, track: &Track) -> bool {
-        track.recording_clip_scroll > 0
+    fn selected_recording_clip_index(&self, track: &Track) -> Option<usize> {
+        track.selected_recording_clip_id.and_then(|selected_id| {
+            track
+                .recording_clips()
+                .iter()
+                .position(|clip| clip.id == selected_id)
+        })
     }
 
-    fn recording_scroll_has_hidden_after(&self, track: &Track, content_rect: Rect) -> bool {
-        track.recording_clip_scroll + self.recording_lane_capacity(content_rect)
-            < track.recording_clips().len()
+    fn can_select_previous_recording_clip(&self, track: &Track) -> bool {
+        self.selected_recording_clip_index(track)
+            .map(|index| index > 0)
+            .unwrap_or(false)
+    }
+
+    fn can_select_next_recording_clip(&self, track: &Track) -> bool {
+        self.selected_recording_clip_index(track)
+            .map(|index| index + 1 < track.recording_clips().len())
+            .unwrap_or(false)
     }
 
     fn sync_active_track_recording_clip_scroll(&mut self) {
@@ -1665,17 +1675,14 @@ impl App {
         &self,
         label_rect: Rect,
         track: &Track,
-        content_rect: Rect,
         x: i32,
         y: i32,
     ) -> Option<AppAction> {
         let (left_rect, right_rect, _) = self.recording_view_control_rects(label_rect);
-        if rect_contains(left_rect, x, y) && self.recording_scroll_has_hidden_before(track) {
+        if rect_contains(left_rect, x, y) && self.can_select_previous_recording_clip(track) {
             return Some(AppAction::SelectPreviousRecordingClip);
         }
-        if rect_contains(right_rect, x, y)
-            && self.recording_scroll_has_hidden_after(track, content_rect)
-        {
+        if rect_contains(right_rect, x, y) && self.can_select_next_recording_clip(track) {
             return Some(AppAction::SelectNextRecordingClip);
         }
         None
@@ -5197,11 +5204,9 @@ impl App {
                 );
             }
 
-            let full_content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
             if let Some(action) = self.recording_clip_scroll_control_hit(
                 full_label_rect,
                 &self.project.tracks[index],
-                full_content_rect,
                 x,
                 y,
             ) {
@@ -6601,6 +6606,16 @@ mod tests {
         let visible = app.visible_track_columns(timeline_bounds);
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].0, 2);
+    }
+
+    #[test]
+    fn stacked_all_track_layout_shows_at_least_three_recording_lanes() {
+        let app = App::new();
+        let timeline_bounds = Rect::new(0, 0, 1000, 420);
+        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
+        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+
+        assert!(app.recording_lane_capacity(content_rect) >= 3);
     }
 
     #[test]
