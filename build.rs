@@ -1,10 +1,16 @@
 use std::env;
+use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=native/link_bridge.cpp");
     println!("cargo:rerun-if-changed=native/link_bridge.hpp");
     println!("cargo:rerun-if-changed=vendor/ableton-link/include/ableton/Link.hpp");
     println!("cargo:rerun-if-changed=vendor/ableton-link/modules/asio-standalone/asio/include");
+    println!("cargo:rerun-if-env-changed=TREKR_BUILD_HASH");
+
+    let build_hash = env::var("TREKR_BUILD_HASH")
+        .unwrap_or_else(|_| git_short_hash().unwrap_or_else(|| "dev".to_string()));
+    println!("cargo:rustc-env=TREKR_BUILD_HASH={build_hash}");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("target os available");
     let mut build = cc::Build::new();
@@ -35,4 +41,18 @@ fn main() {
     }
 
     build.compile("trekr_link_bridge");
+}
+
+fn git_short_hash() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short=8", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let hash = String::from_utf8(output.stdout).ok()?;
+    let hash = hash.trim();
+    (!hash.is_empty()).then_some(hash.to_string())
 }
