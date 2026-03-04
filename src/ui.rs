@@ -604,7 +604,7 @@ fn vertical_note_rect(
     let lane_inner_width = (lane.width() as i32 - 16).max(8);
     let note_x_ratio =
         ((i32::from(note.pitch) - pitch_min).clamp(0, pitch_span - 1)) as f32 / pitch_span as f32;
-    let note_width = (lane_inner_width / 10).max(4);
+    let note_width = (lane_inner_width / 10).clamp(4, 8);
     let x = lane_inner_x + ((lane_inner_width - note_width) as f32 * note_x_ratio) as i32;
 
     let start_ratio =
@@ -630,7 +630,7 @@ fn horizontal_note_rect(
     let lane_inner_height = (lane.height() as i32 - 16).max(8);
     let note_y_ratio =
         ((i32::from(note.pitch) - pitch_min).clamp(0, pitch_span - 1)) as f32 / pitch_span as f32;
-    let note_height = (lane_inner_height / 10).max(4);
+    let note_height = (lane_inner_height / 10).clamp(4, 8);
     let y = lane_inner_y + ((lane_inner_height - note_height) as f32 * note_y_ratio) as i32;
 
     let start_ratio =
@@ -809,6 +809,25 @@ mod tests {
         );
 
         assert!(rects[1].rect.x > rects[0].rect.x);
+    }
+
+    #[test]
+    fn note_rects_cap_note_thickness_in_large_lanes() {
+        let rects = note_rects(
+            Rect::new(10, 10, 320, 320),
+            &[MidiNote::new(64, 0, 240, 100)],
+            LoopRegion::new(0, 960),
+            TimelineFlow::DownwardColumns,
+        );
+        let horizontal_rects = note_rects(
+            Rect::new(10, 10, 320, 320),
+            &[MidiNote::new(64, 0, 240, 100)],
+            LoopRegion::new(0, 960),
+            TimelineFlow::AcrossRows,
+        );
+
+        assert_eq!(rects[0].rect.width(), 8);
+        assert_eq!(horizontal_rects[0].rect.height(), 8);
     }
 
     #[test]
