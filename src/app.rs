@@ -987,6 +987,14 @@ impl App {
 
         let top_row_y = label_rect.y + 3;
         let bottom_row_y = label_rect.y + label_rect.height() as i32 - 10;
+        let clip_controls = if !detail && track.selected_recording_clip().is_some() {
+            Some(self.recording_clip_control_rects(label_rect))
+        } else {
+            None
+        };
+        let name_right = clip_controls
+            .map(|(mute_rect, _)| mute_rect.x - 4)
+            .unwrap_or(label_rect.x + label_rect.width() as i32 - 4);
         let label_left = if detail {
             label_rect.x + 4
         } else {
@@ -1027,7 +1035,7 @@ impl App {
             Rect::new(
                 label_left,
                 top_row_y,
-                (label_rect.width() as i32 - (label_left - label_rect.x) - 4).max(0) as u32,
+                (name_right - label_left).max(0) as u32,
                 8,
             ),
             1,
@@ -1078,7 +1086,13 @@ impl App {
         )?;
 
         if !detail {
-            self.draw_recording_view_controls(canvas, label_rect, content_rect, track)?;
+            self.draw_recording_view_controls(
+                canvas,
+                label_rect,
+                content_rect,
+                track,
+                clip_controls,
+            )?;
         }
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
@@ -1142,6 +1156,13 @@ impl App {
             range_ticks.max(1),
             playhead_ticks,
         )?;
+        if !detail
+            && !self.focused_track_view
+            && track.recording_view == RecordingView::Stacked
+            && is_active
+        {
+            self.draw_active_stacked_track_marker(canvas, content_rect)?;
+        }
         canvas.set_draw_color(if self.project.transport.playing {
             Color::RGB(248, 240, 132)
         } else {
@@ -1158,6 +1179,7 @@ impl App {
         label_rect: Rect,
         content_rect: Rect,
         track: &Track,
+        clip_controls: Option<(Rect, Rect)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let capacity = self.recording_lane_capacity(content_rect);
         let can_scroll_left = track.recording_clip_scroll > 0;
@@ -1243,8 +1265,9 @@ impl App {
             Color::RGB(248, 244, 236),
         )?;
 
-        if let Some(selected_clip) = track.selected_recording_clip() {
-            let (mute_rect, delete_rect) = self.recording_clip_control_rects(label_rect);
+        if let (Some(selected_clip), Some((mute_rect, delete_rect))) =
+            (track.selected_recording_clip(), clip_controls)
+        {
             canvas.set_draw_color(if selected_clip.muted {
                 Color::RGB(120, 118, 112)
             } else {
@@ -1255,7 +1278,7 @@ impl App {
             canvas.draw_rect(mute_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                if selected_clip.muted { "ON" } else { "MUT" },
+                if selected_clip.muted { "ON" } else { "M" },
                 Rect::new(
                     mute_rect.x + 2,
                     mute_rect.y + 1,
@@ -1272,7 +1295,7 @@ impl App {
             canvas.draw_rect(delete_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                "DEL",
+                "X",
                 Rect::new(
                     delete_rect.x + 2,
                     delete_rect.y + 1,
@@ -1659,21 +1682,40 @@ impl App {
     }
 
     fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let bottom_y = label_rect.y + label_rect.height() as i32 - 10;
+        let top_y = label_rect.y + 3;
         (
-            Rect::new(
-                label_rect.x + label_rect.width() as i32 - 48,
-                bottom_y,
-                20,
-                8,
-            ),
-            Rect::new(
-                label_rect.x + label_rect.width() as i32 - 24,
-                bottom_y,
-                20,
-                8,
-            ),
+            Rect::new(label_rect.x + label_rect.width() as i32 - 36, top_y, 12, 8),
+            Rect::new(label_rect.x + label_rect.width() as i32 - 20, top_y, 12, 8),
         )
+    }
+
+    fn draw_active_stacked_track_marker<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_rect: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let y = content_rect.y + 1;
+        let center_x = content_rect.x + content_rect.width() as i32 / 2;
+        let left = Rect::new(
+            content_rect.x + 4,
+            y,
+            content_rect.width().saturating_div(2).saturating_sub(8),
+            1,
+        );
+        let right_x = center_x + 3;
+        let right_width =
+            (content_rect.x + content_rect.width() as i32 - 4 - right_x).max(0) as u32;
+        let right = Rect::new(right_x, y, right_width, 1);
+        let tick = Rect::new(center_x - 1, y - 1, 2, 3);
+        canvas.set_draw_color(Color::RGB(244, 214, 118));
+        if left.width() > 0 {
+            canvas.fill_rect(left)?;
+        }
+        if right.width() > 0 {
+            canvas.fill_rect(right)?;
+        }
+        canvas.fill_rect(tick)?;
+        Ok(())
     }
 
     fn draw_transport_strip<T: RenderTarget>(
