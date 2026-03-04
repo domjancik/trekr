@@ -198,7 +198,7 @@ Pointer/touch notes:
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
-- in stacked all-track view, the active track also shows a thin top marker inside the lane for quicker selection scanning
+- in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
 - when a recording clip is selected, its header-level `MUT` / `DEL` controls are clickable/tappable
 - the timeline header exposes a clickable/tappable focused-track toggle that collapses the timeline to the active track pair

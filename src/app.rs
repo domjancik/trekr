@@ -1170,18 +1170,14 @@ impl App {
             range_ticks.max(1),
             playhead_ticks,
         )?;
-        if !detail
-            && !self.focused_track_view
-            && track.recording_view == RecordingView::Stacked
-            && is_active
-        {
+        if !detail && track.recording_view == RecordingView::Stacked && is_active {
             canvas.set_draw_color(if self.project.transport.playing {
                 Color::RGB(248, 240, 132)
             } else {
                 Color::RGB(140, 150, 162)
             });
             canvas.fill_rect(playhead)?;
-            self.draw_active_stacked_track_marker(canvas, content_rect)?;
+            self.draw_recording_clip_scrollbar(canvas, content_rect, track)?;
         } else {
             canvas.set_draw_color(if self.project.transport.playing {
                 Color::RGB(248, 240, 132)
@@ -1786,32 +1782,67 @@ impl App {
         )
     }
 
-    fn draw_active_stacked_track_marker<T: RenderTarget>(
+    fn recording_clip_scrollbar_rects(
+        &self,
+        content_rect: Rect,
+        track: &Track,
+    ) -> Option<(Rect, Rect)> {
+        if track.recording_view != RecordingView::Stacked {
+            return None;
+        }
+
+        let total_lanes = track.recording_clips.len() + usize::from(track.active_take.is_some());
+        if total_lanes == 0 {
+            return None;
+        }
+
+        let visible_lanes = committed_recording_lane_capacity(
+            self.recording_lane_capacity(content_rect),
+            track.active_take.is_some(),
+        )
+        .min(track.recording_clips.len())
+            + usize::from(track.active_take.is_some());
+        let visible_lanes = visible_lanes.clamp(1, total_lanes);
+        let start = track
+            .recording_clip_scroll
+            .min(total_lanes.saturating_sub(visible_lanes));
+        let rail = Rect::new(
+            content_rect.x + 4,
+            content_rect.y,
+            content_rect.width().saturating_sub(8),
+            2,
+        );
+        if rail.width() == 0 {
+            return None;
+        }
+
+        let thumb_width = ((rail.width() as usize * visible_lanes) / total_lanes)
+            .max(6)
+            .min(rail.width() as usize) as u32;
+        let max_offset = rail.width().saturating_sub(thumb_width) as i32;
+        let max_start = total_lanes.saturating_sub(visible_lanes);
+        let thumb_x = if max_start == 0 {
+            rail.x
+        } else {
+            rail.x + (max_offset as i64 * start as i64 / max_start as i64) as i32
+        };
+        let thumb = Rect::new(thumb_x, rail.y, thumb_width, 2);
+        Some((rail, thumb))
+    }
+
+    fn draw_recording_clip_scrollbar<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_rect: Rect,
+        track: &Track,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let y = content_rect.y;
-        let center_x = content_rect.x + content_rect.width() as i32 / 2;
-        let left = Rect::new(
-            content_rect.x + 4,
-            y,
-            content_rect.width().saturating_div(2).saturating_sub(8),
-            2,
-        );
-        let right_x = center_x + 3;
-        let right_width =
-            (content_rect.x + content_rect.width() as i32 - 4 - right_x).max(0) as u32;
-        let right = Rect::new(right_x, y, right_width, 2);
-        let tick = Rect::new(center_x - 1, y, 2, 4);
+        let Some((rail, thumb)) = self.recording_clip_scrollbar_rects(content_rect, track) else {
+            return Ok(());
+        };
+        canvas.set_draw_color(Color::RGB(92, 100, 120));
+        canvas.fill_rect(rail)?;
         canvas.set_draw_color(Color::RGB(244, 214, 118));
-        if left.width() > 0 {
-            canvas.fill_rect(left)?;
-        }
-        if right.width() > 0 {
-            canvas.fill_rect(right)?;
-        }
-        canvas.fill_rect(tick)?;
+        canvas.fill_rect(thumb)?;
         Ok(())
     }
 
@@ -6740,6 +6771,43 @@ mod tests {
 
         assert_eq!(layouts.len(), 2);
         assert!(layouts.iter().any(|lane| lane.preview));
+    }
+
+    #[test]
+    fn stacked_scrollbar_thumb_tracks_clip_window_position() {
+        let mut app = App::new();
+        let transport = app.project.transport;
+        {
+            let track = app.project.active_track_mut().unwrap();
+            track.clear_content();
+            track.recording_view = RecordingView::Stacked;
+            for index in 0..5 {
+                let start = index * 480;
+                track.commit_take(
+                    transport,
+                    RecordingTake::new(start).release(start + 240),
+                    None,
+                );
+            }
+            track.recording_clip_scroll = 0;
+        }
+
+        let timeline_bounds = Rect::new(0, 0, 1000, 420);
+        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
+        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+        let (_, thumb_before) = app
+            .recording_clip_scrollbar_rects(content_rect, app.project.active_track().unwrap())
+            .expect("scrollbar");
+
+        app.project
+            .active_track_mut()
+            .unwrap()
+            .recording_clip_scroll = 2;
+        let (_, thumb_after) = app
+            .recording_clip_scrollbar_rects(content_rect, app.project.active_track().unwrap())
+            .expect("scrollbar");
+
+        assert!(thumb_after.x > thumb_before.x);
     }
 
     #[test]
