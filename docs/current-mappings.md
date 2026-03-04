@@ -31,13 +31,17 @@ Keyboard mappings currently implemented:
 - `T`: select notes at the active-track playhead
 - `Shift+T`: additive select notes at the active-track playhead
 - `V`: deselect notes on the active track
+- `Shift+V`: toggle the active track recording view (`Overlay` / `Stacked`)
 - `J` / `K`: select previous/next note
+- `Shift+J` / `Shift+K`: select previous/next committed recording clip
 - `U` / `O`: focus first/last selected note
 - `H` / `P`: extend note selection backward/forward
 - `Y`: extend note selection on both sides
 - `B`: contract note selection from the focused edge
 - `Z` / `X`: nudge selected notes earlier/later
 - `D` / `F`: nudge selected notes down/up
+- `Shift+M`: toggle mute on the selected committed recording clip
+- `Shift+Delete`: delete the selected committed recording clip
 - `Left` / `Right`: select previous/next track
 - `1`-`9`: select track by absolute index
 - `Tab` / `Shift+Tab`: next/previous page
@@ -45,6 +49,7 @@ Keyboard mappings currently implemented:
 - `F5`: toggle mappings overlay
 - `F7`: toggle inline mapping discoverability overlay
 - `F8`: toggle direct UI mapping mode
+- `Shift+F8`: toggle focused-track timeline view
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `W`: toggle mappings page mode
@@ -82,6 +87,8 @@ Notes:
 - note-edit mapping targets now include playhead select/add, deselect, previous/next, first/last focus, extend forward/backward/both, contract, and note pitch/time nudges
 - hold-capable MIDI note/CC mappings now support press/release behavior for `Record Hold` and `Select Notes At Playhead Add`
 - recording-stack mapping targets now include `Recording View`, `Select Next Recording Clip`, `Select Previous Recording Clip`, `Recording Clip Mute`, and `Delete Recording Clip`
-- recording-stack actions do not have default keyboard bindings in V1; they are exposed through timeline pointer controls and the mappings system
+- timeline view mapping targets now also include `Focused Track View`
+- stacked recording clip actions now have default keyboard bindings in addition to timeline pointer controls and the mappings system
+- stacked-view note-selection actions are scoped to the currently selected recording clip
 - OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface

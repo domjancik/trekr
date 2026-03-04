@@ -58,7 +58,8 @@ Latest renderer-owned captures from the demo state:
 - a moving playhead
 - per-track loop preview
 - per-track recording clip ownership with `Overlay` and `Stacked` timeline views
-- per-recording clip selection, mute, and delete on the timeline
+- per-recording clip selection, scroll, mute, and delete on the timeline
+- focused-track timeline view for expanding the active track pair while keeping loop detail visible
 - per-track MIDI note selection with focus/anchor highlighting in the timeline columns
 - action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
 - an in-canvas transport strip on the timeline page
@@ -161,13 +162,18 @@ Current controls:
 - `T`: select notes intersecting the current track playhead
 - `Shift+T`: additive select notes at the playhead without clearing the existing track note selection
 - `V`: deselect notes on the active track
+- `Shift+V`: toggle the active track between `Overlay` and `Stacked` recording views
 - `J` / `K`: focus the previous/next note
+- `Shift+J` / `Shift+K`: select the previous/next committed recording clip in stacked view
 - `U` / `O`: focus the first/last selected note
 - `H` / `P`: extend note selection backward/forward
 - `Y`: extend note selection on both edges
 - `B`: contract note selection from the focused edge
 - `Z` / `X`: nudge selected notes earlier/later by the current quantize step, or `120` ticks when quantize is off
 - `D` / `F`: nudge selected notes down/up by one semitone
+- `Shift+M`: mute/unmute the selected committed recording clip in stacked view
+- `Shift+Delete`: delete the selected committed recording clip in stacked view
+- `Shift+F8`: toggle focused-track timeline view for the active track
 - `Left` / `Right`: select previous/next track directly
 - `1`-`9`: select track by absolute index
 - `Escape`: quit
@@ -190,8 +196,10 @@ Pointer/touch notes:
 - tabs are clickable/tappable
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
+- each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
 - when a recording clip is selected, its header-level `MUT` / `DEL` controls are clickable/tappable
+- the timeline header exposes a clickable/tappable focused-track toggle that collapses the timeline to the active track pair
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
 - the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
@@ -205,7 +213,9 @@ Recording flow notes:
 - `RecWrap Extend` is the default and keeps a looped recording going past the loop boundary by rebasing the clip to loop start and extending its length instead of clamping the take at the loop end
 - each committed record pass now becomes its own recording clip with stable ownership over its committed region and notes
 - the timeline can show committed recording clips overlaid or stacked side by side per track while preserving record order
+- stacked view keeps recording clips inside the track bounds with a per-track clip viewport and header scroll controls
 - selected recording clips can be muted or deleted without clearing unrelated track content
+- in stacked view, note-selection actions only operate on the currently selected recording clip
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 - MIDI note content now comes from live input note-on/off events on each track's routed MIDI input, not a generated placeholder pattern
 
