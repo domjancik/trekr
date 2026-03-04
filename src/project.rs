@@ -393,14 +393,21 @@ impl Track {
             return false;
         }
 
-        let selected_index = self.selected_recording_clip_id.and_then(|clip_id| {
+        let Some(selected_index) = self.selected_recording_clip_id.and_then(|clip_id| {
             self.recording_clips
                 .iter()
                 .position(|clip| clip.id == clip_id)
-        });
-        let next_index = selected_index
-            .map(|index| (index + 1) % self.recording_clips.len())
-            .unwrap_or(0);
+        }) else {
+            self.selected_recording_clip_id = Some(self.recording_clips[0].id);
+            self.clear_note_selection();
+            return true;
+        };
+        let Some(next_index) = selected_index.checked_add(1) else {
+            return false;
+        };
+        if next_index >= self.recording_clips.len() {
+            return false;
+        }
         self.selected_recording_clip_id = Some(self.recording_clips[next_index].id);
         self.clear_note_selection();
         true
@@ -412,21 +419,17 @@ impl Track {
             return false;
         }
 
-        let previous_index = self
+        let Some(previous_index) = self
             .selected_recording_clip_id
             .and_then(|clip_id| {
                 self.recording_clips
                     .iter()
                     .position(|clip| clip.id == clip_id)
             })
-            .map(|index| {
-                if index == 0 {
-                    self.recording_clips.len() - 1
-                } else {
-                    index - 1
-                }
-            })
-            .unwrap_or(self.recording_clips.len() - 1);
+            .and_then(|index| index.checked_sub(1))
+        else {
+            return false;
+        };
         self.selected_recording_clip_id = Some(self.recording_clips[previous_index].id);
         self.clear_note_selection();
         true
@@ -1497,5 +1500,35 @@ mod tests {
         assert!(track.select_previous_recording_clip());
         assert!(track.select_notes_at_playhead(0, false));
         assert_eq!(track.selected_note_indices(), vec![0]);
+    }
+
+    #[test]
+    fn recording_clip_navigation_stops_at_edges() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+
+        track.commit_take(transport, RecordingTake::new(0).release(480), None);
+        track.commit_take(transport, RecordingTake::new(960).release(1_440), None);
+
+        assert_eq!(
+            track.selected_recording_clip_id,
+            Some(track.recording_clips[1].id)
+        );
+        assert!(!track.select_next_recording_clip());
+        assert_eq!(
+            track.selected_recording_clip_id,
+            Some(track.recording_clips[1].id)
+        );
+
+        assert!(track.select_previous_recording_clip());
+        assert_eq!(
+            track.selected_recording_clip_id,
+            Some(track.recording_clips[0].id)
+        );
+        assert!(!track.select_previous_recording_clip());
+        assert_eq!(
+            track.selected_recording_clip_id,
+            Some(track.recording_clips[0].id)
+        );
     }
 }
