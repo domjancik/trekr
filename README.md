@@ -62,7 +62,7 @@ Latest renderer-owned captures from the demo state:
 - focused-track timeline view for expanding the active track pair while keeping loop detail visible
 - per-track MIDI note selection with focus/anchor highlighting in the timeline columns
 - action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
-- an in-canvas transport strip on the timeline page
+- a grouped in-canvas transport strip on the timeline page, with primary transport controls on the left and Link/quantize status on the right
 - a renderer-level footer/status bar that shows hover mapping summaries and falls back to the last performed action
 - hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
 - an inline mapping discoverability overlay with compact built-in vs user-defined badges
