@@ -136,6 +136,8 @@ pub struct Track {
     pub recording_view: RecordingView,
     #[serde(default)]
     pub selected_recording_clip_id: Option<u64>,
+    #[serde(default)]
+    pub recording_clip_scroll: usize,
     #[serde(default = "default_next_recording_clip_id")]
     pub next_recording_clip_id: u64,
     #[serde(default)]
@@ -160,6 +162,7 @@ impl Track {
             recording_clips: Vec::new(),
             recording_view: RecordingView::default(),
             selected_recording_clip_id: None,
+            recording_clip_scroll: 0,
             next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
         };
@@ -180,6 +183,7 @@ impl Track {
             recording_clips: Vec::new(),
             recording_view: RecordingView::default(),
             selected_recording_clip_id: None,
+            recording_clip_scroll: 0,
             next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
         }
@@ -365,6 +369,12 @@ impl Track {
 
     pub fn toggle_recording_view(&mut self) {
         self.recording_view = self.recording_view.toggle();
+        if self.recording_view == RecordingView::Stacked
+            && self.selected_recording_clip_id.is_none()
+        {
+            self.selected_recording_clip_id = self.recording_clips.last().map(|clip| clip.id);
+        }
+        self.clear_note_selection();
     }
 
     pub fn select_recording_clip(&mut self, clip_id: u64) -> bool {
@@ -373,6 +383,7 @@ impl Track {
         }
 
         self.selected_recording_clip_id = Some(clip_id);
+        self.clear_note_selection();
         true
     }
 
@@ -391,6 +402,7 @@ impl Track {
             .map(|index| (index + 1) % self.recording_clips.len())
             .unwrap_or(0);
         self.selected_recording_clip_id = Some(self.recording_clips[next_index].id);
+        self.clear_note_selection();
         true
     }
 
@@ -416,6 +428,7 @@ impl Track {
             })
             .unwrap_or(self.recording_clips.len() - 1);
         self.selected_recording_clip_id = Some(self.recording_clips[previous_index].id);
+        self.clear_note_selection();
         true
     }
 
@@ -479,6 +492,7 @@ impl Track {
         self.regions.clear();
         self.recording_clips.clear();
         self.selected_recording_clip_id = None;
+        self.recording_clip_scroll = 0;
         self.clear_note_selection();
     }
 
@@ -820,7 +834,9 @@ impl Track {
 
     fn valid_selection_indices(&self) -> Vec<usize> {
         let mut indices = self.note_selection.selected_note_indices.clone();
-        indices.retain(|index| *index < self.midi_notes.len());
+        indices.retain(|index| {
+            *index < self.midi_notes.len() && self.note_matches_selection_scope(*index)
+        });
         indices.sort_unstable();
         indices.dedup();
         indices
@@ -828,6 +844,7 @@ impl Track {
 
     fn ordered_note_indices(&self) -> Vec<usize> {
         let mut ordered: Vec<usize> = (0..self.midi_notes.len()).collect();
+        ordered.retain(|index| self.note_matches_selection_scope(*index));
         ordered.sort_by_key(|&index| {
             let note = self.midi_notes[index];
             (note.start_ticks, note.pitch, index)
@@ -892,7 +909,9 @@ impl Track {
 
     fn update_note_selection(&mut self, selected: Vec<usize>, focus: Option<usize>) {
         let mut selected = selected;
-        selected.retain(|index| *index < self.midi_notes.len());
+        selected.retain(|index| {
+            *index < self.midi_notes.len() && self.note_matches_selection_scope(*index)
+        });
         selected.sort_unstable();
         selected.dedup();
 
@@ -922,6 +941,20 @@ impl Track {
             focus_note_index: Some(focus),
             anchor_note_index: anchor,
         };
+    }
+
+    fn note_matches_selection_scope(&self, index: usize) -> bool {
+        let Some(note) = self.midi_notes.get(index) else {
+            return false;
+        };
+
+        if self.recording_view == RecordingView::Stacked {
+            if let Some(selected_clip_id) = self.selected_recording_clip_id {
+                return note.recording_clip_id == Some(selected_clip_id);
+            }
+        }
+
+        true
     }
 }
 
@@ -1119,7 +1152,7 @@ pub struct TrackState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MidiNote, Project, RecordContext, Track, TrackKind};
+    use super::{MidiNote, Project, RecordContext, RecordingClip, RecordingView, Track, TrackKind};
     use crate::timeline::{LoopRegion, RecordingTake, Region};
     use crate::transport::{QuantizeMode, RecordMode, Transport};
 
@@ -1434,5 +1467,35 @@ mod tests {
         assert_eq!(track.recording_clips.len(), 1);
         assert_eq!(track.recording_clips[0].id, second_id);
         assert_eq!(track.selected_recording_clip_id, Some(second_id));
+    }
+
+    #[test]
+    fn stacked_view_note_selection_is_scoped_to_selected_recording() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.midi_notes = vec![
+            MidiNote::new_recorded(60, 0, 240, 100, 1),
+            MidiNote::new_recorded(64, 0, 240, 100, 2),
+        ];
+        track.recording_clips = vec![
+            RecordingClip {
+                id: 1,
+                region: Region::new_recorded(0, 240, 1),
+                muted: false,
+            },
+            RecordingClip {
+                id: 2,
+                region: Region::new_recorded(0, 240, 2),
+                muted: false,
+            },
+        ];
+        track.recording_view = RecordingView::Stacked;
+        track.selected_recording_clip_id = Some(2);
+
+        assert!(track.select_notes_at_playhead(0, false));
+        assert_eq!(track.selected_note_indices(), vec![1]);
+
+        assert!(track.select_previous_recording_clip());
+        assert!(track.select_notes_at_playhead(0, false));
+        assert_eq!(track.selected_note_indices(), vec![0]);
     }
 }

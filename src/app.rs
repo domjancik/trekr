@@ -52,6 +52,7 @@ pub struct App {
     playhead_ticks: u64,
     link_snapshot: LinkSnapshot,
     note_additive_select_held: bool,
+    focused_track_view: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,6 +229,7 @@ impl App {
             playhead_ticks: 0,
             link_snapshot,
             note_additive_select_held: false,
+            focused_track_view: false,
         }
     }
 
@@ -690,6 +692,7 @@ impl App {
         let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
         let (transport_bounds, timeline_bounds) = crate::ui::split_top_strip(body_bounds, 24, 8)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
+        let focus_button = self.focused_track_view_button_rect(header_bounds);
         canvas.set_draw_color(Color::RGB(34, 44, 64));
         canvas.fill_rect(header_bounds)?;
         canvas.set_draw_color(Color::RGB(88, 96, 120));
@@ -710,10 +713,39 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Song columns + loop detail",
+            if self.focused_track_view {
+                "Focused track + loop detail"
+            } else {
+                "Song columns + loop detail"
+            },
             Rect::new(header_bounds.x + 212, header_bounds.y + 8, 180, 8),
             1,
             Color::RGB(190, 198, 210),
+        )?;
+        canvas.set_draw_color(if self.focused_track_view {
+            Color::RGB(76, 108, 142)
+        } else {
+            Color::RGB(66, 76, 96)
+        });
+        canvas.fill_rect(focus_button)?;
+        canvas.set_draw_color(Color::RGB(206, 220, 232));
+        canvas.draw_rect(focus_button)?;
+        let focus_label = if self.focused_track_view {
+            format!("Track T{}", self.project.active_track_index + 1)
+        } else {
+            "Track All".to_string()
+        };
+        crate::ui::draw_text_fitted(
+            canvas,
+            &focus_label,
+            Rect::new(
+                focus_button.x + 6,
+                focus_button.y + 8,
+                focus_button.width().saturating_sub(12),
+                8,
+            ),
+            1,
+            Color::RGB(248, 244, 236),
         )?;
         canvas.set_draw_color(Color::RGB(122, 84, 52));
         canvas.fill_rect(reset_button)?;
@@ -733,13 +765,10 @@ impl App {
         )?;
         self.draw_transport_strip(canvas, transport_bounds)?;
 
-        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
-
-        for (index, track) in self.project.tracks.iter().enumerate() {
-            if let Some((full_bounds, detail_bounds)) = columns.get(index).copied() {
-                let is_active = index == self.project.active_track_index;
-                self.draw_track_column(canvas, full_bounds, detail_bounds, track, is_active)?;
-            }
+        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
+            let track = &self.project.tracks[index];
+            let is_active = index == self.project.active_track_index;
+            self.draw_track_column(canvas, full_bounds, detail_bounds, track, is_active)?;
         }
 
         if self.overlay_state.active == Some(AppOverlay::Discoverability) {
@@ -1013,7 +1042,7 @@ impl App {
         )?;
 
         if !detail {
-            self.draw_recording_view_controls(canvas, label_rect, track)?;
+            self.draw_recording_view_controls(canvas, label_rect, content_rect, track)?;
         }
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
@@ -1091,9 +1120,70 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
         label_rect: Rect,
+        content_rect: Rect,
         track: &Track,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view_rect = self.recording_view_chip_rect(label_rect);
+        let capacity = self.recording_lane_capacity(content_rect);
+        let can_scroll_left = track.recording_clip_scroll > 0;
+        let can_scroll_right =
+            track.recording_clip_scroll + capacity < track.recording_clips().len();
+        let (left_rect, right_rect, view_rect) = self.recording_view_control_rects(label_rect);
+        canvas.set_draw_color(if can_scroll_left {
+            Color::RGB(74, 82, 98)
+        } else {
+            Color::RGB(48, 54, 68)
+        });
+        canvas.fill_rect(left_rect)?;
+        canvas.set_draw_color(if can_scroll_left {
+            Color::RGB(202, 212, 224)
+        } else {
+            Color::RGB(112, 118, 130)
+        });
+        canvas.draw_rect(left_rect)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "<",
+            Rect::new(
+                left_rect.x + 6,
+                left_rect.y + 1,
+                left_rect.width().saturating_sub(12),
+                8,
+            ),
+            1,
+            if can_scroll_left {
+                Color::RGB(244, 244, 236)
+            } else {
+                Color::RGB(144, 150, 160)
+            },
+        )?;
+        canvas.set_draw_color(if can_scroll_right {
+            Color::RGB(74, 82, 98)
+        } else {
+            Color::RGB(48, 54, 68)
+        });
+        canvas.fill_rect(right_rect)?;
+        canvas.set_draw_color(if can_scroll_right {
+            Color::RGB(202, 212, 224)
+        } else {
+            Color::RGB(112, 118, 130)
+        });
+        canvas.draw_rect(right_rect)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            ">",
+            Rect::new(
+                right_rect.x + 6,
+                right_rect.y + 1,
+                right_rect.width().saturating_sub(12),
+                8,
+            ),
+            1,
+            if can_scroll_right {
+                Color::RGB(244, 244, 236)
+            } else {
+                Color::RGB(144, 150, 160)
+            },
+        )?;
         canvas.set_draw_color(match track.recording_view {
             RecordingView::Overlay => Color::RGB(50, 84, 126),
             RecordingView::Stacked => Color::RGB(124, 98, 48),
@@ -1383,18 +1473,20 @@ impl App {
         content_rect: Rect,
         track: &Track,
     ) -> Vec<RecordingLaneLayout> {
+        let gap = 2;
+        let visible_clips =
+            self.visible_recording_clips(track, self.recording_lane_capacity(content_rect));
         let lane_rects = match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
-                crate::ui::equal_columns(content_rect, track.recording_clips().len(), 4)
+                crate::ui::equal_columns(content_rect, visible_clips.len(), gap)
             }
             TimelineFlow::AcrossRows => {
-                crate::ui::stacked_rows(content_rect, track.recording_clips().len(), 4)
+                crate::ui::stacked_rows(content_rect, visible_clips.len(), gap)
             }
         };
 
-        track
-            .recording_clips()
-            .iter()
+        visible_clips
+            .into_iter()
             .zip(lane_rects)
             .map(|(clip, rect)| RecordingLaneLayout {
                 clip_id: clip.id,
@@ -1417,13 +1509,108 @@ impl App {
             .find_map(|lane| rect_contains(lane.rect, x, y).then_some(lane.clip_id))
     }
 
+    fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
+        match self.timeline_flow {
+            TimelineFlow::DownwardColumns => {
+                let min_lane_width = 28_i32;
+                let gap = 2_i32;
+                (((content_rect.width() as i32 + gap) / (min_lane_width + gap)).max(1)) as usize
+            }
+            TimelineFlow::AcrossRows => {
+                let min_lane_height = 26_i32;
+                let gap = 2_i32;
+                (((content_rect.height() as i32 + gap) / (min_lane_height + gap)).max(1)) as usize
+            }
+        }
+    }
+
+    fn visible_recording_clips<'a>(
+        &self,
+        track: &'a Track,
+        capacity: usize,
+    ) -> &'a [crate::project::RecordingClip] {
+        let capacity = capacity.max(1);
+        let len = track.recording_clips().len();
+        let start = track
+            .recording_clip_scroll
+            .min(len.saturating_sub(capacity));
+        let end = (start + capacity).min(len);
+        &track.recording_clips()[start..end]
+    }
+
     fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
-        Rect::new(
-            label_rect.x + label_rect.width() as i32 - 30,
-            label_rect.y + 3,
-            26,
-            8,
-        )
+        self.recording_view_control_rects(label_rect).2
+    }
+
+    fn recording_view_control_rects(&self, label_rect: Rect) -> (Rect, Rect, Rect) {
+        let top_y = label_rect.y + 3;
+        let right = label_rect.x + label_rect.width() as i32 - 4;
+        let view_rect = Rect::new(right - 26, top_y, 26, 8);
+        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 8);
+        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 8);
+        (left_rect, right_rect, view_rect)
+    }
+
+    fn recording_scroll_has_hidden_before(&self, track: &Track) -> bool {
+        track.recording_clip_scroll > 0
+    }
+
+    fn recording_scroll_has_hidden_after(&self, track: &Track, content_rect: Rect) -> bool {
+        track.recording_clip_scroll + self.recording_lane_capacity(content_rect)
+            < track.recording_clips().len()
+    }
+
+    fn sync_active_track_recording_clip_scroll(&mut self) {
+        let Some(full_bounds) = self.active_track_full_bounds() else {
+            return;
+        };
+        let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
+        let capacity = self.recording_lane_capacity(content_rect);
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        if track.recording_clips.is_empty() {
+            track.recording_clip_scroll = 0;
+            return;
+        }
+
+        let max_start = track.recording_clips.len().saturating_sub(capacity.max(1));
+        track.recording_clip_scroll = track.recording_clip_scroll.min(max_start);
+        let Some(selected_id) = track.selected_recording_clip_id else {
+            return;
+        };
+        let Some(selected_index) = track
+            .recording_clips
+            .iter()
+            .position(|clip| clip.id == selected_id)
+        else {
+            return;
+        };
+        if selected_index < track.recording_clip_scroll {
+            track.recording_clip_scroll = selected_index;
+        } else if selected_index >= track.recording_clip_scroll + capacity.max(1) {
+            track.recording_clip_scroll = selected_index + 1 - capacity.max(1);
+        }
+    }
+
+    fn recording_clip_scroll_control_hit(
+        &self,
+        label_rect: Rect,
+        track: &Track,
+        content_rect: Rect,
+        x: i32,
+        y: i32,
+    ) -> Option<AppAction> {
+        let (left_rect, right_rect, _) = self.recording_view_control_rects(label_rect);
+        if rect_contains(left_rect, x, y) && self.recording_scroll_has_hidden_before(track) {
+            return Some(AppAction::SelectPreviousRecordingClip);
+        }
+        if rect_contains(right_rect, x, y)
+            && self.recording_scroll_has_hidden_after(track, content_rect)
+        {
+            return Some(AppAction::SelectNextRecordingClip);
+        }
+        None
     }
 
     fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
@@ -3594,24 +3781,28 @@ impl App {
                 if let Some(track) = self.project.active_track_mut() {
                     track.toggle_recording_view();
                 }
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectRecordingClip(clip_id) => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.select_recording_clip(clip_id);
                 }
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectPreviousRecordingClip => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.select_previous_recording_clip();
                 }
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectNextRecordingClip => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.select_next_recording_clip();
                 }
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::ToggleSelectedRecordingClipMute => {
@@ -3624,18 +3815,27 @@ impl App {
                 if let Some(track) = self.project.active_track_mut() {
                     track.delete_selected_recording_clip();
                 }
+                self.sync_active_track_recording_clip_scroll();
+                AppControl::Continue
+            }
+            AppAction::ToggleFocusedTrackView => {
+                self.focused_track_view = !self.focused_track_view;
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectNextTrack => {
                 self.project.select_next_track();
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectPreviousTrack => {
                 self.project.select_previous_track();
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectTrack(index) => {
                 self.project.select_track(index);
+                self.sync_active_track_recording_clip_scroll();
                 AppControl::Continue
             }
             AppAction::SelectNotesAtPlayhead => {
@@ -3941,6 +4141,7 @@ impl App {
         }
 
         self.project.transport.recording = false;
+        self.sync_active_track_recording_clip_scroll();
     }
 
     fn record_target_indices(&self) -> Vec<usize> {
@@ -4873,6 +5074,9 @@ impl App {
             crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
         let (transport_bounds, timeline_bounds) =
             crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+        if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
+            return Some(self.apply_action_with_source(AppAction::ToggleFocusedTrackView, source));
+        }
         if rect_contains(self.global_loop_reset_button_rect(header_bounds), x, y) {
             return Some(self.apply_action_with_source(AppAction::ResetGlobalLoop, source));
         }
@@ -4883,8 +5087,7 @@ impl App {
             }
         }
 
-        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
-        for (index, (full_bounds, detail_bounds)) in columns.into_iter().enumerate() {
+        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
             let full_label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
             let status_rect = crate::ui::track_status_rect(
                 crate::ui::union_rect(full_bounds, detail_bounds),
@@ -4898,6 +5101,18 @@ impl App {
                 self.project.active_track_index = index;
                 let target = track_indicator_target(indicator.kind, Some(indicator.rect))?;
                 return Some(self.apply_action_with_source(target.action, source));
+            }
+
+            let full_content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
+            if let Some(action) = self.recording_clip_scroll_control_hit(
+                full_label_rect,
+                &self.project.tracks[index],
+                full_content_rect,
+                x,
+                y,
+            ) {
+                self.project.active_track_index = index;
+                return Some(self.apply_action_with_source(action, source));
             }
 
             if rect_contains(self.recording_view_chip_rect(full_label_rect), x, y) {
@@ -5229,6 +5444,15 @@ impl App {
         let (transport_bounds, timeline_bounds) =
             crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline transport");
         targets.push((
+            self.focused_track_view_button_rect(header_bounds),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleFocusedTrackView,
+                display_scope: Some("Global"),
+                allowed_mapping_scopes: &["Global"],
+                overlay_slot: None,
+            },
+        ));
+        targets.push((
             self.global_loop_reset_button_rect(header_bounds),
             DiscoverabilityTarget {
                 action: AppAction::ResetGlobalLoop,
@@ -5260,10 +5484,8 @@ impl App {
             ));
         }
 
-        let columns = crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len());
-        for ((full_bounds, detail_bounds), track) in
-            columns.into_iter().zip(self.project.tracks.iter())
-        {
+        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
+            let track = &self.project.tracks[index];
             targets.extend(self.track_discoverability_targets(full_bounds, detail_bounds, track));
         }
 
@@ -5282,6 +5504,26 @@ impl App {
             self.timeline_flow,
         );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
+        let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
+        let (left_rect, right_rect, _) = self.recording_view_control_rects(label_rect);
+        targets.push((
+            left_rect,
+            DiscoverabilityTarget {
+                action: AppAction::SelectPreviousRecordingClip,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+        targets.push((
+            right_rect,
+            DiscoverabilityTarget {
+                action: AppAction::SelectNextRecordingClip,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
         targets.push((
             self.recording_view_chip_rect(label_rect),
             DiscoverabilityTarget {
@@ -5306,6 +5548,17 @@ impl App {
                 delete_rect,
                 DiscoverabilityTarget {
                     action: AppAction::DeleteSelectedRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
+        for lane in self.recording_lane_layouts(content_rect, track) {
+            targets.push((
+                lane.rect,
+                DiscoverabilityTarget {
+                    action: AppAction::SelectRecordingClip(lane.clip_id),
                     display_scope: Some("Active Track"),
                     allowed_mapping_scopes: &["Active Track"],
                     overlay_slot: None,
@@ -5418,6 +5671,50 @@ impl App {
             width,
             header_bounds.height().saturating_sub(8),
         )
+    }
+
+    fn focused_track_view_button_rect(&self, header_bounds: Rect) -> Rect {
+        let width = crate::ui::text_width("Track All", 1) + 18;
+        Rect::new(
+            header_bounds.x + header_bounds.width() as i32 - 240,
+            header_bounds.y + 4,
+            width.max(78),
+            header_bounds.height().saturating_sub(8),
+        )
+    }
+
+    fn visible_track_columns(&self, timeline_bounds: Rect) -> Vec<(usize, Rect, Rect)> {
+        if self.project.tracks.is_empty() {
+            return Vec::new();
+        }
+
+        if self.focused_track_view {
+            return crate::ui::track_column_pairs(timeline_bounds, 1)
+                .into_iter()
+                .next()
+                .map(|(full_bounds, detail_bounds)| {
+                    vec![(self.project.active_track_index, full_bounds, detail_bounds)]
+                })
+                .unwrap_or_default();
+        }
+
+        crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len())
+            .into_iter()
+            .enumerate()
+            .map(|(index, (full_bounds, detail_bounds))| (index, full_bounds, detail_bounds))
+            .collect()
+    }
+
+    fn active_track_full_bounds(&self) -> Option<Rect> {
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
+        let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+        let (_, timeline_bounds) = crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+        self.visible_track_columns(timeline_bounds)
+            .into_iter()
+            .find(|(index, _, _)| *index == self.project.active_track_index)
+            .map(|(_, full_bounds, _)| full_bounds)
     }
 
     fn transport_chip_specs(&self) -> Vec<TransportChipSpec> {
@@ -5796,6 +6093,12 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::ToggleCurrentTrackMute => Some("Track Mute"),
         AppAction::ToggleCurrentTrackSolo => Some("Track Solo"),
         AppAction::ToggleCurrentTrackPassthrough => Some("Passthrough"),
+        AppAction::ToggleCurrentTrackRecordingView => Some("Recording View"),
+        AppAction::SelectPreviousRecordingClip => Some("Select Previous Recording Clip"),
+        AppAction::SelectNextRecordingClip => Some("Select Next Recording Clip"),
+        AppAction::ToggleSelectedRecordingClipMute => Some("Recording Clip Mute"),
+        AppAction::DeleteSelectedRecordingClip => Some("Delete Recording Clip"),
+        AppAction::ToggleFocusedTrackView => Some("Focused Track View"),
         AppAction::ToggleLinkEnabled => Some("Link Enable"),
         AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
         _ => None,
@@ -6187,6 +6490,24 @@ mod tests {
         let active = app.project.active_track().unwrap();
         assert_eq!(active.recording_clips.len(), 1);
         assert_ne!(active.recording_clips[0].id, selected_before_delete);
+    }
+
+    #[test]
+    fn focused_track_view_limits_timeline_to_active_track() {
+        let mut app = App::new();
+        let timeline_bounds = Rect::new(0, 0, 1000, 420);
+
+        assert_eq!(
+            app.visible_track_columns(timeline_bounds).len(),
+            app.project.tracks.len()
+        );
+
+        app.apply_action(AppAction::SelectTrack(2));
+        app.apply_action(AppAction::ToggleFocusedTrackView);
+
+        let visible = app.visible_track_columns(timeline_bounds);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].0, 2);
     }
 
     #[test]

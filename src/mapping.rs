@@ -102,6 +102,7 @@ const TARGET_OPTIONS: &[&str] = &[
     "Select Previous Recording Clip",
     "Recording Clip Mute",
     "Delete Recording Clip",
+    "Focused Track View",
     "Select Track",
     "Select Notes At Playhead",
     "Select Notes At Playhead Add",
@@ -231,7 +232,8 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Clear All"
         | "Pages/Overlay"
         | "Link Enable"
-        | "Link Start/Stop" => vec!["Global".to_string()],
+        | "Link Start/Stop"
+        | "Focused Track View" => vec!["Global".to_string()],
         "Record" | "Record Hold" => {
             let mut options = vec!["Armed/Active".to_string(), "Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
@@ -512,6 +514,7 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         "Delete Recording Clip" => {
             track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
         }
+        "Focused Track View" => vec![AppAction::ToggleFocusedTrackView],
         "Select Track" => absolute_track_index
             .map(AppAction::SelectTrack)
             .or_else(|| match entry.scope_label.as_str() {
@@ -651,6 +654,7 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Delete Recording Clip" => {
             track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
         }
+        "Focused Track View" => vec![AppAction::ToggleFocusedTrackView],
         "Select Track" => absolute_track_index
             .map(AppAction::SelectTrack)
             .or_else(|| match entry.scope_label.as_str() {

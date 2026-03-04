@@ -63,6 +63,7 @@ pub enum AppAction {
     SelectNextRecordingClip,
     ToggleSelectedRecordingClipMute,
     DeleteSelectedRecordingClip,
+    ToggleFocusedTrackView,
     SelectNextTrack,
     SelectPreviousTrack,
     SelectTrack(usize),
@@ -136,6 +137,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::V),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) => Some(ActionEvent::new(
+                AppAction::ToggleCurrentTrackRecordingView,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::V),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
@@ -144,10 +154,28 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::J),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) => Some(ActionEvent::new(
+                AppAction::SelectPreviousRecordingClip,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::J),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
                 AppAction::SelectPreviousNote,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::K),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) => Some(ActionEvent::new(
+                AppAction::SelectNextRecordingClip,
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -322,10 +350,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::F8),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleDirectMappingMode,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ToggleFocusedTrackView
+                } else {
+                    AppAction::ToggleDirectMappingMode
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -508,6 +541,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::M),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) => Some(ActionEvent::new(
+                AppAction::ToggleSelectedRecordingClipMute,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::M),
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
@@ -572,10 +614,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Delete),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::RemoveSelectedMapping,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::DeleteSelectedRecordingClip
+                } else {
+                    AppAction::RemoveSelectedMapping
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -682,6 +729,7 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::SelectNextRecordingClip => "Next Recording Clip",
         AppAction::ToggleSelectedRecordingClipMute => "Recording Clip Mute",
         AppAction::DeleteSelectedRecordingClip => "Delete Recording Clip",
+        AppAction::ToggleFocusedTrackView => "Focused Track View",
         AppAction::SelectNextTrack => "Next Track",
         AppAction::SelectPreviousTrack => "Previous Track",
         AppAction::SelectTrack(_) => "Select Track",
@@ -760,12 +808,13 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ToggleCurrentTrackMute => &["M"],
         AppAction::ToggleCurrentTrackSolo => &["S"],
         AppAction::ToggleCurrentTrackPassthrough => &["I"],
-        AppAction::ToggleCurrentTrackRecordingView => &[],
+        AppAction::ToggleCurrentTrackRecordingView => &["Shift+V"],
         AppAction::SelectRecordingClip(_) => &[],
-        AppAction::SelectPreviousRecordingClip => &[],
-        AppAction::SelectNextRecordingClip => &[],
-        AppAction::ToggleSelectedRecordingClipMute => &[],
-        AppAction::DeleteSelectedRecordingClip => &[],
+        AppAction::SelectPreviousRecordingClip => &["Shift+J"],
+        AppAction::SelectNextRecordingClip => &["Shift+K"],
+        AppAction::ToggleSelectedRecordingClipMute => &["Shift+M"],
+        AppAction::DeleteSelectedRecordingClip => &["Shift+Delete"],
+        AppAction::ToggleFocusedTrackView => &["Shift+F8"],
         AppAction::SelectNextTrack => &["Right"],
         AppAction::SelectPreviousTrack => &["Left"],
         AppAction::SelectTrack(_) => &["1-9"],
@@ -1053,6 +1102,66 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let view = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::V),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let prev_clip = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::J),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let next_clip = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::K),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let mute_clip = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::M),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let delete_clip = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Delete),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let focus_track = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::F8),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
 
         assert_eq!(
             KeyboardBindings.resolve(&select).unwrap().action,
@@ -1065,6 +1174,30 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&nudge).unwrap().action,
             AppAction::NudgeSelectedNotesUp
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&view).unwrap().action,
+            AppAction::ToggleCurrentTrackRecordingView
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&prev_clip).unwrap().action,
+            AppAction::SelectPreviousRecordingClip
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&next_clip).unwrap().action,
+            AppAction::SelectNextRecordingClip
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&mute_clip).unwrap().action,
+            AppAction::ToggleSelectedRecordingClipMute
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&delete_clip).unwrap().action,
+            AppAction::DeleteSelectedRecordingClip
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&focus_track).unwrap().action,
+            AppAction::ToggleFocusedTrackView
         );
     }
 
