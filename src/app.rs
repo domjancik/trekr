@@ -1210,65 +1210,68 @@ impl App {
         track: &Track,
         clip_controls: Option<(Rect, Rect)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let can_scroll_left = self.can_select_previous_recording_clip(track);
-        let can_scroll_right = self.can_select_next_recording_clip(track);
-        let (left_rect, right_rect, view_rect) = self.recording_view_control_rects(label_rect);
-        canvas.set_draw_color(if can_scroll_left {
-            Color::RGB(74, 82, 98)
-        } else {
-            Color::RGB(48, 54, 68)
-        });
-        canvas.fill_rect(left_rect)?;
-        canvas.set_draw_color(if can_scroll_left {
-            Color::RGB(202, 212, 224)
-        } else {
-            Color::RGB(112, 118, 130)
-        });
-        canvas.draw_rect(left_rect)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "<",
-            Rect::new(
-                left_rect.x + 6,
-                left_rect.y + 1,
-                left_rect.width().saturating_sub(12),
-                8,
-            ),
-            1,
-            if can_scroll_left {
-                Color::RGB(244, 244, 236)
+        if track.recording_view == RecordingView::Stacked {
+            let can_scroll_left = self.can_select_previous_recording_clip(track);
+            let can_scroll_right = self.can_select_next_recording_clip(track);
+            let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
+            canvas.set_draw_color(if can_scroll_left {
+                Color::RGB(74, 82, 98)
             } else {
-                Color::RGB(144, 150, 160)
-            },
-        )?;
-        canvas.set_draw_color(if can_scroll_right {
-            Color::RGB(74, 82, 98)
-        } else {
-            Color::RGB(48, 54, 68)
-        });
-        canvas.fill_rect(right_rect)?;
-        canvas.set_draw_color(if can_scroll_right {
-            Color::RGB(202, 212, 224)
-        } else {
-            Color::RGB(112, 118, 130)
-        });
-        canvas.draw_rect(right_rect)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            ">",
-            Rect::new(
-                right_rect.x + 6,
-                right_rect.y + 1,
-                right_rect.width().saturating_sub(12),
-                8,
-            ),
-            1,
-            if can_scroll_right {
-                Color::RGB(244, 244, 236)
+                Color::RGB(48, 54, 68)
+            });
+            canvas.fill_rect(left_rect)?;
+            canvas.set_draw_color(if can_scroll_left {
+                Color::RGB(202, 212, 224)
             } else {
-                Color::RGB(144, 150, 160)
-            },
-        )?;
+                Color::RGB(112, 118, 130)
+            });
+            canvas.draw_rect(left_rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                "<",
+                Rect::new(
+                    left_rect.x + 6,
+                    left_rect.y + 1,
+                    left_rect.width().saturating_sub(12),
+                    8,
+                ),
+                1,
+                if can_scroll_left {
+                    Color::RGB(244, 244, 236)
+                } else {
+                    Color::RGB(144, 150, 160)
+                },
+            )?;
+            canvas.set_draw_color(if can_scroll_right {
+                Color::RGB(74, 82, 98)
+            } else {
+                Color::RGB(48, 54, 68)
+            });
+            canvas.fill_rect(right_rect)?;
+            canvas.set_draw_color(if can_scroll_right {
+                Color::RGB(202, 212, 224)
+            } else {
+                Color::RGB(112, 118, 130)
+            });
+            canvas.draw_rect(right_rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                ">",
+                Rect::new(
+                    right_rect.x + 6,
+                    right_rect.y + 1,
+                    right_rect.width().saturating_sub(12),
+                    8,
+                ),
+                1,
+                if can_scroll_right {
+                    Color::RGB(244, 244, 236)
+                } else {
+                    Color::RGB(144, 150, 160)
+                },
+            )?;
+        }
+        let view_rect = self.recording_view_chip_rect(label_rect);
         canvas.set_draw_color(match track.recording_view {
             RecordingView::Overlay => Color::RGB(50, 84, 126),
             RecordingView::Stacked => Color::RGB(124, 98, 48),
@@ -1669,7 +1672,9 @@ impl App {
     }
 
     fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
-        self.recording_view_control_rects(label_rect).2
+        let top_y = label_rect.y + label_rect.height() as i32 - 10;
+        let right = label_rect.x + label_rect.width() as i32 - 4;
+        Rect::new(right - 26, top_y, 26, 8)
     }
 
     fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
@@ -1681,13 +1686,12 @@ impl App {
         )
     }
 
-    fn recording_view_control_rects(&self, label_rect: Rect) -> (Rect, Rect, Rect) {
+    fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
         let top_y = label_rect.y + label_rect.height() as i32 - 10;
-        let right = label_rect.x + label_rect.width() as i32 - 4;
-        let view_rect = Rect::new(right - 26, top_y, 26, 8);
+        let view_rect = self.recording_view_chip_rect(label_rect);
         let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 8);
         let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 8);
-        (left_rect, right_rect, view_rect)
+        (left_rect, right_rect)
     }
 
     fn selected_recording_clip_index(&self, track: &Track) -> Option<usize> {
@@ -1759,7 +1763,10 @@ impl App {
         x: i32,
         y: i32,
     ) -> Option<AppAction> {
-        let (left_rect, right_rect, _) = self.recording_view_control_rects(label_rect);
+        if track.recording_view != RecordingView::Stacked {
+            return None;
+        }
+        let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
         if rect_contains(left_rect, x, y) && self.can_select_previous_recording_clip(track) {
             return Some(AppAction::SelectPreviousRecordingClip);
         }
@@ -5748,25 +5755,27 @@ impl App {
         );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
         let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
-        let (left_rect, right_rect, _) = self.recording_view_control_rects(label_rect);
-        targets.push((
-            left_rect,
-            DiscoverabilityTarget {
-                action: AppAction::SelectPreviousRecordingClip,
-                display_scope: Some("Active Track"),
-                allowed_mapping_scopes: &["Active Track"],
-                overlay_slot: None,
-            },
-        ));
-        targets.push((
-            right_rect,
-            DiscoverabilityTarget {
-                action: AppAction::SelectNextRecordingClip,
-                display_scope: Some("Active Track"),
-                allowed_mapping_scopes: &["Active Track"],
-                overlay_slot: None,
-            },
-        ));
+        if track.recording_view == RecordingView::Stacked {
+            let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
+            targets.push((
+                left_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::SelectPreviousRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                right_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::SelectNextRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
         targets.push((
             self.recording_view_chip_rect(label_rect),
             DiscoverabilityTarget {
