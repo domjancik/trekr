@@ -955,6 +955,15 @@ impl App {
             Color::RGB(88, 96, 120)
         });
         canvas.draw_rect(bounds)?;
+        if track.state.passthrough {
+            canvas.set_draw_color(Color::RGB(74, 210, 214));
+            canvas.fill_rect(Rect::new(
+                bounds.x + 1,
+                bounds.y + 1,
+                2,
+                bounds.height().saturating_sub(2),
+            ))?;
+        }
 
         let label_rect = crate::ui::track_label_rect(bounds, self.timeline_flow);
         let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
@@ -1166,14 +1175,21 @@ impl App {
             && track.recording_view == RecordingView::Stacked
             && is_active
         {
+            canvas.set_draw_color(if self.project.transport.playing {
+                Color::RGB(248, 240, 132)
+            } else {
+                Color::RGB(140, 150, 162)
+            });
+            canvas.fill_rect(playhead)?;
             self.draw_active_stacked_track_marker(canvas, content_rect)?;
-        }
-        canvas.set_draw_color(if self.project.transport.playing {
-            Color::RGB(248, 240, 132)
         } else {
-            Color::RGB(140, 150, 162)
-        });
-        canvas.fill_rect(playhead)?;
+            canvas.set_draw_color(if self.project.transport.playing {
+                Color::RGB(248, 240, 132)
+            } else {
+                Color::RGB(140, 150, 162)
+            });
+            canvas.fill_rect(playhead)?;
+        }
 
         Ok(())
     }
@@ -1638,7 +1654,7 @@ impl App {
     fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
         match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
-                let min_lane_width = 22_i32;
+                let min_lane_width = 15_i32;
                 let gap = 2_i32;
                 (((content_rect.width() as i32 + gap) / (min_lane_width + gap)).max(1)) as usize
             }
@@ -1775,19 +1791,19 @@ impl App {
         canvas: &mut Canvas<T>,
         content_rect: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let y = content_rect.y + 1;
+        let y = content_rect.y;
         let center_x = content_rect.x + content_rect.width() as i32 / 2;
         let left = Rect::new(
             content_rect.x + 4,
             y,
             content_rect.width().saturating_div(2).saturating_sub(8),
-            1,
+            2,
         );
         let right_x = center_x + 3;
         let right_width =
             (content_rect.x + content_rect.width() as i32 - 4 - right_x).max(0) as u32;
-        let right = Rect::new(right_x, y, right_width, 1);
-        let tick = Rect::new(center_x - 1, y - 1, 2, 3);
+        let right = Rect::new(right_x, y, right_width, 2);
+        let tick = Rect::new(center_x - 1, y, 2, 4);
         canvas.set_draw_color(Color::RGB(244, 214, 118));
         if left.width() > 0 {
             canvas.fill_rect(left)?;
