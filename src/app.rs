@@ -31,6 +31,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+const BRAND_NAME: &str = "trekr";
+const BRAND_SITE: &str = "domj.net";
+const BRAND_HASH: &str = option_env!("TREKR_BUILD_HASH").unwrap_or("dev");
+
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
     project: Project,
@@ -659,7 +663,10 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let tabs = crate::ui::equal_columns(bounds, AppPage::ALL.len(), 10);
+        let (branding_bounds, tabs_bounds) = page_tabs_layout(bounds);
+        self.draw_branding(canvas, branding_bounds)?;
+
+        let tabs = crate::ui::equal_columns(tabs_bounds, AppPage::ALL.len(), 10);
         for (index, page) in AppPage::ALL.iter().copied().enumerate() {
             let tab = tabs[index];
             let active = page == self.page_state.current_page;
@@ -698,6 +705,58 @@ impl App {
             )?;
         }
 
+        Ok(())
+    }
+
+    fn draw_branding<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if bounds.width() == 0 {
+            return Ok(());
+        }
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_NAME,
+            Rect::new(bounds.x, bounds.y + 2, 84, 14),
+            2,
+            Color::RGB(244, 238, 210),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_HASH,
+            Rect::new(
+                bounds.x + 74,
+                bounds.y + 6,
+                bounds.width().saturating_sub(74),
+                8,
+            ),
+            1,
+            Color::RGB(120, 132, 150),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_SITE,
+            Rect::new(
+                bounds.x + 2,
+                bounds.y + 18,
+                bounds.width().saturating_sub(18),
+                8,
+            ),
+            1,
+            Color::RGB(146, 156, 172),
+        )?;
+
+        let divider = Rect::new(
+            bounds.x + bounds.width() as i32 - 1,
+            bounds.y + 2,
+            1,
+            bounds.height().saturating_sub(4),
+        );
+        canvas.set_draw_color(Color::RGB(72, 82, 100));
+        canvas.fill_rect(divider)?;
         Ok(())
     }
 
@@ -6185,7 +6244,8 @@ impl App {
     }
 
     fn hit_page_tab(&self, bounds: Rect, x: i32, y: i32) -> Option<AppPage> {
-        let tabs = crate::ui::equal_columns(bounds, AppPage::ALL.len(), 10);
+        let (_, tabs_bounds) = page_tabs_layout(bounds);
+        let tabs = crate::ui::equal_columns(tabs_bounds, AppPage::ALL.len(), 10);
         AppPage::ALL
             .iter()
             .copied()
@@ -7608,6 +7668,38 @@ fn output_channel_label(channel: Option<u8>) -> String {
     channel
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
+}
+
+fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
+    let branding_width = preferred_branding_width(bounds.width());
+    if branding_width == 0 {
+        return (Rect::new(bounds.x, bounds.y, 0, bounds.height()), bounds);
+    }
+
+    let gap = 14_i32;
+    let tabs_width = bounds
+        .width()
+        .saturating_sub(branding_width)
+        .saturating_sub(gap as u32);
+    (
+        Rect::new(bounds.x, bounds.y, branding_width, bounds.height()),
+        Rect::new(
+            bounds.x + branding_width as i32 + gap,
+            bounds.y,
+            tabs_width,
+            bounds.height(),
+        ),
+    )
+}
+
+fn preferred_branding_width(bounds_width: u32) -> u32 {
+    let desired = 220_u32;
+    let minimum_tabs_width = 360_u32;
+    if bounds_width <= desired + minimum_tabs_width {
+        0
+    } else {
+        desired
+    }
 }
 
 fn on_off(value: bool) -> &'static str {
