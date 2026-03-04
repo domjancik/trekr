@@ -701,7 +701,8 @@ impl App {
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
-        let (transport_bounds, timeline_bounds) = crate::ui::split_top_strip(body_bounds, 24, 8)?;
+        let (transport_bounds, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
         let focus_button = self.focused_track_view_button_rect(header_bounds);
         canvas.set_draw_color(Color::RGB(34, 44, 64));
@@ -1881,115 +1882,111 @@ impl App {
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(bounds)?;
 
-        let transport_chips = self.transport_chip_specs();
+        let top_y = bounds.y + 4;
+        let bottom_y = bounds.y + 18;
+        let chip_height = 10;
+
+        let top_specs = self.transport_top_chip_specs();
+        let bottom_specs = self.transport_bottom_chip_specs();
+        let link_specs = self.transport_link_chip_specs();
+        let right_panel_width = 236_u32;
+        let right_panel = Rect::new(
+            bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
+            bounds.y + 3,
+            right_panel_width,
+            bounds.height().saturating_sub(6),
+        );
+        let left_max = right_panel.x - 12;
+
         let mut cursor_x = bounds.x + 6;
-        for chip_spec in transport_chips {
-            let label = chip_spec.label.as_str();
-            let width = crate::ui::text_width(&label, 1) + 12;
-            let chip = Rect::new(
-                cursor_x,
-                bounds.y + 4,
-                width,
-                bounds.height().saturating_sub(8),
-            );
-            canvas.set_draw_color(chip_spec.fill);
-            canvas.fill_rect(chip)?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                label,
-                Rect::new(chip.x + 6, chip.y + 4, chip.width().saturating_sub(12), 8),
-                1,
-                Color::RGB(244, 244, 236),
-            )?;
-            cursor_x += chip.width() as i32 + 6;
-            if cursor_x >= bounds.x + bounds.width() as i32 - 240 {
+        for spec in &top_specs {
+            let width = crate::ui::text_width(&spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            if chip.x + chip.width() as i32 > left_max {
                 break;
             }
-        }
-
-        let divider = Rect::new(
-            cursor_x + 4,
-            bounds.y + 4,
-            1,
-            bounds.height().saturating_sub(8),
-        );
-        canvas.set_draw_color(Color::RGB(86, 96, 114));
-        canvas.fill_rect(divider)?;
-        cursor_x = divider.x + 8;
-
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Sync",
-            Rect::new(cursor_x, bounds.y + 8, 22, 8),
-            1,
-            Color::RGB(170, 180, 196),
-        )?;
-        cursor_x += 28;
-
-        let right_badges = [
-            (
-                format!("Q {}", quantize_label(self.project.transport.quantize)),
-                Color::RGB(72, 88, 110),
-            ),
-            (
-                format!("Link {}", on_off(self.project.transport.link_enabled)),
-                if self.project.transport.link_enabled {
-                    Color::RGB(74, 122, 144)
-                } else {
-                    Color::RGB(68, 76, 92)
-                },
-            ),
-            (
-                format!(
-                    "Sync {}",
-                    on_off(self.project.transport.link_start_stop_sync)
-                ),
-                Color::RGB(82, 98, 130),
-            ),
-            (
-                format!("Peers {}", self.link_snapshot.peers),
-                Color::RGB(66, 80, 102),
-            ),
-        ];
-        for (label, fill) in right_badges {
-            let width = crate::ui::text_width(&label, 1) + 12;
-            let chip = Rect::new(
-                cursor_x,
-                bounds.y + 4,
-                width,
-                bounds.height().saturating_sub(8),
-            );
-            canvas.set_draw_color(fill);
-            canvas.fill_rect(chip)?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                &label,
-                Rect::new(chip.x + 6, chip.y + 4, chip.width().saturating_sub(12), 8),
-                1,
-                Color::RGB(244, 244, 236),
-            )?;
+            Self::draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
 
-        let hint = if self.project.transport.link_enabled {
-            "F6 Link  Shift+F6 Sync"
-        } else {
-            "F6 Link"
-        };
-        let hint_width = crate::ui::text_width(hint, 1) + 6;
+        cursor_x = bounds.x + 6;
+        for spec in &bottom_specs {
+            let width = crate::ui::text_width(&spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
+            if chip.x + chip.width() as i32 > left_max {
+                break;
+            }
+            Self::draw_transport_chip(canvas, chip, spec)?;
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        canvas.set_draw_color(Color::RGB(44, 54, 74));
+        canvas.fill_rect(right_panel)?;
+        canvas.set_draw_color(Color::RGB(86, 96, 114));
+        canvas.draw_rect(right_panel)?;
         crate::ui::draw_text_fitted(
             canvas,
-            hint,
+            "LINK",
+            Rect::new(right_panel.x + 6, right_panel.y + 3, 28, 8),
+            1,
+            Color::RGB(164, 178, 196),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "F6 / SHIFT+F6",
             Rect::new(
-                bounds.x + bounds.width() as i32 - hint_width as i32 - 8,
-                bounds.y + 8,
-                hint_width,
+                right_panel.x + right_panel.width() as i32 - 86,
+                right_panel.y + 3,
+                80,
                 8,
             ),
             1,
-            Color::RGB(166, 176, 192),
+            Color::RGB(126, 138, 156),
         )?;
 
+        cursor_x = right_panel.x + 6;
+        for spec in &link_specs {
+            let width = crate::ui::text_width(&spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            Self::draw_transport_chip(canvas, chip, spec)?;
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        let quantize = TransportChipSpec {
+            label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
+            action: None,
+            fill: Color::RGB(72, 88, 110),
+        };
+        let peers = TransportChipSpec {
+            label: format!("Peers {}", self.link_snapshot.peers),
+            action: None,
+            fill: Color::RGB(66, 80, 102),
+        };
+        cursor_x = right_panel.x + 6;
+        for spec in [&quantize, &peers] {
+            let width = crate::ui::text_width(&spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
+            Self::draw_transport_chip(canvas, chip, spec)?;
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        Ok(())
+    }
+
+    fn draw_transport_chip<T: RenderTarget>(
+        canvas: &mut Canvas<T>,
+        chip: Rect,
+        spec: &TransportChipSpec,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(spec.fill);
+        canvas.fill_rect(chip)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            &spec.label,
+            Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
         Ok(())
     }
 
@@ -5313,7 +5310,7 @@ impl App {
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
         let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
         if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
             return Some(self.apply_action_with_source(AppAction::ToggleFocusedTrackView, source));
         }
@@ -5687,7 +5684,8 @@ impl App {
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline layout");
         let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline transport");
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline transport");
         targets.push((
             self.focused_track_view_button_rect(header_bounds),
             DiscoverabilityTarget {
@@ -5956,14 +5954,15 @@ impl App {
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
         let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (_, timeline_bounds) = crate::ui::split_top_strip(body_bounds, 24, 8).ok()?;
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
         self.visible_track_columns(timeline_bounds)
             .into_iter()
             .find(|(index, _, _)| *index == self.project.active_track_index)
             .map(|(_, full_bounds, _)| full_bounds)
     }
 
-    fn transport_chip_specs(&self) -> Vec<TransportChipSpec> {
+    fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
                 label: format!("Play {}", on_off(self.project.transport.playing)),
@@ -5975,7 +5974,7 @@ impl App {
                 },
             },
             TransportChipSpec {
-                label: format!("Rec {}", on_off(self.project.transport.recording)),
+                label: format!("Record {}", on_off(self.project.transport.recording)),
                 action: Some(AppAction::ToggleRecording),
                 fill: if self.project.transport.recording {
                     Color::RGB(180, 76, 76)
@@ -5988,9 +5987,14 @@ impl App {
                 action: Some(AppAction::CycleRecordMode),
                 fill: Color::RGB(76, 94, 136),
             },
+        ]
+    }
+
+    fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
             TransportChipSpec {
                 label: format!(
-                    "RecWrap {}",
+                    "Wrap {}",
                     if self.project.transport.loop_recording_extends_clip {
                         "Extend"
                     } else {
@@ -6005,7 +6009,7 @@ impl App {
                 },
             },
             TransportChipSpec {
-                label: format!("SongLoop {}", on_off(self.project.transport.loop_enabled)),
+                label: format!("Song Loop {}", on_off(self.project.transport.loop_enabled)),
                 action: Some(AppAction::ToggleGlobalLoop),
                 fill: Color::RGB(116, 96, 54),
             },
@@ -6026,52 +6030,70 @@ impl App {
         ]
     }
 
+    fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!("Link {}", on_off(self.project.transport.link_enabled)),
+                action: Some(AppAction::ToggleLinkEnabled),
+                fill: if self.project.transport.link_enabled {
+                    Color::RGB(74, 122, 144)
+                } else {
+                    Color::RGB(68, 76, 92)
+                },
+            },
+            TransportChipSpec {
+                label: format!(
+                    "Start/Stop {}",
+                    on_off(self.project.transport.link_start_stop_sync)
+                ),
+                action: Some(AppAction::ToggleLinkStartStopSync),
+                fill: Color::RGB(82, 98, 130),
+            },
+        ]
+    }
+
     fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
-        let mut cursor_x = bounds.x + 6;
         let mut rects = Vec::new();
-        for chip_spec in self.transport_chip_specs() {
-            let width = crate::ui::text_width(&chip_spec.label, 1) + 12;
-            let chip = Rect::new(
-                cursor_x,
-                bounds.y + 4,
-                width,
-                bounds.height().saturating_sub(8),
-            );
+        let top_y = bounds.y + 4;
+        let bottom_y = bounds.y + 18;
+        let chip_height = 10;
+        let right_panel_width = 236_u32;
+        let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
+        let left_max = right_panel_x - 12;
+
+        let mut cursor_x = bounds.x + 6;
+        for chip_spec in self.transport_top_chip_specs() {
+            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            if chip.x + chip.width() as i32 > left_max {
+                break;
+            }
             if let Some(action) = chip_spec.action {
                 rects.push((chip, action));
             }
             cursor_x += chip.width() as i32 + 6;
         }
 
-        let divider = Rect::new(
-            cursor_x + 4,
-            bounds.y + 4,
-            1,
-            bounds.height().saturating_sub(8),
-        );
-        cursor_x = divider.x + 8 + 28;
-        let sync_badges = [
-            (
-                format!("Link {}", on_off(self.project.transport.link_enabled)),
-                AppAction::ToggleLinkEnabled,
-            ),
-            (
-                format!(
-                    "Sync {}",
-                    on_off(self.project.transport.link_start_stop_sync)
-                ),
-                AppAction::ToggleLinkStartStopSync,
-            ),
-        ];
-        for (label, action) in sync_badges {
-            let width = crate::ui::text_width(&label, 1) + 12;
-            let chip = Rect::new(
-                cursor_x,
-                bounds.y + 4,
-                width,
-                bounds.height().saturating_sub(8),
-            );
-            rects.push((chip, action));
+        cursor_x = bounds.x + 6;
+        for chip_spec in self.transport_bottom_chip_specs() {
+            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
+            if chip.x + chip.width() as i32 > left_max {
+                break;
+            }
+            if let Some(action) = chip_spec.action {
+                rects.push((chip, action));
+            }
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        cursor_x = right_panel_x + 6;
+        for chip_spec in self.transport_link_chip_specs() {
+            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            if let Some(action) = chip_spec.action {
+                rects.push((chip, action));
+            }
             cursor_x += chip.width() as i32 + 6;
         }
 
@@ -6324,6 +6346,10 @@ fn compact_scope_label(scope: &str) -> &str {
         "Absolute" => "Absolute",
         other => other,
     }
+}
+
+fn transport_strip_height() -> u32 {
+    34
 }
 
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
@@ -6666,7 +6692,7 @@ mod tests {
     use super::{
         App, AppControl, AppOverlay, DirectMappingMode, DirectMappingOrigin, DirectMappingTarget,
         DiscoverabilityTarget, LastActionStatus, cycle_input_channel, cycle_optional_port,
-        cycle_output_channel, mapping_field_index,
+        cycle_output_channel, mapping_field_index, transport_strip_height,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -6898,19 +6924,19 @@ mod tests {
     fn transport_chip_specs_include_visible_loop_recording_wrap_status() {
         let mut app = App::new();
         let labels = app
-            .transport_chip_specs()
+            .transport_bottom_chip_specs()
             .into_iter()
             .map(|chip| chip.label)
             .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "RecWrap Extend"));
+        assert!(labels.iter().any(|label| label == "Wrap Extend"));
 
         app.apply_action(AppAction::ToggleLoopRecordingExtension);
         let labels = app
-            .transport_chip_specs()
+            .transport_bottom_chip_specs()
             .into_iter()
             .map(|chip| chip.label)
             .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "RecWrap Clamp"));
+        assert!(labels.iter().any(|label| label == "Wrap Clamp"));
     }
 
     #[test]
@@ -8111,7 +8137,8 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline body");
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[1];
         let status_rect = crate::ui::track_status_rect(
@@ -8139,7 +8166,8 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, 24, 8).expect("timeline body");
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[2];
         let status_rect = crate::ui::track_status_rect(
