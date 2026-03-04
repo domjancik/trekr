@@ -990,11 +990,6 @@ impl App {
             canvas.set_draw_color(Color::RGB(52, 62, 84));
             canvas.fill_rect(guide)?;
         }
-        for tick in crate::ui::timeline_ruler_ticks(content_rect, self.timeline_flow) {
-            canvas.set_draw_color(Color::RGB(166, 178, 198));
-            canvas.fill_rect(tick)?;
-        }
-
         let top_row_y = label_rect.y + 3;
         let bottom_row_y = label_rect.y + label_rect.height() as i32 - 10;
         let clip_controls = if !detail && track.selected_recording_clip().is_some() {
@@ -1133,34 +1128,36 @@ impl App {
             preview_notes.as_slice(),
         )?;
 
-        if let Some(preview_region) = preview_region {
-            if preview_region.intersects(note_range) {
-                for region in crate::ui::region_rects(
-                    content_rect,
-                    &[preview_region],
-                    note_range,
-                    self.timeline_flow,
-                ) {
-                    if detail {
-                        canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
-                        canvas.fill_rect(region.rect)?;
+        if track.recording_view != RecordingView::Stacked {
+            if let Some(preview_region) = preview_region {
+                if preview_region.intersects(note_range) {
+                    for region in crate::ui::region_rects(
+                        content_rect,
+                        &[preview_region],
+                        note_range,
+                        self.timeline_flow,
+                    ) {
+                        if detail {
+                            canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
+                            canvas.fill_rect(region.rect)?;
+                        }
+                        canvas.set_draw_color(Color::RGB(248, 122, 122));
+                        canvas.draw_rect(region.rect)?;
                     }
-                    canvas.set_draw_color(Color::RGB(248, 122, 122));
-                    canvas.draw_rect(region.rect)?;
                 }
             }
-        }
 
-        for note in crate::ui::note_rects(
-            content_rect,
-            preview_notes.as_slice(),
-            note_range,
-            self.timeline_flow,
-        ) {
-            canvas.set_draw_color(Color::RGBA(238, 108, 108, 176));
-            canvas.fill_rect(note.rect)?;
-            canvas.set_draw_color(Color::RGB(255, 176, 176));
-            canvas.draw_rect(note.rect)?;
+            for note in crate::ui::note_rects(
+                content_rect,
+                preview_notes.as_slice(),
+                note_range,
+                self.timeline_flow,
+            ) {
+                canvas.set_draw_color(Color::RGBA(238, 108, 108, 176));
+                canvas.fill_rect(note.rect)?;
+                canvas.set_draw_color(Color::RGB(255, 176, 176));
+                canvas.draw_rect(note.rect)?;
+            }
         }
 
         let playhead = crate::ui::playhead_rect_in_range(
@@ -1185,6 +1182,10 @@ impl App {
                 Color::RGB(140, 150, 162)
             });
             canvas.fill_rect(playhead)?;
+        }
+        for tick in crate::ui::timeline_ruler_ticks(content_rect, self.timeline_flow) {
+            canvas.set_draw_color(Color::RGB(166, 178, 198));
+            canvas.fill_rect(tick)?;
         }
 
         Ok(())
