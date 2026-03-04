@@ -133,10 +133,11 @@ struct MappingBadge {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RecordingLaneLayout {
-    clip_id: u64,
+    clip_id: Option<u64>,
     rect: Rect,
     selected: bool,
     muted: bool,
+    preview: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1099,6 +1100,16 @@ impl App {
         let selected_note_indices = track.selected_note_indices();
         let focused_note_index = track.focused_note_index();
         let anchor_note_index = track.anchor_note_index();
+        let preview_region = track.preview_region(
+            self.project.transport,
+            self.record_capture_ticks(track),
+            self.record_context(track),
+        );
+        let preview_notes = track.preview_notes(
+            self.project.transport,
+            self.record_capture_ticks(track),
+            self.record_context(track),
+        );
         self.draw_track_recording_content(
             canvas,
             content_rect,
@@ -1109,13 +1120,11 @@ impl App {
             selected_note_indices.as_slice(),
             focused_note_index,
             anchor_note_index,
+            preview_region,
+            preview_notes.as_slice(),
         )?;
 
-        if let Some(preview_region) = track.preview_region(
-            self.project.transport,
-            self.record_capture_ticks(track),
-            self.record_context(track),
-        ) {
+        if let Some(preview_region) = preview_region {
             if preview_region.intersects(note_range) {
                 for region in crate::ui::region_rects(
                     content_rect,
@@ -1135,11 +1144,7 @@ impl App {
 
         for note in crate::ui::note_rects(
             content_rect,
-            &track.preview_notes(
-                self.project.transport,
-                self.record_capture_ticks(track),
-                self.record_context(track),
-            ),
+            preview_notes.as_slice(),
             note_range,
             self.timeline_flow,
         ) {
@@ -1319,8 +1324,12 @@ impl App {
         selected_note_indices: &[usize],
         focused_note_index: Option<usize>,
         anchor_note_index: Option<usize>,
+        preview_region: Option<crate::timeline::Region>,
+        preview_notes: &[crate::project::MidiNote],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if track.recording_view == RecordingView::Stacked && !track.recording_clips().is_empty() {
+        if track.recording_view == RecordingView::Stacked
+            && (!track.recording_clips().is_empty() || preview_region.is_some())
+        {
             let unowned_regions: Vec<_> = track
                 .regions
                 .iter()
@@ -1351,48 +1360,84 @@ impl App {
             )?;
 
             for lane in self.recording_lane_layouts(content_rect, track) {
-                canvas.set_draw_color(if lane.selected {
+                canvas.set_draw_color(if lane.preview {
+                    Color::RGB(54, 32, 36)
+                } else if lane.selected {
                     Color::RGB(46, 62, 94)
                 } else {
                     Color::RGB(26, 34, 48)
                 });
                 canvas.fill_rect(lane.rect)?;
-                canvas.set_draw_color(if lane.selected {
+                canvas.set_draw_color(if lane.preview {
+                    Color::RGB(248, 122, 122)
+                } else if lane.selected {
                     Color::RGB(248, 226, 134)
                 } else {
                     Color::RGB(76, 92, 118)
                 });
                 canvas.draw_rect(lane.rect)?;
 
-                let lane_muted = track.state.muted || lane.muted;
-                let lane_regions: Vec<_> = track
-                    .regions
-                    .iter()
-                    .copied()
-                    .filter(|region| region.recording_clip_id == Some(lane.clip_id))
-                    .collect();
-                let lane_notes = indexed_notes(track, Some(lane.clip_id));
-                self.draw_region_entries(
-                    canvas,
-                    lane.rect,
-                    &lane_regions,
-                    note_range,
-                    track,
-                    is_active,
-                    lane_muted,
-                )?;
-                self.draw_note_entries(
-                    canvas,
-                    lane.rect,
-                    &lane_notes,
-                    note_range,
-                    track,
-                    detail,
-                    lane_muted,
-                    selected_note_indices,
-                    focused_note_index,
-                    anchor_note_index,
-                )?;
+                if lane.preview {
+                    if let Some(preview_region) =
+                        preview_region.filter(|region| region.intersects(note_range))
+                    {
+                        for region in crate::ui::region_rects(
+                            lane.rect,
+                            &[preview_region],
+                            note_range,
+                            self.timeline_flow,
+                        ) {
+                            if detail {
+                                canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
+                                canvas.fill_rect(region.rect)?;
+                            }
+                            canvas.set_draw_color(Color::RGB(248, 122, 122));
+                            canvas.draw_rect(region.rect)?;
+                        }
+                    }
+
+                    for note in crate::ui::note_rects(
+                        lane.rect,
+                        preview_notes,
+                        note_range,
+                        self.timeline_flow,
+                    ) {
+                        canvas.set_draw_color(Color::RGBA(238, 108, 108, 176));
+                        canvas.fill_rect(note.rect)?;
+                        canvas.set_draw_color(Color::RGB(255, 176, 176));
+                        canvas.draw_rect(note.rect)?;
+                    }
+                } else if let Some(clip_id) = lane.clip_id {
+                    let lane_muted = track.state.muted || lane.muted;
+                    let lane_regions: Vec<_> = track
+                        .regions
+                        .iter()
+                        .copied()
+                        .filter(|region| region.recording_clip_id == Some(clip_id))
+                        .collect();
+                    let lane_notes = indexed_notes(track, Some(clip_id));
+                    self.draw_region_entries(
+                        canvas,
+                        lane.rect,
+                        &lane_regions,
+                        note_range,
+                        track,
+                        is_active,
+                        lane_muted,
+                    )?;
+                    self.draw_note_entries(
+                        canvas,
+                        lane.rect,
+                        &lane_notes,
+                        note_range,
+                        track,
+                        detail,
+                        lane_muted,
+                        selected_note_indices,
+                        focused_note_index,
+                        anchor_note_index,
+                    )?;
+                }
             }
 
             return Ok(());
@@ -1531,27 +1576,47 @@ impl App {
         track: &Track,
     ) -> Vec<RecordingLaneLayout> {
         let gap = 2;
-        let visible_clips =
-            self.visible_recording_clips(track, self.recording_lane_capacity(content_rect));
+        let capacity = self.recording_lane_capacity(content_rect);
+        let show_preview = track.active_take.is_some();
+        let committed_capacity = if show_preview {
+            capacity.saturating_sub(1)
+        } else {
+            capacity
+        };
+        let visible_clips = self.visible_recording_clips(track, committed_capacity);
+        let lane_count = visible_clips.len() + usize::from(show_preview);
         let lane_rects = match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
-                crate::ui::equal_columns(content_rect, visible_clips.len(), gap)
+                crate::ui::equal_columns(content_rect, lane_count, gap)
             }
-            TimelineFlow::AcrossRows => {
-                crate::ui::stacked_rows(content_rect, visible_clips.len(), gap)
-            }
+            TimelineFlow::AcrossRows => crate::ui::stacked_rows(content_rect, lane_count, gap),
         };
 
-        visible_clips
-            .into_iter()
-            .zip(lane_rects)
+        let mut layouts: Vec<_> = visible_clips
+            .iter()
+            .zip(lane_rects.iter().copied())
             .map(|(clip, rect)| RecordingLaneLayout {
-                clip_id: clip.id,
+                clip_id: Some(clip.id),
                 rect,
                 selected: track.selected_recording_clip_id == Some(clip.id),
                 muted: clip.muted,
+                preview: false,
             })
-            .collect()
+            .collect();
+
+        if show_preview {
+            if let Some(rect) = lane_rects.get(visible_clips.len()).copied() {
+                layouts.push(RecordingLaneLayout {
+                    clip_id: None,
+                    rect,
+                    selected: false,
+                    muted: false,
+                    preview: true,
+                });
+            }
+        }
+
+        layouts
     }
 
     fn recording_lane_hit_clip(
@@ -1563,7 +1628,11 @@ impl App {
     ) -> Option<u64> {
         self.recording_lane_layouts(content_rect, track)
             .into_iter()
-            .find_map(|lane| rect_contains(lane.rect, x, y).then_some(lane.clip_id))
+            .find_map(|lane| {
+                rect_contains(lane.rect, x, y)
+                    .then_some(lane.clip_id)
+                    .flatten()
+            })
     }
 
     fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
@@ -1586,7 +1655,9 @@ impl App {
         track: &'a Track,
         capacity: usize,
     ) -> &'a [crate::project::RecordingClip] {
-        let capacity = capacity.max(1);
+        if capacity == 0 {
+            return &track.recording_clips()[0..0];
+        }
         let len = track.recording_clips().len();
         let start = track
             .recording_clip_scroll
@@ -1643,10 +1714,12 @@ impl App {
             return;
         };
         let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
-        let capacity = self.recording_lane_capacity(content_rect);
+        let total_capacity = self.recording_lane_capacity(content_rect);
         let Some(track) = self.project.active_track_mut() else {
             return;
         };
+        let capacity =
+            committed_recording_lane_capacity(total_capacity, track.active_take.is_some());
         if track.recording_clips.is_empty() {
             track.recording_clip_scroll = 0;
             return;
@@ -1690,9 +1763,10 @@ impl App {
 
     fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
         let top_y = label_rect.y + 3;
+        let right = label_rect.x + label_rect.width() as i32 - 4;
         (
-            Rect::new(label_rect.x + label_rect.width() as i32 - 36, top_y, 12, 8),
-            Rect::new(label_rect.x + label_rect.width() as i32 - 20, top_y, 12, 8),
+            Rect::new(right - 28, top_y, 12, 8),
+            Rect::new(right - 12, top_y, 12, 8),
         )
     }
 
@@ -5654,15 +5728,17 @@ impl App {
             ));
         }
         for lane in self.recording_lane_layouts(content_rect, track) {
-            targets.push((
-                lane.rect,
-                DiscoverabilityTarget {
-                    action: AppAction::SelectRecordingClip(lane.clip_id),
-                    display_scope: Some("Active Track"),
-                    allowed_mapping_scopes: &["Active Track"],
-                    overlay_slot: None,
-                },
-            ));
+            if let Some(clip_id) = lane.clip_id {
+                targets.push((
+                    lane.rect,
+                    DiscoverabilityTarget {
+                        action: AppAction::SelectRecordingClip(clip_id),
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot: None,
+                    },
+                ));
+            }
         }
         for indicator in crate::ui::track_indicators(status_rect) {
             if let Some(target) = track_indicator_target(indicator.kind, Some(indicator.rect)) {
@@ -6178,6 +6254,14 @@ fn compact_scope_label(scope: &str) -> &str {
     }
 }
 
+fn committed_recording_lane_capacity(total_capacity: usize, has_preview_lane: bool) -> usize {
+    if has_preview_lane {
+        total_capacity.saturating_sub(1)
+    } else {
+        total_capacity
+    }
+}
+
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -6616,6 +6700,30 @@ mod tests {
         let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
 
         assert!(app.recording_lane_capacity(content_rect) >= 3);
+    }
+
+    #[test]
+    fn stacked_view_shows_preview_lane_while_recording() {
+        let mut app = App::new();
+        let transport = app.project.transport;
+        {
+            let track = app.project.active_track_mut().unwrap();
+            track.clear_content();
+            track.recording_view = RecordingView::Stacked;
+            track.commit_take(transport, RecordingTake::new(0).release(480), None);
+        }
+
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.apply_action(AppAction::ToggleRecording);
+
+        let timeline_bounds = Rect::new(0, 0, 1000, 420);
+        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
+        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+        let layouts = app.recording_lane_layouts(content_rect, app.project.active_track().unwrap());
+
+        assert_eq!(layouts.len(), 2);
+        assert!(layouts.iter().any(|lane| lane.preview));
     }
 
     #[test]
