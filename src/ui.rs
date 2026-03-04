@@ -411,7 +411,7 @@ pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 
 pub fn track_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 14, lane.width(), 20),
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 14, lane.width(), 24),
         TimelineFlow::AcrossRows => {
             Rect::new(lane.x, lane.y + 14, 56, lane.height().saturating_sub(14))
         }
@@ -422,9 +422,9 @@ pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(
             lane.x,
-            lane.y + 34,
+            lane.y + 38,
             lane.width(),
-            lane.height().saturating_sub(34),
+            lane.height().saturating_sub(38),
         ),
         TimelineFlow::AcrossRows => Rect::new(
             lane.x + 56,
@@ -437,19 +437,10 @@ pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 
 pub fn detail_badge_rect(header: Rect) -> Rect {
     Rect::new(
-        header.x + (header.width() as i32 / 2),
-        header.y + 4,
-        (header.width() / 2).max(10),
-        (header.height() - 8).max(6),
-    )
-}
-
-pub fn passthrough_rail_rect(bounds: Rect) -> Rect {
-    Rect::new(
-        bounds.x + 2,
-        bounds.y + 2,
-        4,
-        bounds.height().saturating_sub(4),
+        header.x + 4,
+        header.y + header.height() as i32 - 11,
+        header.width().saturating_sub(8).min(28),
+        8,
     )
 }
 
@@ -655,10 +646,10 @@ fn horizontal_note_rect(
 mod tests {
     use super::{
         TimelineFlow, TrackIndicatorKind, detail_badge_rect, equal_columns, note_rects,
-        passthrough_rail_rect, playhead_rect_in_range, range_highlight_rect, split_top_strip,
-        stacked_rows, surface_rect, text_width, timeline_guides, timeline_ruler_ticks,
-        track_column_pairs, track_content_rect, track_header_rect, track_indicators,
-        track_label_rect, track_status_rect, truncate_text_to_width, union_rect,
+        playhead_rect_in_range, range_highlight_rect, split_top_strip, stacked_rows, surface_rect,
+        text_width, timeline_guides, timeline_ruler_ticks, track_column_pairs, track_content_rect,
+        track_header_rect, track_indicators, track_label_rect, track_status_rect,
+        truncate_text_to_width, union_rect,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
@@ -756,8 +747,9 @@ mod tests {
 
         assert_eq!(status.height(), 14);
         assert_eq!(label.y, 34);
-        assert_eq!(content.y, 54);
-        assert_eq!(content.height(), 206);
+        assert_eq!(label.height(), 24);
+        assert_eq!(content.y, 58);
+        assert_eq!(content.height(), 202);
     }
 
     #[test]
@@ -802,13 +794,6 @@ mod tests {
         let union = union_rect(Rect::new(10, 20, 40, 200), Rect::new(56, 20, 40, 200));
         assert_eq!(union.x, 10);
         assert_eq!(union.width(), 86);
-    }
-
-    #[test]
-    fn passthrough_rail_stays_thin() {
-        let rail = passthrough_rail_rect(Rect::new(10, 20, 80, 240));
-        assert_eq!(rail.width(), 4);
-        assert_eq!(rail.height(), 236);
     }
 
     #[test]

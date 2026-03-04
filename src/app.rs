@@ -877,7 +877,7 @@ impl App {
                     Color::RGB(114, 120, 132),
                     Color::RGB(180, 186, 198),
                     if indicator.rect.width() >= 24 {
-                        "MUTE"
+                        "MUT"
                     } else {
                         "M"
                     },
@@ -887,7 +887,7 @@ impl App {
                     Color::RGB(82, 162, 92),
                     Color::RGB(144, 224, 154),
                     if indicator.rect.width() >= 24 {
-                        "SOLO"
+                        "SOL"
                     } else {
                         "S"
                     },
@@ -959,11 +959,6 @@ impl App {
         let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
         canvas.set_draw_color(accent);
         canvas.fill_rect(label_rect)?;
-        if track.state.passthrough {
-            let rail = crate::ui::passthrough_rail_rect(bounds);
-            canvas.set_draw_color(Color::RGB(74, 210, 214));
-            canvas.fill_rect(rail)?;
-        }
 
         if !detail && track.state.loop_enabled {
             let loop_highlight = crate::ui::range_highlight_rect(
@@ -990,55 +985,96 @@ impl App {
             canvas.fill_rect(tick)?;
         }
 
-        if detail {
-            let loop_tag = crate::ui::detail_badge_rect(label_rect);
-            canvas.set_draw_color(
-                if track.state.loop_enabled && self.project.transport.loop_enabled {
-                    Color::RGB(252, 192, 104)
-                } else {
-                    Color::RGB(88, 82, 76)
-                },
-            );
-            canvas.fill_rect(loop_tag)?;
-        }
-
-        let role_badge = Rect::new(
-            label_rect.x + 4,
-            label_rect.y + 4,
-            label_rect.width().saturating_sub(8).min(28),
-            8,
-        );
-        canvas.set_draw_color(if detail {
-            Color::RGB(94, 68, 44)
+        let top_row_y = label_rect.y + 3;
+        let bottom_row_y = label_rect.y + label_rect.height() as i32 - 10;
+        let label_left = if detail {
+            label_rect.x + 4
         } else {
-            Color::RGB(38, 58, 90)
-        });
-        canvas.fill_rect(role_badge)?;
+            let passthrough_button = self.track_passthrough_button_rect(label_rect);
+            canvas.set_draw_color(if track.state.passthrough {
+                Color::RGB(74, 210, 214)
+            } else {
+                Color::RGB(44, 70, 94)
+            });
+            canvas.fill_rect(passthrough_button)?;
+            canvas.set_draw_color(if track.state.passthrough {
+                Color::RGB(210, 246, 248)
+            } else {
+                Color::RGB(144, 170, 194)
+            });
+            canvas.draw_rect(passthrough_button)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                "THRU",
+                Rect::new(
+                    passthrough_button.x + 2,
+                    passthrough_button.y + 1,
+                    passthrough_button.width().saturating_sub(4),
+                    passthrough_button.height().saturating_sub(2),
+                ),
+                1,
+                if track.state.passthrough {
+                    Color::RGB(10, 28, 34)
+                } else {
+                    Color::RGB(230, 236, 240)
+                },
+            )?;
+            passthrough_button.x + passthrough_button.width() as i32 + 4
+        };
         crate::ui::draw_text_fitted(
             canvas,
-            if detail { "Loop" } else { "Song" },
+            &track.name,
             Rect::new(
-                role_badge.x + 3,
-                role_badge.y + 1,
-                role_badge.width().saturating_sub(6),
+                label_left,
+                top_row_y,
+                (label_rect.width() as i32 - (label_left - label_rect.x) - 4).max(0) as u32,
                 8,
             ),
             1,
             Color::RGB(244, 244, 236),
         )?;
 
-        let label_left = label_rect.x + 4;
+        let role_badge = if detail {
+            crate::ui::detail_badge_rect(label_rect)
+        } else {
+            Rect::new(
+                label_rect.x + 4,
+                bottom_row_y,
+                label_rect.width().saturating_sub(8).min(28),
+                8,
+            )
+        };
+        canvas.set_draw_color(if detail {
+            if track.state.loop_enabled && self.project.transport.loop_enabled {
+                Color::RGB(252, 192, 104)
+            } else {
+                Color::RGB(88, 82, 76)
+            }
+        } else {
+            Color::RGB(38, 58, 90)
+        });
+        canvas.fill_rect(role_badge)?;
+        canvas.set_draw_color(if detail {
+            Color::RGB(238, 214, 172)
+        } else {
+            Color::RGB(188, 204, 226)
+        });
+        canvas.draw_rect(role_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
-            if detail { "Loop" } else { &track.name },
+            if detail { "LOOP" } else { "SONG" },
             Rect::new(
-                label_left,
-                label_rect.y + 14,
-                (label_rect.width() as i32 - (label_left - label_rect.x) - 4).max(0) as u32,
-                8,
+                role_badge.x + 2,
+                role_badge.y + 1,
+                role_badge.width().saturating_sub(4),
+                role_badge.height().saturating_sub(2),
             ),
             1,
-            Color::RGB(244, 244, 236),
+            if detail {
+                Color::RGB(28, 22, 18)
+            } else {
+                Color::RGB(244, 244, 236)
+            },
         )?;
 
         if !detail {
@@ -1542,8 +1578,17 @@ impl App {
         self.recording_view_control_rects(label_rect).2
     }
 
+    fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
+        Rect::new(
+            label_rect.x + 4,
+            label_rect.y + 3,
+            label_rect.width().saturating_sub(8).min(30),
+            8,
+        )
+    }
+
     fn recording_view_control_rects(&self, label_rect: Rect) -> (Rect, Rect, Rect) {
-        let top_y = label_rect.y + 3;
+        let top_y = label_rect.y + label_rect.height() as i32 - 10;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         let view_rect = Rect::new(right - 26, top_y, 26, 8);
         let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 8);
@@ -5103,6 +5148,13 @@ impl App {
                 return Some(self.apply_action_with_source(target.action, source));
             }
 
+            if rect_contains(self.track_passthrough_button_rect(full_label_rect), x, y) {
+                self.project.active_track_index = index;
+                return Some(
+                    self.apply_action_with_source(AppAction::ToggleCurrentTrackPassthrough, source),
+                );
+            }
+
             let full_content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
             if let Some(action) = self.recording_clip_scroll_control_hit(
                 full_label_rect,
@@ -5579,9 +5631,8 @@ impl App {
             }
         }
 
-        let passthrough_hit = Rect::new(full_bounds.x, label_rect.y, 14, label_rect.height());
         targets.push((
-            passthrough_hit,
+            self.track_passthrough_button_rect(label_rect),
             DiscoverabilityTarget {
                 action: AppAction::ToggleCurrentTrackPassthrough,
                 display_scope: Some("Active Track"),
