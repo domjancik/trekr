@@ -140,6 +140,16 @@ struct RecordingLaneLayout {
     preview: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RecordingLaneWindow {
+    start: usize,
+    visible_total: usize,
+    committed_start: usize,
+    committed_end: usize,
+    visible_committed: usize,
+    show_preview: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiCaptureOptions {
     pub output_dir: PathBuf,
@@ -1589,15 +1599,9 @@ impl App {
         track: &Track,
     ) -> Vec<RecordingLaneLayout> {
         let gap = 2;
-        let capacity = self.recording_lane_capacity(content_rect);
-        let show_preview = track.active_take.is_some();
-        let committed_capacity = if show_preview {
-            capacity.saturating_sub(1)
-        } else {
-            capacity
-        };
-        let visible_clips = self.visible_recording_clips(track, committed_capacity);
-        let lane_count = visible_clips.len() + usize::from(show_preview);
+        let window = self.recording_lane_window(track, self.recording_lane_capacity(content_rect));
+        let visible_clips = &track.recording_clips()[window.committed_start..window.committed_end];
+        let lane_count = window.visible_committed + usize::from(window.show_preview);
         let lane_rects = match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
                 crate::ui::equal_columns(content_rect, lane_count, gap)
@@ -1617,8 +1621,8 @@ impl App {
             })
             .collect();
 
-        if show_preview {
-            if let Some(rect) = lane_rects.get(visible_clips.len()).copied() {
+        if window.show_preview {
+            if let Some(rect) = lane_rects.get(window.visible_committed).copied() {
                 layouts.push(RecordingLaneLayout {
                     clip_id: None,
                     rect,
@@ -1661,22 +1665,6 @@ impl App {
                 (((content_rect.height() as i32 + gap) / (min_lane_height + gap)).max(1)) as usize
             }
         }
-    }
-
-    fn visible_recording_clips<'a>(
-        &self,
-        track: &'a Track,
-        capacity: usize,
-    ) -> &'a [crate::project::RecordingClip] {
-        if capacity == 0 {
-            return &track.recording_clips()[0..0];
-        }
-        let len = track.recording_clips().len();
-        let start = track
-            .recording_clip_scroll
-            .min(len.saturating_sub(capacity));
-        let end = (start + capacity).min(len);
-        &track.recording_clips()[start..end]
     }
 
     fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
@@ -1727,22 +1715,28 @@ impl App {
             return;
         };
         let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
-        let total_capacity = self.recording_lane_capacity(content_rect);
+        let total_capacity = self.recording_lane_capacity(content_rect).max(1);
         let Some(track) = self.project.active_track_mut() else {
             return;
         };
-        let capacity =
-            committed_recording_lane_capacity(total_capacity, track.active_take.is_some());
-        if track.recording_clips.is_empty() {
+        let total_lanes = track.recording_clips.len() + usize::from(track.active_take.is_some());
+        if total_lanes == 0 {
             track.recording_clip_scroll = 0;
             return;
         }
 
-        let max_start = track.recording_clips.len().saturating_sub(capacity.max(1));
+        let visible_lanes = total_capacity.min(total_lanes);
+        let max_start = total_lanes.saturating_sub(visible_lanes);
         track.recording_clip_scroll = track.recording_clip_scroll.min(max_start);
+        if track.active_take.is_some() {
+            track.recording_clip_scroll = track.recording_clip_scroll.max(max_start);
+        }
         let Some(selected_id) = track.selected_recording_clip_id else {
             return;
         };
+        if track.active_take.is_some() {
+            return;
+        }
         let Some(selected_index) = track
             .recording_clips
             .iter()
@@ -1752,8 +1746,8 @@ impl App {
         };
         if selected_index < track.recording_clip_scroll {
             track.recording_clip_scroll = selected_index;
-        } else if selected_index >= track.recording_clip_scroll + capacity.max(1) {
-            track.recording_clip_scroll = selected_index + 1 - capacity.max(1);
+        } else if selected_index >= track.recording_clip_scroll + visible_lanes {
+            track.recording_clip_scroll = selected_index + 1 - visible_lanes;
         }
     }
 
@@ -1797,16 +1791,9 @@ impl App {
             return None;
         }
 
-        let visible_lanes = committed_recording_lane_capacity(
-            self.recording_lane_capacity(content_rect),
-            track.active_take.is_some(),
-        )
-        .min(track.recording_clips.len())
-            + usize::from(track.active_take.is_some());
-        let visible_lanes = visible_lanes.clamp(1, total_lanes);
-        let start = track
-            .recording_clip_scroll
-            .min(total_lanes.saturating_sub(visible_lanes));
+        let window = self.recording_lane_window(track, self.recording_lane_capacity(content_rect));
+        let visible_lanes = window.visible_total.clamp(1, total_lanes);
+        let start = window.start;
         let rail = Rect::new(
             content_rect.x + 4,
             content_rect.y,
@@ -1845,6 +1832,43 @@ impl App {
         canvas.set_draw_color(Color::RGB(244, 214, 118));
         canvas.fill_rect(thumb)?;
         Ok(())
+    }
+
+    fn recording_lane_window(&self, track: &Track, total_capacity: usize) -> RecordingLaneWindow {
+        let total_capacity = total_capacity.max(1);
+        let committed_len = track.recording_clips().len();
+        let preview_index = track.active_take.as_ref().map(|_| committed_len);
+        let total_lanes = committed_len + usize::from(preview_index.is_some());
+        if total_lanes == 0 {
+            return RecordingLaneWindow {
+                start: 0,
+                visible_total: 0,
+                committed_start: 0,
+                committed_end: 0,
+                visible_committed: 0,
+                show_preview: false,
+            };
+        }
+
+        let visible_total = total_capacity.min(total_lanes);
+        let max_start = total_lanes.saturating_sub(visible_total);
+        let mut start = track.recording_clip_scroll.min(max_start);
+        if let Some(preview_index) = preview_index {
+            start = start.max(preview_index + 1 - visible_total);
+        }
+        let end = start + visible_total;
+        let committed_start = start.min(committed_len);
+        let committed_end = end.min(committed_len);
+        let show_preview = preview_index.is_some_and(|preview_index| preview_index >= start);
+
+        RecordingLaneWindow {
+            start,
+            visible_total,
+            committed_start,
+            committed_end,
+            visible_committed: committed_end.saturating_sub(committed_start),
+            show_preview,
+        }
     }
 
     fn draw_transport_strip<T: RenderTarget>(
@@ -6302,14 +6326,6 @@ fn compact_scope_label(scope: &str) -> &str {
     }
 }
 
-fn committed_recording_lane_capacity(total_capacity: usize, has_preview_lane: bool) -> usize {
-    if has_preview_lane {
-        total_capacity.saturating_sub(1)
-    } else {
-        total_capacity
-    }
-}
-
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -6772,6 +6788,38 @@ mod tests {
 
         assert_eq!(layouts.len(), 2);
         assert!(layouts.iter().any(|lane| lane.preview));
+    }
+
+    #[test]
+    fn stacked_view_preview_lane_shifts_visible_window_as_committed() {
+        let mut app = App::new();
+        let transport = app.project.transport;
+        let trailing_clip_ids = {
+            let track = app.project.active_track_mut().unwrap();
+            track.clear_content();
+            track.recording_view = RecordingView::Stacked;
+            for index in 0..5 {
+                let start = index * 480;
+                track.commit_take(
+                    transport,
+                    RecordingTake::new(start).release(start + 240),
+                    None,
+                );
+            }
+            let trailing = vec![track.recording_clips[3].id, track.recording_clips[4].id];
+            track.recording_clip_scroll = 2;
+            track.active_take = Some(RecordingTake::new(2400));
+            trailing
+        };
+
+        let content_rect = Rect::new(0, 0, 49, 200);
+        assert_eq!(app.recording_lane_capacity(content_rect), 3);
+        let layouts = app.recording_lane_layouts(content_rect, app.project.active_track().unwrap());
+
+        assert_eq!(layouts.len(), 3);
+        assert_eq!(layouts[0].clip_id, Some(trailing_clip_ids[0]));
+        assert_eq!(layouts[1].clip_id, Some(trailing_clip_ids[1]));
+        assert!(layouts[2].preview);
     }
 
     #[test]

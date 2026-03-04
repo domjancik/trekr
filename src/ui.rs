@@ -547,17 +547,18 @@ pub fn timeline_guides(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
 pub fn timeline_ruler_ticks(bounds: Rect, flow: TimelineFlow) -> Vec<Rect> {
     let guide_count: usize = 8;
     let mut ticks = Vec::with_capacity(guide_count);
+    let tick_length = 6;
 
     for step in 0..guide_count {
         let ratio = step as f32 / guide_count as f32;
         let tick = match flow {
             TimelineFlow::DownwardColumns => {
                 let y = bounds.y + (bounds.height() as f32 * ratio) as i32;
-                Rect::new(bounds.x, y, bounds.width().min(8), 2)
+                Rect::new(bounds.x, y, bounds.width().min(tick_length), 2)
             }
             TimelineFlow::AcrossRows => {
                 let x = bounds.x + (bounds.width() as f32 * ratio) as i32;
-                Rect::new(x, bounds.y, 2, bounds.height().min(8))
+                Rect::new(x, bounds.y, 2, bounds.height().min(tick_length))
             }
         };
         ticks.push(tick);
