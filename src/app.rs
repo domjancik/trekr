@@ -33,7 +33,10 @@ use std::time::{Duration, Instant};
 
 const BRAND_NAME: &str = "trekr";
 const BRAND_SITE: &str = "domj.net";
-const BRAND_HASH: &str = option_env!("TREKR_BUILD_HASH").unwrap_or("dev");
+const BRAND_HASH: &str = match option_env!("TREKR_BUILD_HASH") {
+    Some(value) => value,
+    None => "dev",
+};
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
