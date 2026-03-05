@@ -1,0 +1,858 @@
+{
+  "project": {
+    "name": "Untitled",
+    "transport": {
+      "tempo_bpm": 120,
+      "ppqn": 960,
+      "quantize": "Sixteenth",
+      "record_mode": "Overdub",
+      "loop_recording_extends_clip": true,
+      "link_enabled": false,
+      "link_start_stop_sync": false,
+      "loop_enabled": true,
+      "playing": false,
+      "recording": false
+    },
+    "loop_region": {
+      "start_ticks": 0,
+      "length_ticks": 15360
+    },
+    "active_track_index": 0,
+    "tracks": [
+      {
+        "name": "Track 1",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "Microsoft GS Wavetable Synth"
+          },
+          "input_channel": "Omni",
+          "output_channel": 1
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      },
+      {
+        "name": "Track 2",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "input_channel": {
+            "Channel": 2
+          },
+          "output_channel": 2
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      },
+      {
+        "name": "Track 3",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "MPC Key 37 MIDI"
+          },
+          "input_channel": "Omni",
+          "output_channel": 3
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      },
+      {
+        "name": "Track 4",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "MIDIOUT2 (MPC Key 37 MIDI)"
+          },
+          "input_channel": {
+            "Channel": 4
+          },
+          "output_channel": 4
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      },
+      {
+        "name": "Track 5",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "Microsoft GS Wavetable Synth"
+          },
+          "input_channel": "Omni",
+          "output_channel": 5
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      },
+      {
+        "name": "Track 6",
+        "kind": "Midi",
+        "state": {
+          "armed": false,
+          "loop_enabled": false,
+          "muted": false,
+          "soloed": false,
+          "passthrough": false
+        },
+        "routing": {
+          "input_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "output_port": {
+            "name": "LoopBe Internal MIDI"
+          },
+          "input_channel": {
+            "Channel": 6
+          },
+          "output_channel": 6
+        },
+        "loop_region": {
+          "start_ticks": 0,
+          "length_ticks": 3840
+        },
+        "active_take": null,
+        "midi_notes": [
+          {
+            "pitch": 55,
+            "start_ticks": 0,
+            "length_ticks": 360,
+            "velocity": 96,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 480,
+            "length_ticks": 240,
+            "velocity": 92,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 960,
+            "length_ticks": 240,
+            "velocity": 88,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 66,
+            "start_ticks": 1440,
+            "length_ticks": 360,
+            "velocity": 84,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 62,
+            "start_ticks": 1920,
+            "length_ticks": 240,
+            "velocity": 80,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 59,
+            "start_ticks": 2400,
+            "length_ticks": 240,
+            "velocity": 76,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 57,
+            "start_ticks": 2880,
+            "length_ticks": 360,
+            "velocity": 72,
+            "recording_clip_id": null
+          },
+          {
+            "pitch": 60,
+            "start_ticks": 3360,
+            "length_ticks": 240,
+            "velocity": 68,
+            "recording_clip_id": null
+          }
+        ],
+        "regions": [],
+        "recording_clips": [],
+        "recording_view": "Overlay",
+        "selected_recording_clip_id": null,
+        "recording_clip_scroll": 0,
+        "next_recording_clip_id": 1,
+        "note_selection": {
+          "selected_note_indices": [],
+          "focus_note_index": null,
+          "anchor_note_index": null
+        }
+      }
+    ]
+  },
+  "page_state": {
+    "current_page": "Routing",
+    "midi_io": {
+      "focus": "Inputs",
+      "selected_input_index": 0,
+      "selected_output_index": 0
+    },
+    "selected_mapping_index": 0,
+    "mapping_mode": "Overview",
+    "selected_mapping_field": "SourceValue",
+    "mapping_midi_learn_armed": false,
+    "selected_routing_field": "Passthrough"
+  },
+  "timeline_flow": "DownwardColumns",
+  "mappings": [
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Space",
+      "target_label": "Play/Stop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Shift+R",
+      "target_label": "Record Mode",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "R",
+      "target_label": "Record",
+      "scope_label": "Armed/Active",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "C",
+      "target_label": "Clear Track",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Shift+C",
+      "target_label": "Clear All",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "G",
+      "target_label": "Song Loop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "L",
+      "target_label": "Track Loop",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Midi",
+      "source_device_label": "Any MIDI",
+      "source_label": "CC20",
+      "target_label": "Track Arm",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "A",
+      "target_label": "Track Arm",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "M",
+      "target_label": "Track Mute",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "S",
+      "target_label": "Track Solo",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "I",
+      "target_label": "Passthrough",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "[ ]",
+      "target_label": "Set Track Loop",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Shift+[ ]",
+      "target_label": "Set Song Loop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": ", .",
+      "target_label": "Nudge Loop",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Shift+, .",
+      "target_label": "Nudge Song Loop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "- =",
+      "target_label": "Resize Loop",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "/ \\",
+      "target_label": "Half/Double Loop",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Left/Right",
+      "target_label": "Select Track",
+      "scope_label": "Relative",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "T Shift+T",
+      "target_label": "Select Notes At Playhead",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "V J K",
+      "target_label": "Select Next Note",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "U O H P Y B",
+      "target_label": "Extend Note Selection Forward",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Z X D F",
+      "target_label": "Nudge Selected Notes Up",
+      "scope_label": "Active Track",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "1-9",
+      "target_label": "Select Track",
+      "scope_label": "Absolute",
+      "enabled": true
+    },
+    {
+      "source_kind": "Key",
+      "source_device_label": "Any MIDI",
+      "source_label": "Tab/F1-F5",
+      "target_label": "Pages/Overlay",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Midi",
+      "source_device_label": "Any MIDI",
+      "source_label": "Note C2",
+      "target_label": "Record Hold",
+      "scope_label": "Global",
+      "enabled": false
+    },
+    {
+      "source_kind": "Midi",
+      "source_device_label": "Any MIDI",
+      "source_label": "CC21",
+      "target_label": "Track Loop",
+      "scope_label": "Active Track",
+      "enabled": false
+    },
+    {
+      "source_kind": "Midi",
+      "source_device_label": "Any MIDI",
+      "source_label": "CC22",
+      "target_label": "Track Mute",
+      "scope_label": "Active Track",
+      "enabled": false
+    },
+    {
+      "source_kind": "Osc",
+      "source_device_label": "Any MIDI",
+      "source_label": "/transport/play",
+      "target_label": "Play/Stop",
+      "scope_label": "Global",
+      "enabled": true
+    },
+    {
+      "source_kind": "Osc",
+      "source_device_label": "Any MIDI",
+      "source_label": "/track/active/arm",
+      "target_label": "Track Arm",
+      "scope_label": "Active Track",
+      "enabled": false
+    }
+  ],
+  "transport_ticks": 0,
+  "playhead_ticks": 0
+}
