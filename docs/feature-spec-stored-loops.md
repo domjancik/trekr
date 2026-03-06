@@ -103,6 +103,10 @@ V1 should support two ways to populate stored loops:
 - save current track loop into an empty slot
 - overwrite an existing slot from the current track loop
 
+Resolved overwrite behavior:
+
+- slot identity is stable; if an active or queued slot is overwritten, that slot reference points to the updated loop range immediately
+
 Optional later improvement:
 
 - create a stored loop directly from a selected region or other timeline selection
@@ -132,10 +136,10 @@ Recommended launch quantize options:
 - bar
 - loop end
 
-Recommended default:
+Resolved default:
 
 - reuse the current editor/transport quantize value where that produces a clear musical result
-- additionally allow `loop end` as an explicit launch-focused option, since clip-style switching often wants full-loop completion rather than smallest-grid timing
+- keep `loop end` as an explicit launch-focused option, since clip-style switching often wants full-loop completion rather than smallest-grid timing
 
 ### Boundary Resolution
 
@@ -203,6 +207,10 @@ Suggested compact rendering:
 - queued slot pulses or uses an outline treatment
 - empty slots render as dim placeholders
 - if more slots exist than fit comfortably, show a compact overflow marker such as `+4`
+
+Resolved default:
+
+- show `4` slots by default in compact track UI, with overflow or expand for remaining stored slots
 
 This gives the user direct track-local awareness without consuming the whole detail pane.
 
@@ -307,6 +315,7 @@ Transient runtime data may also be persisted if useful, but V1 only requires det
 - recalling an empty slot does nothing and surfaces clear status feedback
 - recalling a stored loop whose range extends beyond current project content is allowed if the loop range itself is valid
 - deleting notes or regions inside a stored loop does not delete the stored loop entry; it remains a pointer to that time range
+- duplicate stored-loop ranges are allowed when labels differ, so performance naming remains flexible
 - if the current quantize mode is changed after a loop is queued, the queued recall should resolve using the quantize rule active at queue time, not a moving target
 - if a track loop is disabled and a stored loop is recalled, the track loop becomes enabled
 - repeated trigger of the already active stored loop should refresh queued state only if quantized recall is explicitly requested
@@ -325,7 +334,4 @@ Transient runtime data may also be persisted if useful, but V1 only requires det
 
 ## Open Questions
 
-- should `loop end` be a distinct launch-quantize mode even if transport quantize already exists
-- what is the right default visible slot count per track in the compact UI: `4`, `6`, or `8`
-- should stored loops support duplicate ranges with different names for performance labeling, or should identical ranges be collapsed in the editor UI
-- when a stored loop is overwritten, should the active or queued state follow the slot identity immediately if that slot is currently referenced
+- none for V1 stored-loop behavior in this spec slice
