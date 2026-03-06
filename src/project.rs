@@ -3,6 +3,8 @@ use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{RecordMode, Transport};
 use serde::{Deserialize, Serialize};
 
+pub const STORED_LOOP_SLOT_COUNT: usize = 8;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecordContext {
     pub range: LoopRegion,
@@ -120,6 +122,25 @@ pub struct RecordingClip {
     pub muted: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredLoop {
+    pub start_ticks: u64,
+    pub length_ticks: u64,
+}
+
+impl StoredLoop {
+    pub fn from_loop_region(region: LoopRegion) -> Self {
+        Self {
+            start_ticks: region.start_ticks,
+            length_ticks: region.length_ticks.max(1),
+        }
+    }
+
+    pub fn as_loop_region(self) -> LoopRegion {
+        LoopRegion::new(self.start_ticks, self.length_ticks.max(1))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     pub name: String,
@@ -142,10 +163,18 @@ pub struct Track {
     pub next_recording_clip_id: u64,
     #[serde(default)]
     pub note_selection: NoteSelection,
+    #[serde(default = "default_stored_loops")]
+    pub stored_loops: Vec<Option<StoredLoop>>,
+    #[serde(default)]
+    pub active_stored_loop_slot: Option<usize>,
 }
 
 fn default_next_recording_clip_id() -> u64 {
     1
+}
+
+fn default_stored_loops() -> Vec<Option<StoredLoop>> {
+    vec![None; STORED_LOOP_SLOT_COUNT]
 }
 
 impl Track {
@@ -165,6 +194,8 @@ impl Track {
             recording_clip_scroll: 0,
             next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
+            stored_loops: default_stored_loops(),
+            active_stored_loop_slot: None,
         };
         track.seed_demo_notes();
         track
@@ -186,7 +217,64 @@ impl Track {
             recording_clip_scroll: 0,
             next_recording_clip_id: default_next_recording_clip_id(),
             note_selection: NoteSelection::default(),
+            stored_loops: default_stored_loops(),
+            active_stored_loop_slot: None,
         }
+    }
+
+    pub fn stored_loop_slot(&self, slot_index: usize) -> Option<StoredLoop> {
+        self.stored_loops.get(slot_index).copied().flatten()
+    }
+
+    pub fn active_stored_loop_slot(&self) -> Option<usize> {
+        self.active_stored_loop_slot
+            .filter(|&slot| self.stored_loop_slot(slot).is_some())
+            .or_else(|| {
+                self.stored_loops
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, stored)| {
+                        let stored = (*stored)?;
+                        (stored.as_loop_region() == self.loop_region).then_some(index)
+                    })
+            })
+    }
+
+    pub fn store_current_loop_to_slot(&mut self, slot_index: usize) -> bool {
+        if slot_index >= STORED_LOOP_SLOT_COUNT {
+            return false;
+        }
+        self.ensure_stored_loop_capacity();
+        self.stored_loops[slot_index] = Some(StoredLoop::from_loop_region(self.loop_region));
+        self.active_stored_loop_slot = Some(slot_index);
+        true
+    }
+
+    pub fn clear_stored_loop_slot(&mut self, slot_index: usize) -> bool {
+        if slot_index >= STORED_LOOP_SLOT_COUNT {
+            return false;
+        }
+        self.ensure_stored_loop_capacity();
+        let had_value = self.stored_loops[slot_index].take().is_some();
+        if had_value && self.active_stored_loop_slot == Some(slot_index) {
+            self.active_stored_loop_slot = None;
+        }
+        had_value
+    }
+
+    pub fn recall_stored_loop_slot(&mut self, slot_index: usize) -> bool {
+        if slot_index >= STORED_LOOP_SLOT_COUNT {
+            return false;
+        }
+        self.ensure_stored_loop_capacity();
+        let Some(stored_loop) = self.stored_loops[slot_index] else {
+            return false;
+        };
+
+        self.loop_region = stored_loop.as_loop_region();
+        self.state.loop_enabled = true;
+        self.active_stored_loop_slot = Some(slot_index);
+        true
     }
 
     pub fn begin_recording(&mut self, pressed_at: u64) {
@@ -497,6 +585,20 @@ impl Track {
         self.selected_recording_clip_id = None;
         self.recording_clip_scroll = 0;
         self.clear_note_selection();
+    }
+
+    fn ensure_stored_loop_capacity(&mut self) {
+        if self.stored_loops.len() < STORED_LOOP_SLOT_COUNT {
+            self.stored_loops.resize(STORED_LOOP_SLOT_COUNT, None);
+        } else if self.stored_loops.len() > STORED_LOOP_SLOT_COUNT {
+            self.stored_loops.truncate(STORED_LOOP_SLOT_COUNT);
+        }
+        if self
+            .active_stored_loop_slot
+            .is_some_and(|index| index >= STORED_LOOP_SLOT_COUNT)
+        {
+            self.active_stored_loop_slot = None;
+        }
     }
 
     pub fn has_note_selection(&self) -> bool {
@@ -1530,5 +1632,42 @@ mod tests {
             track.selected_recording_clip_id,
             Some(track.recording_clips[0].id)
         );
+    }
+
+    #[test]
+    fn stored_loop_slot_can_store_and_recall_current_loop() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(1_920, 960);
+
+        assert!(track.store_current_loop_to_slot(2));
+        track.loop_region = LoopRegion::new(0, 4_800);
+        track.state.loop_enabled = false;
+
+        assert!(track.recall_stored_loop_slot(2));
+        assert_eq!(track.loop_region, LoopRegion::new(1_920, 960));
+        assert!(track.state.loop_enabled);
+        assert_eq!(track.active_stored_loop_slot(), Some(2));
+    }
+
+    #[test]
+    fn clearing_active_stored_loop_slot_drops_active_marker() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(960, 960);
+        assert!(track.store_current_loop_to_slot(0));
+        assert_eq!(track.active_stored_loop_slot(), Some(0));
+
+        assert!(track.clear_stored_loop_slot(0));
+        assert_eq!(track.active_stored_loop_slot(), None);
+        assert!(!track.recall_stored_loop_slot(0));
+    }
+
+    #[test]
+    fn active_stored_loop_slot_falls_back_to_range_match() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(2_880, 960);
+        assert!(track.store_current_loop_to_slot(1));
+
+        track.active_stored_loop_slot = None;
+        assert_eq!(track.active_stored_loop_slot(), Some(1));
     }
 }

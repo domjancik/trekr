@@ -1,17 +1,25 @@
 Findings
 
-1. **severity: medium** | **screenshot/page:** `timeline.png` | **issue:** The top control cluster (transport/mode chips + right-side status chips like `LINK OFF`, `START/STOP OFF`, `QUANT 1/16`) is very dense and visually similar, so state vs action is hard to parse quickly. | **brief suggested fix:** Separate status indicators from actionable controls with distinct grouping and styling (e.g., muted “status” row, stronger button affordance for actions).
+1. severity: medium; screenshot/page name: `mappings.png`; issue: top action labels (`TAP MODE`, `TAP LEARN`, `TAP DIRECT MAP`) read like buttons but state vs action is unclear, and equal visual weight makes priority ambiguous; brief suggested fix: separate status chips from action buttons (different fill/outline style) and add explicit selected/idle styling.
 
-2. **severity: medium** | **screenshot/page:** `timeline.png` | **issue:** Track header content is cramped (`THRU TRACK n`, `TRACK n`, `SONG`, `LOOP`, `DUB`) and requires effort to scan across 12 narrow columns. | **brief suggested fix:** Increase header height/column width or reduce concurrent labels (progressive disclosure, tooltips, or abbreviated labels with legend).
+2. severity: medium; screenshot/page name: `mappings.png`; issue: mapping table rows are very dense with minimal vertical padding, which slows scanning and increases misread risk; brief suggested fix: add 2-4px row height/padding and stronger zebra or divider contrast.
 
-3. **severity: low** | **screenshot/page:** `mappings.png` | **issue:** Table rows are tightly packed with minimal vertical separation, making row tracking across `SOURCE -> TARGET -> SCOPE -> ON` error-prone. | **brief suggested fix:** Add subtle zebra striping or larger row height/padding to improve horizontal scan and reduce misread risk.
+3. severity: low; screenshot/page name: `mappings.png`; issue: `ROWS 1 / 30` is far right and visually detached from the table header, so pagination context is easy to miss; brief suggested fix: place row count adjacent to column headers or near table title.
 
-4. **severity: low** | **screenshot/page:** `mappings.png` | **issue:** Top-right metadata (`ROWS 1 / 30`, `ON`) has weak hierarchy and can be mistaken for table content rather than page state. | **brief suggested fix:** Move summary stats into a dedicated status bar block with a label (e.g., “List status”) and stronger contrast.
+4. severity: medium; screenshot/page name: `mappings-overlay.png`; issue: overlay has no dim/scrim behind it, so modal state is weak and could be confused with a normal page; brief suggested fix: add a darkened background layer and stronger modal border/title treatment.
 
-5. **severity: medium** | **screenshot/page:** `mappings-overlay.png` | **issue:** Overlay command hints (`F5 CLOSE`, `W WRITE`) are easy to miss and don’t clearly communicate primary/secondary action priority. | **brief suggested fix:** Promote primary action visually (button-like treatment) and place help shortcuts in a distinct, lower-emphasis area.
+5. severity: medium; screenshot/page name: `mappings-overlay.png`; issue: top-left shortcuts (`F5 CLOSE`, `W WRITE`) are easy to overlook and do not communicate primary action hierarchy; brief suggested fix: group them as explicit primary/secondary actions with clearer emphasis.
 
-6. **severity: medium** | **screenshot/page:** `midi-io.png` | **issue:** Device card states (`DEF`, `SEL`) are encoded as tiny corner tags with limited prominence, making default vs selected status easy to miss. | **brief suggested fix:** Use larger, explicit state badges and/or row-level highlighting with a legend for state semantics.
+6. severity: medium; screenshot/page name: `midi-io.png`; issue: large empty list panels look like inactive/placeholder blocks, making current selection state unclear at a glance; brief suggested fix: show list rows or explicit empty-state text and highlight current input/output with clearer badges.
 
-7. **severity: medium** | **screenshot/page:** `routing.png` | **issue:** Right-side row controls (`+`, `SELECT`, `TAP +/-`, `TOGGLE`) are inconsistent in wording and structure, so interaction model is unclear. | **brief suggested fix:** Standardize control patterns per row type (same button order/labels) and add short inline helper text for special controls like `TAP +/-`.
+7. severity: low; screenshot/page name: `midi-io.png`; issue: `DEF/SEL` badges are tiny and low-prominence for critical default/selected state; brief suggested fix: increase badge size/contrast and add a legend or header key.
 
-8. **severity: low** | **screenshot/page:** `routing.png` | **issue:** The `ACTIVE 1`/`THRU OFF` header chips and `TRACK 1` context line feel loosely related, weakening hierarchy of “what is being edited now.” | **brief suggested fix:** Consolidate current-edit context into one prominent header block (track, mode, thru state) with consistent visual grouping.
+8. severity: high; screenshot/page name: `routing.png`; issue: state communication is inconsistent (`ACTIVE 1`, `THRU OFF`, plus right-side action chips), making it hard to tell what is current state vs what is actionable; brief suggested fix: split into “Current State” and “Actions” groups with distinct styling and labels.
+
+9. severity: medium; screenshot/page name: `routing.png`; issue: right-edge controls (`SELECT`, `TOGGLE`, `TAP +/-`) are cramped and visually detached from their rows; brief suggested fix: increase control width/padding and align them in a consistent action column.
+
+10. severity: medium; screenshot/page name: `timeline.png`; issue: dense top control bars create weak hierarchy; key transport/mode states compete with secondary controls and are hard to parse quickly; brief suggested fix: create a primary status strip (transport/mode/quantize) and move secondary actions to a lower-priority row.
+
+11. severity: low; screenshot/page name: `timeline.png`; issue: repeated abbreviated labels (`ARM`, `REC`, `MUT`, `SOL`, `TRA...`) reduce clarity and some truncation-like text hurts readability; brief suggested fix: expand critical labels where possible or provide consistent tooltip/legend support.
+
+12. severity: low; screenshot/page name: `all pages`; issue: bottom-right function-key hints (`F5/F7/F8`) are subtle and easy to miss despite global importance; brief suggested fix: raise contrast and reserve a persistent, clearer command strip treatment.
