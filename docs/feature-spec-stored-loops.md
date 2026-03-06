@@ -29,6 +29,7 @@ The missing capability is a reusable loop bank:
 ## Goals
 
 - allow each track to store multiple named loop regions
+- ensure each stored loop slot is recallable via shortcut on the active track
 - make loop recall usable from keyboard and MIDI mappings, not only pointer UI
 - support quantized recall so loop switches land on predictable musical boundaries
 - preserve the existing timeline-first model where loops are time ranges on tracks
@@ -207,8 +208,15 @@ This gives the user direct track-local awareness without consuming the whole det
 
 Preferred placement:
 
-- inside track header/chrome, adjacent to existing track-state controls or loop status
+- on the left side of each track presentation, inside track header/chrome and adjacent to existing track-state controls or loop status
 - not over the note field itself
+
+Rendering guidance:
+
+- stored-loop indicators should be subtle by default so they do not compete with note and transport readability
+- active and queued states can increase contrast while idle stored slots stay understated
+- each visible slot label/indicator should be clickable as a direct recall target
+- the same clickable slot label should be a direct mapping target in mapping-discoverability flows
 
 ### Secondary UI: Expanded Stored-Loop Inspector For Active Track
 
@@ -273,6 +281,12 @@ Scope rules:
 - default actions target the active track
 - the action model should leave room for absolute-track variants later
 
+Default keyboard suggestion for active-track recall:
+
+- provide direct defaults for slot recall such as numpad-friendly `Numpad1..Numpad8` where available
+- provide a non-numpad fallback default set so laptop keyboards are not blocked
+- keep these as defaults only; users can remap through the standard mapping system
+
 For performance workflows, the most important mapped actions are recall actions, not edit actions.
 
 ## Persistence
@@ -300,11 +314,13 @@ Transient runtime data may also be persisted if useful, but V1 only requires det
 ## Acceptance Criteria
 
 - a user can store multiple loop regions per track and persist them with the project
+- each stored loop slot can be recalled by a shortcut on the active track using default bindings
 - a user can recall a stored loop on the active track without manually redefining loop start and end
 - recalled stored loops update the existing track loop system rather than creating a separate clip object
 - quantized recall visibly queues and then switches at a predictable musical boundary
 - queued and active states are distinguishable in the UI
 - stored-loop recall is available through the shared action and mapping model
+- visible slot labels in track UI are clickable direct recall targets and can participate in direct mapping
 - the timeline page can show compact stored-loop state per track without breaking the fixed-fit layout
 
 ## Open Questions
