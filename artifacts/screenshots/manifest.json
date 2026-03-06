@@ -18,5 +18,9 @@
     {
         "page":  "timeline",
         "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\ab66-feature-spec-sto\\trekr\\artifacts\\screenshots\\timeline.png"
+    },
+    {
+        "page":  "timeline-focused",
+        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\ab66-feature-spec-sto\\trekr\\artifacts\\screenshots\\timeline-focused.png"
     }
 ]
