@@ -24,6 +24,8 @@ Keyboard mappings currently implemented:
 - `Shift+-` / `Shift+=`: shorten/extend global loop
 - `/` / `\`: half/double current track loop
 - `Shift+/` / `Shift+\`: half/double global loop
+- `Numpad1`..`Numpad8`: recall stored loop slots `1`..`8` on the active track
+- `Alt+1`..`Alt+8`: fallback recall for stored loop slots `1`..`8` on the active track
 - `A`: toggle arm on active track
 - `M`: toggle mute on active track
 - `S`: toggle solo on active track
@@ -88,6 +90,7 @@ Notes:
 - hold-capable MIDI note/CC mappings now support press/release behavior for `Record Hold` and `Select Notes At Playhead Add`
 - recording-stack mapping targets now include `Recording View`, `Select Next Recording Clip`, `Select Previous Recording Clip`, `Recording Clip Mute`, and `Delete Recording Clip`
 - timeline view mapping targets now also include `Focused Track View`
+- mapping targets now include `Recall Stored Loop Slot 1..8`, `Store Current Loop To Slot 1..8`, and `Clear Stored Loop Slot 1..8` with `Active Track` or absolute `Track N` scopes
 - stacked recording clip actions now have default keyboard bindings in addition to timeline pointer controls and the mappings system
 - stacked-view note-selection actions are scoped to the currently selected recording clip
 - OSC input learn is not implemented yet

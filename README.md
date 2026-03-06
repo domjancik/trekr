@@ -149,6 +149,8 @@ Current controls:
 - `,` / `.`: nudge current-track loop backward/forward by one quantize step
 - `-` / `=`: shorten/extend current-track loop by one quantize step
 - `/` / `\`: half/double current-track loop length
+- `Numpad1`..`Numpad8`: recall stored loop slots `1`..`8` on the active track
+- `Alt+1`..`Alt+8`: laptop fallback for recalling stored loop slots `1`..`8` on the active track
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `Shift+,` / `Shift+.`: nudge global loop backward/forward by one quantize step
 - `Shift+-` / `Shift+=`: shorten/extend global loop by one quantize step
@@ -172,6 +174,8 @@ Current controls:
 - `Z` / `X`: nudge selected notes earlier/later by the current quantize step, or `120` ticks when quantize is off
 - `D` / `F`: nudge selected notes down/up by one semitone
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view
+
+Stored loop slot indicators are shown subtly on the left side of each track loop header (`1`..`4` visible with overflow) and are clickable direct recall targets.
 - `Shift+Delete`: delete the selected committed recording clip in stacked view
 - `Shift+F8`: toggle focused-track timeline view for the active track
 - `Left` / `Right`: select previous/next track directly

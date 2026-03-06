@@ -69,6 +69,22 @@ const KEY_SOURCE_OPTIONS: &[&str] = &[
     "V J K",
     "U O H P Y B",
     "Z X D F",
+    "Numpad1",
+    "Numpad2",
+    "Numpad3",
+    "Numpad4",
+    "Numpad5",
+    "Numpad6",
+    "Numpad7",
+    "Numpad8",
+    "Alt+1",
+    "Alt+2",
+    "Alt+3",
+    "Alt+4",
+    "Alt+5",
+    "Alt+6",
+    "Alt+7",
+    "Alt+8",
     "Tab/F1-F6",
 ];
 
@@ -91,6 +107,30 @@ const TARGET_OPTIONS: &[&str] = &[
     "Song Loop",
     "Reset Song Loop",
     "Track Loop",
+    "Recall Stored Loop Slot 1",
+    "Recall Stored Loop Slot 2",
+    "Recall Stored Loop Slot 3",
+    "Recall Stored Loop Slot 4",
+    "Recall Stored Loop Slot 5",
+    "Recall Stored Loop Slot 6",
+    "Recall Stored Loop Slot 7",
+    "Recall Stored Loop Slot 8",
+    "Store Current Loop To Slot 1",
+    "Store Current Loop To Slot 2",
+    "Store Current Loop To Slot 3",
+    "Store Current Loop To Slot 4",
+    "Store Current Loop To Slot 5",
+    "Store Current Loop To Slot 6",
+    "Store Current Loop To Slot 7",
+    "Store Current Loop To Slot 8",
+    "Clear Stored Loop Slot 1",
+    "Clear Stored Loop Slot 2",
+    "Clear Stored Loop Slot 3",
+    "Clear Stored Loop Slot 4",
+    "Clear Stored Loop Slot 5",
+    "Clear Stored Loop Slot 6",
+    "Clear Stored Loop Slot 7",
+    "Clear Stored Loop Slot 8",
     "Clear Track",
     "Clear All",
     "Track Arm",
@@ -272,8 +312,37 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
             options.extend(absolute_track_scopes(track_count));
             options
         }
-        "Track Loop" | "Set Track Loop" | "Clear Track" | "Track Arm" | "Track Mute"
-        | "Track Solo" | "Passthrough" => {
+        "Track Loop"
+        | "Set Track Loop"
+        | "Recall Stored Loop Slot 1"
+        | "Recall Stored Loop Slot 2"
+        | "Recall Stored Loop Slot 3"
+        | "Recall Stored Loop Slot 4"
+        | "Recall Stored Loop Slot 5"
+        | "Recall Stored Loop Slot 6"
+        | "Recall Stored Loop Slot 7"
+        | "Recall Stored Loop Slot 8"
+        | "Store Current Loop To Slot 1"
+        | "Store Current Loop To Slot 2"
+        | "Store Current Loop To Slot 3"
+        | "Store Current Loop To Slot 4"
+        | "Store Current Loop To Slot 5"
+        | "Store Current Loop To Slot 6"
+        | "Store Current Loop To Slot 7"
+        | "Store Current Loop To Slot 8"
+        | "Clear Stored Loop Slot 1"
+        | "Clear Stored Loop Slot 2"
+        | "Clear Stored Loop Slot 3"
+        | "Clear Stored Loop Slot 4"
+        | "Clear Stored Loop Slot 5"
+        | "Clear Stored Loop Slot 6"
+        | "Clear Stored Loop Slot 7"
+        | "Clear Stored Loop Slot 8"
+        | "Clear Track"
+        | "Track Arm"
+        | "Track Mute"
+        | "Track Solo"
+        | "Passthrough" => {
             let mut options = vec!["Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
             options
@@ -482,6 +551,18 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         "Track Loop" | "Set Track Loop" => {
             track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
         }
+        label if recall_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            recall_stored_loop_slot_action(label).expect("stored loop recall action checked"),
+        ),
+        label if store_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            store_stored_loop_slot_action(label).expect("stored loop store action checked"),
+        ),
+        label if clear_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            clear_stored_loop_slot_action(label).expect("stored loop clear action checked"),
+        ),
         "Clear Track" => {
             track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
         }
@@ -622,6 +703,18 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Track Loop" | "Set Track Loop" => {
             track_scoped_actions(absolute_track_index, AppAction::ToggleCurrentTrackLoop)
         }
+        label if recall_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            recall_stored_loop_slot_action(label).expect("stored loop recall action checked"),
+        ),
+        label if store_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            store_stored_loop_slot_action(label).expect("stored loop store action checked"),
+        ),
+        label if clear_stored_loop_slot_action(label).is_some() => track_scoped_actions(
+            absolute_track_index,
+            clear_stored_loop_slot_action(label).expect("stored loop clear action checked"),
+        ),
         "Clear Track" => {
             track_scoped_actions(absolute_track_index, AppAction::ClearCurrentTrackContent)
         }
@@ -707,6 +800,48 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Link Enable" => vec![AppAction::ToggleLinkEnabled],
         "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
         _ => Vec::new(),
+    }
+}
+
+fn recall_stored_loop_slot_action(target_label: &str) -> Option<AppAction> {
+    match target_label {
+        "Recall Stored Loop Slot 1" => Some(AppAction::RecallStoredLoopSlot1),
+        "Recall Stored Loop Slot 2" => Some(AppAction::RecallStoredLoopSlot2),
+        "Recall Stored Loop Slot 3" => Some(AppAction::RecallStoredLoopSlot3),
+        "Recall Stored Loop Slot 4" => Some(AppAction::RecallStoredLoopSlot4),
+        "Recall Stored Loop Slot 5" => Some(AppAction::RecallStoredLoopSlot5),
+        "Recall Stored Loop Slot 6" => Some(AppAction::RecallStoredLoopSlot6),
+        "Recall Stored Loop Slot 7" => Some(AppAction::RecallStoredLoopSlot7),
+        "Recall Stored Loop Slot 8" => Some(AppAction::RecallStoredLoopSlot8),
+        _ => None,
+    }
+}
+
+fn store_stored_loop_slot_action(target_label: &str) -> Option<AppAction> {
+    match target_label {
+        "Store Current Loop To Slot 1" => Some(AppAction::StoreCurrentLoopToSlot1),
+        "Store Current Loop To Slot 2" => Some(AppAction::StoreCurrentLoopToSlot2),
+        "Store Current Loop To Slot 3" => Some(AppAction::StoreCurrentLoopToSlot3),
+        "Store Current Loop To Slot 4" => Some(AppAction::StoreCurrentLoopToSlot4),
+        "Store Current Loop To Slot 5" => Some(AppAction::StoreCurrentLoopToSlot5),
+        "Store Current Loop To Slot 6" => Some(AppAction::StoreCurrentLoopToSlot6),
+        "Store Current Loop To Slot 7" => Some(AppAction::StoreCurrentLoopToSlot7),
+        "Store Current Loop To Slot 8" => Some(AppAction::StoreCurrentLoopToSlot8),
+        _ => None,
+    }
+}
+
+fn clear_stored_loop_slot_action(target_label: &str) -> Option<AppAction> {
+    match target_label {
+        "Clear Stored Loop Slot 1" => Some(AppAction::ClearStoredLoopSlot1),
+        "Clear Stored Loop Slot 2" => Some(AppAction::ClearStoredLoopSlot2),
+        "Clear Stored Loop Slot 3" => Some(AppAction::ClearStoredLoopSlot3),
+        "Clear Stored Loop Slot 4" => Some(AppAction::ClearStoredLoopSlot4),
+        "Clear Stored Loop Slot 5" => Some(AppAction::ClearStoredLoopSlot5),
+        "Clear Stored Loop Slot 6" => Some(AppAction::ClearStoredLoopSlot6),
+        "Clear Stored Loop Slot 7" => Some(AppAction::ClearStoredLoopSlot7),
+        "Clear Stored Loop Slot 8" => Some(AppAction::ClearStoredLoopSlot8),
+        _ => None,
     }
 }
 
@@ -867,5 +1002,34 @@ mod tests {
             AppAction::ToggleCurrentTrackArm
         ));
         assert_eq!(parse_absolute_track_scope("Track 3"), Some(2));
+    }
+
+    #[test]
+    fn stored_loop_targets_expand_with_track_scope() {
+        let entry = MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_device_label: default_mapping_source_device(),
+            source_label: "Numpad2".to_string(),
+            target_label: "Recall Stored Loop Slot 2".to_string(),
+            scope_label: "Track 4".to_string(),
+            enabled: true,
+        };
+        let event = MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        };
+
+        assert_eq!(
+            mapping_entry_to_actions(&entry, &event),
+            vec![AppAction::SelectTrack(3), AppAction::RecallStoredLoopSlot2]
+        );
+        assert!(mapping_entry_targets_action(
+            &entry,
+            AppAction::RecallStoredLoopSlot2
+        ));
     }
 }

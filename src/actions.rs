@@ -49,6 +49,30 @@ pub enum AppAction {
     ExtendCurrentTrackLoop,
     HalfCurrentTrackLoop,
     DoubleCurrentTrackLoop,
+    RecallStoredLoopSlot1,
+    RecallStoredLoopSlot2,
+    RecallStoredLoopSlot3,
+    RecallStoredLoopSlot4,
+    RecallStoredLoopSlot5,
+    RecallStoredLoopSlot6,
+    RecallStoredLoopSlot7,
+    RecallStoredLoopSlot8,
+    StoreCurrentLoopToSlot1,
+    StoreCurrentLoopToSlot2,
+    StoreCurrentLoopToSlot3,
+    StoreCurrentLoopToSlot4,
+    StoreCurrentLoopToSlot5,
+    StoreCurrentLoopToSlot6,
+    StoreCurrentLoopToSlot7,
+    StoreCurrentLoopToSlot8,
+    ClearStoredLoopSlot1,
+    ClearStoredLoopSlot2,
+    ClearStoredLoopSlot3,
+    ClearStoredLoopSlot4,
+    ClearStoredLoopSlot5,
+    ClearStoredLoopSlot6,
+    ClearStoredLoopSlot7,
+    ClearStoredLoopSlot8,
     ShortenGlobalLoop,
     ExtendGlobalLoop,
     HalfGlobalLoop,
@@ -532,6 +556,18 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
+                keycode: Some(keycode),
+                keymod,
+                repeat: false,
+                ..
+            } if stored_loop_recall_shortcut(*keycode, *keymod).is_some() => {
+                Some(ActionEvent::new(
+                    stored_loop_recall_shortcut(*keycode, *keymod)
+                        .expect("stored loop shortcut checked"),
+                    ActionSource::Keyboard,
+                ))
+            }
+            Event::KeyDown {
                 keycode: Some(Keycode::A),
                 repeat: false,
                 ..
@@ -715,6 +751,30 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::ExtendCurrentTrackLoop => "Extend Track Loop",
         AppAction::HalfCurrentTrackLoop => "Half Track Loop",
         AppAction::DoubleCurrentTrackLoop => "Double Track Loop",
+        AppAction::RecallStoredLoopSlot1 => "Recall Stored Loop Slot 1",
+        AppAction::RecallStoredLoopSlot2 => "Recall Stored Loop Slot 2",
+        AppAction::RecallStoredLoopSlot3 => "Recall Stored Loop Slot 3",
+        AppAction::RecallStoredLoopSlot4 => "Recall Stored Loop Slot 4",
+        AppAction::RecallStoredLoopSlot5 => "Recall Stored Loop Slot 5",
+        AppAction::RecallStoredLoopSlot6 => "Recall Stored Loop Slot 6",
+        AppAction::RecallStoredLoopSlot7 => "Recall Stored Loop Slot 7",
+        AppAction::RecallStoredLoopSlot8 => "Recall Stored Loop Slot 8",
+        AppAction::StoreCurrentLoopToSlot1 => "Store Current Loop To Slot 1",
+        AppAction::StoreCurrentLoopToSlot2 => "Store Current Loop To Slot 2",
+        AppAction::StoreCurrentLoopToSlot3 => "Store Current Loop To Slot 3",
+        AppAction::StoreCurrentLoopToSlot4 => "Store Current Loop To Slot 4",
+        AppAction::StoreCurrentLoopToSlot5 => "Store Current Loop To Slot 5",
+        AppAction::StoreCurrentLoopToSlot6 => "Store Current Loop To Slot 6",
+        AppAction::StoreCurrentLoopToSlot7 => "Store Current Loop To Slot 7",
+        AppAction::StoreCurrentLoopToSlot8 => "Store Current Loop To Slot 8",
+        AppAction::ClearStoredLoopSlot1 => "Clear Stored Loop Slot 1",
+        AppAction::ClearStoredLoopSlot2 => "Clear Stored Loop Slot 2",
+        AppAction::ClearStoredLoopSlot3 => "Clear Stored Loop Slot 3",
+        AppAction::ClearStoredLoopSlot4 => "Clear Stored Loop Slot 4",
+        AppAction::ClearStoredLoopSlot5 => "Clear Stored Loop Slot 5",
+        AppAction::ClearStoredLoopSlot6 => "Clear Stored Loop Slot 6",
+        AppAction::ClearStoredLoopSlot7 => "Clear Stored Loop Slot 7",
+        AppAction::ClearStoredLoopSlot8 => "Clear Stored Loop Slot 8",
         AppAction::ShortenGlobalLoop => "Shorten Song Loop",
         AppAction::ExtendGlobalLoop => "Extend Song Loop",
         AppAction::HalfGlobalLoop => "Half Song Loop",
@@ -800,6 +860,30 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ExtendCurrentTrackLoop => &["="],
         AppAction::HalfCurrentTrackLoop => &["/"],
         AppAction::DoubleCurrentTrackLoop => &["\\"],
+        AppAction::RecallStoredLoopSlot1 => &["Numpad1", "Alt+1"],
+        AppAction::RecallStoredLoopSlot2 => &["Numpad2", "Alt+2"],
+        AppAction::RecallStoredLoopSlot3 => &["Numpad3", "Alt+3"],
+        AppAction::RecallStoredLoopSlot4 => &["Numpad4", "Alt+4"],
+        AppAction::RecallStoredLoopSlot5 => &["Numpad5", "Alt+5"],
+        AppAction::RecallStoredLoopSlot6 => &["Numpad6", "Alt+6"],
+        AppAction::RecallStoredLoopSlot7 => &["Numpad7", "Alt+7"],
+        AppAction::RecallStoredLoopSlot8 => &["Numpad8", "Alt+8"],
+        AppAction::StoreCurrentLoopToSlot1 => &[],
+        AppAction::StoreCurrentLoopToSlot2 => &[],
+        AppAction::StoreCurrentLoopToSlot3 => &[],
+        AppAction::StoreCurrentLoopToSlot4 => &[],
+        AppAction::StoreCurrentLoopToSlot5 => &[],
+        AppAction::StoreCurrentLoopToSlot6 => &[],
+        AppAction::StoreCurrentLoopToSlot7 => &[],
+        AppAction::StoreCurrentLoopToSlot8 => &[],
+        AppAction::ClearStoredLoopSlot1 => &[],
+        AppAction::ClearStoredLoopSlot2 => &[],
+        AppAction::ClearStoredLoopSlot3 => &[],
+        AppAction::ClearStoredLoopSlot4 => &[],
+        AppAction::ClearStoredLoopSlot5 => &[],
+        AppAction::ClearStoredLoopSlot6 => &[],
+        AppAction::ClearStoredLoopSlot7 => &[],
+        AppAction::ClearStoredLoopSlot8 => &[],
         AppAction::ShortenGlobalLoop => &["Shift+-"],
         AppAction::ExtendGlobalLoop => &["Shift+="],
         AppAction::HalfGlobalLoop => &["Shift+/"],
@@ -855,6 +939,45 @@ fn digit_track_index(keycode: Keycode) -> Option<usize> {
         Keycode::_9 => Some(8),
         _ => None,
     }
+}
+
+fn stored_loop_recall_shortcut(keycode: Keycode, keymod: Mod) -> Option<AppAction> {
+    if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) {
+        return None;
+    }
+
+    let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
+    let no_mod = !keymod.intersects(Mod::LALTMOD | Mod::RALTMOD | Mod::LSHIFTMOD | Mod::RSHIFTMOD);
+
+    if no_mod {
+        return match keycode {
+            Keycode::Kp1 => Some(AppAction::RecallStoredLoopSlot1),
+            Keycode::Kp2 => Some(AppAction::RecallStoredLoopSlot2),
+            Keycode::Kp3 => Some(AppAction::RecallStoredLoopSlot3),
+            Keycode::Kp4 => Some(AppAction::RecallStoredLoopSlot4),
+            Keycode::Kp5 => Some(AppAction::RecallStoredLoopSlot5),
+            Keycode::Kp6 => Some(AppAction::RecallStoredLoopSlot6),
+            Keycode::Kp7 => Some(AppAction::RecallStoredLoopSlot7),
+            Keycode::Kp8 => Some(AppAction::RecallStoredLoopSlot8),
+            _ => None,
+        };
+    }
+
+    if alt {
+        return match keycode {
+            Keycode::_1 => Some(AppAction::RecallStoredLoopSlot1),
+            Keycode::_2 => Some(AppAction::RecallStoredLoopSlot2),
+            Keycode::_3 => Some(AppAction::RecallStoredLoopSlot3),
+            Keycode::_4 => Some(AppAction::RecallStoredLoopSlot4),
+            Keycode::_5 => Some(AppAction::RecallStoredLoopSlot5),
+            Keycode::_6 => Some(AppAction::RecallStoredLoopSlot6),
+            Keycode::_7 => Some(AppAction::RecallStoredLoopSlot7),
+            Keycode::_8 => Some(AppAction::RecallStoredLoopSlot8),
+            _ => None,
+        };
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -913,6 +1036,39 @@ mod tests {
 
         let resolved = KeyboardBindings.resolve(&event).expect("track select");
         assert_eq!(resolved.action, AppAction::SelectTrack(3));
+    }
+
+    #[test]
+    fn keyboard_bindings_map_stored_loop_recall_shortcuts() {
+        let numpad = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Kp3),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let fallback = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::_7),
+            scancode: None,
+            keymod: Mod::LALTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&numpad).unwrap().action,
+            AppAction::RecallStoredLoopSlot3
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&fallback).unwrap().action,
+            AppAction::RecallStoredLoopSlot7
+        );
     }
 
     #[test]

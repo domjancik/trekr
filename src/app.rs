@@ -16,7 +16,7 @@ use crate::midi_io::{
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
-use crate::project::{Project, RecordingView, Track};
+use crate::project::{Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
 use crate::ui::{LayoutMode, TimelineFlow};
@@ -1012,7 +1012,67 @@ impl App {
             .map(|(mute_rect, _)| mute_rect.x - 4)
             .unwrap_or(label_rect.x + label_rect.width() as i32 - 4);
         let label_left = if detail {
-            label_rect.x + 4
+            let slot_rects = self.stored_loop_slot_rects(label_rect);
+            let active_slot = track.active_stored_loop_slot();
+            for (slot_index, slot_rect) in &slot_rects {
+                let filled = track.stored_loop_slot(*slot_index).is_some();
+                let active = active_slot == Some(*slot_index);
+                canvas.set_draw_color(if active {
+                    Color::RGB(238, 186, 112)
+                } else if filled {
+                    Color::RGB(132, 118, 98)
+                } else {
+                    Color::RGB(72, 70, 68)
+                });
+                canvas.fill_rect(*slot_rect)?;
+                canvas.set_draw_color(if active {
+                    Color::RGB(252, 228, 164)
+                } else if filled {
+                    Color::RGB(184, 168, 138)
+                } else {
+                    Color::RGB(122, 120, 116)
+                });
+                canvas.draw_rect(*slot_rect)?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    &(slot_index + 1).to_string(),
+                    Rect::new(
+                        slot_rect.x + 1,
+                        slot_rect.y + 1,
+                        slot_rect.width().saturating_sub(2),
+                        slot_rect.height().saturating_sub(2),
+                    ),
+                    1,
+                    if active {
+                        Color::RGB(26, 20, 16)
+                    } else if filled {
+                        Color::RGB(38, 34, 28)
+                    } else {
+                        Color::RGB(180, 178, 172)
+                    },
+                )?;
+            }
+            if STORED_LOOP_SLOT_COUNT > slot_rects.len() {
+                let overflow = format!("+{}", STORED_LOOP_SLOT_COUNT - slot_rects.len());
+                if let Some((_, last_slot_rect)) = slot_rects.last() {
+                    crate::ui::draw_text_fitted(
+                        canvas,
+                        &overflow,
+                        Rect::new(
+                            last_slot_rect.x + last_slot_rect.width() as i32 + 3,
+                            last_slot_rect.y + 1,
+                            14,
+                            7,
+                        ),
+                        1,
+                        Color::RGB(210, 194, 160),
+                    )?;
+                }
+            }
+            slot_rects
+                .last()
+                .map(|(_, rect)| rect.x + rect.width() as i32 + 5)
+                .unwrap_or(label_rect.x + 4)
         } else {
             let passthrough_button = self.track_passthrough_button_rect(label_rect);
             canvas.set_draw_color(if track.state.passthrough {
@@ -1684,6 +1744,32 @@ impl App {
             label_rect.width().saturating_sub(8).min(30),
             8,
         )
+    }
+
+    fn stored_loop_visible_slot_count(&self) -> usize {
+        4
+    }
+
+    fn stored_loop_slot_rects(&self, label_rect: Rect) -> Vec<(usize, Rect)> {
+        let visible_slots = self
+            .stored_loop_visible_slot_count()
+            .min(STORED_LOOP_SLOT_COUNT);
+        let slot_w = 8_u32;
+        let slot_h = 8_u32;
+        let gap = 2_i32;
+        let mut rects = Vec::with_capacity(visible_slots);
+        for slot_index in 0..visible_slots {
+            rects.push((
+                slot_index,
+                Rect::new(
+                    label_rect.x + 4 + slot_index as i32 * (slot_w as i32 + gap),
+                    label_rect.y + 12,
+                    slot_w,
+                    slot_h,
+                ),
+            ));
+        }
+        rects
     }
 
     fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
@@ -3903,6 +3989,51 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::RecallStoredLoopSlot1
+            | AppAction::RecallStoredLoopSlot2
+            | AppAction::RecallStoredLoopSlot3
+            | AppAction::RecallStoredLoopSlot4
+            | AppAction::RecallStoredLoopSlot5
+            | AppAction::RecallStoredLoopSlot6
+            | AppAction::RecallStoredLoopSlot7
+            | AppAction::RecallStoredLoopSlot8 => {
+                let slot_index =
+                    recall_stored_loop_slot_index(action).expect("stored loop recall checked");
+                if let Some(track) = self.project.active_track_mut() {
+                    track.recall_stored_loop_slot(slot_index);
+                }
+                AppControl::Continue
+            }
+            AppAction::StoreCurrentLoopToSlot1
+            | AppAction::StoreCurrentLoopToSlot2
+            | AppAction::StoreCurrentLoopToSlot3
+            | AppAction::StoreCurrentLoopToSlot4
+            | AppAction::StoreCurrentLoopToSlot5
+            | AppAction::StoreCurrentLoopToSlot6
+            | AppAction::StoreCurrentLoopToSlot7
+            | AppAction::StoreCurrentLoopToSlot8 => {
+                let slot_index =
+                    store_stored_loop_slot_index(action).expect("stored loop store checked");
+                if let Some(track) = self.project.active_track_mut() {
+                    track.store_current_loop_to_slot(slot_index);
+                }
+                AppControl::Continue
+            }
+            AppAction::ClearStoredLoopSlot1
+            | AppAction::ClearStoredLoopSlot2
+            | AppAction::ClearStoredLoopSlot3
+            | AppAction::ClearStoredLoopSlot4
+            | AppAction::ClearStoredLoopSlot5
+            | AppAction::ClearStoredLoopSlot6
+            | AppAction::ClearStoredLoopSlot7
+            | AppAction::ClearStoredLoopSlot8 => {
+                let slot_index =
+                    clear_stored_loop_slot_index(action).expect("stored loop clear checked");
+                if let Some(track) = self.project.active_track_mut() {
+                    track.clear_stored_loop_slot(slot_index);
+                }
+                AppControl::Continue
+            }
             AppAction::SetCurrentTrackLoopStart => {
                 let edit_ticks = self.current_edit_ticks();
                 if let Some(track) = self.project.active_track_mut() {
@@ -5397,6 +5528,17 @@ impl App {
                 }
             }
 
+            let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
+            for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
+                if !rect_contains(slot_rect, x, y) {
+                    continue;
+                }
+                self.project.active_track_index = index;
+                if let Some(action) = stored_loop_slot_recall_action(slot_index) {
+                    return Some(self.apply_action_with_source(action, source));
+                }
+            }
+
             for bounds in [full_bounds, detail_bounds] {
                 let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
                 if let Some(clip_id) =
@@ -5844,6 +5986,19 @@ impl App {
         ));
 
         let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
+        for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
+            if let Some(action) = stored_loop_slot_recall_action(slot_index) {
+                targets.push((
+                    slot_rect,
+                    DiscoverabilityTarget {
+                        action,
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot: Some(slot_rect),
+                    },
+                ));
+            }
+        }
         targets.push((
             crate::ui::detail_badge_rect(detail_label_rect),
             DiscoverabilityTarget {
@@ -6361,6 +6516,62 @@ fn transport_strip_height() -> u32 {
     34
 }
 
+fn recall_stored_loop_slot_index(action: AppAction) -> Option<usize> {
+    match action {
+        AppAction::RecallStoredLoopSlot1 => Some(0),
+        AppAction::RecallStoredLoopSlot2 => Some(1),
+        AppAction::RecallStoredLoopSlot3 => Some(2),
+        AppAction::RecallStoredLoopSlot4 => Some(3),
+        AppAction::RecallStoredLoopSlot5 => Some(4),
+        AppAction::RecallStoredLoopSlot6 => Some(5),
+        AppAction::RecallStoredLoopSlot7 => Some(6),
+        AppAction::RecallStoredLoopSlot8 => Some(7),
+        _ => None,
+    }
+}
+
+fn store_stored_loop_slot_index(action: AppAction) -> Option<usize> {
+    match action {
+        AppAction::StoreCurrentLoopToSlot1 => Some(0),
+        AppAction::StoreCurrentLoopToSlot2 => Some(1),
+        AppAction::StoreCurrentLoopToSlot3 => Some(2),
+        AppAction::StoreCurrentLoopToSlot4 => Some(3),
+        AppAction::StoreCurrentLoopToSlot5 => Some(4),
+        AppAction::StoreCurrentLoopToSlot6 => Some(5),
+        AppAction::StoreCurrentLoopToSlot7 => Some(6),
+        AppAction::StoreCurrentLoopToSlot8 => Some(7),
+        _ => None,
+    }
+}
+
+fn clear_stored_loop_slot_index(action: AppAction) -> Option<usize> {
+    match action {
+        AppAction::ClearStoredLoopSlot1 => Some(0),
+        AppAction::ClearStoredLoopSlot2 => Some(1),
+        AppAction::ClearStoredLoopSlot3 => Some(2),
+        AppAction::ClearStoredLoopSlot4 => Some(3),
+        AppAction::ClearStoredLoopSlot5 => Some(4),
+        AppAction::ClearStoredLoopSlot6 => Some(5),
+        AppAction::ClearStoredLoopSlot7 => Some(6),
+        AppAction::ClearStoredLoopSlot8 => Some(7),
+        _ => None,
+    }
+}
+
+fn stored_loop_slot_recall_action(slot_index: usize) -> Option<AppAction> {
+    match slot_index {
+        0 => Some(AppAction::RecallStoredLoopSlot1),
+        1 => Some(AppAction::RecallStoredLoopSlot2),
+        2 => Some(AppAction::RecallStoredLoopSlot3),
+        3 => Some(AppAction::RecallStoredLoopSlot4),
+        4 => Some(AppAction::RecallStoredLoopSlot5),
+        5 => Some(AppAction::RecallStoredLoopSlot6),
+        6 => Some(AppAction::RecallStoredLoopSlot7),
+        7 => Some(AppAction::RecallStoredLoopSlot8),
+        _ => None,
+    }
+}
+
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -6370,6 +6581,30 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::ToggleGlobalLoop => Some("Song Loop"),
         AppAction::ResetGlobalLoop => Some("Reset Song Loop"),
         AppAction::ToggleCurrentTrackLoop => Some("Track Loop"),
+        AppAction::RecallStoredLoopSlot1 => Some("Recall Stored Loop Slot 1"),
+        AppAction::RecallStoredLoopSlot2 => Some("Recall Stored Loop Slot 2"),
+        AppAction::RecallStoredLoopSlot3 => Some("Recall Stored Loop Slot 3"),
+        AppAction::RecallStoredLoopSlot4 => Some("Recall Stored Loop Slot 4"),
+        AppAction::RecallStoredLoopSlot5 => Some("Recall Stored Loop Slot 5"),
+        AppAction::RecallStoredLoopSlot6 => Some("Recall Stored Loop Slot 6"),
+        AppAction::RecallStoredLoopSlot7 => Some("Recall Stored Loop Slot 7"),
+        AppAction::RecallStoredLoopSlot8 => Some("Recall Stored Loop Slot 8"),
+        AppAction::StoreCurrentLoopToSlot1 => Some("Store Current Loop To Slot 1"),
+        AppAction::StoreCurrentLoopToSlot2 => Some("Store Current Loop To Slot 2"),
+        AppAction::StoreCurrentLoopToSlot3 => Some("Store Current Loop To Slot 3"),
+        AppAction::StoreCurrentLoopToSlot4 => Some("Store Current Loop To Slot 4"),
+        AppAction::StoreCurrentLoopToSlot5 => Some("Store Current Loop To Slot 5"),
+        AppAction::StoreCurrentLoopToSlot6 => Some("Store Current Loop To Slot 6"),
+        AppAction::StoreCurrentLoopToSlot7 => Some("Store Current Loop To Slot 7"),
+        AppAction::StoreCurrentLoopToSlot8 => Some("Store Current Loop To Slot 8"),
+        AppAction::ClearStoredLoopSlot1 => Some("Clear Stored Loop Slot 1"),
+        AppAction::ClearStoredLoopSlot2 => Some("Clear Stored Loop Slot 2"),
+        AppAction::ClearStoredLoopSlot3 => Some("Clear Stored Loop Slot 3"),
+        AppAction::ClearStoredLoopSlot4 => Some("Clear Stored Loop Slot 4"),
+        AppAction::ClearStoredLoopSlot5 => Some("Clear Stored Loop Slot 5"),
+        AppAction::ClearStoredLoopSlot6 => Some("Clear Stored Loop Slot 6"),
+        AppAction::ClearStoredLoopSlot7 => Some("Clear Stored Loop Slot 7"),
+        AppAction::ClearStoredLoopSlot8 => Some("Clear Stored Loop Slot 8"),
         AppAction::ToggleCurrentTrackArm => Some("Track Arm"),
         AppAction::ToggleCurrentTrackMute => Some("Track Mute"),
         AppAction::ToggleCurrentTrackSolo => Some("Track Solo"),
@@ -6469,6 +6704,14 @@ fn keycode_mapping_label(keycode: sdl3::keyboard::Keycode) -> Option<&'static st
         sdl3::keyboard::Keycode::_7 => Some("7"),
         sdl3::keyboard::Keycode::_8 => Some("8"),
         sdl3::keyboard::Keycode::_9 => Some("9"),
+        sdl3::keyboard::Keycode::Kp1 => Some("Numpad1"),
+        sdl3::keyboard::Keycode::Kp2 => Some("Numpad2"),
+        sdl3::keyboard::Keycode::Kp3 => Some("Numpad3"),
+        sdl3::keyboard::Keycode::Kp4 => Some("Numpad4"),
+        sdl3::keyboard::Keycode::Kp5 => Some("Numpad5"),
+        sdl3::keyboard::Keycode::Kp6 => Some("Numpad6"),
+        sdl3::keyboard::Keycode::Kp7 => Some("Numpad7"),
+        sdl3::keyboard::Keycode::Kp8 => Some("Numpad8"),
         sdl3::keyboard::Keycode::A => Some("A"),
         sdl3::keyboard::Keycode::B => Some("B"),
         sdl3::keyboard::Keycode::C => Some("C"),
@@ -8198,6 +8441,65 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.transport.recording);
         assert!(app.project.transport.playing);
+    }
+
+    #[test]
+    fn stored_loop_actions_store_and_recall_active_track_slot() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.loop_region = crate::timeline::LoopRegion::new(1_920, 960);
+
+        app.apply_action(AppAction::StoreCurrentLoopToSlot2);
+        let track = app.project.active_track_mut().unwrap();
+        track.loop_region = crate::timeline::LoopRegion::new(0, 4_800);
+        track.state.loop_enabled = false;
+
+        app.apply_action(AppAction::RecallStoredLoopSlot2);
+
+        let track = app.project.active_track().unwrap();
+        assert_eq!(
+            track.loop_region,
+            crate::timeline::LoopRegion::new(1_920, 960)
+        );
+        assert!(track.state.loop_enabled);
+        assert_eq!(track.active_stored_loop_slot(), Some(1));
+    }
+
+    #[test]
+    fn timeline_stored_loop_slot_is_clickable_for_recall() {
+        let mut app = App::new();
+        app.project.active_track_index = 1;
+        {
+            let track = &mut app.project.tracks[1];
+            track.loop_region = crate::timeline::LoopRegion::new(2_880, 960);
+            track.store_current_loop_to_slot(0);
+            track.loop_region = crate::timeline::LoopRegion::new(0, 3_840);
+        }
+
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (_, detail_bounds) = columns[1];
+        let detail_label_rect = crate::ui::track_label_rect(detail_bounds, app.timeline_flow);
+        let (_, slot_rect) = app.stored_loop_slot_rects(detail_label_rect)[0];
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            slot_rect.x + slot_rect.width() as i32 / 2,
+            slot_rect.y + slot_rect.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.project.active_track_index, 1);
+        assert_eq!(
+            app.project.tracks[1].loop_region,
+            crate::timeline::LoopRegion::new(2_880, 960)
+        );
     }
 
     #[test]
