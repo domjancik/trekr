@@ -26,6 +26,8 @@ Keyboard mappings currently implemented:
 - `Shift+/` / `Shift+\`: half/double global loop
 - `Numpad1`..`Numpad8`: recall stored loop slots `1`..`8` on the active track
 - `Alt+1`..`Alt+8`: fallback recall for stored loop slots `1`..`8` on the active track
+- `Shift+Numpad1`..`Shift+Numpad8`: store current active-track loop into stored loop slots `1`..`8`
+- `Shift+Alt+1`..`Shift+Alt+8`: fallback store for current active-track loop into slots `1`..`8`
 - `A`: toggle arm on active track
 - `M`: toggle mute on active track
 - `S`: toggle solo on active track

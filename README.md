@@ -151,6 +151,8 @@ Current controls:
 - `/` / `\`: half/double current-track loop length
 - `Numpad1`..`Numpad8`: recall stored loop slots `1`..`8` on the active track
 - `Alt+1`..`Alt+8`: laptop fallback for recalling stored loop slots `1`..`8` on the active track
+- `Shift+Numpad1`..`Shift+Numpad8`: store the current active-track loop to stored loop slots `1`..`8`
+- `Shift+Alt+1`..`Shift+Alt+8`: laptop fallback for storing the current active-track loop to slots `1`..`8`
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `Shift+,` / `Shift+.`: nudge global loop backward/forward by one quantize step
 - `Shift+-` / `Shift+=`: shorten/extend global loop by one quantize step
