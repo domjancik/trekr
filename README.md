@@ -347,7 +347,7 @@ Notes:
 
 The repo includes a scripted screenshot-and-review loop for visual QA:
 
-- `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
+- `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `timeline-focused`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
   - capture explicitly uses `--state-mode demo` so screenshots stay deterministic instead of depending on the last persisted interactive state
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`

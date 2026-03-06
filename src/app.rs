@@ -495,6 +495,7 @@ impl App {
         for spec in capture_specs() {
             self.page_state.current_page = spec.page;
             self.overlay_state.active = spec.overlay;
+            self.focused_track_view = spec.focused_track_view;
             let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
             let mut canvas = surface.into_canvas()?;
             canvas.set_scale(1.0, 1.0)?;
@@ -1755,7 +1756,7 @@ impl App {
             .stored_loop_visible_slot_count()
             .min(STORED_LOOP_SLOT_COUNT);
         let slot_w = 8_u32;
-        let slot_h = 8_u32;
+        let slot_h = 7_u32;
         let gap = 2_i32;
         let mut rects = Vec::with_capacity(visible_slots);
         for slot_index in 0..visible_slots {
@@ -1763,7 +1764,7 @@ impl App {
                 slot_index,
                 Rect::new(
                     label_rect.x + 4 + slot_index as i32 * (slot_w as i32 + gap),
-                    label_rect.y + 12,
+                    label_rect.y + 2,
                     slot_w,
                     slot_h,
                 ),
@@ -6269,34 +6270,46 @@ impl App {
 struct CaptureSpec {
     page: AppPage,
     overlay: Option<AppOverlay>,
+    focused_track_view: bool,
     filename: &'static str,
 }
 
-fn capture_specs() -> [CaptureSpec; 5] {
+fn capture_specs() -> [CaptureSpec; 6] {
     [
         CaptureSpec {
             page: AppPage::Timeline,
             overlay: None,
+            focused_track_view: false,
             filename: "timeline.png",
+        },
+        CaptureSpec {
+            page: AppPage::Timeline,
+            overlay: None,
+            focused_track_view: true,
+            filename: "timeline-focused.png",
         },
         CaptureSpec {
             page: AppPage::Mappings,
             overlay: None,
+            focused_track_view: false,
             filename: "mappings.png",
         },
         CaptureSpec {
             page: AppPage::Mappings,
             overlay: Some(AppOverlay::MappingsQuickView),
+            focused_track_view: false,
             filename: "mappings-overlay.png",
         },
         CaptureSpec {
             page: AppPage::MidiIo,
             overlay: None,
+            focused_track_view: false,
             filename: "midi-io.png",
         },
         CaptureSpec {
             page: AppPage::Routing,
             overlay: None,
+            focused_track_view: false,
             filename: "routing.png",
         },
     ]
