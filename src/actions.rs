@@ -560,12 +560,10 @@ impl KeyboardBindings {
                 keymod,
                 repeat: false,
                 ..
-            } if stored_loop_slot_shortcut(*keycode, *keymod).is_some() => {
-                Some(ActionEvent::new(
-                    stored_loop_slot_shortcut(*keycode, *keymod).expect("stored loop shortcut checked"),
-                    ActionSource::Keyboard,
-                ))
-            }
+            } if stored_loop_slot_shortcut(*keycode, *keymod).is_some() => Some(ActionEvent::new(
+                stored_loop_slot_shortcut(*keycode, *keymod).expect("stored loop shortcut checked"),
+                ActionSource::Keyboard,
+            )),
             Event::KeyDown {
                 keycode: Some(Keycode::A),
                 repeat: false,
@@ -949,19 +947,23 @@ fn stored_loop_slot_shortcut(keycode: Keycode, keymod: Mod) -> Option<AppAction>
     let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
 
     if !alt && !shift {
-        return stored_loop_shortcut_slot_from_numpad(keycode).and_then(recall_stored_loop_slot_action);
+        return stored_loop_shortcut_slot_from_numpad(keycode)
+            .and_then(recall_stored_loop_slot_action);
     }
 
     if alt && !shift {
-        return stored_loop_shortcut_slot_from_digit(keycode).and_then(recall_stored_loop_slot_action);
+        return stored_loop_shortcut_slot_from_digit(keycode)
+            .and_then(recall_stored_loop_slot_action);
     }
 
     if !alt && shift {
-        return stored_loop_shortcut_slot_from_numpad(keycode).and_then(store_stored_loop_slot_action);
+        return stored_loop_shortcut_slot_from_numpad(keycode)
+            .and_then(store_stored_loop_slot_action);
     }
 
     if alt && shift {
-        return stored_loop_shortcut_slot_from_digit(keycode).and_then(store_stored_loop_slot_action);
+        return stored_loop_shortcut_slot_from_digit(keycode)
+            .and_then(store_stored_loop_slot_action);
     }
 
     None

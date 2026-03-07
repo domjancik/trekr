@@ -177,7 +177,7 @@ Current controls:
 - `D` / `F`: nudge selected notes down/up by one semitone
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view
 
-Stored loop slot indicators are shown subtly on the left side of each track loop header (`1`..`4` visible with overflow) and are clickable direct recall targets.
+Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels.
 - `Shift+Delete`: delete the selected committed recording clip in stacked view
 - `Shift+F8`: toggle focused-track timeline view for the active track
 - `Left` / `Right`: select previous/next track directly
