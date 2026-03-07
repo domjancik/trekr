@@ -49,7 +49,26 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev
+          sudo apt-get install -y \
+            libasound2-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxfixes-dev \
+            libxss-dev \
+            libxtst-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libdbus-1-dev \
+            libibus-1.0-dev \
+            libudev-dev \
+            libdrm-dev \
+            libgbm-dev
 
       - name: Build
         run: cargo build --release --bin trekr
