@@ -13,6 +13,7 @@ use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
     MidiPortRef,
 };
+use crate::page_widgets::{handle_page_pointer, page_discoverability_targets, render_page};
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
@@ -110,7 +111,7 @@ struct LastActionStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DiscoverabilityTarget {
+pub(crate) struct DiscoverabilityTarget {
     action: AppAction,
     display_scope: Option<&'static str>,
     allowed_mapping_scopes: &'static [&'static str],
@@ -557,12 +558,7 @@ impl App {
 
         self.draw_page_tabs(canvas, tabs_bounds)?;
 
-        match self.page_state.current_page {
-            AppPage::Timeline => self.draw_timeline_page(canvas, content_bounds)?,
-            AppPage::Mappings => self.draw_mappings_page(canvas, content_bounds)?,
-            AppPage::MidiIo => self.draw_midi_io_page(canvas, content_bounds)?,
-            AppPage::Routing => self.draw_routing_page(canvas, content_bounds)?,
-        }
+        render_page(self.page_state.current_page, self, canvas, content_bounds)?;
 
         self.draw_direct_mapping_targets(canvas, tabs_bounds, content_bounds)?;
         self.draw_overlay(canvas, inset)?;
@@ -696,7 +692,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_timeline_page<T: RenderTarget>(
+    pub(crate) fn draw_timeline_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
@@ -2754,7 +2750,7 @@ impl App {
         ]
     }
 
-    fn draw_mappings_page<T: RenderTarget>(
+    pub(crate) fn draw_mappings_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
@@ -3304,7 +3300,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_midi_io_page<T: RenderTarget>(
+    pub(crate) fn draw_midi_io_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
@@ -3523,7 +3519,7 @@ impl App {
         Ok(())
     }
 
-    fn draw_routing_page<T: RenderTarget>(
+    pub(crate) fn draw_routing_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
@@ -5456,12 +5452,14 @@ impl App {
             return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
         }
 
-        match self.page_state.current_page {
-            AppPage::Timeline => self.handle_timeline_pointer(content_bounds, x, y, source),
-            AppPage::Mappings => self.handle_mappings_pointer(content_bounds, x, y, source),
-            AppPage::MidiIo => self.handle_midi_io_pointer(content_bounds, x, y, source),
-            AppPage::Routing => self.handle_routing_pointer(content_bounds, x, y, source),
-        }
+        handle_page_pointer(
+            self.page_state.current_page,
+            self,
+            content_bounds,
+            x,
+            y,
+            source,
+        )
     }
 
     fn handle_direct_mapping_pointer_down(
@@ -5511,11 +5509,8 @@ impl App {
     }
 
     fn direct_mapping_targets(&self, content_bounds: Rect) -> Vec<DirectMappingTarget> {
-        let raw_targets = match self.page_state.current_page {
-            AppPage::Timeline => self.timeline_discoverability_targets(content_bounds),
-            AppPage::Routing => self.routing_discoverability_targets(content_bounds),
-            AppPage::Mappings | AppPage::MidiIo => Vec::new(),
-        };
+        let raw_targets =
+            page_discoverability_targets(self.page_state.current_page, self, content_bounds);
 
         raw_targets
             .into_iter()
@@ -5574,7 +5569,7 @@ impl App {
         })
     }
 
-    fn handle_timeline_pointer(
+    pub(crate) fn handle_timeline_pointer(
         &mut self,
         content_bounds: Rect,
         x: i32,
@@ -5692,7 +5687,7 @@ impl App {
         None
     }
 
-    fn handle_mappings_pointer(
+    pub(crate) fn handle_mappings_pointer(
         &mut self,
         content_bounds: Rect,
         x: i32,
@@ -5780,7 +5775,7 @@ impl App {
         None
     }
 
-    fn handle_midi_io_pointer(
+    pub(crate) fn handle_midi_io_pointer(
         &mut self,
         content_bounds: Rect,
         x: i32,
@@ -5842,7 +5837,7 @@ impl App {
         None
     }
 
-    fn handle_routing_pointer(
+    pub(crate) fn handle_routing_pointer(
         &mut self,
         content_bounds: Rect,
         x: i32,
@@ -5950,18 +5945,15 @@ impl App {
                 .saturating_sub(footer_gap as u32),
         );
 
-        let targets = match self.page_state.current_page {
-            AppPage::Timeline => self.timeline_discoverability_targets(content_bounds),
-            AppPage::Routing => self.routing_discoverability_targets(content_bounds),
-            AppPage::Mappings | AppPage::MidiIo => Vec::new(),
-        };
+        let targets =
+            page_discoverability_targets(self.page_state.current_page, self, content_bounds);
 
         targets
             .into_iter()
             .find_map(|(rect, target)| rect_contains(rect, x, y).then_some(target))
     }
 
-    fn timeline_discoverability_targets(
+    pub(crate) fn timeline_discoverability_targets(
         &self,
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
@@ -6148,7 +6140,7 @@ impl App {
         targets
     }
 
-    fn routing_discoverability_targets(
+    pub(crate) fn routing_discoverability_targets(
         &self,
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
@@ -7093,7 +7085,7 @@ fn on_off(value: bool) -> &'static str {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AppControl {
+pub(crate) enum AppControl {
     Continue,
     Quit,
 }
