@@ -61,7 +61,6 @@ jobs:
         run: cargo xtask check
 
       - name: Run tests
-        if: runner.os != 'Windows'
         env:
           RUST_TEST_THREADS: 1
         run: cargo test --workspace --all-targets

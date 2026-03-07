@@ -7899,7 +7899,9 @@ mod tests {
     #[test]
     fn toggle_recording_creates_visible_take_content() {
         let mut app = App::new();
-        app.project.active_track_mut().unwrap().clear_content();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = Some(MidiPortRef::new("Test Input"));
         app.transport_ticks = 0;
         app.playhead_ticks = 0;
 
@@ -7911,7 +7913,7 @@ mod tests {
             .project
             .active_track()
             .and_then(|track| track.routing.input_port.clone())
-            .unwrap_or_else(|| MidiPortRef::new("Keystep 37"));
+            .expect("test track should have explicit input port");
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
