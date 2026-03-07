@@ -1173,6 +1173,7 @@ impl App {
         }
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
+        self.draw_track_loop_markers(canvas, content_rect, note_range, track)?;
         let selected_note_indices = track.selected_note_indices();
         let focused_note_index = track.focused_note_index();
         let anchor_note_index = track.anchor_note_index();
@@ -1747,13 +1748,21 @@ impl App {
         )
     }
 
-    fn stored_loop_visible_slot_count(&self) -> usize {
-        4
+    fn stored_loop_visible_slot_count(&self, label_rect: Rect) -> usize {
+        let slot_w = 8_i32;
+        let gap = 2_i32;
+        let side_padding = 8_i32;
+        let min_name_space = 24_i32;
+        let available = label_rect.width() as i32 - side_padding - min_name_space;
+        if available < slot_w {
+            return 0;
+        }
+        (((available + gap) / (slot_w + gap)).max(0) as usize).min(STORED_LOOP_SLOT_COUNT)
     }
 
     fn stored_loop_slot_rects(&self, label_rect: Rect) -> Vec<(usize, Rect)> {
         let visible_slots = self
-            .stored_loop_visible_slot_count()
+            .stored_loop_visible_slot_count(label_rect)
             .min(STORED_LOOP_SLOT_COUNT);
         let slot_w = 8_u32;
         let slot_h = 7_u32;
@@ -1771,6 +1780,132 @@ impl App {
             ));
         }
         rects
+    }
+
+    fn draw_track_loop_markers<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_rect: Rect,
+        note_range: crate::timeline::LoopRegion,
+        track: &Track,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        #[derive(Clone)]
+        struct LoopMarker {
+            range: crate::timeline::LoopRegion,
+            label: String,
+            color: Color,
+            main_loop: bool,
+        }
+
+        let mut markers = Vec::new();
+        for slot_index in 0..STORED_LOOP_SLOT_COUNT {
+            let Some(stored_loop) = track.stored_loop_slot(slot_index) else {
+                continue;
+            };
+            markers.push(LoopMarker {
+                range: stored_loop.as_loop_region(),
+                label: (slot_index + 1).to_string(),
+                color: stored_loop_slot_color(slot_index),
+                main_loop: false,
+            });
+        }
+
+        let active_slot = track.active_stored_loop_slot();
+        let main_loop_color = active_slot
+            .map(stored_loop_slot_color)
+            .unwrap_or(Color::RGB(242, 190, 112));
+        markers.push(LoopMarker {
+            range: track.loop_region,
+            label: active_slot
+                .map(|slot| (slot + 1).to_string())
+                .unwrap_or_else(|| "L".to_string()),
+            color: if track.state.loop_enabled {
+                main_loop_color
+            } else {
+                Color::RGB(128, 122, 112)
+            },
+            main_loop: true,
+        });
+
+        let max_columns = match self.timeline_flow {
+            TimelineFlow::DownwardColumns => content_rect.width().min(10) as usize,
+            TimelineFlow::AcrossRows => content_rect.height().min(10) as usize,
+        }
+        .max(1);
+
+        for (marker_index, marker) in markers.iter().enumerate() {
+            if !loop_regions_intersect(marker.range, note_range) {
+                continue;
+            }
+
+            let span = crate::ui::range_highlight_rect(
+                content_rect,
+                self.timeline_flow,
+                note_range.start_ticks,
+                note_range.length_ticks,
+                marker.range,
+            );
+            let column = (marker_index % max_columns) as i32;
+            let line_color = marker.color;
+            let tick_color = if marker.main_loop {
+                Color::RGB(252, 238, 194)
+            } else {
+                Color::RGB(218, 224, 232)
+            };
+
+            match self.timeline_flow {
+                TimelineFlow::DownwardColumns => {
+                    let x = (content_rect.x + 1 + column)
+                        .min(content_rect.x + content_rect.width() as i32 - 1);
+                    let line_h = span.height().max(1);
+                    canvas.set_draw_color(line_color);
+                    canvas.fill_rect(Rect::new(x, span.y, 1, line_h))?;
+
+                    let end_y = span.y + line_h as i32 - 1;
+                    canvas.set_draw_color(tick_color);
+                    canvas.fill_rect(Rect::new(x, span.y, 4, 1))?;
+                    canvas.fill_rect(Rect::new(x, end_y, 4, 1))?;
+
+                    let label_y = (span.y + line_h as i32 / 2 - 3).clamp(
+                        content_rect.y,
+                        content_rect.y + content_rect.height() as i32 - 7,
+                    );
+                    crate::ui::draw_text_fitted(
+                        canvas,
+                        marker.label.as_str(),
+                        Rect::new(x + 1, label_y, 6, 7),
+                        1,
+                        tick_color,
+                    )?;
+                }
+                TimelineFlow::AcrossRows => {
+                    let y = (content_rect.y + 1 + column)
+                        .min(content_rect.y + content_rect.height() as i32 - 1);
+                    let line_w = span.width().max(1);
+                    canvas.set_draw_color(line_color);
+                    canvas.fill_rect(Rect::new(span.x, y, line_w, 1))?;
+
+                    let end_x = span.x + line_w as i32 - 1;
+                    canvas.set_draw_color(tick_color);
+                    canvas.fill_rect(Rect::new(span.x, y, 1, 4))?;
+                    canvas.fill_rect(Rect::new(end_x, y, 1, 4))?;
+
+                    let label_x = (span.x + line_w as i32 / 2 - 3).clamp(
+                        content_rect.x,
+                        content_rect.x + content_rect.width() as i32 - 7,
+                    );
+                    crate::ui::draw_text_fitted(
+                        canvas,
+                        marker.label.as_str(),
+                        Rect::new(label_x, y + 1, 7, 6),
+                        1,
+                        tick_color,
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
@@ -6585,6 +6720,23 @@ fn stored_loop_slot_recall_action(slot_index: usize) -> Option<AppAction> {
     }
 }
 
+fn stored_loop_slot_color(slot_index: usize) -> Color {
+    match slot_index % STORED_LOOP_SLOT_COUNT {
+        0 => Color::RGB(214, 124, 118),
+        1 => Color::RGB(214, 176, 98),
+        2 => Color::RGB(184, 206, 108),
+        3 => Color::RGB(114, 198, 174),
+        4 => Color::RGB(114, 168, 214),
+        5 => Color::RGB(144, 138, 214),
+        6 => Color::RGB(204, 132, 206),
+        _ => Color::RGB(210, 144, 164),
+    }
+}
+
+fn loop_regions_intersect(a: crate::timeline::LoopRegion, b: crate::timeline::LoopRegion) -> bool {
+    a.start_ticks < b.end_ticks() && a.end_ticks() > b.start_ticks
+}
+
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -6963,7 +7115,7 @@ mod tests {
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
-    use crate::project::RecordingView;
+    use crate::project::{RecordingView, STORED_LOOP_SLOT_COUNT};
     use crate::routing::MidiChannelFilter;
     use crate::timeline::RecordingTake;
     use crate::transport::{QuantizeMode, RecordMode};
@@ -8513,6 +8665,19 @@ mod tests {
             app.project.tracks[1].loop_region,
             crate::timeline::LoopRegion::new(2_880, 960)
         );
+    }
+
+    #[test]
+    fn stored_loop_slot_rects_expand_to_fit_available_label_width() {
+        let app = App::new();
+        let wide = Rect::new(0, 0, 120, 14);
+        let narrow = Rect::new(0, 0, 44, 14);
+
+        assert_eq!(
+            app.stored_loop_slot_rects(wide).len(),
+            STORED_LOOP_SLOT_COUNT
+        );
+        assert!(app.stored_loop_slot_rects(narrow).len() < STORED_LOOP_SLOT_COUNT);
     }
 
     #[test]
