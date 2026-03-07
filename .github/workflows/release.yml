@@ -32,7 +32,7 @@ jobs:
           - os: windows-latest
             artifact_name: trekr-windows-x86_64
             archive_name: trekr-windows-x86_64.zip
-            package_command: Compress-Archive -Path target/release/trekr.exe -DestinationPath trekr-windows-x86_64.zip
+            package_command: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,7 +80,25 @@ jobs:
       - name: Package artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ${{ matrix.package_command }}
+        run: |
+          $stageDir = "target/release/trekr-windows-x86_64"
+          if (Test-Path $stageDir) {
+            Remove-Item -Recurse -Force $stageDir
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+          Copy-Item "target/release/trekr.exe" -Destination $stageDir -Force
+
+          $sdlDlls = Get-ChildItem -Path "target/release", "target/release/deps" -Filter "SDL3*.dll" -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Unique
+          if (-not $sdlDlls -or $sdlDlls.Count -eq 0) {
+            throw "Could not locate SDL3 runtime DLLs in release output."
+          }
+
+          foreach ($dll in $sdlDlls) {
+            Copy-Item $dll.FullName -Destination $stageDir -Force
+          }
+
+          Compress-Archive -Path "$stageDir/*" -DestinationPath "trekr-windows-x86_64.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
