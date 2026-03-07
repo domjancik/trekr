@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     name: Build release artifact (${{ matrix.artifact_name }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runs_on || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,8 +27,8 @@ jobs:
           - os: ubuntu-latest
             artifact_name: trekr-linux-aarch64
             archive_name: trekr-linux-aarch64.tar.gz
-            target: aarch64-unknown-linux-gnu
-            package_command: tar -czf trekr-linux-aarch64.tar.gz -C target/aarch64-unknown-linux-gnu/release trekr
+            runs_on: ubuntu-24.04-arm
+            package_command: tar -czf trekr-linux-aarch64.tar.gz -C target/release trekr
           - os: windows-latest
             artifact_name: trekr-windows-x86_64
             archive_name: trekr-windows-x86_64.zip
@@ -39,36 +39,20 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install stable Rust (default target)
-        if: matrix.target == null
+      - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install stable Rust (with ARM64 target)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Linux ARM64 cross toolchain
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libasound2-dev
 
-      - name: Build (default target)
-        if: matrix.target == null
+      - name: Build
         run: cargo build --release --bin trekr
-
-      - name: Build (ARM64 target)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        env:
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
-          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
-        run: cargo build --release --bin trekr --target aarch64-unknown-linux-gnu
 
       - name: Package artifact (Unix)
         if: runner.os != 'Windows'

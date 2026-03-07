@@ -29,6 +29,12 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
+
       - name: Verify formatting
         run: cargo fmt --all --check
 
@@ -36,11 +42,13 @@ jobs:
         run: cargo xtask check
 
       - name: Run tests
+        env:
+          RUST_TEST_THREADS: 1
         run: cargo test --workspace --all-targets
 
   arm64-check:
     name: Cross-check Linux ARM64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,20 +57,14 @@ jobs:
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cross toolchain
+      - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libasound2-dev
 
-      - name: Build check (ARM64 target)
-        env:
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
-          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
-        run: cargo check --target aarch64-unknown-linux-gnu
+      - name: Build check (native ARM64)
+        run: cargo check
