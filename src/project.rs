@@ -227,17 +227,15 @@ impl Track {
     }
 
     pub fn active_stored_loop_slot(&self) -> Option<usize> {
-        self.active_stored_loop_slot
-            .filter(|&slot| self.stored_loop_slot(slot).is_some())
-            .or_else(|| {
-                self.stored_loops
-                    .iter()
-                    .enumerate()
-                    .find_map(|(index, stored)| {
-                        let stored = (*stored)?;
-                        (stored.as_loop_region() == self.loop_region).then_some(index)
-                    })
-            })
+        let slot = self.active_stored_loop_slot?;
+        let stored = self.stored_loop_slot(slot)?;
+        (stored.as_loop_region() == self.loop_region).then_some(slot)
+    }
+
+    pub fn sync_active_stored_loop_slot(&mut self) {
+        if self.active_stored_loop_slot().is_none() {
+            self.active_stored_loop_slot = None;
+        }
     }
 
     pub fn store_current_loop_to_slot(&mut self, slot_index: usize) -> bool {
@@ -1662,12 +1660,24 @@ mod tests {
     }
 
     #[test]
-    fn active_stored_loop_slot_falls_back_to_range_match() {
+    fn active_stored_loop_slot_does_not_fallback_to_range_match() {
         let mut track = Track::new_empty("Track 1", TrackKind::Midi);
         track.loop_region = LoopRegion::new(2_880, 960);
         assert!(track.store_current_loop_to_slot(1));
 
         track.active_stored_loop_slot = None;
-        assert_eq!(track.active_stored_loop_slot(), Some(1));
+        assert_eq!(track.active_stored_loop_slot(), None);
+    }
+
+    #[test]
+    fn sync_active_stored_loop_slot_clears_marker_after_manual_loop_change() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(960, 960);
+        assert!(track.store_current_loop_to_slot(0));
+        assert_eq!(track.active_stored_loop_slot(), Some(0));
+
+        track.loop_region = LoopRegion::new(1_920, 960);
+        track.sync_active_stored_loop_slot();
+        assert_eq!(track.active_stored_loop_slot(), None);
     }
 }

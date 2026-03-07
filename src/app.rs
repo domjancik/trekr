@@ -4170,6 +4170,7 @@ impl App {
                 let edit_ticks = self.current_edit_ticks();
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.set_start_preserving_end(edit_ticks);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -4177,6 +4178,7 @@ impl App {
                 let edit_ticks = self.current_edit_ticks();
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.set_end(edit_ticks);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -4196,6 +4198,7 @@ impl App {
                 let delta = -(self.nudge_step_ticks() as i64);
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.shift_by(delta);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -4203,6 +4206,7 @@ impl App {
                 let delta = self.nudge_step_ticks() as i64;
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.shift_by(delta);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -4220,6 +4224,7 @@ impl App {
                 let step = self.nudge_step_ticks();
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.shorten_by(step);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -4227,18 +4232,21 @@ impl App {
                 let step = self.nudge_step_ticks();
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.extend_by(step);
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
             AppAction::HalfCurrentTrackLoop => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.half_length();
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
             AppAction::DoubleCurrentTrackLoop => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.loop_region.double_length();
+                    track.sync_active_stored_loop_slot();
                 }
                 AppControl::Continue
             }
@@ -8656,6 +8664,26 @@ mod tests {
         assert_eq!(
             app.project.tracks[1].loop_region,
             crate::timeline::LoopRegion::new(2_880, 960)
+        );
+    }
+
+    #[test]
+    fn manual_loop_edit_unlinks_active_stored_loop_slot() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.loop_region = crate::timeline::LoopRegion::new(1_920, 960);
+        assert!(track.store_current_loop_to_slot(2));
+        assert_eq!(track.active_stored_loop_slot(), Some(2));
+
+        app.transport_ticks = 0;
+        app.apply_action(AppAction::SetCurrentTrackLoopStart);
+
+        assert_eq!(
+            app.project
+                .active_track()
+                .unwrap()
+                .active_stored_loop_slot(),
+            None
         );
     }
 
