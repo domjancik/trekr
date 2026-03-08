@@ -106,3 +106,60 @@ jobs:
 
       - name: Build check (native ARM64)
         run: cargo check
+
+  macos-release-smoke:
+    name: macOS Release Smoke
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --bin trekr
+
+      - name: Package macOS artifact
+        shell: bash
+        run: |
+          STAGE_DIR="target/release/trekr-macos"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR/lib"
+          cp "target/release/trekr" "$STAGE_DIR/trekr"
+          chmod +x "$STAGE_DIR/trekr"
+
+          SDL_DYLIBS=()
+          while IFS= read -r dylib; do
+            SDL_DYLIBS+=("$dylib")
+          done < <(find target/release target/release/deps -type f -name 'SDL3*.dylib' 2>/dev/null | sort -u)
+          if [ "${#SDL_DYLIBS[@]}" -eq 0 ]; then
+            echo "Could not locate SDL3 runtime dylibs in release output."
+            exit 1
+          fi
+
+          for dylib in "${SDL_DYLIBS[@]}"; do
+            cp "$dylib" "$STAGE_DIR/lib/"
+          done
+
+          cat > "$STAGE_DIR/run-trekr.sh" << 'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "$0")" && pwd)"
+          export DYLD_LIBRARY_PATH="$HERE/lib:${DYLD_LIBRARY_PATH:-}"
+          exec "$HERE/trekr" "$@"
+          EOF
+          chmod +x "$STAGE_DIR/run-trekr.sh"
+
+          tar -czf "trekr-macos.tar.gz" -C "target/release" "trekr-macos"
+
+      - name: Upload smoke-test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trekr-macos-smoke
+          path: trekr-macos.tar.gz
