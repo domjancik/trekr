@@ -190,4 +190,4 @@ Those should be reviewed before any reset, cleanup, or broad staging step.
 
 ## Completion Notes
 
-- 2026-03-08: extracted the Ableton Link build-requirements table and generated a highly readable Trekr-color styled HTML presentation in temp output directory `C:\Users\magne\AppData\Local\Temp\trekr-table-export`.
+- 2026-03-08: extracted the keyboard shortcuts table from the workspace chat and generated a highly readable Trekr-color styled HTML presentation in temp output directory `C:\Users\magne\AppData\Local\Temp\trekr-table-export`.
