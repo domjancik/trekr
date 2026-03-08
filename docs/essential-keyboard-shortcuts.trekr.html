@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trekr Keyboard Shortcuts</title>
+  <style>
+    :root {
+      --bg-outer: #111a2e;
+      --bg-main: #141f36;
+      --bg-panel: #15213a;
+      --bg-row: #24304a;
+      --bg-row-alt: #202b44;
+      --bg-row-hover: #2a3857;
+      --line: #4e5f84;
+      --line-soft: #3f5071;
+      --text: #e7edf7;
+      --text-dim: #b8c3d8;
+      --focus: #ece48f;
+      --chip: #425070;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 18px;
+      background: linear-gradient(180deg, #0d1528 0%, #0f1830 100%);
+      color: var(--text);
+      font-family: "Consolas", "Cascadia Mono", "Lucida Console", monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .frame {
+      max-width: 1180px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      background: var(--bg-main);
+      padding: 16px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      border: 1px solid var(--line);
+      background: #1f2a44;
+      color: var(--text-dim);
+      font-size: 12px;
+      padding: 7px 10px;
+      text-transform: uppercase;
+    }
+
+    .tab.active {
+      background: #3d4f75;
+      border-color: var(--focus);
+      color: #f4f7ff;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--bg-panel);
+      padding: 10px;
+    }
+
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      color: var(--focus);
+      font-size: 34px;
+      line-height: 1;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid var(--line-soft);
+      padding: 4px 8px;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+      text-transform: uppercase;
+    }
+
+    th {
+      color: var(--text-dim);
+      background: #1c2842;
+      text-align: left;
+      font-weight: 500;
+    }
+
+    tbody tr { background: var(--bg-row); }
+    tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+    tbody tr:hover { background: var(--bg-row-hover); }
+
+    tbody tr.highlight {
+      outline: 1px solid var(--focus);
+      outline-offset: -1px;
+    }
+
+    .col-cat { width: 22%; color: var(--text-dim); }
+    .col-key { width: 28%; }
+    .col-action { width: 50%; }
+
+    .kbd {
+      display: inline-block;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      color: #f0f4ff;
+      padding: 1px 6px;
+      margin-right: 5px;
+      margin-bottom: 2px;
+      min-width: 22px;
+      text-align: center;
+    }
+
+    .status {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      padding: 4px 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      background: #17223b;
+    }
+
+    .status .tag {
+      color: #0f1a2e;
+      background: var(--focus);
+      border: 1px solid #d9d07d;
+      padding: 0 6px;
+      margin-right: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .title { font-size: 26px; }
+      table { font-size: 12px; }
+      th, td { padding: 4px 6px; }
+      .tabs { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <nav class="tabs" aria-label="Trekr pages">
+      <div class="tab">Timeline</div>
+      <div class="tab active">Mappings</div>
+      <div class="tab">MIDI I/O</div>
+      <div class="tab">Routing</div>
+    </nav>
+
+    <section class="panel" aria-label="Keyboard shortcuts panel">
+      <div class="titlebar">
+        <h1 class="title">Keyboard Shortcuts</h1>
+        <div class="meta">Rows 1-30 / 30</div>
+      </div>
+
+      <table aria-label="Trekr keyboard shortcuts table">
+        <thead>
+          <tr>
+            <th class="col-cat">Category</th>
+            <th class="col-key">Shortcut</th>
+            <th class="col-action">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="highlight"><td>Page / Navigation</td><td><span class="kbd">Tab</span><span class="kbd">Shift+Tab</span></td><td>Next / Previous Page</td></tr>
+          <tr><td>Page / Navigation</td><td><span class="kbd">F1-F4</span></td><td>Open Timeline / Mappings / MIDI I/O / Routing</td></tr>
+          <tr><td>Page / Navigation</td><td><span class="kbd">F5</span></td><td>Toggle Mappings Overlay</td></tr>
+          <tr><td>Link</td><td><span class="kbd">F6</span></td><td>Toggle Ableton Link Participation</td></tr>
+          <tr><td>Link</td><td><span class="kbd">Shift+F6</span></td><td>Toggle Link Start/Stop Sync Participation</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">W</span></td><td>Toggle Write Mode</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">N</span></td><td>Add Mapping Row</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">Delete</span></td><td>Remove Mapping Row</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">Shift+Left</span><span class="kbd">Shift+Right</span></td><td>Select Mapping Field</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">Q</span><span class="kbd">E</span></td><td>Adjust Selected Field</td></tr>
+          <tr><td>Mappings</td><td><span class="kbd">Enter</span></td><td>Activate / Learn Selected Mapping Control</td></tr>
+          <tr><td>Transport / Record</td><td><span class="kbd">Space</span></td><td>Transport Toggle</td></tr>
+          <tr><td>Transport / Record</td><td><span class="kbd">R</span><span class="kbd">Shift+R</span></td><td>Record Controls</td></tr>
+          <tr><td>Transport / Record</td><td><span class="kbd">Home</span></td><td>Return to Start</td></tr>
+          <tr><td>Transport / Record</td><td><span class="kbd">G</span><span class="kbd">L</span></td><td>Grid / Loop Transport Utilities</td></tr>
+          <tr><td>Loop Editing</td><td><span class="kbd">[</span><span class="kbd">]</span><span class="kbd">Shift+[</span><span class="kbd">Shift+]</span></td><td>Adjust Loop Boundary (Primary / Alternate)</td></tr>
+          <tr><td>Loop Editing</td><td><span class="kbd">,</span><span class="kbd">.</span><span class="kbd">Shift+,</span><span class="kbd">Shift+.</span></td><td>Nudge/Edit Loop Parameter (Primary / Alternate)</td></tr>
+          <tr><td>Loop Editing</td><td><span class="kbd">-</span><span class="kbd">=</span><span class="kbd">Shift+-</span><span class="kbd">Shift+=</span></td><td>Adjust Loop Length/Position (Primary / Alternate)</td></tr>
+          <tr><td>Loop Editing</td><td><span class="kbd">/</span><span class="kbd">\</span><span class="kbd">Shift+/</span><span class="kbd">Shift+\</span></td><td>Loop Operation Pair (Primary / Alternate)</td></tr>
+          <tr><td>Track State</td><td><span class="kbd">A</span><span class="kbd">M</span><span class="kbd">S</span><span class="kbd">I</span></td><td>Arm / Mute / Solo / Passthrough Toggles</td></tr>
+          <tr><td>Track State</td><td><span class="kbd">Left</span><span class="kbd">Right</span></td><td>Select Previous / Next Track</td></tr>
+          <tr><td>Track State</td><td><span class="kbd">1-9</span></td><td>Select Track By Index</td></tr>
+        </tbody>
+      </table>
+
+      <div class="status"><span class="tag">LAST ACTION</span> READY | Style matched from tracked screenshots (`timeline`, `mappings`, `midi-io`, `routing`, `mappings-overlay`).</div>
+    </section>
+  </main>
+</body>
+</html>

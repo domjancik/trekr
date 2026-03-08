@@ -187,3 +187,7 @@ Those should be reviewed before any reset, cleanup, or broad staging step.
 3. Move MIDI timing and capture further off the UI loop.
 4. Design the timeline note/region editing UX before implementing pointer editing.
 5. Decide whether the in-progress Raspberry Pi Zero 2 W deployment scripts should be committed as a finished supported flow.
+
+## Completion Notes
+
+- 2026-03-08: extracted the keyboard shortcuts table from the workspace chat and generated a Trekr-styled HTML presentation at `docs/essential-keyboard-shortcuts.trekr.html` (source style pass also exported to temp during iteration).
