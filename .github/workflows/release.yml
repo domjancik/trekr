@@ -94,7 +94,7 @@ jobs:
           SDL_DYLIBS=()
           while IFS= read -r dylib; do
             SDL_DYLIBS+=("$dylib")
-          done < <(find target/release target/release/deps -type f -name 'SDL3*.dylib' 2>/dev/null | sort -u)
+          done < <(find target/release target/release/deps -type f -name 'libSDL3*.dylib' 2>/dev/null | sort -u)
           if [ "${#SDL_DYLIBS[@]}" -eq 0 ]; then
             echo "Could not locate SDL3 runtime dylibs in release output."
             exit 1
