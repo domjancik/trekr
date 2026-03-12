@@ -1792,6 +1792,12 @@ impl App {
             color: Color,
             main_loop: bool,
         }
+        #[derive(Clone, Copy)]
+        struct MarkerSpan {
+            color: Color,
+            start: i32,
+            end: i32,
+        }
 
         let mut markers = Vec::new();
         for slot_index in 0..STORED_LOOP_SLOT_COUNT {
@@ -1823,79 +1829,167 @@ impl App {
             main_loop: true,
         });
 
-        let max_columns = match self.timeline_flow {
-            TimelineFlow::DownwardColumns => content_rect.width().min(10) as usize,
-            TimelineFlow::AcrossRows => content_rect.height().min(10) as usize,
-        }
-        .max(1);
-
-        for (marker_index, marker) in markers.iter().enumerate() {
+        let mut spans = Vec::new();
+        for marker in markers.iter() {
             if !loop_regions_intersect(marker.range, note_range) {
                 continue;
             }
 
-            let span = crate::ui::range_highlight_rect(
+            let span_rect = crate::ui::range_highlight_rect(
                 content_rect,
                 self.timeline_flow,
                 note_range.start_ticks,
                 note_range.length_ticks,
                 marker.range,
             );
-            let column = (marker_index % max_columns) as i32;
-            let line_color = marker.color;
-            let tick_color = if marker.main_loop {
-                Color::RGB(252, 238, 194)
-            } else {
-                Color::RGB(218, 224, 232)
+            let (start, end) = match self.timeline_flow {
+                TimelineFlow::DownwardColumns => (
+                    span_rect.y,
+                    span_rect.y + span_rect.height().max(1) as i32 - 1,
+                ),
+                TimelineFlow::AcrossRows => (
+                    span_rect.x,
+                    span_rect.x + span_rect.width().max(1) as i32 - 1,
+                ),
             };
+            spans.push(MarkerSpan {
+                color: marker.color,
+                start,
+                end,
+            });
+        }
 
-            match self.timeline_flow {
-                TimelineFlow::DownwardColumns => {
-                    let x = (content_rect.x + 1 + column)
-                        .min(content_rect.x + content_rect.width() as i32 - 1);
-                    let line_h = span.height().max(1);
-                    canvas.set_draw_color(line_color);
-                    canvas.fill_rect(Rect::new(x, span.y, 1, line_h))?;
+        if spans.is_empty() {
+            return Ok(());
+        }
 
-                    let end_y = span.y + line_h as i32 - 1;
-                    canvas.set_draw_color(tick_color);
-                    canvas.fill_rect(Rect::new(x, span.y, 4, 1))?;
-                    canvas.fill_rect(Rect::new(x, end_y, 4, 1))?;
+        let side_thickness = 6_i32;
+        let primary_tick = Color::RGB(252, 238, 194);
+        let secondary_tick = Color::RGB(218, 224, 232);
+        let side_major = side_thickness.max(1) as u32;
 
-                    let label_y = (span.y + line_h as i32 / 2 - 3).clamp(
+        match self.timeline_flow {
+            TimelineFlow::DownwardColumns => {
+                let x = content_rect.x + 1;
+                let usable_width = (content_rect.x + content_rect.width() as i32 - x).max(1);
+                let band_width = side_major.min(usable_width as u32);
+                let start_y = content_rect.y;
+                let end_y = content_rect.y + content_rect.height() as i32 - 1;
+
+                for y in start_y..=end_y {
+                    let colors = spans
+                        .iter()
+                        .filter(|span| y >= span.start && y <= span.end)
+                        .map(|span| span.color)
+                        .collect::<Vec<_>>();
+                    if colors.is_empty() {
+                        continue;
+                    }
+                    for pixel in 0..band_width as usize {
+                        if let Some(color) = interlaced_color_at(&colors, pixel) {
+                            canvas.set_draw_color(color);
+                            canvas.fill_rect(Rect::new(x + pixel as i32, y, 1, 1))?;
+                        }
+                    }
+                }
+
+                for marker in markers.iter() {
+                    if !loop_regions_intersect(marker.range, note_range) {
+                        continue;
+                    }
+                    let span_rect = crate::ui::range_highlight_rect(
+                        content_rect,
+                        self.timeline_flow,
+                        note_range.start_ticks,
+                        note_range.length_ticks,
+                        marker.range,
+                    );
+                    let line_h = span_rect.height().max(1);
+                    let end_marker_y = span_rect.y + line_h as i32 - 1;
+                    canvas.set_draw_color(if marker.main_loop {
+                        primary_tick
+                    } else {
+                        secondary_tick
+                    });
+                    canvas.fill_rect(Rect::new(x, span_rect.y, band_width.min(4), 1))?;
+                    canvas.fill_rect(Rect::new(x, end_marker_y, band_width.min(4), 1))?;
+
+                    let label_y = (span_rect.y + line_h as i32 / 2 - 3).clamp(
                         content_rect.y,
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
                     crate::ui::draw_text_fitted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(x + 1, label_y, 6, 7),
+                        Rect::new(x + band_width as i32 + 1, label_y, 8, 7),
                         1,
-                        tick_color,
+                        if marker.main_loop {
+                            primary_tick
+                        } else {
+                            secondary_tick
+                        },
                     )?;
                 }
-                TimelineFlow::AcrossRows => {
-                    let y = (content_rect.y + 1 + column)
-                        .min(content_rect.y + content_rect.height() as i32 - 1);
-                    let line_w = span.width().max(1);
-                    canvas.set_draw_color(line_color);
-                    canvas.fill_rect(Rect::new(span.x, y, line_w, 1))?;
+            }
+            TimelineFlow::AcrossRows => {
+                let y = content_rect.y + 1;
+                let usable_height = (content_rect.y + content_rect.height() as i32 - y).max(1);
+                let band_height = side_major.min(usable_height as u32);
+                let start_x = content_rect.x;
+                let end_x = content_rect.x + content_rect.width() as i32 - 1;
 
-                    let end_x = span.x + line_w as i32 - 1;
-                    canvas.set_draw_color(tick_color);
-                    canvas.fill_rect(Rect::new(span.x, y, 1, 4))?;
-                    canvas.fill_rect(Rect::new(end_x, y, 1, 4))?;
+                for x in start_x..=end_x {
+                    let colors = spans
+                        .iter()
+                        .filter(|span| x >= span.start && x <= span.end)
+                        .map(|span| span.color)
+                        .collect::<Vec<_>>();
+                    if colors.is_empty() {
+                        continue;
+                    }
+                    for pixel in 0..band_height as usize {
+                        if let Some(color) = interlaced_color_at(&colors, pixel) {
+                            canvas.set_draw_color(color);
+                            canvas.fill_rect(Rect::new(x, y + pixel as i32, 1, 1))?;
+                        }
+                    }
+                }
 
-                    let label_x = (span.x + line_w as i32 / 2 - 3).clamp(
+                for marker in markers.iter() {
+                    if !loop_regions_intersect(marker.range, note_range) {
+                        continue;
+                    }
+                    let span_rect = crate::ui::range_highlight_rect(
+                        content_rect,
+                        self.timeline_flow,
+                        note_range.start_ticks,
+                        note_range.length_ticks,
+                        marker.range,
+                    );
+                    let line_w = span_rect.width().max(1);
+                    let end_marker_x = span_rect.x + line_w as i32 - 1;
+                    canvas.set_draw_color(if marker.main_loop {
+                        primary_tick
+                    } else {
+                        secondary_tick
+                    });
+                    canvas.fill_rect(Rect::new(span_rect.x, y, 1, band_height.min(4)))?;
+                    canvas.fill_rect(Rect::new(end_marker_x, y, 1, band_height.min(4)))?;
+
+                    let label_x = (span_rect.x + line_w as i32 / 2 - 3).clamp(
                         content_rect.x,
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
                     crate::ui::draw_text_fitted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(label_x, y + 1, 7, 6),
+                        Rect::new(label_x, y + band_height as i32 + 1, 7, 6),
                         1,
-                        tick_color,
+                        if marker.main_loop {
+                            primary_tick
+                        } else {
+                            secondary_tick
+                        },
                     )?;
                 }
             }
@@ -6737,6 +6831,10 @@ fn loop_regions_intersect(a: crate::timeline::LoopRegion, b: crate::timeline::Lo
     a.start_ticks < b.end_ticks() && a.end_ticks() > b.start_ticks
 }
 
+fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
+    (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
+}
+
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -7120,6 +7218,7 @@ mod tests {
     use crate::timeline::RecordingTake;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
+    use sdl3::pixels::Color;
     use sdl3::rect::Rect;
 
     fn region_span(region: crate::timeline::Region) -> (u64, u64) {
@@ -8734,6 +8833,29 @@ mod tests {
         assert_eq!(
             super::pointer_down_position(&event, (1280, 720)),
             Some((640, 360, crate::actions::ActionSource::Touch))
+        );
+    }
+
+    #[test]
+    fn interlaced_color_pattern_cycles_proportionally() {
+        let b = Color::RGB(0, 0, 255);
+        let r = Color::RGB(255, 0, 0);
+        let g = Color::RGB(0, 255, 0);
+
+        let two = [b, r];
+        assert_eq!(
+            (0..4)
+                .filter_map(|pixel| super::interlaced_color_at(&two, pixel))
+                .collect::<Vec<_>>(),
+            vec![b, r, b, r]
+        );
+
+        let three = [r, b, g];
+        assert_eq!(
+            (0..6)
+                .filter_map(|pixel| super::interlaced_color_at(&three, pixel))
+                .collect::<Vec<_>>(),
+            vec![r, b, g, r, b, g]
         );
     }
 }
