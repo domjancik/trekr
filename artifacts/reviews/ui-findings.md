@@ -1,17 +1,19 @@
 Findings
 
-1. **severity: medium**; **screenshot/page:** `timeline.png`; **issue:** Control text in the top tool rows is very dense and low-contrast (`WRAP EXTEND`, `TEMPO 120`, `NOTEADD OFF`, quant/peer/link group), which makes state scanning slow and feels visually cramped. **brief suggested fix:** Increase font size/contrast for state chips and add more horizontal padding/gap between chip groups.
+1. severity: medium | screenshot/page: `midi-io.png` | issue: Subtitle has a typo (`SELECT DEFULT INPUTS AND OUTPUTS`), which hurts trust and quick comprehension. | brief suggested fix: Change to `SELECT DEFAULT INPUTS AND OUTPUTS`.
 
-2. **severity: medium**; **screenshot/page:** `timeline.png`; **issue:** Per-track headers are crowded (`ARM/REC/MUT/SOL`, track name, `SONG`, `DUB`, loop digits) and compete for attention, so it is hard to identify the active state quickly. **brief suggested fix:** Promote only active states with stronger emphasis and demote secondary labels; split header into two clearer rows or simplify controls shown per track.
+2. severity: medium | screenshot/page: `timeline.png` | issue: Track columns are too dense in `TRACK ALL`; labels and note marks become hard to scan quickly. | brief suggested fix: Increase minimum column width or reduce visible tracks in this mode, with horizontal paging/scroll.
 
-3. **severity: low**; **screenshot/page:** `timeline-focused.png`; **issue:** `TRACK T1` label is less clear than `TRACK 1` and looks inconsistent with other naming on the page. **brief suggested fix:** Standardize wording to `TRACK 1` everywhere and keep one naming convention for track identity.
+3. severity: medium | screenshot/page: `timeline.png` | issue: Header/control bars are crowded (`PLAY/REC/MODE`, `LINK/START/STOP`, `QUANT/PEERS`) with weak grouping, so state is hard to parse at a glance. | brief suggested fix: Split into clearly separated groups with stronger spacing and section labels.
 
-4. **severity: medium**; **screenshot/page:** `mappings.png`; **issue:** Bottom command hint strip is overloaded and tightly packed (`TAP ROW`, `TAP FIELD`, `TAP AGAIN ACT`, etc.), reducing quick discoverability. **brief suggested fix:** Group hints by action type (navigation/edit/commit), add spacing, and hide lower-priority hints until needed.
+4. severity: low | screenshot/page: `timeline-focused.png` | issue: Left/right pane meaning (`SONG` vs `LOOP`) is subtle; users can miss which side they are editing. | brief suggested fix: Add stronger pane headers/background differentiation and explicit active-pane highlight.
 
-5. **severity: low**; **screenshot/page:** `mappings-overlay.png`; **issue:** Overlay status header (`ROWS 1-19 / 30`, `SCOPE`) is visually detached from table columns and easy to miss. **brief suggested fix:** Align status metadata directly with the table header row and increase contrast/weight slightly.
+5. severity: medium | screenshot/page: `mappings.png` | issue: Bottom shortcut strip is overloaded and visually compressed, reducing readability and discoverability. | brief suggested fix: Break shortcuts into grouped clusters (navigation/edit/learn) with spacing or two-line layout.
 
-6. **severity: medium**; **screenshot/page:** `midi-io.png`; **issue:** Selected/default cues (`DEF SEL`) are tiny and embedded in card headers, so default I/O state is not obvious at a glance. **brief suggested fix:** Add a stronger selected/default badge style (larger chip or icon) and keep it in a consistent position across cards.
+6. severity: low | screenshot/page: `mappings-overlay.png` | issue: Overlay action hints (`F5 CLOSE`, `W WRITE`) read like plain text, not actionable controls. | brief suggested fix: Style them as button chips or a dedicated command bar with clearer affordance.
 
-7. **severity: medium**; **screenshot/page:** `routing.png`; **issue:** Right-edge action affordances are inconsistent (`TAP +/-`, `SELECT`, `TOGGLE`) and look like static labels rather than interactive controls. **brief suggested fix:** Use one consistent button style/pattern for all row actions and add a clear active/focus state.
+7. severity: medium | screenshot/page: `mappings.png` and `mappings-overlay.png` | issue: Scope/state values (`GLOBAL`, `ACT TRACK`, `ARMED/ACT`) are visually similar and low-emphasis, weakening state communication. | brief suggested fix: Add consistent color coding or badges per scope/state category.
 
-8. **severity: low**; **screenshot/page:** `routing.png`; **issue:** Top context bar mixes `ACTIVE T1`, `THRU OFF`, `TRACK 1`, and `TAP VALUE` with weak hierarchy, making current routing context ambiguous. **brief suggested fix:** Reformat as labeled key-value groups (e.g., `Active Track: 1`, `Thru: Off`) and separate status from actions visually.
+8. severity: low | screenshot/page: `routing.png` | issue: Right-side per-row actions (`SELECT`, `TOGGLE`, `TAP +/-`) look detached from the value fields and can read as status labels. | brief suggested fix: Increase contrast and proximity, and use consistent button styling for all row actions.
+
+9. severity: low | screenshot/page: `midi-io.png` | issue: Device cards contain large unlabeled empty regions, which can look like missing content rather than selectable areas. | brief suggested fix: Add subtle placeholder labels (for ports/channels/activity) or reduce empty fill area.

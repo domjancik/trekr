@@ -1885,11 +1885,10 @@ impl App {
                     if colors.is_empty() {
                         continue;
                     }
-                    for pixel in 0..band_width as usize {
-                        if let Some(color) = interlaced_color_at(&colors, pixel) {
-                            canvas.set_draw_color(color);
-                            canvas.fill_rect(Rect::new(x + pixel as i32, y, 1, 1))?;
-                        }
+                    if let Some(color) = interlaced_color_at(&colors, (y - start_y).max(0) as usize)
+                    {
+                        canvas.set_draw_color(color);
+                        canvas.fill_rect(Rect::new(x, y, band_width, 1))?;
                     }
                 }
 
