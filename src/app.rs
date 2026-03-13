@@ -819,12 +819,15 @@ impl App {
         let step = crate::ui::text_width("T", 2) as i32;
         let y = bounds.y + 2;
         let elapsed = self.startup_started_at.elapsed();
+        let animation_active = elapsed < startup_logo_animation_duration();
         for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
             let pulse = startup_logo_pulse(elapsed, index);
             let color = if pulse > 0.66 {
                 Color::RGB(255, 255, 246)
             } else if pulse > 0.33 {
                 Color::RGB(252, 248, 230)
+            } else if animation_active {
+                Color::RGB(214, 206, 182)
             } else {
                 Color::RGB(244, 238, 210)
             };
@@ -7773,13 +7776,17 @@ fn compact_build_date(value: &str) -> &str {
 fn startup_logo_pulse(elapsed: Duration, index: usize) -> f32 {
     let stagger = Duration::from_millis(180 * index as u64);
     let pulse_duration = Duration::from_millis(520);
-    let animation_duration = Duration::from_millis(2_000);
+    let animation_duration = startup_logo_animation_duration();
     if elapsed >= animation_duration || elapsed < stagger || elapsed > stagger + pulse_duration {
         return 0.0;
     }
 
     let t = (elapsed - stagger).as_secs_f32() / pulse_duration.as_secs_f32();
     if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }
+}
+
+fn startup_logo_animation_duration() -> Duration {
+    Duration::from_millis(2_000)
 }
 
 fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
