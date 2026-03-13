@@ -1825,4 +1825,19 @@ mod tests {
         assert!(track.resolve_queued_stored_loop_recall_if_due(1_919, 1_920, 960));
         assert_eq!(track.active_stored_loop_slot(), Some(1));
     }
+
+    #[test]
+    fn loop_end_quantize_uses_transport_cycle_boundary_from_last_run_state_shape() {
+        let mut track = Track::new_empty("Track 2", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(6_720, 4_560);
+        assert!(track.store_current_loop_to_slot(6));
+        track.loop_region = LoopRegion::new(12_000, 2_640);
+        assert!(track.store_current_loop_to_slot(7));
+        track.loop_region = LoopRegion::new(6_720, 4_560);
+
+        assert!(track.queue_stored_loop_recall(7, LaunchQuantizeMode::LoopEnd, 3_138_174));
+        assert!(!track.resolve_queued_stored_loop_recall_if_due(3_138_174, 3_141_839, 960));
+        assert!(track.resolve_queued_stored_loop_recall_if_due(3_141_839, 3_141_840, 960));
+        assert_eq!(track.active_stored_loop_slot(), Some(7));
+    }
 }

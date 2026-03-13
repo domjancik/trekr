@@ -4374,6 +4374,9 @@ impl App {
                     if track.active_take.is_some() {
                         return AppControl::Continue;
                     }
+                    if track.stored_loop_slot(slot_index).is_some() {
+                        track.state.loop_enabled = true;
+                    }
                     if quantized {
                         track.queue_stored_loop_recall(
                             slot_index,
@@ -4735,16 +4738,7 @@ impl App {
         let advanced_ticks =
             (delta.as_nanos() as u128 * u128::from(ticks_per_second)) / 1_000_000_000_u128;
         self.transport_ticks = self.transport_ticks.saturating_add(advanced_ticks as u64);
-        self.playhead_ticks = self.transport_ticks;
-
-        if self.project.transport.loop_enabled {
-            let loop_region = self.project.loop_region;
-            if loop_region.length_ticks > 0 {
-                let relative = self.transport_ticks.saturating_sub(loop_region.start_ticks);
-                self.playhead_ticks =
-                    loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
-            }
-        }
+        self.playhead_ticks = self.song_playhead_for_transport(self.transport_ticks);
 
         self.process_queued_stored_loop_recalls(previous_ticks, self.transport_ticks);
         self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
@@ -4766,16 +4760,7 @@ impl App {
             * f64::from(self.project.transport.ppqn.max(1)))
         .round() as u64;
         self.transport_ticks = linked_ticks;
-        self.playhead_ticks = linked_ticks;
-
-        if self.project.transport.loop_enabled {
-            let loop_region = self.project.loop_region;
-            if loop_region.length_ticks > 0 {
-                let relative = self.transport_ticks.saturating_sub(loop_region.start_ticks);
-                self.playhead_ticks =
-                    loop_region.start_ticks + (relative % loop_region.length_ticks.max(1));
-            }
-        }
+        self.playhead_ticks = self.song_playhead_for_transport(self.transport_ticks);
 
         if linked_ticks < previous_ticks {
             self.silence_all_tracks();
@@ -4835,13 +4820,22 @@ impl App {
             .unwrap_or(self.playhead_ticks)
     }
 
-    fn effective_track_playhead(&self, track: &Track) -> u64 {
-        let raw = self.playhead_ticks;
-        if !track.state.loop_enabled || track.loop_region.length_ticks == 0 {
-            return raw;
+    fn song_playhead_for_transport(&self, transport_ticks: u64) -> u64 {
+        if !self.project.transport.loop_enabled || self.project.loop_region.length_ticks == 0 {
+            return transport_ticks;
         }
 
-        track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
+        let loop_region = self.project.loop_region;
+        let relative = transport_ticks.saturating_sub(loop_region.start_ticks);
+        loop_region.start_ticks + (relative % loop_region.length_ticks.max(1))
+    }
+
+    fn effective_track_playhead(&self, track: &Track) -> u64 {
+        if !track.state.loop_enabled || track.loop_region.length_ticks == 0 {
+            return self.playhead_ticks;
+        }
+
+        track.loop_region.start_ticks + (self.transport_ticks % track.loop_region.length_ticks)
     }
 
     fn record_head_ticks(&self, track: &Track) -> u64 {
@@ -8018,6 +8012,43 @@ mod tests {
     }
 
     #[test]
+    fn effective_track_playhead_uses_transport_phase_when_song_wraps() {
+        let mut app = App::new();
+        app.project.transport.loop_enabled = true;
+        app.project.loop_region = crate::timeline::LoopRegion::new(0, 1_920);
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(6_720, 4_560);
+
+        app.transport_ticks = 3_138_174;
+        app.playhead_ticks = app.song_playhead_for_transport(app.transport_ticks);
+
+        assert_eq!(
+            app.effective_track_playhead(app.project.active_track().unwrap()),
+            7_614
+        );
+        assert_eq!(app.playhead_ticks, 894);
+    }
+
+    #[test]
+    fn effective_track_playhead_uses_song_playhead_when_track_loop_is_off() {
+        let mut app = App::new();
+        app.project.transport.loop_enabled = true;
+        app.project.loop_region = crate::timeline::LoopRegion::new(0, 1_920);
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = false;
+        track.loop_region = crate::timeline::LoopRegion::new(6_720, 4_560);
+
+        app.transport_ticks = 3_138_174;
+        app.playhead_ticks = app.song_playhead_for_transport(app.transport_ticks);
+
+        assert_eq!(
+            app.effective_track_playhead(app.project.active_track().unwrap()),
+            894
+        );
+    }
+
+    #[test]
     fn nudge_actions_shift_current_track_loop_by_quantize_step() {
         let mut app = App::new();
         let start = app.project.active_track().unwrap().loop_region.start_ticks;
@@ -9270,6 +9301,28 @@ mod tests {
         assert_eq!(track.loop_region, crate::timeline::LoopRegion::new(0, 960));
         assert_eq!(track.queued_stored_loop_slot(), None);
         assert_eq!(track.active_stored_loop_slot(), None);
+    }
+
+    #[test]
+    fn stored_loop_recall_enables_track_loop_before_queueing() {
+        let mut app = App::new();
+        app.project.transport.stored_loop_recall_quantized = true;
+        app.project.transport.stored_loop_launch_quantize =
+            crate::transport::LaunchQuantizeMode::LoopEnd;
+        app.project.transport.playing = true;
+        app.transport_ticks = 1_000;
+        app.playhead_ticks = 1_000;
+
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = false;
+        track.loop_region = crate::timeline::LoopRegion::new(0, 960);
+        assert!(track.store_current_loop_to_slot(0));
+
+        app.apply_action(AppAction::RecallStoredLoopSlot1);
+
+        let track = app.project.active_track().unwrap();
+        assert!(track.state.loop_enabled);
+        assert_eq!(track.queued_stored_loop_slot(), Some(0));
     }
 
     #[test]
