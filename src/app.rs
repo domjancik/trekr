@@ -1893,6 +1893,8 @@ impl App {
                 if end_y < start_y {
                     return Ok(());
                 }
+                let mut placed_label_rects = Vec::new();
+                let label_spacing = 9_i32;
 
                 for y in start_y..=end_y {
                     let colors = spans
@@ -1940,7 +1942,23 @@ impl App {
                         content_rect.y,
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
-                    let label_rect = Rect::new(x + band_width as i32 + 3, label_y, 8, 7);
+                    let mut label_rect = Rect::new(x + band_width as i32 + 3, label_y, 8, 7);
+                    for offset_step in 0..8 {
+                        let candidate = Rect::new(
+                            x + band_width as i32 + 3 + offset_step * label_spacing,
+                            label_y,
+                            8,
+                            7,
+                        );
+                        if !placed_label_rects
+                            .iter()
+                            .any(|existing| rects_overlap(*existing, candidate))
+                        {
+                            label_rect = candidate;
+                            break;
+                        }
+                    }
+                    placed_label_rects.push(label_rect);
                     let label_readback = readback_rect_rgba(canvas, label_rect, self.viewport_size);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
@@ -1957,6 +1975,8 @@ impl App {
                 let band_height = side_major.min(usable_height as u32);
                 let start_x = content_rect.x;
                 let end_x = content_rect.x + content_rect.width() as i32 - 1;
+                let mut placed_label_rects = Vec::new();
+                let label_spacing = 9_i32;
 
                 for x in start_x..=end_x {
                     let colors = spans
@@ -2000,7 +2020,19 @@ impl App {
                         content_rect.x,
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
-                    let label_rect = Rect::new(label_x, y + band_height as i32 + 3, 7, 6);
+                    let mut label_rect = Rect::new(label_x, y + band_height as i32 + 3, 7, 6);
+                    for offset_step in 0..8 {
+                        let candidate =
+                            Rect::new(label_x + offset_step * label_spacing, label_rect.y, 7, 6);
+                        if !placed_label_rects
+                            .iter()
+                            .any(|existing| rects_overlap(*existing, candidate))
+                        {
+                            label_rect = candidate;
+                            break;
+                        }
+                    }
+                    placed_label_rects.push(label_rect);
                     let label_readback = readback_rect_rgba(canvas, label_rect, self.viewport_size);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
@@ -6851,6 +6883,13 @@ fn loop_regions_intersect(a: crate::timeline::LoopRegion, b: crate::timeline::Lo
 
 fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
     (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
+}
+
+fn rects_overlap(a: Rect, b: Rect) -> bool {
+    a.x < b.x + b.width() as i32
+        && a.x + a.width() as i32 > b.x
+        && a.y < b.y + b.height() as i32
+        && a.y + a.height() as i32 > b.y
 }
 
 struct RgbaReadback {
