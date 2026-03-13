@@ -1965,13 +1965,13 @@ impl App {
                         |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
                     if marker.emphasized {
-                        canvas.set_draw_color(primary_tick);
-                        canvas.fill_rect(Rect::new(
-                            label_rect.x,
-                            label_rect.y + label_rect.height() as i32 - 1,
-                            label_rect.width(),
-                            1,
-                        ))?;
+                        draw_loop_label_underline(
+                            canvas,
+                            marker.label.as_str(),
+                            label_rect,
+                            content_rect,
+                            primary_tick,
+                        )?;
                     }
                 }
             }
@@ -2048,13 +2048,13 @@ impl App {
                         |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
                     if marker.emphasized {
-                        canvas.set_draw_color(primary_tick);
-                        canvas.fill_rect(Rect::new(
-                            label_rect.x,
-                            label_rect.y + label_rect.height() as i32 - 1,
-                            label_rect.width(),
-                            1,
-                        ))?;
+                        draw_loop_label_underline(
+                            canvas,
+                            marker.label.as_str(),
+                            label_rect,
+                            content_rect,
+                            primary_tick,
+                        )?;
                     }
                 }
             }
@@ -6905,6 +6905,26 @@ fn rects_overlap(a: Rect, b: Rect) -> bool {
         && a.x + a.width() as i32 > b.x
         && a.y < b.y + b.height() as i32
         && a.y + a.height() as i32 > b.y
+}
+
+fn draw_loop_label_underline<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
+    label: &str,
+    label_rect: Rect,
+    content_rect: Rect,
+    color: Color,
+) -> Result<(), String> {
+    let underline_width = crate::ui::text_width(label, 1)
+        .min(label_rect.width())
+        .max(1);
+    let underline_x =
+        label_rect.x + ((label_rect.width() as i32 - underline_width as i32) / 2).max(0);
+    let underline_y = (label_rect.y + label_rect.height() as i32)
+        .min(content_rect.y + content_rect.height() as i32 - 1);
+    canvas.set_draw_color(color);
+    canvas
+        .fill_rect(Rect::new(underline_x, underline_y, underline_width, 1))
+        .map_err(|error| error.to_string())
 }
 
 struct RgbaReadback {
