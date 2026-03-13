@@ -272,8 +272,7 @@ The following decisions close the initial open questions and should be treated a
 - Refresh cadence estimate: run periodic refresh at about `1 Hz` (`~1000 ms`) on the current UI-thread model, with immediate refresh on MIDI I/O failure signals. If low-end profiling shows this is too expensive, relax to `2 Hz` intervals before changing architecture.
 - Status noise policy: keep refresh behavior silent by default and only surface status text when device state actually changes (disconnect/reconnect/offline resolution).
 - Missing-default visibility: show explicit offline entries on `MIDI I/O` for preferred default input/output names that are currently unavailable.
-- Reconnect warning UX: when playback output was interrupted, show explicit user options instead of a passive notice only.
-  - recommended first shape: `Dismiss` and `Send All Notes Off` options in the transient reconnect surface.
+- Reconnect warning UX (this iteration): when playback output was interrupted, show a passive non-blocking reconnect notice only (no modal and no action buttons).
 
 ## Implementation Notes
 
@@ -307,4 +306,4 @@ Likely code touch points:
 
 ## Remaining Questions
 
-- should the reconnect options be rendered as a modal, inline transport chip, or footer action prompt in the first implementation slice
+- if a future iteration introduces modal reconnect flows, what is the non-keyboard/mouse interaction model (touch and controller-only) for confirming or dismissing the modal safely
