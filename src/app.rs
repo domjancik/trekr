@@ -1932,20 +1932,13 @@ impl App {
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
                     let label_rect = Rect::new(x + band_width as i32 + 3, label_y, 8, 7);
+                    let label_readback = readback_rect_rgba(canvas, label_rect);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
                         label_rect,
                         1,
-                        |_, py| {
-                            let colors = spans
-                                .iter()
-                                .filter(|span| py >= span.start && py <= span.end)
-                                .map(|span| span.color)
-                                .collect::<Vec<_>>();
-                            interlaced_color_at(&colors, (py - start_y).max(0) as usize)
-                                .unwrap_or(content_bg)
-                        },
+                        |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
                 }
             }
@@ -1999,20 +1992,13 @@ impl App {
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
                     let label_rect = Rect::new(label_x, y + band_height as i32 + 3, 7, 6);
+                    let label_readback = readback_rect_rgba(canvas, label_rect);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
                         label_rect,
                         1,
-                        |px, py| {
-                            let colors = spans
-                                .iter()
-                                .filter(|span| px >= span.start && px <= span.end)
-                                .map(|span| span.color)
-                                .collect::<Vec<_>>();
-                            interlaced_color_at(&colors, (py - y).max(0) as usize)
-                                .unwrap_or(content_bg)
-                        },
+                        |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
                 }
             }
@@ -6856,6 +6842,51 @@ fn loop_regions_intersect(a: crate::timeline::LoopRegion, b: crate::timeline::Lo
 
 fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
     (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
+}
+
+struct RgbaReadback {
+    rect: Rect,
+    pitch: usize,
+    pixels: Vec<u8>,
+}
+
+fn readback_rect_rgba<T: RenderTarget>(canvas: &Canvas<T>, rect: Rect) -> Option<RgbaReadback> {
+    if rect.width() == 0 || rect.height() == 0 {
+        return None;
+    }
+    let surface = canvas.read_pixels(rect).ok()?;
+    let converted = surface.convert_format(PixelFormat::RGBA32).ok()?;
+    let pitch = converted.pitch() as usize;
+    let pixels = converted.with_lock(|src| src.to_vec());
+    Some(RgbaReadback {
+        rect,
+        pitch,
+        pixels,
+    })
+}
+
+fn readback_color_at(readback: &Option<RgbaReadback>, x: i32, y: i32) -> Option<Color> {
+    let readback = readback.as_ref()?;
+    if x < readback.rect.x
+        || y < readback.rect.y
+        || x >= readback.rect.x + readback.rect.width() as i32
+        || y >= readback.rect.y + readback.rect.height() as i32
+    {
+        return None;
+    }
+    let local_x = (x - readback.rect.x) as usize;
+    let local_y = (y - readback.rect.y) as usize;
+    let base = local_y
+        .saturating_mul(readback.pitch)
+        .saturating_add(local_x.saturating_mul(4));
+    if base + 2 >= readback.pixels.len() {
+        return None;
+    }
+    Some(Color::RGB(
+        readback.pixels[base],
+        readback.pixels[base + 1],
+        readback.pixels[base + 2],
+    ))
 }
 
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
