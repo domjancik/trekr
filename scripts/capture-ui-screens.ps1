@@ -75,6 +75,6 @@ if ($null -eq $manifest) {
 Write-Host "Captured renderer-level screenshots:"
 foreach ($entry in $manifest.files) {
     $label = if ($entry.page) { $entry.page } else { [System.IO.Path]::GetFileNameWithoutExtension($entry.filename) }
-    Write-Host " - $label: $($entry.path)"
+    Write-Host " - ${label}: $($entry.path)"
 }
 Write-Host "Manifest: $(Resolve-Path $manifestPath)"
