@@ -173,6 +173,51 @@ pub fn draw_text_fitted<T: RenderTarget>(
     draw_text(canvas, &fitted, bounds.x, bounds.y, scale, color)
 }
 
+pub fn draw_text_fitted_inverted<T: RenderTarget, F>(
+    canvas: &mut Canvas<T>,
+    text: &str,
+    bounds: Rect,
+    scale: u32,
+    background_at: F,
+) -> Result<(), String>
+where
+    F: Fn(i32, i32) -> Color,
+{
+    let fitted = truncate_text_to_width(text, bounds.width(), scale);
+    if fitted.is_empty() {
+        return Ok(());
+    }
+
+    draw_text_inverted(canvas, &fitted, bounds.x, bounds.y, scale, background_at)
+}
+
+fn draw_text_inverted<T: RenderTarget, F>(
+    canvas: &mut Canvas<T>,
+    text: &str,
+    x: i32,
+    y: i32,
+    scale: u32,
+    background_at: F,
+) -> Result<(), String>
+where
+    F: Fn(i32, i32) -> Color,
+{
+    let scale = scale.max(1) as i32;
+    let mut cursor_x = x;
+    for character in text.chars() {
+        draw_glyph_inverted(
+            canvas,
+            character.to_ascii_uppercase(),
+            cursor_x,
+            y,
+            scale,
+            &background_at,
+        )?;
+        cursor_x += (glyph_width() + 1) * scale;
+    }
+    Ok(())
+}
+
 fn draw_glyph<T: RenderTarget>(
     canvas: &mut Canvas<T>,
     character: char,
@@ -192,6 +237,35 @@ fn draw_glyph<T: RenderTarget>(
                         scale as u32,
                         scale as u32,
                     ))
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn draw_glyph_inverted<T: RenderTarget, F>(
+    canvas: &mut Canvas<T>,
+    character: char,
+    x: i32,
+    y: i32,
+    scale: i32,
+    background_at: &F,
+) -> Result<(), String>
+where
+    F: Fn(i32, i32) -> Color,
+{
+    let glyph = glyph_rows(character);
+    for (row_index, row) in glyph.iter().copied().enumerate() {
+        for column in 0..glyph_width() {
+            let bit = 1 << (glyph_width() - 1 - column);
+            if row & bit != 0 {
+                let px = x + column * scale;
+                let py = y + row_index as i32 * scale;
+                let bg = background_at(px, py);
+                canvas.set_draw_color(Color::RGB(255 - bg.r, 255 - bg.g, 255 - bg.b));
+                canvas
+                    .fill_rect(Rect::new(px, py, scale as u32, scale as u32))
                     .map_err(|error| error.to_string())?;
             }
         }

@@ -1868,6 +1868,11 @@ impl App {
         let primary_tick = Color::RGB(252, 238, 194);
         let secondary_tick = Color::RGB(218, 224, 232);
         let side_major = side_thickness.max(1) as u32;
+        let content_bg = if track.state.muted {
+            Color::RGB(16, 18, 24)
+        } else {
+            Color::RGB(20, 27, 40)
+        };
 
         match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
@@ -1926,13 +1931,21 @@ impl App {
                         content_rect.y,
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
-                    let label_color = inverted_label_color(marker.color);
-                    crate::ui::draw_text_fitted(
+                    let label_rect = Rect::new(x + band_width as i32 + 3, label_y, 8, 7);
+                    crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(x + band_width as i32 + 3, label_y, 8, 7),
+                        label_rect,
                         1,
-                        label_color,
+                        |_, py| {
+                            let colors = spans
+                                .iter()
+                                .filter(|span| py >= span.start && py <= span.end)
+                                .map(|span| span.color)
+                                .collect::<Vec<_>>();
+                            interlaced_color_at(&colors, (py - start_y).max(0) as usize)
+                                .unwrap_or(content_bg)
+                        },
                     )?;
                 }
             }
@@ -1985,13 +1998,21 @@ impl App {
                         content_rect.x,
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
-                    let label_color = inverted_label_color(marker.color);
-                    crate::ui::draw_text_fitted(
+                    let label_rect = Rect::new(label_x, y + band_height as i32 + 3, 7, 6);
+                    crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(label_x, y + band_height as i32 + 3, 7, 6),
+                        label_rect,
                         1,
-                        label_color,
+                        |px, py| {
+                            let colors = spans
+                                .iter()
+                                .filter(|span| px >= span.start && px <= span.end)
+                                .map(|span| span.color)
+                                .collect::<Vec<_>>();
+                            interlaced_color_at(&colors, (py - y).max(0) as usize)
+                                .unwrap_or(content_bg)
+                        },
                     )?;
                 }
             }
@@ -6837,10 +6858,6 @@ fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
     (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
 }
 
-fn inverted_label_color(base: Color) -> Color {
-    Color::RGB(255 - base.r, 255 - base.g, 255 - base.b)
-}
-
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -8862,15 +8879,6 @@ mod tests {
                 .filter_map(|pixel| super::interlaced_color_at(&three, pixel))
                 .collect::<Vec<_>>(),
             vec![r, b, g, r, b, g]
-        );
-    }
-
-    #[test]
-    fn inverted_label_color_inverts_rgb_channels() {
-        let color = Color::RGB(12, 34, 56);
-        assert_eq!(
-            super::inverted_label_color(color),
-            Color::RGB(243, 221, 199)
         );
     }
 }
