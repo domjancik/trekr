@@ -1,337 +1,137 @@
-# Feature Spec: Stored Loops
+# Feature Spec: Stored Loops (Shipped V1)
 
 ## Summary
 
-This feature adds per-track stored loop regions that can be saved, labeled, recalled, and optionally quantized on launch.
+Stored loops provide per-track loop slots that can be saved, recalled, and queued with launch quantization.
 
-The goal is to deliver part of a clip-launching workflow without introducing clips or scenes as first-class timeline objects. Instead, the user works with reusable track loop presets:
+V1 is intentionally loop-model-native:
 
-- each stored loop points at a time range on a track
-- recalling a stored loop updates that track's active loop region
-- recall can happen immediately or be queued to a quantized boundary
-- the UI should expose this compactly inside the timeline workflow, with optional expanded editing for the active track
+- stored loops are slot-indexed loop ranges on each track
+- recall updates the track loop region instead of creating clip/scene objects
+- recall can be immediate or quantized
+- UI stays compact and timeline-local
 
-This keeps `trekr` grounded in its current region-and-loop model while still enabling performance-oriented loop switching.
-
-## Problem
-
-The current app lets the user edit one active loop region per track, but that model is too transient for performance use.
-
-Today, if a user wants a "verse", "fill", and "chorus" loop on the same track, they must manually move and resize the track loop each time. That breaks flow and makes the current loop controls feel like editors rather than launch targets.
-
-The missing capability is a reusable loop bank:
-
-- save multiple meaningful loop regions on a track
-- recall them quickly during playback
-- queue loop changes to musical boundaries
-- show what is active and what is queued without turning the timeline into a clip matrix
+This document is implementation-aligned for the current shipped behavior.
 
 ## Goals
 
-- allow each track to store multiple named loop regions
-- ensure each stored loop slot is recallable via shortcut on the active track
-- make loop recall usable from keyboard and MIDI mappings, not only pointer UI
-- support quantized recall so loop switches land on predictable musical boundaries
-- preserve the existing timeline-first model where loops are time ranges on tracks
-- keep the default UI compact enough for the fixed-fit paired-column layout
+- support a per-track bank of stored loop slots
+- allow fast recall on the active track from keyboard and mapping actions
+- support quantized recall for musical loop switching
+- preserve timeline-first loop workflow
+- keep the UI compact for fixed-fit and focused-track timeline views
 
 ## Non-Goals
 
-- introducing clip objects separate from track regions
-- scene launching across multiple tracks in this slice
-- replacing the current direct loop start/end editing controls
-- freeform drag-and-drop loop bank editing
-- solving full arrangement performance mode for song-wide coordinated launches
+- clip/scene launcher model
+- multi-track scene launch coordination
+- replacing direct loop start/end editing
+- full loop-bank editor workflow in V1
 
-## User Model
+## Data Model (V1)
 
-The user treats stored loops as reusable launch targets for one track.
+Each track has `8` stored loop slots.
 
-Examples:
+Each stored slot stores:
 
-- Track 1 stores `Intro`, `Verse`, `Chorus`, and `Break`
-- Track 2 stores several drum variations across the same arrangement
-- during playback, the user queues `Chorus` on Track 1 for the next bar
-- the track keeps playing its current loop until the quantized handoff point, then switches to the recalled loop
-
-Stored loops are not copies of MIDI notes. They are pointers to existing timeline ranges.
-
-## Core Terms
-
-- `stored loop`: a saved loop preset attached to one track
-- `active loop`: the loop region currently driving playback for that track
-- `queued loop`: a stored loop selected for deferred recall at the next launch boundary
-- `launch quantize`: the boundary used when queued recall is enabled
-- `loop slot`: the UI and mapping address used to target one stored loop entry
-
-## Proposed Model
-
-### Per-Track Loop Banks
-
-Each track gets its own ordered collection of stored loops.
-
-Each stored loop should contain:
-
-- stable id
-- track id
-- name
 - start tick
 - length in ticks
-- optional color or accent index for future UI use
 
-Recommended initial limits:
+Runtime-only state per track:
 
-- support at least `8` stored loops per track in the model
-- render only the most useful compact subset by default
+- active stored loop slot (if current loop came from a slot)
+- queued stored loop recall target (single pending target)
 
-### Relationship To Current Track Loop
+Queued recall state does not persist across restart.
 
-The current editable track loop remains the runtime loop state.
+## Runtime Behavior
 
-Recalling a stored loop should:
+### Recall
 
-- set the track loop region to the stored loop's range
-- enable that track's loop if it was off
-- leave song loop state unchanged
-
-This preserves the current transport and playback rules instead of creating a parallel launch engine.
-
-### Save And Update Behavior
-
-V1 should support two ways to populate stored loops:
-
-- save current track loop into an empty slot
-- overwrite an existing slot from the current track loop
-
-Resolved overwrite behavior:
-
-- slot identity is stable; if an active or queued slot is overwritten, that slot reference points to the updated loop range immediately
-
-Optional later improvement:
-
-- create a stored loop directly from a selected region or other timeline selection
-
-## Recall Behavior
-
-### Immediate Recall
-
-Immediate recall updates the track loop region as soon as the action is applied.
-
-Use cases:
-
-- stopped transport
-- rehearsal editing
-- unquantized performance switching
+- recalling a stored slot sets the track loop to that slot range
+- recalling a valid stored slot enables that track loop
+- recalling an empty slot is a no-op
+- recall is blocked on the actively recording track
 
 ### Quantized Recall
 
-Quantized recall queues a stored loop and applies it only when the next eligible boundary is reached.
+Global controls:
 
-Recommended launch quantize options:
+- `stored_loop_recall_quantized` (on/off)
+- `stored_loop_launch_quantize` (`Off`, `1/16`, `1/8`, `1/4`, `Bar`, `LoopEnd`)
 
-- off
-- 1/16
-- 1/8
-- 1/4
-- bar
-- loop end
+Rules:
 
-Resolved default:
+- one queued recall per track
+- a new queued recall on the same track replaces the previous queued target
+- if transport is stopped, recall resolves immediately
 
-- reuse the current editor/transport quantize value where that produces a clear musical result
-- keep `loop end` as an explicit launch-focused option, since clip-style switching often wants full-loop completion rather than smallest-grid timing
+Boundary resolution:
 
-### Boundary Resolution
+- `1/16`/`1/8`/`1/4`/`Bar`: resolved on global transport grid
+- `LoopEnd`: resolved on the track clip-cycle boundary (`transport_ticks % clip_loop_length`)
+- `LoopEnd` launch timing is independent from song-loop wrap
 
-When quantized recall is enabled:
+## Song Loop and Clip Loop Semantics
 
-- the user triggers recall for a stored loop on a track
-- that track enters a queued state
-- playback continues with the current loop until the next launch boundary
-- on that boundary, the queued stored loop becomes the active track loop
-- the queued state then clears
+Timing is treated as two related playheads:
 
-Recommended V1 rule:
+- song playhead: global transport with optional song-loop wrapping
+- clip playhead: per-track loop phase driven from transport ticks and track loop length
 
-- only one queued loop per track
-- a new recall on the same track replaces the previous queued loop
+Stored-loop launch uses clip-cycle semantics for `LoopEnd`, while song loop behavior remains unchanged.
 
-### Behavior While Stopped
+## UI Behavior (V1)
 
-If playback is stopped, quantized recall should resolve immediately and update the active track loop without creating a queued state.
+Timeline behavior:
 
-That is simpler and matches user expectation for edit-time preparation.
+- stored loop slot labels are shown on the left side of track loop UI
+- slot labels are clickable direct recall targets
+- show as many slot buttons as fit in the available width
+- focused-track view can show all `8` slots
 
-## Launch Semantics
+Track-canvas behavior:
 
-### Track-Local, Not Scene-Global
+- stored loops are drawn as subtle thin loop markers with slot labels
+- overlap is visually encoded
+- active/queued state remains distinguishable
 
-Stored loops launch independently per track.
+## Actions and Mapping
 
-That means:
-
-- Track 1 can queue `Chorus`
-- Track 2 can stay on `Verse`
-- there is no requirement that launches happen as a coordinated cross-track scene
-
-This is the critical scope boundary that keeps the feature loop-based rather than scene-based.
-
-### Interaction With Song Loop
-
-Stored loop recall operates on track loop state, not song loop state.
-
-If the song loop is enabled, existing playback rules still apply. The feature should not silently disable or rewrite the global loop. If the current transport behavior makes song loop dominate track loop behavior in some cases, that should remain true until a later transport-policy change is designed explicitly.
-
-### Interaction With Recording
-
-During active recording on a track, quantized stored-loop recall should be conservative.
-
-Recommended V1 behavior:
-
-- allow immediate or queued recall on non-recording tracks
-- block recall on the recording target track while capture is active
-- surface a clear status message instead of partially switching loop context mid-take
-
-This avoids ambiguous commit behavior and protects recorded data.
-
-## UI Recommendation
-
-### Primary UI: Compact Slot Strip In Track Chrome
-
-The recommended default UI is a small stored-loop strip attached to each track's timeline presentation rather than a separate launch page.
-
-Suggested compact rendering:
-
-- a short row or column of numbered slots such as `1 2 3 4`
-- active slot is visibly filled
-- queued slot pulses or uses an outline treatment
-- empty slots render as dim placeholders
-- if more slots exist than fit comfortably, show a compact overflow marker such as `+4`
-
-Resolved default:
-
-- show `4` slots by default in compact track UI, with overflow or expand for remaining stored slots
-
-This gives the user direct track-local awareness without consuming the whole detail pane.
-
-Preferred placement:
-
-- on the left side of each track presentation, inside track header/chrome and adjacent to existing track-state controls or loop status
-- not over the note field itself
-
-Rendering guidance:
-
-- stored-loop indicators should be subtle by default so they do not compete with note and transport readability
-- active and queued states can increase contrast while idle stored slots stay understated
-- each visible slot label/indicator should be clickable as a direct recall target
-- the same clickable slot label should be a direct mapping target in mapping-discoverability flows
-
-### Secondary UI: Expanded Stored-Loop Inspector For Active Track
-
-Because compact slots cannot carry enough editing detail, the selected track should also have an expanded editor surface.
-
-Recommended shape:
-
-- an expandable section in the timeline page, or
-- a lightweight overlay/panel tied to the active track
-
-That expanded view should show:
-
-- slot number
-- loop name
-- start and end or start and length
-- active and queued state
-- save/overwrite/clear actions
-
-This two-layer approach is the best fit for the current UI:
-
-- compact on-track status for performance
-- expanded active-track editing when needed
-
-### Why Not A Separate Page First
-
-A separate page would hide loop-launch state from the moment of performance and break the "launch from the timeline" goal.
-
-The compact strip plus active-track inspector is more consistent with the current fixed-fit timeline workflow.
-
-## Visual States
-
-Each stored loop slot should communicate one of these states:
-
-- empty
-- stored
-- active
-- queued
-- active-and-queued replacement pending is not needed in V1 because each track only has one active loop and one queued loop target
-
-Additional visual rules:
-
-- labels must degrade gracefully when track columns are narrow
-- the active state must remain legible without relying on color alone
-- queued state should read distinctly from active state
-
-## Action And Mapping Implications
-
-Stored loops should be first-class actions in the existing mapping system.
-
-Recommended action families:
+Implemented action families:
 
 - `Recall Stored Loop Slot 1..8`
-- `Recall Stored Loop Slot 1..8 Quantized`
 - `Store Current Loop To Slot 1..8`
 - `Clear Stored Loop Slot 1..8`
-- `Queue Mode Toggle` or `Stored Loop Recall Quantized Toggle`
-- `Next Stored Loop`
-- `Previous Stored Loop`
+- `Toggle Stored Loop Recall Quantize`
+- `Cycle Stored Loop Launch Quantize`
 
-Scope rules:
+Default keyboard bindings:
 
-- default actions target the active track
-- the action model should leave room for absolute-track variants later
+- recall: `Numpad1..Numpad8` and fallback `Alt+1..Alt+8`
+- store: `Shift+Numpad1..Shift+Numpad8` and fallback `Shift+Alt+1..Shift+Alt+8`
+- quantize toggle: `Shift+L`
+- launch quantize cycle: `Shift+Q`
 
-Default keyboard suggestion for active-track recall:
-
-- provide direct defaults for slot recall such as numpad-friendly `Numpad1..Numpad8` where available
-- provide a non-numpad fallback default set so laptop keyboards are not blocked
-- keep these as defaults only; users can remap through the standard mapping system
-
-For performance workflows, the most important mapped actions are recall actions, not edit actions.
+Note: clear-slot actions are available through the shared action/mapping system; no default keyboard clear binding is required in V1.
 
 ## Persistence
 
-Stored loops should persist with the project.
+Persisted:
 
-Minimum saved data:
+- per-track stored slot ranges
+- slot ordering
+- active slot marker
 
-- per-track stored loop list
-- ordering
-- names
-- tick ranges
+Not persisted:
 
-Transient runtime data may also be persisted if useful, but V1 only requires deterministic restoration of the stored loop bank itself. Queued state should not survive restart.
+- queued recall state
 
-## Edge Cases
+## Acceptance Criteria (V1)
 
-- recalling an empty slot does nothing and surfaces clear status feedback
-- recalling a stored loop whose range extends beyond current project content is allowed if the loop range itself is valid
-- deleting notes or regions inside a stored loop does not delete the stored loop entry; it remains a pointer to that time range
-- duplicate stored-loop ranges are allowed when labels differ, so performance naming remains flexible
-- if the current quantize mode is changed after a loop is queued, the queued recall should resolve using the quantize rule active at queue time, not a moving target
-- if a track loop is disabled and a stored loop is recalled, the track loop becomes enabled
-- repeated trigger of the already active stored loop should refresh queued state only if quantized recall is explicitly requested
-
-## Acceptance Criteria
-
-- a user can store multiple loop regions per track and persist them with the project
-- each stored loop slot can be recalled by a shortcut on the active track using default bindings
-- a user can recall a stored loop on the active track without manually redefining loop start and end
-- recalled stored loops update the existing track loop system rather than creating a separate clip object
-- quantized recall visibly queues and then switches at a predictable musical boundary
-- queued and active states are distinguishable in the UI
-- stored-loop recall is available through the shared action and mapping model
-- visible slot labels in track UI are clickable direct recall targets and can participate in direct mapping
-- the timeline page can show compact stored-loop state per track without breaking the fixed-fit layout
-
-## Open Questions
-
-- none for V1 stored-loop behavior in this spec slice
+- users can store and recall multiple loop slots per track
+- slot recall is available via defaults on the active track
+- quantized recall queues and switches at predictable boundaries
+- `LoopEnd` switching follows clip-cycle timing and is not shifted by song-loop wrap
+- active and queued states are visually distinguishable
+- slot UI remains compact and usable in timeline and focused-track views
