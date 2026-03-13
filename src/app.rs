@@ -2311,7 +2311,7 @@ impl App {
         let bottom_specs = self.transport_bottom_chip_specs();
         let link_specs = self.transport_link_chip_specs();
         let status_specs = self.transport_status_chip_specs();
-        let right_panel_width = 236_u32;
+        let right_panel_width = self.transport_right_panel_width(bounds);
         let right_panel = Rect::new(
             bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
             bounds.y + 3,
@@ -2367,25 +2367,57 @@ impl App {
         )?;
 
         cursor_x = right_panel.x + 6;
+        let mut truncated_link_row = false;
         for spec in &link_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
             let chip = Rect::new(cursor_x, top_y, width, chip_height);
             if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
+                truncated_link_row = true;
                 break;
             }
             Self::draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
+        if truncated_link_row {
+            crate::ui::draw_text_fitted(
+                canvas,
+                "(...)",
+                Rect::new(
+                    right_panel.x + right_panel.width() as i32 - 32,
+                    top_y + 1,
+                    28,
+                    chip_height.saturating_sub(2),
+                ),
+                1,
+                Color::RGB(194, 204, 220),
+            )?;
+        }
 
         cursor_x = right_panel.x + 6;
+        let mut truncated_status_row = false;
         for spec in &status_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
             let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
             if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
+                truncated_status_row = true;
                 break;
             }
             Self::draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
+        }
+        if truncated_status_row {
+            crate::ui::draw_text_fitted(
+                canvas,
+                "(...)",
+                Rect::new(
+                    right_panel.x + right_panel.width() as i32 - 32,
+                    bottom_y + 1,
+                    28,
+                    chip_height.saturating_sub(2),
+                ),
+                1,
+                Color::RGB(194, 204, 220),
+            )?;
         }
 
         Ok(())
@@ -4809,7 +4841,8 @@ impl App {
             return raw;
         }
 
-        track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
+        let relative = raw.saturating_sub(track.loop_region.start_ticks);
+        track.loop_region.start_ticks + (relative % track.loop_region.length_ticks)
     }
 
     fn record_head_ticks(&self, track: &Track) -> u64 {
@@ -6634,7 +6667,7 @@ impl App {
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;
         let chip_height = 10;
-        let right_panel_width = 236_u32;
+        let right_panel_width = self.transport_right_panel_width(bounds);
         let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
         let right_panel_right = right_panel_x + right_panel_width as i32 - 6;
         let left_max = right_panel_x - 12;
@@ -6693,6 +6726,16 @@ impl App {
 
         rects
     }
+
+    fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
+        let top_row = chip_row_width(&self.transport_link_chip_specs())
+            .saturating_add(96)
+            .saturating_add(12);
+        let bottom_row = chip_row_width(&self.transport_status_chip_specs()).saturating_add(12);
+        let desired = top_row.max(bottom_row).max(236);
+        let max_allowed = bounds.width().saturating_sub(220).max(236);
+        desired.min(max_allowed)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -6701,6 +6744,18 @@ struct CaptureSpec {
     overlay: Option<AppOverlay>,
     focused_track_view: bool,
     filename: &'static str,
+}
+
+fn chip_row_width(specs: &[TransportChipSpec]) -> u32 {
+    if specs.is_empty() {
+        return 0;
+    }
+    let chips = specs
+        .iter()
+        .map(|spec| crate::ui::text_width(&spec.label, 1) + 10)
+        .sum::<u32>();
+    let gaps = (specs.len().saturating_sub(1) as u32) * 6;
+    chips.saturating_add(gaps)
 }
 
 fn capture_specs() -> [CaptureSpec; 6] {
@@ -7947,7 +8002,7 @@ mod tests {
     }
 
     #[test]
-    fn effective_track_playhead_moves_even_before_loop_start() {
+    fn effective_track_playhead_clamps_before_loop_start() {
         let mut app = App::new();
         let track = app.project.active_track_mut().unwrap();
         track.state.loop_enabled = true;
@@ -7957,7 +8012,7 @@ mod tests {
 
         assert_eq!(
             app.effective_track_playhead(app.project.active_track().unwrap()),
-            2_400
+            1_920
         );
     }
 
