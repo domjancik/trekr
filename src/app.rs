@@ -1864,7 +1864,7 @@ impl App {
             return Ok(());
         }
 
-        let side_thickness = 6_i32;
+        let side_thickness = 4_i32;
         let primary_tick = Color::RGB(252, 238, 194);
         let secondary_tick = Color::RGB(218, 224, 232);
         let side_major = side_thickness.max(1) as u32;
