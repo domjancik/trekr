@@ -572,6 +572,9 @@ impl App {
         canvas.set_draw_color(Color::RGB(88, 96, 120));
         canvas.draw_rect(surface)?;
 
+        if preferred_branding_width(tabs_bounds.width()) == 0 {
+            self.draw_frame_brand_fallback(canvas, surface)?;
+        }
         self.draw_page_tabs(canvas, tabs_bounds)?;
 
         render_page(self.page_state.current_page, self, canvas, content_bounds)?;
@@ -581,6 +584,28 @@ impl App {
         self.draw_footer(canvas, footer_bounds)?;
 
         canvas.present();
+        Ok(())
+    }
+
+    fn draw_frame_brand_fallback<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        surface: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_NAME,
+            Rect::new(surface.x + 8, surface.y + 8, 42, 8),
+            1,
+            Color::RGB(200, 210, 224),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_HASH,
+            Rect::new(surface.x + 56, surface.y + 8, 72, 8),
+            1,
+            Color::RGB(120, 132, 150),
+        )?;
         Ok(())
     }
 
