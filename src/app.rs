@@ -824,9 +824,9 @@ impl App {
             let color = if intensity > 0.85 {
                 Color::RGB(255, 255, 246)
             } else if intensity > 0.6 {
-                Color::RGB(254, 251, 236)
+                Color::RGB(236, 226, 198)
             } else if intensity > 0.35 {
-                Color::RGB(252, 248, 230)
+                Color::RGB(210, 198, 166)
             } else if elapsed < startup_logo_animation_duration() {
                 Color::RGB(184, 174, 146)
             } else {
