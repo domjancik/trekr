@@ -37,6 +37,7 @@ const BRAND_HASH: &str = match option_env!("TREKR_BUILD_HASH") {
     Some(value) => value,
     None => "dev",
 };
+const BRAND_DATE: Option<&str> = option_env!("TREKR_BUILD_DATE");
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
@@ -601,8 +602,8 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            BRAND_HASH,
-            Rect::new(surface.x + 56, surface.y + 8, 72, 8),
+            &brand_hash_badge(),
+            Rect::new(surface.x + 56, surface.y + 8, 132, 8),
             1,
             Color::RGB(120, 132, 150),
         )?;
@@ -754,7 +755,7 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            BRAND_HASH,
+            &brand_hash_badge(),
             Rect::new(
                 bounds.x + 74,
                 bounds.y + 6,
@@ -7696,6 +7697,21 @@ fn output_channel_label(channel: Option<u8>) -> String {
     channel
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
+}
+
+fn brand_hash_badge() -> String {
+    BRAND_DATE
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
+        .map(|value| format!("{BRAND_HASH} {}", compact_build_date(value)))
+        .unwrap_or_else(|| BRAND_HASH.to_string())
+}
+
+fn compact_build_date(value: &str) -> &str {
+    if value.len() >= 10 {
+        &value[..10]
+    } else {
+        value
+    }
 }
 
 fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
