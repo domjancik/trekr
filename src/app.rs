@@ -7776,42 +7776,52 @@ fn compact_build_date(value: &str) -> &str {
 
 fn startup_logo_intensity(elapsed: Duration, index: usize) -> f32 {
     let phase1_lead_ms = 220_u64;
-    let phase1_step_ms = 220_u64;
-    let phase1_len_ms = phase1_step_ms * 5;
+    let phase1_step_ms = 180_u64;
+    let phase1_trail_ms = 420_u64;
     let phase1_start = Duration::from_millis(phase1_lead_ms);
-    let phase1_end = phase1_start + Duration::from_millis(phase1_len_ms);
+    let phase1_end = phase1_start + Duration::from_millis((phase1_step_ms * 4) + phase1_trail_ms);
     if elapsed < phase1_start {
         return 0.0;
     }
     if elapsed < phase1_end {
-        let since = elapsed - phase1_start;
-        let active = ((since.as_millis() / phase1_step_ms as u128) as usize).min(4);
-        if active != index {
+        let local_start = phase1_start + Duration::from_millis(phase1_step_ms * index as u64);
+        let local_end = local_start + Duration::from_millis(phase1_trail_ms);
+        if elapsed < local_start || elapsed > local_end {
             return 0.0;
         }
-        let local_start = Duration::from_millis(phase1_step_ms * active as u64);
-        let t = (since - local_start).as_secs_f32()
-            / Duration::from_millis(phase1_step_ms).as_secs_f32();
-        return if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }.clamp(0.0, 1.0);
+        let t = (elapsed - local_start).as_secs_f32()
+            / Duration::from_millis(phase1_trail_ms).as_secs_f32();
+        // phase 1 trail: 1 -> middle -> 0 with overlap (no fully dark gaps)
+        return (1.0 - t).clamp(0.0, 1.0);
     }
 
-    let phase2_gap_ms = 140_u64;
+    let phase2_gap_ms = 100_u64;
     let phase2_start = phase1_end + Duration::from_millis(phase2_gap_ms);
-    let phase2_step_ms = 240_u64;
-    let phase2_step = Duration::from_millis(phase2_step_ms);
-    let reveal_index = startup_logo_reveal_step(index) as f32;
+    let phase2_step_ms = 220_u64;
+    let phase2_ramp_ms = 300_u64;
+    let reveal_index = startup_logo_reveal_step(index);
     if elapsed < phase2_start {
         return 0.0;
     }
 
-    let since_phase2 = elapsed - phase2_start;
-    let progressive = (since_phase2.as_secs_f32() / phase2_step.as_secs_f32()) - reveal_index;
-    progressive.clamp(0.0, 1.0)
+    let ring_start = phase2_start + Duration::from_millis(phase2_step_ms * reveal_index);
+    if elapsed <= ring_start {
+        return 0.0;
+    }
+    let ring_end = ring_start + Duration::from_millis(phase2_ramp_ms);
+    if elapsed >= ring_end {
+        return 1.0;
+    }
+
+    let t =
+        (elapsed - ring_start).as_secs_f32() / Duration::from_millis(phase2_ramp_ms).as_secs_f32();
+    // phase 2 reveal: 0 -> middle -> 1
+    t.clamp(0.0, 1.0)
 }
 
 fn startup_logo_animation_duration() -> Duration {
-    // phase1 lead + pulse-through + phase2 gap + center-out reveal + white hold
-    Duration::from_millis(220 + (220 * 5) + 140 + (240 * 3) + 320)
+    // phase1 lead + overlap trail-through + phase2 gap + center-out reveal + white hold
+    Duration::from_millis(220 + (180 * 4) + 420 + 100 + (220 * 2) + 300 + 320)
 }
 
 fn startup_logo_reveal_step(index: usize) -> u64 {
