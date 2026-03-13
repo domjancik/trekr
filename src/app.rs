@@ -284,6 +284,8 @@ impl App {
         &mut self,
         options: RunOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.startup_started_at = Instant::now();
+
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
             sdl3::hint::set_with_priority(
@@ -502,6 +504,8 @@ impl App {
 
         let _sdl_context = sdl3::init()?;
         self.viewport_size = (1280, 720);
+        // Keep renderer-owned screenshots deterministic by bypassing startup-only pulses.
+        self.startup_started_at = Instant::now() - Duration::from_secs(10);
 
         for spec in capture_specs() {
             self.page_state.current_page = spec.page;
@@ -818,9 +822,9 @@ impl App {
         for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
             let pulse = startup_logo_pulse(elapsed, index);
             let color = if pulse > 0.66 {
-                Color::RGB(255, 250, 234)
+                Color::RGB(255, 255, 246)
             } else if pulse > 0.33 {
-                Color::RGB(250, 244, 220)
+                Color::RGB(252, 248, 230)
             } else {
                 Color::RGB(244, 238, 210)
             };
@@ -7767,9 +7771,9 @@ fn compact_build_date(value: &str) -> &str {
 }
 
 fn startup_logo_pulse(elapsed: Duration, index: usize) -> f32 {
-    let stagger = Duration::from_millis(120 * index as u64);
-    let pulse_duration = Duration::from_millis(360);
-    let animation_duration = Duration::from_millis(1_200);
+    let stagger = Duration::from_millis(180 * index as u64);
+    let pulse_duration = Duration::from_millis(520);
+    let animation_duration = Duration::from_millis(2_000);
     if elapsed >= animation_duration || elapsed < stagger || elapsed > stagger + pulse_duration {
         return 0.0;
     }
