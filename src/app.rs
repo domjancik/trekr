@@ -4836,7 +4836,7 @@ impl App {
     }
 
     fn effective_track_playhead(&self, track: &Track) -> u64 {
-        let raw = self.transport_ticks;
+        let raw = self.playhead_ticks;
         if !track.state.loop_enabled || track.loop_region.length_ticks == 0 {
             return raw;
         }
