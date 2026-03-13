@@ -193,7 +193,12 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
             }
             result
         }
-        LaunchMode::Capture(capture) => app.capture_ui_pages(capture),
+        LaunchMode::Capture(capture) => {
+            if options.state_mode == StateMode::Demo {
+                app.seed_capture_demo_timeline_overlaps();
+            }
+            app.capture_ui_pages(capture)
+        }
     }
 }
 

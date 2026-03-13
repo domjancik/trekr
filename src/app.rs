@@ -17,7 +17,7 @@ use crate::page_widgets::{handle_page_pointer, page_discoverability_targets, ren
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
-use crate::project::{Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
+use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
 use crate::ui::{LayoutMode, TimelineFlow};
@@ -508,6 +508,15 @@ impl App {
         self.overlay_state.active = None;
 
         Ok(())
+    }
+
+    pub fn seed_capture_demo_timeline_overlaps(&mut self) {
+        for (track_index, track) in self.project.tracks.iter_mut().enumerate() {
+            seed_capture_demo_track(track, track_index);
+        }
+        self.project.active_track_index = 0;
+        self.transport_ticks = 0;
+        self.playhead_ticks = 0;
     }
 
     fn draw_frame_surface(
@@ -6972,6 +6981,52 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
         _ => None,
     }
+}
+
+fn seed_capture_demo_track(track: &mut Track, track_index: usize) {
+    let overlaps = [
+        crate::timeline::LoopRegion::new(0, 3_840),
+        crate::timeline::LoopRegion::new(480, 3_360),
+        crate::timeline::LoopRegion::new(960, 2_880),
+        crate::timeline::LoopRegion::new(1_440, 2_400),
+        crate::timeline::LoopRegion::new(1_920, 1_920),
+        crate::timeline::LoopRegion::new(2_400, 1_440),
+        crate::timeline::LoopRegion::new(2_880, 960),
+        crate::timeline::LoopRegion::new(3_360, 960),
+    ];
+
+    track.midi_notes = dense_capture_notes(track_index);
+    track.loop_region = overlaps[0];
+    track.state.loop_enabled = true;
+
+    track.stored_loops = vec![None; STORED_LOOP_SLOT_COUNT];
+    track.active_stored_loop_slot = None;
+    for (slot_index, range) in overlaps.iter().copied().enumerate() {
+        track.loop_region = range;
+        track.store_current_loop_to_slot(slot_index);
+    }
+    track.recall_stored_loop_slot(2);
+}
+
+fn dense_capture_notes(track_index: usize) -> Vec<MidiNote> {
+    let mut notes = Vec::with_capacity(80);
+    let base_pitch = 42_u8.saturating_add((track_index as u8).saturating_mul(2));
+    for step in 0..40_u64 {
+        let start = step * 120;
+        let primary_pitch = base_pitch.saturating_add((step % 12) as u8);
+        let secondary_pitch = primary_pitch.saturating_add(7);
+        let velocity = 72_u8.saturating_add(((step * 9) % 44) as u8);
+        notes.push(MidiNote::new(primary_pitch, start, 180, velocity));
+        if step % 2 == 0 {
+            notes.push(MidiNote::new(
+                secondary_pitch,
+                start + 60,
+                120,
+                velocity.saturating_sub(10),
+            ));
+        }
+    }
+    notes
 }
 
 fn direct_mapping_key_label(event: &sdl3::event::Event) -> Option<String> {
