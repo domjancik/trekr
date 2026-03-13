@@ -37,6 +37,8 @@ pub enum AppAction {
     ClearCurrentTrackContent,
     ClearAllTrackContent,
     ToggleCurrentTrackLoop,
+    ToggleStoredLoopRecallQuantize,
+    CycleStoredLoopLaunchQuantize,
     SetCurrentTrackLoopStart,
     SetCurrentTrackLoopEnd,
     SetGlobalLoopStart,
@@ -445,10 +447,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::L),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleCurrentTrackLoop,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ToggleStoredLoopRecallQuantize
+                } else {
+                    AppAction::ToggleCurrentTrackLoop
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -623,10 +630,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Q),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::AdjustPageItemBackward,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::CycleStoredLoopLaunchQuantize
+                } else {
+                    AppAction::AdjustPageItemBackward
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -736,6 +748,8 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::ClearCurrentTrackContent => "Clear Track",
         AppAction::ClearAllTrackContent => "Clear All",
         AppAction::ToggleCurrentTrackLoop => "Track Loop",
+        AppAction::ToggleStoredLoopRecallQuantize => "Stored Loop Recall Quantize",
+        AppAction::CycleStoredLoopLaunchQuantize => "Stored Loop Launch Quantize",
         AppAction::SetCurrentTrackLoopStart => "Set Track Loop Start",
         AppAction::SetCurrentTrackLoopEnd => "Set Track Loop End",
         AppAction::SetGlobalLoopStart => "Set Song Loop Start",
@@ -845,6 +859,8 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ClearCurrentTrackContent => &["C"],
         AppAction::ClearAllTrackContent => &["Shift+C"],
         AppAction::ToggleCurrentTrackLoop => &["L"],
+        AppAction::ToggleStoredLoopRecallQuantize => &["Shift+L"],
+        AppAction::CycleStoredLoopLaunchQuantize => &["Shift+Q"],
         AppAction::SetCurrentTrackLoopStart => &["["],
         AppAction::SetCurrentTrackLoopEnd => &["]"],
         AppAction::SetGlobalLoopStart => &["Shift+["],

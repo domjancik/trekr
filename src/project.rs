@@ -1,6 +1,6 @@
 use crate::routing::TrackRouting;
 use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
-use crate::transport::{RecordMode, Transport};
+use crate::transport::{LaunchQuantizeMode, RecordMode, Transport};
 use serde::{Deserialize, Serialize};
 
 pub const STORED_LOOP_SLOT_COUNT: usize = 8;
@@ -141,6 +141,14 @@ impl StoredLoop {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueuedStoredLoopRecall {
+    pub slot_index: usize,
+    pub launch_quantize: LaunchQuantizeMode,
+    pub queued_at_transport_ticks: u64,
+    pub loop_region_at_queue: LoopRegion,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     pub name: String,
@@ -167,6 +175,8 @@ pub struct Track {
     pub stored_loops: Vec<Option<StoredLoop>>,
     #[serde(default)]
     pub active_stored_loop_slot: Option<usize>,
+    #[serde(skip)]
+    pub queued_stored_loop_recall: Option<QueuedStoredLoopRecall>,
 }
 
 fn default_next_recording_clip_id() -> u64 {
@@ -196,6 +206,7 @@ impl Track {
             note_selection: NoteSelection::default(),
             stored_loops: default_stored_loops(),
             active_stored_loop_slot: None,
+            queued_stored_loop_recall: None,
         };
         track.seed_demo_notes();
         track
@@ -219,6 +230,7 @@ impl Track {
             note_selection: NoteSelection::default(),
             stored_loops: default_stored_loops(),
             active_stored_loop_slot: None,
+            queued_stored_loop_recall: None,
         }
     }
 
@@ -232,9 +244,18 @@ impl Track {
         (stored.as_loop_region() == self.loop_region).then_some(slot)
     }
 
+    pub fn queued_stored_loop_slot(&self) -> Option<usize> {
+        self.queued_stored_loop_recall
+            .map(|queued| queued.slot_index)
+            .filter(|slot| self.stored_loop_slot(*slot).is_some())
+    }
+
     pub fn sync_active_stored_loop_slot(&mut self) {
         if self.active_stored_loop_slot().is_none() {
             self.active_stored_loop_slot = None;
+        }
+        if self.queued_stored_loop_slot().is_none() {
+            self.queued_stored_loop_recall = None;
         }
     }
 
@@ -245,6 +266,9 @@ impl Track {
         self.ensure_stored_loop_capacity();
         self.stored_loops[slot_index] = Some(StoredLoop::from_loop_region(self.loop_region));
         self.active_stored_loop_slot = Some(slot_index);
+        if self.queued_stored_loop_slot() == Some(slot_index) {
+            self.queued_stored_loop_recall = None;
+        }
         true
     }
 
@@ -256,6 +280,9 @@ impl Track {
         let had_value = self.stored_loops[slot_index].take().is_some();
         if had_value && self.active_stored_loop_slot == Some(slot_index) {
             self.active_stored_loop_slot = None;
+        }
+        if had_value && self.queued_stored_loop_slot() == Some(slot_index) {
+            self.queued_stored_loop_recall = None;
         }
         had_value
     }
@@ -272,6 +299,59 @@ impl Track {
         self.loop_region = stored_loop.as_loop_region();
         self.state.loop_enabled = true;
         self.active_stored_loop_slot = Some(slot_index);
+        self.queued_stored_loop_recall = None;
+        true
+    }
+
+    pub fn queue_stored_loop_recall(
+        &mut self,
+        slot_index: usize,
+        launch_quantize: LaunchQuantizeMode,
+        queued_at_transport_ticks: u64,
+    ) -> bool {
+        if slot_index >= STORED_LOOP_SLOT_COUNT {
+            return false;
+        }
+        self.ensure_stored_loop_capacity();
+        if self.stored_loops[slot_index].is_none() {
+            return false;
+        }
+        self.queued_stored_loop_recall = Some(QueuedStoredLoopRecall {
+            slot_index,
+            launch_quantize,
+            queued_at_transport_ticks,
+            loop_region_at_queue: self.loop_region,
+        });
+        true
+    }
+
+    pub fn clear_queued_stored_loop_recall(&mut self) {
+        self.queued_stored_loop_recall = None;
+    }
+
+    pub fn resolve_queued_stored_loop_recall_if_due(
+        &mut self,
+        previous_transport_ticks: u64,
+        current_transport_ticks: u64,
+        ppqn: u16,
+    ) -> bool {
+        let Some(queued) = self.queued_stored_loop_recall else {
+            return false;
+        };
+        if current_transport_ticks <= queued.queued_at_transport_ticks {
+            return false;
+        }
+
+        if !launch_boundary_crossed(
+            previous_transport_ticks,
+            current_transport_ticks,
+            queued,
+            ppqn,
+        ) {
+            return false;
+        }
+
+        self.recall_stored_loop_slot(queued.slot_index);
         true
     }
 
@@ -596,6 +676,12 @@ impl Track {
             .is_some_and(|index| index >= STORED_LOOP_SLOT_COUNT)
         {
             self.active_stored_loop_slot = None;
+        }
+        if self
+            .queued_stored_loop_recall
+            .is_some_and(|queued| queued.slot_index >= STORED_LOOP_SLOT_COUNT)
+        {
+            self.queued_stored_loop_recall = None;
         }
     }
 
@@ -1061,6 +1147,36 @@ impl Track {
     }
 }
 
+fn launch_boundary_crossed(
+    previous_transport_ticks: u64,
+    current_transport_ticks: u64,
+    queued: QueuedStoredLoopRecall,
+    ppqn: u16,
+) -> bool {
+    if current_transport_ticks <= previous_transport_ticks {
+        return false;
+    }
+
+    match queued.launch_quantize {
+        LaunchQuantizeMode::LoopEnd => {
+            let loop_start = queued.loop_region_at_queue.start_ticks;
+            let loop_len = queued.loop_region_at_queue.length_ticks.max(1);
+            let relative = queued.queued_at_transport_ticks.saturating_sub(loop_start);
+            let next_boundary =
+                loop_start.saturating_add(((relative / loop_len) + 1).saturating_mul(loop_len));
+            previous_transport_ticks < next_boundary && current_transport_ticks >= next_boundary
+        }
+        mode => {
+            let Some(step) = mode.step_ticks(ppqn) else {
+                return true;
+            };
+            let next_boundary =
+                ((queued.queued_at_transport_ticks / step) + 1).saturating_mul(step);
+            previous_transport_ticks < next_boundary && current_transport_ticks >= next_boundary
+        }
+    }
+}
+
 fn normalized_region_span(
     transport: Transport,
     pressed_at_ticks: u64,
@@ -1257,7 +1373,7 @@ pub struct TrackState {
 mod tests {
     use super::{MidiNote, Project, RecordContext, RecordingClip, RecordingView, Track, TrackKind};
     use crate::timeline::{LoopRegion, RecordingTake, Region};
-    use crate::transport::{QuantizeMode, RecordMode, Transport};
+    use crate::transport::{LaunchQuantizeMode, QuantizeMode, RecordMode, Transport};
 
     fn region_span(region: Region) -> (u64, u64) {
         (region.start_ticks, region.length_ticks)
@@ -1679,5 +1795,35 @@ mod tests {
         track.loop_region = LoopRegion::new(1_920, 960);
         track.sync_active_stored_loop_slot();
         assert_eq!(track.active_stored_loop_slot(), None);
+    }
+
+    #[test]
+    fn queued_stored_loop_recall_resolves_on_step_boundary() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(0, 960);
+        assert!(track.store_current_loop_to_slot(0));
+        track.loop_region = LoopRegion::new(960, 960);
+        assert!(track.store_current_loop_to_slot(1));
+        track.loop_region = LoopRegion::new(0, 960);
+
+        assert!(track.queue_stored_loop_recall(1, LaunchQuantizeMode::Quarter, 1_300));
+        assert!(!track.resolve_queued_stored_loop_recall_if_due(1_300, 1_919, 960));
+        assert!(track.resolve_queued_stored_loop_recall_if_due(1_919, 1_920, 960));
+        assert_eq!(track.active_stored_loop_slot(), Some(1));
+    }
+
+    #[test]
+    fn queued_stored_loop_recall_resolves_on_loop_end_boundary() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = LoopRegion::new(480, 960);
+        assert!(track.store_current_loop_to_slot(0));
+        track.loop_region = LoopRegion::new(2_400, 960);
+        assert!(track.store_current_loop_to_slot(1));
+        track.loop_region = LoopRegion::new(480, 960);
+
+        assert!(track.queue_stored_loop_recall(1, LaunchQuantizeMode::LoopEnd, 1_000));
+        assert!(!track.resolve_queued_stored_loop_recall_if_due(1_000, 1_439, 960));
+        assert!(track.resolve_queued_stored_loop_recall_if_due(1_439, 1_440, 960));
+        assert_eq!(track.active_stored_loop_slot(), Some(1));
     }
 }

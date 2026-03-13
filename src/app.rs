@@ -1020,11 +1020,15 @@ impl App {
         let label_left = if detail {
             let slot_rects = self.stored_loop_slot_rects(label_rect);
             let active_slot = track.active_stored_loop_slot();
+            let queued_slot = track.queued_stored_loop_slot();
             for (slot_index, slot_rect) in &slot_rects {
                 let filled = track.stored_loop_slot(*slot_index).is_some();
                 let active = active_slot == Some(*slot_index);
+                let queued = queued_slot == Some(*slot_index);
                 canvas.set_draw_color(if active {
                     Color::RGB(238, 186, 112)
+                } else if queued {
+                    Color::RGB(104, 146, 172)
                 } else if filled {
                     Color::RGB(132, 118, 98)
                 } else {
@@ -1033,6 +1037,8 @@ impl App {
                 canvas.fill_rect(*slot_rect)?;
                 canvas.set_draw_color(if active {
                     Color::RGB(252, 228, 164)
+                } else if queued {
+                    Color::RGB(176, 222, 246)
                 } else if filled {
                     Color::RGB(184, 168, 138)
                 } else {
@@ -1051,6 +1057,8 @@ impl App {
                     1,
                     if active {
                         Color::RGB(26, 20, 16)
+                    } else if queued {
+                        Color::RGB(16, 26, 34)
                     } else if filled {
                         Color::RGB(38, 34, 28)
                     } else {
@@ -1801,6 +1809,7 @@ impl App {
             label: String,
             color: Color,
             emphasized: bool,
+            queued: bool,
         }
         #[derive(Clone, Copy)]
         struct MarkerSpan {
@@ -1810,6 +1819,7 @@ impl App {
         }
 
         let active_slot = track.active_stored_loop_slot();
+        let queued_slot = track.queued_stored_loop_slot();
         let mut markers = Vec::new();
         for slot_index in 0..STORED_LOOP_SLOT_COUNT {
             let Some(stored_loop) = track.stored_loop_slot(slot_index) else {
@@ -1820,6 +1830,7 @@ impl App {
                 label: (slot_index + 1).to_string(),
                 color: stored_loop_slot_color(slot_index),
                 emphasized: active_slot == Some(slot_index),
+                queued: queued_slot == Some(slot_index),
             });
         }
 
@@ -1833,6 +1844,7 @@ impl App {
                     Color::RGB(128, 122, 112)
                 },
                 emphasized: true,
+                queued: false,
             });
         }
 
@@ -1872,6 +1884,7 @@ impl App {
 
         let side_thickness = 4_i32;
         let primary_tick = Color::RGB(252, 238, 194);
+        let queued_tick = Color::RGB(184, 226, 248);
         let secondary_tick = Color::RGB(218, 224, 232);
         let side_major = side_thickness.max(1) as u32;
         let content_bg = if track.state.muted {
@@ -1928,6 +1941,8 @@ impl App {
                     }
                     canvas.set_draw_color(if marker.emphasized {
                         primary_tick
+                    } else if marker.queued {
+                        queued_tick
                     } else {
                         secondary_tick
                     });
@@ -1973,6 +1988,15 @@ impl App {
                             self.viewport_size,
                             content_bg,
                         )?;
+                    } else if marker.queued {
+                        canvas.set_draw_color(queued_tick);
+                        canvas.fill_rect(Rect::new(
+                            label_rect.x,
+                            (label_rect.y + label_rect.height() as i32 + 1)
+                                .min(content_rect.y + content_rect.height() as i32 - 1),
+                            label_rect.width().min(4),
+                            1,
+                        ))?;
                     }
                 }
             }
@@ -2017,6 +2041,8 @@ impl App {
                     let end_marker_x = span_rect.x + line_w as i32 - 1;
                     canvas.set_draw_color(if marker.emphasized {
                         primary_tick
+                    } else if marker.queued {
+                        queued_tick
                     } else {
                         secondary_tick
                     });
@@ -2057,6 +2083,15 @@ impl App {
                             self.viewport_size,
                             content_bg,
                         )?;
+                    } else if marker.queued {
+                        canvas.set_draw_color(queued_tick);
+                        canvas.fill_rect(Rect::new(
+                            label_rect.x,
+                            (label_rect.y + label_rect.height() as i32 + 1)
+                                .min(content_rect.y + content_rect.height() as i32 - 1),
+                            label_rect.width().min(4),
+                            1,
+                        ))?;
                     }
                 }
             }
@@ -2275,6 +2310,7 @@ impl App {
         let top_specs = self.transport_top_chip_specs();
         let bottom_specs = self.transport_bottom_chip_specs();
         let link_specs = self.transport_link_chip_specs();
+        let status_specs = self.transport_status_chip_specs();
         let right_panel_width = 236_u32;
         let right_panel = Rect::new(
             bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
@@ -2334,24 +2370,20 @@ impl App {
         for spec in &link_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
             let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
+                break;
+            }
             Self::draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
 
-        let quantize = TransportChipSpec {
-            label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
-            action: None,
-            fill: Color::RGB(72, 88, 110),
-        };
-        let peers = TransportChipSpec {
-            label: format!("Peers {}", self.link_snapshot.peers),
-            action: None,
-            fill: Color::RGB(66, 80, 102),
-        };
         cursor_x = right_panel.x + 6;
-        for spec in [&quantize, &peers] {
+        for spec in &status_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
             let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
+            if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
+                break;
+            }
             Self::draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
@@ -4282,6 +4314,16 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::ToggleStoredLoopRecallQuantize => {
+                self.project.transport.stored_loop_recall_quantized =
+                    !self.project.transport.stored_loop_recall_quantized;
+                AppControl::Continue
+            }
+            AppAction::CycleStoredLoopLaunchQuantize => {
+                self.project.transport.stored_loop_launch_quantize =
+                    self.project.transport.stored_loop_launch_quantize.next();
+                AppControl::Continue
+            }
             AppAction::RecallStoredLoopSlot1
             | AppAction::RecallStoredLoopSlot2
             | AppAction::RecallStoredLoopSlot3
@@ -4292,8 +4334,23 @@ impl App {
             | AppAction::RecallStoredLoopSlot8 => {
                 let slot_index =
                     recall_stored_loop_slot_index(action).expect("stored loop recall checked");
+                let launch_quantize = self.project.transport.stored_loop_launch_quantize;
+                let quantized = self.project.transport.stored_loop_recall_quantized
+                    && self.project.transport.playing
+                    && launch_quantize != crate::transport::LaunchQuantizeMode::Off;
                 if let Some(track) = self.project.active_track_mut() {
-                    track.recall_stored_loop_slot(slot_index);
+                    if track.active_take.is_some() {
+                        return AppControl::Continue;
+                    }
+                    if quantized {
+                        track.queue_stored_loop_recall(
+                            slot_index,
+                            launch_quantize,
+                            self.transport_ticks,
+                        );
+                    } else {
+                        track.recall_stored_loop_slot(slot_index);
+                    }
                 }
                 AppControl::Continue
             }
@@ -4657,6 +4714,7 @@ impl App {
             }
         }
 
+        self.process_queued_stored_loop_recalls(previous_ticks, self.transport_ticks);
         self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
     }
 
@@ -4691,7 +4749,29 @@ impl App {
             self.silence_all_tracks();
             return;
         }
+        self.process_queued_stored_loop_recalls(previous_ticks, linked_ticks);
         self.dispatch_midi_notes(previous_ticks, linked_ticks.saturating_sub(previous_ticks));
+    }
+
+    fn process_queued_stored_loop_recalls(
+        &mut self,
+        previous_transport_ticks: u64,
+        current_transport_ticks: u64,
+    ) {
+        if current_transport_ticks <= previous_transport_ticks {
+            return;
+        }
+        let ppqn = self.project.transport.ppqn;
+        for track in self.project.tracks.iter_mut() {
+            if track.active_take.is_some() {
+                continue;
+            }
+            let _ = track.resolve_queued_stored_loop_recall_if_due(
+                previous_transport_ticks,
+                current_transport_ticks,
+                ppqn,
+            );
+        }
     }
 
     fn current_edit_ticks(&self) -> u64 {
@@ -4786,6 +4866,7 @@ impl App {
                 .map(|track| self.record_capture_ticks(track))
                 .unwrap_or(self.playhead_ticks);
             if let Some(track) = self.project.tracks.get_mut(index) {
+                track.clear_queued_stored_loop_recall();
                 track.begin_recording(pressed_at);
             }
         }
@@ -6513,6 +6594,41 @@ impl App {
         ]
     }
 
+    fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!(
+                    "LaunchQ {}",
+                    on_off(self.project.transport.stored_loop_recall_quantized)
+                ),
+                action: Some(AppAction::ToggleStoredLoopRecallQuantize),
+                fill: if self.project.transport.stored_loop_recall_quantized {
+                    Color::RGB(102, 124, 86)
+                } else {
+                    Color::RGB(72, 88, 110)
+                },
+            },
+            TransportChipSpec {
+                label: format!(
+                    "Launch {}",
+                    launch_quantize_label(self.project.transport.stored_loop_launch_quantize)
+                ),
+                action: Some(AppAction::CycleStoredLoopLaunchQuantize),
+                fill: Color::RGB(78, 96, 122),
+            },
+            TransportChipSpec {
+                label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
+                action: None,
+                fill: Color::RGB(70, 86, 108),
+            },
+            TransportChipSpec {
+                label: format!("Peers {}", self.link_snapshot.peers),
+                action: None,
+                fill: Color::RGB(66, 80, 102),
+            },
+        ]
+    }
+
     fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
         let top_y = bounds.y + 4;
@@ -6520,6 +6636,7 @@ impl App {
         let chip_height = 10;
         let right_panel_width = 236_u32;
         let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
+        let right_panel_right = right_panel_x + right_panel_width as i32 - 6;
         let left_max = right_panel_x - 12;
 
         let mut cursor_x = bounds.x + 6;
@@ -6552,6 +6669,22 @@ impl App {
         for chip_spec in self.transport_link_chip_specs() {
             let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
             let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            if chip.x + chip.width() as i32 > right_panel_right {
+                break;
+            }
+            if let Some(action) = chip_spec.action {
+                rects.push((chip, action));
+            }
+            cursor_x += chip.width() as i32 + 6;
+        }
+
+        cursor_x = right_panel_x + 6;
+        for chip_spec in self.transport_status_chip_specs() {
+            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
+            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
+            if chip.x + chip.width() as i32 > right_panel_right {
+                break;
+            }
             if let Some(action) = chip_spec.action {
                 rects.push((chip, action));
             }
@@ -7028,6 +7161,8 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::ToggleGlobalLoop => Some("Song Loop"),
         AppAction::ResetGlobalLoop => Some("Reset Song Loop"),
         AppAction::ToggleCurrentTrackLoop => Some("Track Loop"),
+        AppAction::ToggleStoredLoopRecallQuantize => Some("Stored Loop Recall Quantize"),
+        AppAction::CycleStoredLoopLaunchQuantize => Some("Stored Loop Launch Quantize"),
         AppAction::RecallStoredLoopSlot1 => Some("Recall Stored Loop Slot 1"),
         AppAction::RecallStoredLoopSlot2 => Some("Recall Stored Loop Slot 2"),
         AppAction::RecallStoredLoopSlot3 => Some("Recall Stored Loop Slot 3"),
@@ -7312,6 +7447,17 @@ fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
         crate::transport::QuantizeMode::Eighth => "1/8",
         crate::transport::QuantizeMode::Quarter => "1/4",
         crate::transport::QuantizeMode::Bar => "Bar",
+    }
+}
+
+fn launch_quantize_label(quantize: crate::transport::LaunchQuantizeMode) -> &'static str {
+    match quantize {
+        crate::transport::LaunchQuantizeMode::Off => "Off",
+        crate::transport::LaunchQuantizeMode::Sixteenth => "1/16",
+        crate::transport::LaunchQuantizeMode::Eighth => "1/8",
+        crate::transport::LaunchQuantizeMode::Quarter => "1/4",
+        crate::transport::LaunchQuantizeMode::Bar => "Bar",
+        crate::transport::LaunchQuantizeMode::LoopEnd => "LoopEnd",
     }
 }
 
@@ -9014,6 +9160,60 @@ mod tests {
                 .active_stored_loop_slot(),
             None
         );
+    }
+
+    #[test]
+    fn quantized_stored_loop_recall_queues_and_resolves_at_boundary() {
+        let mut app = App::new();
+        app.project.transport.stored_loop_recall_quantized = true;
+        app.project.transport.stored_loop_launch_quantize =
+            crate::transport::LaunchQuantizeMode::Quarter;
+        app.project.transport.playing = true;
+        app.transport_ticks = 1_000;
+        app.playhead_ticks = 1_000;
+
+        {
+            let track = app.project.active_track_mut().unwrap();
+            track.loop_region = crate::timeline::LoopRegion::new(0, 960);
+            assert!(track.store_current_loop_to_slot(0));
+            track.loop_region = crate::timeline::LoopRegion::new(1_920, 960);
+            assert!(track.store_current_loop_to_slot(1));
+            track.loop_region = crate::timeline::LoopRegion::new(0, 960);
+        }
+
+        app.apply_action(AppAction::RecallStoredLoopSlot2);
+
+        let track = app.project.active_track().unwrap();
+        assert_eq!(track.active_stored_loop_slot(), None);
+        assert_eq!(track.queued_stored_loop_slot(), Some(1));
+        assert_eq!(track.loop_region, crate::timeline::LoopRegion::new(0, 960));
+
+        app.process_queued_stored_loop_recalls(1_000, 1_920);
+        let track = app.project.active_track().unwrap();
+        assert_eq!(track.active_stored_loop_slot(), Some(1));
+        assert_eq!(track.queued_stored_loop_slot(), None);
+    }
+
+    #[test]
+    fn stored_loop_recall_is_blocked_on_recording_track() {
+        let mut app = App::new();
+        app.project.transport.stored_loop_recall_quantized = true;
+        app.project.transport.stored_loop_launch_quantize =
+            crate::transport::LaunchQuantizeMode::Bar;
+        app.project.transport.playing = true;
+
+        let track = app.project.active_track_mut().unwrap();
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        assert!(track.store_current_loop_to_slot(0));
+        track.loop_region = crate::timeline::LoopRegion::new(0, 960);
+        track.begin_recording(0);
+
+        app.apply_action(AppAction::RecallStoredLoopSlot1);
+
+        let track = app.project.active_track().unwrap();
+        assert_eq!(track.loop_region, crate::timeline::LoopRegion::new(0, 960));
+        assert_eq!(track.queued_stored_loop_slot(), None);
+        assert_eq!(track.active_stored_loop_slot(), None);
     }
 
     #[test]
