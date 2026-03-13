@@ -9,7 +9,7 @@ Define a follow-on mapping workflow that builds on the current discoverability d
 
 The new mode lets the user enter a temporary mapping state, select an actionable UI element, capture the next input event, and create or replace a mapping for that element's canonical action.
 
-This spec is grounded in the current repository state. `docs/handoff-summary.md` is not present in this worktree, so the baseline here comes from `README.md`, `docs/product-spec.md`, `docs/implementation-plan.md`, `docs/current-mappings.md`, `docs/architecture.md`, and the current `src/*` mapping and app code.
+This spec is grounded in the current repository state. Baseline sources include `README.md`, `docs/specs/product-spec.md`, `docs/planning/implementation-plan.md`, `docs/dev/current-mappings.md`, `docs/dev/architecture.md`, and the current `src/*` mapping and app code.
 
 ## Current Baseline
 
@@ -53,7 +53,7 @@ The current mappings page is good for overview and field editing, but it require
 - perform next hardware input
 - confirm replacement if needed
 
-That fits the product direction in `docs/product-spec.md`: mappings should stay unified across control surfaces, and the app should expose routing and control state without guessing.
+That fits the product direction in `docs/specs/product-spec.md`: mappings should stay unified across control surfaces, and the app should expose routing and control state without guessing.
 
 ## Proposed UX Flow
 
@@ -368,3 +368,5 @@ Add focused tests for:
 - Should page tabs be directly mappable in the first pass, or should direct mode stay focused on transport and track controls?
 - Should `Keep Both` remain available given the current multi-dispatch runtime behavior, or should the first pass enforce one active MIDI source binding per normalized source?
 - Does the team want direct mapping to stay MIDI-only until keyboard and OSC learn exist, or should the UI copy say "next input" from day one while only MIDI is implemented underneath?
+
+
