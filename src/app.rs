@@ -1800,7 +1800,7 @@ impl App {
             range: crate::timeline::LoopRegion,
             label: String,
             color: Color,
-            main_loop: bool,
+            emphasized: bool,
         }
         #[derive(Clone, Copy)]
         struct MarkerSpan {
@@ -1809,6 +1809,7 @@ impl App {
             end: i32,
         }
 
+        let active_slot = track.active_stored_loop_slot();
         let mut markers = Vec::new();
         for slot_index in 0..STORED_LOOP_SLOT_COUNT {
             let Some(stored_loop) = track.stored_loop_slot(slot_index) else {
@@ -1818,26 +1819,22 @@ impl App {
                 range: stored_loop.as_loop_region(),
                 label: (slot_index + 1).to_string(),
                 color: stored_loop_slot_color(slot_index),
-                main_loop: false,
+                emphasized: active_slot == Some(slot_index),
             });
         }
 
-        let active_slot = track.active_stored_loop_slot();
-        let main_loop_color = active_slot
-            .map(stored_loop_slot_color)
-            .unwrap_or(Color::RGB(242, 190, 112));
-        markers.push(LoopMarker {
-            range: track.loop_region,
-            label: active_slot
-                .map(|slot| (slot + 1).to_string())
-                .unwrap_or_else(|| "L".to_string()),
-            color: if track.state.loop_enabled {
-                main_loop_color
-            } else {
-                Color::RGB(128, 122, 112)
-            },
-            main_loop: true,
-        });
+        if active_slot.is_none() {
+            markers.push(LoopMarker {
+                range: track.loop_region,
+                label: "L".to_string(),
+                color: if track.state.loop_enabled {
+                    Color::RGB(242, 190, 112)
+                } else {
+                    Color::RGB(128, 122, 112)
+                },
+                emphasized: true,
+            });
+        }
 
         let mut spans = Vec::new();
         for marker in markers.iter() {
@@ -1929,7 +1926,7 @@ impl App {
                     if marker_start_y > end_marker_y {
                         continue;
                     }
-                    canvas.set_draw_color(if marker.main_loop {
+                    canvas.set_draw_color(if marker.emphasized {
                         primary_tick
                     } else {
                         secondary_tick
@@ -1967,6 +1964,15 @@ impl App {
                         1,
                         |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
+                    if marker.emphasized {
+                        canvas.set_draw_color(primary_tick);
+                        canvas.fill_rect(Rect::new(
+                            label_rect.x,
+                            label_rect.y + label_rect.height() as i32 - 1,
+                            label_rect.width(),
+                            1,
+                        ))?;
+                    }
                 }
             }
             TimelineFlow::AcrossRows => {
@@ -2008,7 +2014,7 @@ impl App {
                     );
                     let line_w = span_rect.width().max(1);
                     let end_marker_x = span_rect.x + line_w as i32 - 1;
-                    canvas.set_draw_color(if marker.main_loop {
+                    canvas.set_draw_color(if marker.emphasized {
                         primary_tick
                     } else {
                         secondary_tick
@@ -2041,6 +2047,15 @@ impl App {
                         1,
                         |px, py| readback_color_at(&label_readback, px, py).unwrap_or(content_bg),
                     )?;
+                    if marker.emphasized {
+                        canvas.set_draw_color(primary_tick);
+                        canvas.fill_rect(Rect::new(
+                            label_rect.x,
+                            label_rect.y + label_rect.height() as i32 - 1,
+                            label_rect.width(),
+                            1,
+                        ))?;
+                    }
                 }
             }
         }
