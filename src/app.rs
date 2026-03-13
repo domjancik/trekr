@@ -602,7 +602,7 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            &brand_hash_badge(),
+            &brand_fallback_badge(),
             Rect::new(surface.x + 56, surface.y + 8, 132, 8),
             1,
             Color::RGB(120, 132, 150),
@@ -753,27 +753,49 @@ impl App {
             2,
             Color::RGB(244, 238, 210),
         )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            &brand_hash_badge(),
-            Rect::new(
-                bounds.x + 74,
-                bounds.y + 6,
-                bounds.width().saturating_sub(74),
-                8,
-            ),
-            1,
-            Color::RGB(120, 132, 150),
-        )?;
+        if let Some(date) = brand_build_date() {
+            crate::ui::draw_text_fitted(
+                canvas,
+                date,
+                Rect::new(
+                    bounds.x + 74,
+                    bounds.y + 4,
+                    bounds.width().saturating_sub(74),
+                    8,
+                ),
+                1,
+                Color::RGB(120, 132, 150),
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                BRAND_HASH,
+                Rect::new(
+                    bounds.x + 74,
+                    bounds.y + 14,
+                    bounds.width().saturating_sub(74),
+                    8,
+                ),
+                1,
+                Color::RGB(136, 146, 164),
+            )?;
+        } else {
+            crate::ui::draw_text_fitted(
+                canvas,
+                BRAND_HASH,
+                Rect::new(
+                    bounds.x + 74,
+                    bounds.y + 9,
+                    bounds.width().saturating_sub(74),
+                    8,
+                ),
+                1,
+                Color::RGB(120, 132, 150),
+            )?;
+        }
         crate::ui::draw_text_fitted(
             canvas,
             BRAND_SITE,
-            Rect::new(
-                bounds.x + 2,
-                bounds.y + 18,
-                bounds.width().saturating_sub(18),
-                8,
-            ),
+            Rect::new(bounds.x + 2, bounds.y + 18, 64, 8),
             1,
             Color::RGB(146, 156, 172),
         )?;
@@ -7699,10 +7721,15 @@ fn output_channel_label(channel: Option<u8>) -> String {
         .unwrap_or_else(|| "none".to_string())
 }
 
-fn brand_hash_badge() -> String {
+fn brand_build_date() -> Option<&'static str> {
     BRAND_DATE
         .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
-        .map(|value| format!("{BRAND_HASH} {}", compact_build_date(value)))
+        .map(compact_build_date)
+}
+
+fn brand_fallback_badge() -> String {
+    brand_build_date()
+        .map(|value| format!("{value} {BRAND_HASH}"))
         .unwrap_or_else(|| BRAND_HASH.to_string())
 }
 
