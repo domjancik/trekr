@@ -7775,7 +7775,7 @@ fn compact_build_date(value: &str) -> &str {
 }
 
 fn startup_logo_intensity(elapsed: Duration, index: usize) -> f32 {
-    let phase1_lead_ms = 320_u64;
+    let phase1_lead_ms = 640_u64;
     let phase1_step_ms = 180_u64;
     let phase1_trail_ms = 420_u64;
     let phase1_start = Duration::from_millis(phase1_lead_ms);
