@@ -1,19 +1,17 @@
 Findings
 
-1. severity: medium | screenshot/page: `midi-io.png` | issue: Subtitle has a typo (`SELECT DEFULT INPUTS AND OUTPUTS`), which hurts trust and quick comprehension. | brief suggested fix: Change to `SELECT DEFAULT INPUTS AND OUTPUTS`.
+1. severity: **high**; screenshot/page: **mappings-overlay.png**; issue: The top-right header shows `SCOPE` with no visible value, which looks like missing/clipped state text and weakens state communication. suggested fix: Always render an explicit scope value (for example `GLOBAL`/`ACT TRACK`) or hide the label when empty.
 
-2. severity: medium | screenshot/page: `timeline.png` | issue: Track columns are too dense in `TRACK ALL`; labels and note marks become hard to scan quickly. | brief suggested fix: Increase minimum column width or reduce visible tracks in this mode, with horizontal paging/scroll.
+2. severity: **medium**; screenshot/page: **mappings.png**; issue: The row density is very high and columns are visually compressed, making trigger/action/scope hard to scan quickly. suggested fix: Increase row height slightly and add stronger column separation or alternating row backgrounds.
 
-3. severity: medium | screenshot/page: `timeline.png` | issue: Header/control bars are crowded (`PLAY/REC/MODE`, `LINK/START/STOP`, `QUANT/PEERS`) with weak grouping, so state is hard to parse at a glance. | brief suggested fix: Split into clearly separated groups with stronger spacing and section labels.
+3. severity: **medium**; screenshot/page: **mappings.png**; issue: Bottom keyboard-help strip is crowded (`SHIFT+LEFT/RIGHT FIELD 0/E ADJUST ENTER LEARN/TOGGLE`) and reads as a single run-on block. suggested fix: Group shortcuts into clearly separated chunks with consistent spacing and dividers.
 
-4. severity: low | screenshot/page: `timeline-focused.png` | issue: Left/right pane meaning (`SONG` vs `LOOP`) is subtle; users can miss which side they are editing. | brief suggested fix: Add stronger pane headers/background differentiation and explicit active-pane highlight.
+4. severity: **medium**; screenshot/page: **midi-io.png**; issue: Device cards contain very large unlabeled empty regions, which makes users unsure whether content failed to load or if those are intentional meters/panels. suggested fix: Add explicit labels/placeholders (for example `No activity`, `No channels shown`) or reduce unused panel height.
 
-5. severity: medium | screenshot/page: `mappings.png` | issue: Bottom shortcut strip is overloaded and visually compressed, reducing readability and discoverability. | brief suggested fix: Break shortcuts into grouped clusters (navigation/edit/learn) with spacing or two-line layout.
+5. severity: **low**; screenshot/page: **midi-io.png**; issue: `DEF SEL` badges are pushed tight to card edges and look close to clipping. suggested fix: Add right padding and a fixed badge container width for cleaner alignment.
 
-6. severity: low | screenshot/page: `mappings-overlay.png` | issue: Overlay action hints (`F5 CLOSE`, `W WRITE`) read like plain text, not actionable controls. | brief suggested fix: Style them as button chips or a dedicated command bar with clearer affordance.
+6. severity: **medium**; screenshot/page: **timeline.png**; issue: Control hierarchy is weak at the top: many toggles share similar visual weight, so primary state (play/record/mode/quant) is hard to identify quickly. suggested fix: Promote critical transport/mode states with stronger contrast grouping and demote secondary settings.
 
-7. severity: medium | screenshot/page: `mappings.png` and `mappings-overlay.png` | issue: Scope/state values (`GLOBAL`, `ACT TRACK`, `ARMED/ACT`) are visually similar and low-emphasis, weakening state communication. | brief suggested fix: Add consistent color coding or badges per scope/state category.
+7. severity: **low**; screenshot/page: **timeline.png / timeline-focused.png**; issue: Small numeric/label text in loop headers is at the edge of readability, especially in dense columns. suggested fix: Increase font size one step or reduce non-essential header tokens per column.
 
-8. severity: low | screenshot/page: `routing.png` | issue: Right-side per-row actions (`SELECT`, `TOGGLE`, `TAP +/-`) look detached from the value fields and can read as status labels. | brief suggested fix: Increase contrast and proximity, and use consistent button styling for all row actions.
-
-9. severity: low | screenshot/page: `midi-io.png` | issue: Device cards contain large unlabeled empty regions, which can look like missing content rather than selectable areas. | brief suggested fix: Add subtle placeholder labels (for ports/channels/activity) or reduce empty fill area.
+8. severity: **low**; screenshot/page: **routing.png**; issue: Routing screen was not visible in the provided attachments, so layout/state QA for that page is incomplete. suggested fix: Re-export and attach `routing.png` in a supported format so it can be reviewed consistently.
