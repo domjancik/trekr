@@ -32,6 +32,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
+
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
     project: Project,
@@ -56,6 +58,9 @@ pub struct App {
     note_additive_select_held: bool,
     focused_track_view: bool,
     startup_started_at: Instant,
+    preferred_default_input_name: Option<String>,
+    preferred_default_output_name: Option<String>,
+    last_midi_refresh_at: Instant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,6 +223,12 @@ impl App {
         page_state: AppPageState,
     ) -> Self {
         let scanned_devices = MidiDeviceCatalog::scan();
+        let preferred_default_input_name = scanned_devices
+            .selected_input_port()
+            .map(|port| port.name.clone());
+        let preferred_default_output_name = scanned_devices
+            .selected_output_port()
+            .map(|port| port.name.clone());
         let mut link = LinkRuntime::new(f64::from(project.transport.tempo_bpm));
         link.set_enabled(project.transport.link_enabled);
         link.set_start_stop_sync(project.transport.link_start_stop_sync);
@@ -245,6 +256,9 @@ impl App {
             note_additive_select_held: false,
             focused_track_view: false,
             startup_started_at: Instant::now(),
+            preferred_default_input_name,
+            preferred_default_output_name,
+            last_midi_refresh_at: Instant::now(),
         }
     }
 
@@ -359,6 +373,7 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
@@ -412,6 +427,7 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
@@ -462,6 +478,7 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.viewport_size = window.size_in_pixels();
@@ -3269,13 +3286,20 @@ impl App {
                 1,
                 Color::RGB(244, 244, 236),
             )?;
+            let mapping_device_label = if entry.source_kind == MappingSourceKind::Midi {
+                if entry.source_device_label != default_mapping_source_device()
+                    && !self.input_port_is_available(&entry.source_device_label)
+                {
+                    format!("{} (offline)", entry.source_device_label)
+                } else {
+                    entry.source_device_label.clone()
+                }
+            } else {
+                "--".to_string()
+            };
             crate::ui::draw_text_fitted(
                 canvas,
-                if entry.source_kind == MappingSourceKind::Midi {
-                    &entry.source_device_label
-                } else {
-                    "--"
-                },
+                &mapping_device_label,
                 Rect::new(
                     device_rect.x + 4,
                     row.y + 5,
@@ -3577,10 +3601,35 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Select default inputs and outputs",
-            Rect::new(header_bounds.x + 188, header_bounds.y + 12, 220, 8),
+            "Auto refresh: on",
+            Rect::new(header_bounds.x + 188, header_bounds.y + 8, 220, 8),
             1,
             Color::RGB(184, 194, 206),
+        )?;
+        let offline_input = self
+            .preferred_default_input_name
+            .as_deref()
+            .filter(|name| !self.input_port_is_available(name));
+        let offline_output = self
+            .preferred_default_output_name
+            .as_deref()
+            .filter(|name| !self.output_port_is_available(name));
+        let offline_summary = match (offline_input, offline_output) {
+            (Some(input), Some(output)) => format!("Offline defaults: In {input} | Out {output}"),
+            (Some(input), None) => format!("Offline default input: {input}"),
+            (None, Some(output)) => format!("Offline default output: {output}"),
+            (None, None) => "Select default inputs and outputs".to_string(),
+        };
+        crate::ui::draw_text_fitted(
+            canvas,
+            &offline_summary,
+            Rect::new(header_bounds.x + 188, header_bounds.y + 18, 420, 8),
+            1,
+            if offline_input.is_some() || offline_output.is_some() {
+                Color::RGB(248, 182, 124)
+            } else {
+                Color::RGB(184, 194, 206)
+            },
         )?;
 
         let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
@@ -5098,13 +5147,13 @@ impl App {
             }
             AppPage::MidiIo => match self.page_state.midi_io.focus {
                 MidiIoListFocus::Inputs => {
-                    self.midi_devices
-                        .set_selected_input(self.page_state.midi_io.selected_input_index);
-                    self.sync_midi_inputs();
+                    self.set_preferred_default_input_from_index(
+                        self.page_state.midi_io.selected_input_index,
+                    );
                 }
-                MidiIoListFocus::Outputs => self
-                    .midi_devices
-                    .set_selected_output(self.page_state.midi_io.selected_output_index),
+                MidiIoListFocus::Outputs => self.set_preferred_default_output_from_index(
+                    self.page_state.midi_io.selected_output_index,
+                ),
             },
             AppPage::Routing => {
                 if self.page_state.selected_routing_field == RoutingField::Passthrough {
@@ -5363,6 +5412,96 @@ impl App {
         }
     }
 
+    fn maybe_refresh_midi_devices(&mut self, now: Instant) {
+        self.refresh_midi_devices(false, now);
+    }
+
+    fn refresh_midi_devices_now(&mut self) {
+        self.refresh_midi_devices(true, Instant::now());
+    }
+
+    fn refresh_midi_devices(&mut self, force: bool, now: Instant) {
+        if !force && now.saturating_duration_since(self.last_midi_refresh_at) < MIDI_REFRESH_INTERVAL
+        {
+            return;
+        }
+        self.last_midi_refresh_at = now;
+
+        let previous_catalog = self.midi_devices.clone();
+        let scanned = MidiDeviceCatalog::scan_live();
+        let inputs = scanned.inputs;
+        let outputs = scanned.outputs;
+        let mut next = MidiDeviceCatalog {
+            selected_input: resolve_port_by_name(
+                &inputs,
+                self.preferred_default_input_name.as_deref(),
+            ),
+            selected_output: resolve_port_by_name(
+                &outputs,
+                self.preferred_default_output_name.as_deref(),
+            ),
+            inputs,
+            outputs,
+        };
+
+        if self.preferred_default_input_name.is_none() {
+            self.preferred_default_input_name = next.selected_input_port().map(|port| port.name.clone());
+        }
+        if self.preferred_default_output_name.is_none() {
+            self.preferred_default_output_name =
+                next.selected_output_port().map(|port| port.name.clone());
+        }
+
+        next.selected_input = resolve_port_by_name(
+            &next.inputs,
+            self.preferred_default_input_name.as_deref(),
+        );
+        next.selected_output = resolve_port_by_name(
+            &next.outputs,
+            self.preferred_default_output_name.as_deref(),
+        );
+
+        if next == previous_catalog {
+            return;
+        }
+
+        self.midi_devices = next;
+        self.page_state.midi_io.selected_input_index = clamp_index(
+            self.page_state.midi_io.selected_input_index,
+            self.midi_devices.inputs.len(),
+        );
+        self.page_state.midi_io.selected_output_index = clamp_index(
+            self.page_state.midi_io.selected_output_index,
+            self.midi_devices.outputs.len(),
+        );
+        self.sync_midi_inputs();
+    }
+
+    fn input_port_is_available(&self, name: &str) -> bool {
+        self.midi_devices.inputs.iter().any(|port| port.name == name)
+    }
+
+    fn output_port_is_available(&self, name: &str) -> bool {
+        self.midi_devices.outputs.iter().any(|port| port.name == name)
+    }
+
+    fn set_preferred_default_input_from_index(&mut self, index: usize) {
+        let Some(port) = self.midi_devices.input(index) else {
+            return;
+        };
+        self.preferred_default_input_name = Some(port.name.clone());
+        self.midi_devices.set_selected_input(index);
+        self.sync_midi_inputs();
+    }
+
+    fn set_preferred_default_output_from_index(&mut self, index: usize) {
+        let Some(port) = self.midi_devices.output(index) else {
+            return;
+        };
+        self.preferred_default_output_name = Some(port.name.clone());
+        self.midi_devices.set_selected_output(index);
+    }
+
     fn sync_midi_inputs(&mut self) {
         let mut ports = Vec::new();
         for track in &self.project.tracks {
@@ -5442,12 +5581,13 @@ impl App {
                                 track.routing.output_port.as_ref(),
                                 track.routing.output_channel,
                             ) {
-                                let _ = self.midi_output.send_note_on(
-                                    port,
-                                    channel.clamp(1, 16),
-                                    pitch,
-                                    velocity,
-                                );
+                                if self
+                                    .midi_output
+                                    .send_note_on(port, channel.clamp(1, 16), pitch, velocity)
+                                    .is_err()
+                                {
+                                    self.refresh_midi_devices_now();
+                                }
                             }
                         }
                     }
@@ -5460,11 +5600,13 @@ impl App {
                                 track.routing.output_port.as_ref(),
                                 track.routing.output_channel,
                             ) {
-                                let _ = self.midi_output.send_note_off(
-                                    port,
-                                    channel.clamp(1, 16),
-                                    pitch,
-                                );
+                                if self
+                                    .midi_output
+                                    .send_note_off(port, channel.clamp(1, 16), pitch)
+                                    .is_err()
+                                {
+                                    self.refresh_midi_devices_now();
+                                }
                             }
                         }
                     }
@@ -5635,13 +5777,20 @@ impl App {
                 continue;
             };
 
+            let mut refresh_needed = false;
             for (_, note_on, pitch, velocity) in events {
-                let _ = if note_on {
+                let result = if note_on {
                     self.midi_output
                         .send_note_on(&port, channel, pitch, velocity)
                 } else {
                     self.midi_output.send_note_off(&port, channel, pitch)
                 };
+                if result.is_err() {
+                    refresh_needed = true;
+                }
+            }
+            if refresh_needed {
+                self.refresh_midi_devices_now();
             }
         }
     }
@@ -5661,15 +5810,39 @@ impl App {
             .collect();
 
         for (port, channel) in ports_and_channels {
-            let _ = self.midi_output.send_all_notes_off(&port, channel);
+            if self.midi_output.send_all_notes_off(&port, channel).is_err() {
+                self.refresh_midi_devices_now();
+            }
         }
     }
 
     fn routing_field_value(&self, track: &Track, field: RoutingField) -> String {
         match field {
-            RoutingField::InputDevice => port_name(track.routing.input_port.as_ref()).to_string(),
+            RoutingField::InputDevice => track
+                .routing
+                .input_port
+                .as_ref()
+                .map(|port| {
+                    if self.input_port_is_available(&port.name) {
+                        port.name.clone()
+                    } else {
+                        format!("{} (offline)", port.name)
+                    }
+                })
+                .unwrap_or_else(|| "none".to_string()),
             RoutingField::InputChannel => input_channel_label(track.routing.input_channel),
-            RoutingField::OutputDevice => port_name(track.routing.output_port.as_ref()).to_string(),
+            RoutingField::OutputDevice => track
+                .routing
+                .output_port
+                .as_ref()
+                .map(|port| {
+                    if self.output_port_is_available(&port.name) {
+                        port.name.clone()
+                    } else {
+                        format!("{} (offline)", port.name)
+                    }
+                })
+                .unwrap_or_else(|| "none".to_string()),
             RoutingField::OutputChannel => output_channel_label(track.routing.output_channel),
             RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
         }
@@ -6125,8 +6298,7 @@ impl App {
         {
             self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
             self.page_state.midi_io.selected_input_index = index;
-            self.midi_devices.set_selected_input(index);
-            self.sync_midi_inputs();
+            self.set_preferred_default_input_from_index(index);
             return Some(AppControl::Continue);
         }
 
@@ -6135,7 +6307,7 @@ impl App {
         {
             self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
             self.page_state.midi_io.selected_output_index = index;
-            self.midi_devices.set_selected_output(index);
+            self.set_preferred_default_output_from_index(index);
             return Some(AppControl::Continue);
         }
 
@@ -7625,6 +7797,15 @@ fn track_indicator_target(
 
 fn port_name(port: Option<&MidiPortRef>) -> &str {
     port.map(|value| value.name.as_str()).unwrap_or("none")
+}
+
+fn resolve_port_by_name(ports: &[MidiPortRef], preferred_name: Option<&str>) -> Option<usize> {
+    let preferred_name = preferred_name?;
+    ports.iter().position(|port| port.name == preferred_name)
+}
+
+fn clamp_index(index: usize, len: usize) -> usize {
+    if len == 0 { 0 } else { index.min(len - 1) }
 }
 
 fn input_channel_label(channel: MidiChannelFilter) -> String {

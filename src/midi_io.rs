@@ -50,6 +50,14 @@ pub struct MidiDeviceCatalog {
 
 impl MidiDeviceCatalog {
     pub fn scan() -> Self {
+        Self::scan_internal(true)
+    }
+
+    pub fn scan_live() -> Self {
+        Self::scan_internal(false)
+    }
+
+    fn scan_internal(allow_demo_fallback: bool) -> Self {
         let inputs: Vec<MidiPortRef> = match MidiInput::new("trekr-midi-inputs") {
             Ok(midi_in) => midi_in
                 .ports()
@@ -69,7 +77,7 @@ impl MidiDeviceCatalog {
             Err(_) => Vec::new(),
         };
 
-        if inputs.is_empty() && outputs.is_empty() {
+        if allow_demo_fallback && inputs.is_empty() && outputs.is_empty() {
             return Self::demo();
         }
 

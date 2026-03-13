@@ -215,6 +215,9 @@ Pointer/touch notes:
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
 - the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
+- MIDI I/O now auto-refreshes device availability while the app is running
+- default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
+- routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
 - timeline note and region editing is still not implemented for pointer/touch input
 
