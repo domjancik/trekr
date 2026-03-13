@@ -4841,8 +4841,7 @@ impl App {
             return raw;
         }
 
-        let relative = raw.saturating_sub(track.loop_region.start_ticks);
-        track.loop_region.start_ticks + (relative % track.loop_region.length_ticks)
+        track.loop_region.start_ticks + (raw % track.loop_region.length_ticks)
     }
 
     fn record_head_ticks(&self, track: &Track) -> u64 {
@@ -8002,7 +8001,7 @@ mod tests {
     }
 
     #[test]
-    fn effective_track_playhead_clamps_before_loop_start() {
+    fn effective_track_playhead_moves_even_before_loop_start() {
         let mut app = App::new();
         let track = app.project.active_track_mut().unwrap();
         track.state.loop_enabled = true;
@@ -8012,7 +8011,7 @@ mod tests {
 
         assert_eq!(
             app.effective_track_playhead(app.project.active_track().unwrap()),
-            1_920
+            2_400
         );
     }
 
