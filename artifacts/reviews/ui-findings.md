@@ -1,13 +1,17 @@
 Findings
 
-1. `severity: medium` | `timeline.png` | The top control area is overloaded with many similarly styled pills (`PLAY OFF`, `RECORD OFF`, `MODE OVERDUB`, quant/peers/link), so primary state is hard to scan quickly. | Increase hierarchy by grouping into labeled sections (transport, loop, sync), and use stronger visual contrast for active states only.
+1. **severity: medium** — **screenshot/page: `mappings.png`** — **issue:** Bottom command legend is dense and cryptic (`TAP AGAIN ACT`, `O/E ADJUST`, etc.), making primary actions hard to parse quickly. **brief suggested fix:** Group commands into labeled clusters (Navigation/Edit/Learn), expand ambiguous abbreviations, and increase spacing between groups.
 
-2. `severity: medium` | `routing.png` | Row-end actions (`+`, `SELECT`, `TAP +/-`, `TOGGLE`) are small and visually inconsistent, making interaction intent unclear. | Normalize action button sizing/placement and add clearer affordances (consistent button style, explicit labels like `Edit`, `Toggle`, `Tap +/-`).
+2. **severity: medium** — **screenshot/page: `mappings.png`** — **issue:** Table rows are visually very tight; long target/action labels and scope/status columns compete with little breathing room, reducing scanability. **brief suggested fix:** Increase row height/padding slightly and add clearer column separation (subtle vertical dividers or alternating row tint).
 
-3. `severity: low` | `midi-io.png` | The `DEF SEL` badges are tiny and crowded into card corners, which reduces readability and state clarity. | Enlarge badges and place them in a consistent metadata row under each device name.
+3. **severity: low** — **screenshot/page: `mappings-overlay.png`** — **issue:** Overlay shows `ROWS 1-19 / 30` but provides weak scroll/state affordance, so users may not realize more mappings exist. **brief suggested fix:** Add an explicit scrollbar/progress marker or a “more rows below” indicator.
 
-4. `severity: low` | `mappings.png` | Dense row layout and minimal column separation make key data (`Type`, `Device`, `Source`, `Target`, `Scope`, `On`) harder to parse at a glance. | Add slightly more vertical row spacing and stronger column delineation (subtle separators or alternating row backgrounds).
+4. **severity: medium** — **screenshot/page: `mappings-overlay.png`** — **issue:** Large unused lower area in the overlay weakens hierarchy and makes content feel unfinished. **brief suggested fix:** Auto-size the overlay to content height (with max height), or use the extra space for filter/help/context controls.
 
-5. `severity: low` | `mappings-overlay.png` | Overlay header actions (`F5 CLOSE`, `W WRITE`) are easy to miss because they look like body text rather than actionable controls. | Style overlay actions as explicit buttons/chips with clearer active/inactive states.
+5. **severity: high** — **screenshot/page: `midi-io.png`** — **issue:** Input/output device cards are mostly blank blocks with minimal labeling; control intent (select, monitor, route, default) is unclear. **brief suggested fix:** Replace empty areas with explicit per-device metadata/actions (status, channel/activity, select/default buttons) and reduce placeholder fill.
 
-6. `severity: low` | `timeline-focused.png` | Focus mode improves readability, but the `REC`/`MUT`/`SOL` labels remain visually detached from the panes and can be misread as static headers. | Anchor these labels to pane headers with clearer grouping and stronger alignment cues.
+6. **severity: medium** — **screenshot/page: `midi-io.png`** — **issue:** `DEF SEL` badges are tiny and ambiguous (default vs selected state merged), weakening state communication. **brief suggested fix:** Separate badges (`DEFAULT`, `SELECTED`) with distinct color/position and add a legend or consistent iconography.
+
+7. **severity: medium** — **screenshot/page: `routing.png`** — **issue:** Right-edge controls (`+`, `SELECT`, `TAP +/-`, `TOGGLE`) are inconsistent by row and low-clarity, making interaction model hard to learn. **brief suggested fix:** Standardize control structure/order per row and add concise row-level helper text or icons.
+
+8. **severity: medium** — **screenshot/page: `timeline.png` and `timeline-focused.png`** — **issue:** Control chips and mode states at the top are very dense with similar visual weight, so critical transport/state info does not stand out. **brief suggested fix:** Elevate primary states (Play/Record/Mode/Quantize) with stronger contrast/priority and demote secondary toggles into a secondary bar or collapsible section.
