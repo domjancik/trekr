@@ -1926,16 +1926,13 @@ impl App {
                         content_rect.y,
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
+                    let label_color = inverted_label_color(marker.color);
                     crate::ui::draw_text_fitted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(x + band_width as i32 + 1, label_y, 8, 7),
+                        Rect::new(x + band_width as i32 + 3, label_y, 8, 7),
                         1,
-                        if marker.main_loop {
-                            primary_tick
-                        } else {
-                            secondary_tick
-                        },
+                        label_color,
                     )?;
                 }
             }
@@ -1988,16 +1985,13 @@ impl App {
                         content_rect.x,
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
+                    let label_color = inverted_label_color(marker.color);
                     crate::ui::draw_text_fitted(
                         canvas,
                         marker.label.as_str(),
-                        Rect::new(label_x, y + band_height as i32 + 1, 7, 6),
+                        Rect::new(label_x, y + band_height as i32 + 3, 7, 6),
                         1,
-                        if marker.main_loop {
-                            primary_tick
-                        } else {
-                            secondary_tick
-                        },
+                        label_color,
                     )?;
                 }
             }
@@ -6843,6 +6837,10 @@ fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
     (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
 }
 
+fn inverted_label_color(base: Color) -> Color {
+    Color::RGB(255 - base.r, 255 - base.g, 255 - base.b)
+}
+
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -8864,6 +8862,15 @@ mod tests {
                 .filter_map(|pixel| super::interlaced_color_at(&three, pixel))
                 .collect::<Vec<_>>(),
             vec![r, b, g, r, b, g]
+        );
+    }
+
+    #[test]
+    fn inverted_label_color_inverts_rgb_channels() {
+        let color = Color::RGB(12, 34, 56);
+        assert_eq!(
+            super::inverted_label_color(color),
+            Color::RGB(243, 221, 199)
         );
     }
 }
