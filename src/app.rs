@@ -1932,7 +1932,7 @@ impl App {
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
                     let label_rect = Rect::new(x + band_width as i32 + 3, label_y, 8, 7);
-                    let label_readback = readback_rect_rgba(canvas, label_rect);
+                    let label_readback = readback_rect_rgba(canvas, label_rect, self.viewport_size);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
@@ -1992,7 +1992,7 @@ impl App {
                         content_rect.x + content_rect.width() as i32 - 7,
                     );
                     let label_rect = Rect::new(label_x, y + band_height as i32 + 3, 7, 6);
-                    let label_readback = readback_rect_rgba(canvas, label_rect);
+                    let label_readback = readback_rect_rgba(canvas, label_rect, self.viewport_size);
                     crate::ui::draw_text_fitted_inverted(
                         canvas,
                         marker.label.as_str(),
@@ -6845,21 +6845,50 @@ fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
 }
 
 struct RgbaReadback {
-    rect: Rect,
+    logical_rect: Rect,
+    output_rect: Rect,
+    scale_x: f32,
+    scale_y: f32,
     pitch: usize,
     pixels: Vec<u8>,
 }
 
-fn readback_rect_rgba<T: RenderTarget>(canvas: &Canvas<T>, rect: Rect) -> Option<RgbaReadback> {
-    if rect.width() == 0 || rect.height() == 0 {
+fn readback_rect_rgba<T: RenderTarget>(
+    canvas: &Canvas<T>,
+    logical_rect: Rect,
+    logical_viewport_size: (u32, u32),
+) -> Option<RgbaReadback> {
+    if logical_rect.width() == 0 || logical_rect.height() == 0 {
         return None;
     }
-    let surface = canvas.read_pixels(rect).ok()?;
+    let output_size = canvas.output_size().ok()?;
+    let scale_x = if logical_viewport_size.0 > 0 {
+        output_size.0 as f32 / logical_viewport_size.0 as f32
+    } else {
+        1.0
+    };
+    let scale_y = if logical_viewport_size.1 > 0 {
+        output_size.1 as f32 / logical_viewport_size.1 as f32
+    } else {
+        1.0
+    };
+    let sx = scale_x.max(0.0001);
+    let sy = scale_y.max(0.0001);
+    let output_rect = Rect::new(
+        (logical_rect.x as f32 * sx).floor() as i32,
+        (logical_rect.y as f32 * sy).floor() as i32,
+        ((logical_rect.width() as f32 * sx).ceil() as u32).max(1),
+        ((logical_rect.height() as f32 * sy).ceil() as u32).max(1),
+    );
+    let surface = canvas.read_pixels(output_rect).ok()?;
     let converted = surface.convert_format(PixelFormat::RGBA32).ok()?;
     let pitch = converted.pitch() as usize;
     let pixels = converted.with_lock(|src| src.to_vec());
     Some(RgbaReadback {
-        rect,
+        logical_rect,
+        output_rect,
+        scale_x: sx,
+        scale_y: sy,
         pitch,
         pixels,
     })
@@ -6867,15 +6896,22 @@ fn readback_rect_rgba<T: RenderTarget>(canvas: &Canvas<T>, rect: Rect) -> Option
 
 fn readback_color_at(readback: &Option<RgbaReadback>, x: i32, y: i32) -> Option<Color> {
     let readback = readback.as_ref()?;
-    if x < readback.rect.x
-        || y < readback.rect.y
-        || x >= readback.rect.x + readback.rect.width() as i32
-        || y >= readback.rect.y + readback.rect.height() as i32
+    if x < readback.logical_rect.x
+        || y < readback.logical_rect.y
+        || x >= readback.logical_rect.x + readback.logical_rect.width() as i32
+        || y >= readback.logical_rect.y + readback.logical_rect.height() as i32
     {
         return None;
     }
-    let local_x = (x - readback.rect.x) as usize;
-    let local_y = (y - readback.rect.y) as usize;
+    let local_logical_x = x - readback.logical_rect.x;
+    let local_logical_y = y - readback.logical_rect.y;
+    let local_x = (local_logical_x as f32 * readback.scale_x).floor() as usize;
+    let local_y = (local_logical_y as f32 * readback.scale_y).floor() as usize;
+    if local_x >= readback.output_rect.width() as usize
+        || local_y >= readback.output_rect.height() as usize
+    {
+        return None;
+    }
     let base = local_y
         .saturating_mul(readback.pitch)
         .saturating_add(local_x.saturating_mul(4));
