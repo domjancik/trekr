@@ -1159,13 +1159,10 @@ fn launch_boundary_crossed(
 
     match queued.launch_quantize {
         LaunchQuantizeMode::LoopEnd => {
-            let loop_start = queued.loop_region_at_queue.start_ticks;
             let loop_len = queued.loop_region_at_queue.length_ticks.max(1);
-            let queued_offset = queued
-                .queued_at_transport_ticks
-                .saturating_sub(loop_start);
-            let cycle_index = (queued_offset / loop_len).saturating_add(1);
-            let next_boundary = loop_start.saturating_add(cycle_index.saturating_mul(loop_len));
+            // Align launch with the current runtime loop cycle boundary used by playback.
+            let next_boundary =
+                ((queued.queued_at_transport_ticks / loop_len) + 1).saturating_mul(loop_len);
             previous_transport_ticks < next_boundary && current_transport_ticks >= next_boundary
         }
         mode => {
@@ -1815,7 +1812,7 @@ mod tests {
     }
 
     #[test]
-    fn queued_stored_loop_recall_resolves_on_strict_loop_end_boundary() {
+    fn queued_stored_loop_recall_resolves_on_loop_cycle_boundary() {
         let mut track = Track::new_empty("Track 1", TrackKind::Midi);
         track.loop_region = LoopRegion::new(480, 960);
         assert!(track.store_current_loop_to_slot(0));
@@ -1824,8 +1821,8 @@ mod tests {
         track.loop_region = LoopRegion::new(480, 960);
 
         assert!(track.queue_stored_loop_recall(1, LaunchQuantizeMode::LoopEnd, 1_000));
-        assert!(!track.resolve_queued_stored_loop_recall_if_due(1_000, 1_439, 960));
-        assert!(track.resolve_queued_stored_loop_recall_if_due(1_439, 1_440, 960));
+        assert!(!track.resolve_queued_stored_loop_recall_if_due(1_000, 1_919, 960));
+        assert!(track.resolve_queued_stored_loop_recall_if_due(1_919, 1_920, 960));
         assert_eq!(track.active_stored_loop_slot(), Some(1));
     }
 }
