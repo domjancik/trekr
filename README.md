@@ -28,13 +28,13 @@ Latest renderer-owned captures from the demo state:
 
 ## Docs
 
-- `docs/product-spec.md`: product behavior, UX model, workflows, and MVP scope.
-- `docs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
-- `docs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
-- `docs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
-- `docs/architecture.md`: engine architecture, portability constraints, and stack options.
-- `docs/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
-- `docs/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
+- `docs/specs/product-spec.md`: product behavior, UX model, workflows, and MVP scope.
+- `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
+- `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
+- `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
+- `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
+- `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
 
 ## Current Direction
 
@@ -268,8 +268,8 @@ The app also exposes a generic overlay layer with two independent modes:
 
 Current planning note:
 
-- the remaining MVP checklist now lives in `docs/implementation-plan.md`
-- Ableton Link is planned as a near-term sync milestone after the core MVP workflow is comfortable, and its architecture notes live in `docs/architecture.md`
+- the remaining MVP checklist now lives in `docs/planning/implementation-plan.md`
+- Ableton Link is planned as a near-term sync milestone after the core MVP workflow is comfortable, and its architecture notes live in `docs/dev/architecture.md`
 
 ## Raspberry Pi Zero 2 W Cross-Build
 
@@ -437,3 +437,4 @@ Notes:
 - this flow uses local `ffmpeg` DirectShow capture, not renderer-owned screenshots
 - by default it also records a small remote Pi status snapshot into `artifacts/camera-debug/pi-status.txt` using `scripts/rpi-deploy.local.psd1` if that config exists
 - if `ffmpeg` reports `Could not run graph`, the capture device is usually already in use by another app such as OBS
+

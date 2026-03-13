@@ -65,10 +65,10 @@
 
 - Product/docs:
   - `README.md`
-  - `docs/product-spec.md`
-  - `docs/architecture.md`
-  - `docs/implementation-plan.md`
-  - `docs/current-mappings.md`
+  - `docs/specs/product-spec.md`
+  - `docs/dev/architecture.md`
+  - `docs/planning/implementation-plan.md`
+  - `docs/dev/current-mappings.md`
 - Core code:
   - `src/app.rs`
   - `src/actions.rs`
@@ -187,3 +187,4 @@ Those should be reviewed before any reset, cleanup, or broad staging step.
 3. Move MIDI timing and capture further off the UI loop.
 4. Design the timeline note/region editing UX before implementing pointer editing.
 5. Decide whether the in-progress Raspberry Pi Zero 2 W deployment scripts should be committed as a finished supported flow.
+
