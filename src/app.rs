@@ -6917,9 +6917,11 @@ fn draw_loop_label_underline<T: RenderTarget>(
     let underline_width = crate::ui::text_width(label, 1)
         .min(label_rect.width())
         .max(1);
-    let underline_x =
-        label_rect.x + ((label_rect.width() as i32 - underline_width as i32) / 2).max(0);
-    let underline_y = (label_rect.y + label_rect.height() as i32)
+    let underline_x = (label_rect.x
+        + ((label_rect.width() as i32 - underline_width as i32) / 2).max(0)
+        - 1)
+    .max(content_rect.x);
+    let underline_y = (label_rect.y + label_rect.height() as i32 + 1)
         .min(content_rect.y + content_rect.height() as i32 - 1);
     canvas.set_draw_color(color);
     canvas
