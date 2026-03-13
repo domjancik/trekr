@@ -1169,7 +1169,6 @@ impl App {
         }
 
         let note_range = crate::timeline::LoopRegion::new(view_start_ticks, range_ticks.max(1));
-        self.draw_track_loop_markers(canvas, content_rect, note_range, track)?;
         let selected_note_indices = track.selected_note_indices();
         let focused_note_index = track.focused_note_index();
         let anchor_note_index = track.anchor_note_index();
@@ -1228,6 +1227,8 @@ impl App {
                 canvas.draw_rect(note.rect)?;
             }
         }
+
+        self.draw_track_loop_markers(canvas, content_rect, note_range, track)?;
 
         let playhead = crate::ui::playhead_rect_in_range(
             content_rect,
@@ -1874,7 +1875,10 @@ impl App {
                 let usable_width = (content_rect.x + content_rect.width() as i32 - x).max(1);
                 let band_width = side_major.min(usable_width as u32);
                 let start_y = content_rect.y;
-                let end_y = content_rect.y + content_rect.height() as i32 - 1;
+                let end_y = content_rect.y + content_rect.height() as i32 - 2;
+                if end_y < start_y {
+                    return Ok(());
+                }
 
                 for y in start_y..=end_y {
                     let colors = spans
@@ -1904,16 +1908,21 @@ impl App {
                         marker.range,
                     );
                     let line_h = span_rect.height().max(1);
-                    let end_marker_y = span_rect.y + line_h as i32 - 1;
+                    let marker_start_y = span_rect.y.clamp(start_y, end_y);
+                    let end_marker_y = (span_rect.y + line_h as i32 - 1).clamp(start_y, end_y);
+                    if marker_start_y > end_marker_y {
+                        continue;
+                    }
                     canvas.set_draw_color(if marker.main_loop {
                         primary_tick
                     } else {
                         secondary_tick
                     });
-                    canvas.fill_rect(Rect::new(x, span_rect.y, band_width.min(4), 1))?;
+                    canvas.fill_rect(Rect::new(x, marker_start_y, band_width.min(4), 1))?;
                     canvas.fill_rect(Rect::new(x, end_marker_y, band_width.min(4), 1))?;
 
-                    let label_y = (span_rect.y + line_h as i32 / 2 - 3).clamp(
+                    let marker_mid_y = marker_start_y + (end_marker_y - marker_start_y) / 2;
+                    let label_y = (marker_mid_y - 3).clamp(
                         content_rect.y,
                         content_rect.y + content_rect.height() as i32 - 7,
                     );
