@@ -822,12 +822,14 @@ impl App {
         let animation_active = elapsed < startup_logo_animation_duration();
         for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
             let pulse = startup_logo_pulse(elapsed, index);
-            let color = if pulse > 0.66 {
+            let color = if pulse > 0.75 {
                 Color::RGB(255, 255, 246)
-            } else if pulse > 0.33 {
+            } else if pulse > 0.5 {
+                Color::RGB(254, 251, 236)
+            } else if pulse > 0.25 {
                 Color::RGB(252, 248, 230)
             } else if animation_active {
-                Color::RGB(214, 206, 182)
+                Color::RGB(184, 174, 146)
             } else {
                 Color::RGB(244, 238, 210)
             };
@@ -7774,19 +7776,32 @@ fn compact_build_date(value: &str) -> &str {
 }
 
 fn startup_logo_pulse(elapsed: Duration, index: usize) -> f32 {
-    let stagger = Duration::from_millis(180 * index as u64);
+    let lead_in = Duration::from_millis(320);
+    let stagger = Duration::from_millis(180 * startup_logo_reveal_step(index));
     let pulse_duration = Duration::from_millis(520);
     let animation_duration = startup_logo_animation_duration();
-    if elapsed >= animation_duration || elapsed < stagger || elapsed > stagger + pulse_duration {
+    let start = lead_in + stagger;
+    if elapsed >= animation_duration || elapsed < start || elapsed > start + pulse_duration {
         return 0.0;
     }
 
-    let t = (elapsed - stagger).as_secs_f32() / pulse_duration.as_secs_f32();
+    let t = (elapsed - start).as_secs_f32() / pulse_duration.as_secs_f32();
     if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }
 }
 
 fn startup_logo_animation_duration() -> Duration {
-    Duration::from_millis(2_000)
+    Duration::from_millis(2_100)
+}
+
+fn startup_logo_reveal_step(index: usize) -> u64 {
+    match index {
+        2 => 0, // E
+        1 => 1, // left inner R
+        3 => 2, // right inner K
+        0 => 3, // left outer T
+        4 => 4, // right outer R
+        _ => 0,
+    }
 }
 
 fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
