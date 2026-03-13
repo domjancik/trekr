@@ -1,5 +1,9 @@
 use std::time::Duration;
 
+use sdl3::pixels::Color;
+use sdl3::rect::Rect;
+use sdl3::render::{Canvas, RenderTarget};
+
 pub const BRAND_NAME: &str = "trekr";
 pub const BRAND_SITE: &str = "domj.net";
 pub const BRAND_HASH: &str = match option_env!("TREKR_BUILD_HASH") {
@@ -85,4 +89,125 @@ fn startup_logo_reveal_step(index: usize) -> u64 {
         0 | 4 => 2, // outer pair
         _ => 2,
     }
+}
+
+pub fn draw_frame_brand_fallback<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
+    surface: Rect,
+) -> Result<(), Box<dyn std::error::Error>> {
+    crate::ui::draw_text_fitted(
+        canvas,
+        BRAND_NAME,
+        Rect::new(surface.x + 8, surface.y + 8, 42, 8),
+        1,
+        Color::RGB(200, 210, 224),
+    )?;
+    crate::ui::draw_text_fitted(
+        canvas,
+        &brand_fallback_badge(),
+        Rect::new(surface.x + 56, surface.y + 8, 132, 8),
+        1,
+        Color::RGB(120, 132, 150),
+    )?;
+    Ok(())
+}
+
+pub fn draw_branding<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
+    bounds: Rect,
+    elapsed: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if bounds.width() == 0 {
+        return Ok(());
+    }
+
+    draw_brand_name(canvas, bounds, elapsed)?;
+    if let Some(date) = brand_build_date() {
+        crate::ui::draw_text_fitted(
+            canvas,
+            date,
+            Rect::new(
+                bounds.x + 74,
+                bounds.y + 4,
+                bounds.width().saturating_sub(74),
+                8,
+            ),
+            1,
+            Color::RGB(120, 132, 150),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_HASH,
+            Rect::new(
+                bounds.x + 74,
+                bounds.y + 14,
+                bounds.width().saturating_sub(74),
+                8,
+            ),
+            1,
+            Color::RGB(136, 146, 164),
+        )?;
+    } else {
+        crate::ui::draw_text_fitted(
+            canvas,
+            BRAND_HASH,
+            Rect::new(
+                bounds.x + 74,
+                bounds.y + 9,
+                bounds.width().saturating_sub(74),
+                8,
+            ),
+            1,
+            Color::RGB(120, 132, 150),
+        )?;
+    }
+    crate::ui::draw_text_fitted(
+        canvas,
+        BRAND_SITE,
+        Rect::new(bounds.x + 2, bounds.y + 18, 64, 8),
+        1,
+        Color::RGB(146, 156, 172),
+    )?;
+
+    let divider = Rect::new(
+        bounds.x + bounds.width() as i32 - 1,
+        bounds.y + 2,
+        1,
+        bounds.height().saturating_sub(4),
+    );
+    canvas.set_draw_color(Color::RGB(72, 82, 100));
+    canvas.fill_rect(divider)?;
+    Ok(())
+}
+
+fn draw_brand_name<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
+    bounds: Rect,
+    elapsed: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let step = crate::ui::text_width("T", 2) as i32;
+    let y = bounds.y + 2;
+    for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
+        let intensity = startup_logo_intensity(elapsed, index);
+        let color = if intensity > 0.85 {
+            Color::RGB(255, 255, 246)
+        } else if intensity > 0.6 {
+            Color::RGB(236, 226, 198)
+        } else if intensity > 0.35 {
+            Color::RGB(210, 198, 166)
+        } else if elapsed < startup_logo_animation_duration() {
+            Color::RGB(184, 174, 146)
+        } else {
+            Color::RGB(244, 238, 210)
+        };
+        crate::ui::draw_text(
+            canvas,
+            &letter.to_string(),
+            bounds.x + index as i32 * step,
+            y,
+            2,
+            color,
+        )?;
+    }
+    Ok(())
 }
