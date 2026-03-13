@@ -592,21 +592,7 @@ impl App {
         canvas: &mut Canvas<T>,
         surface: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        crate::ui::draw_text_fitted(
-            canvas,
-            branding::BRAND_NAME,
-            Rect::new(surface.x + 8, surface.y + 8, 42, 8),
-            1,
-            Color::RGB(200, 210, 224),
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            &branding::brand_fallback_badge(),
-            Rect::new(surface.x + 56, surface.y + 8, 132, 8),
-            1,
-            Color::RGB(120, 132, 150),
-        )?;
-        Ok(())
+        branding::draw_frame_brand_fallback(canvas, surface)
     }
 
     fn configure_window_canvas(
@@ -741,100 +727,7 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if bounds.width() == 0 {
-            return Ok(());
-        }
-
-        self.draw_brand_name(canvas, bounds)?;
-        if let Some(date) = branding::brand_build_date() {
-            crate::ui::draw_text_fitted(
-                canvas,
-                date,
-                Rect::new(
-                    bounds.x + 74,
-                    bounds.y + 4,
-                    bounds.width().saturating_sub(74),
-                    8,
-                ),
-                1,
-                Color::RGB(120, 132, 150),
-            )?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                branding::BRAND_HASH,
-                Rect::new(
-                    bounds.x + 74,
-                    bounds.y + 14,
-                    bounds.width().saturating_sub(74),
-                    8,
-                ),
-                1,
-                Color::RGB(136, 146, 164),
-            )?;
-        } else {
-            crate::ui::draw_text_fitted(
-                canvas,
-                branding::BRAND_HASH,
-                Rect::new(
-                    bounds.x + 74,
-                    bounds.y + 9,
-                    bounds.width().saturating_sub(74),
-                    8,
-                ),
-                1,
-                Color::RGB(120, 132, 150),
-            )?;
-        }
-        crate::ui::draw_text_fitted(
-            canvas,
-            branding::BRAND_SITE,
-            Rect::new(bounds.x + 2, bounds.y + 18, 64, 8),
-            1,
-            Color::RGB(146, 156, 172),
-        )?;
-
-        let divider = Rect::new(
-            bounds.x + bounds.width() as i32 - 1,
-            bounds.y + 2,
-            1,
-            bounds.height().saturating_sub(4),
-        );
-        canvas.set_draw_color(Color::RGB(72, 82, 100));
-        canvas.fill_rect(divider)?;
-        Ok(())
-    }
-
-    fn draw_brand_name<T: RenderTarget>(
-        &self,
-        canvas: &mut Canvas<T>,
-        bounds: Rect,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let step = crate::ui::text_width("T", 2) as i32;
-        let y = bounds.y + 2;
-        let elapsed = self.startup_started_at.elapsed();
-        for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
-            let intensity = branding::startup_logo_intensity(elapsed, index);
-            let color = if intensity > 0.85 {
-                Color::RGB(255, 255, 246)
-            } else if intensity > 0.6 {
-                Color::RGB(236, 226, 198)
-            } else if intensity > 0.35 {
-                Color::RGB(210, 198, 166)
-            } else if elapsed < branding::startup_logo_animation_duration() {
-                Color::RGB(184, 174, 146)
-            } else {
-                Color::RGB(244, 238, 210)
-            };
-            crate::ui::draw_text(
-                canvas,
-                &letter.to_string(),
-                bounds.x + index as i32 * step,
-                y,
-                2,
-                color,
-            )?;
-        }
-        Ok(())
+        branding::draw_branding(canvas, bounds, self.startup_started_at.elapsed())
     }
 
     pub(crate) fn draw_timeline_page<T: RenderTarget>(
