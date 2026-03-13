@@ -819,16 +819,15 @@ impl App {
         let step = crate::ui::text_width("T", 2) as i32;
         let y = bounds.y + 2;
         let elapsed = self.startup_started_at.elapsed();
-        let animation_active = elapsed < startup_logo_animation_duration();
         for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
-            let pulse = startup_logo_pulse(elapsed, index);
-            let color = if pulse > 0.75 {
+            let intensity = startup_logo_intensity(elapsed, index);
+            let color = if intensity > 0.85 {
                 Color::RGB(255, 255, 246)
-            } else if pulse > 0.5 {
+            } else if intensity > 0.6 {
                 Color::RGB(254, 251, 236)
-            } else if pulse > 0.25 {
+            } else if intensity > 0.35 {
                 Color::RGB(252, 248, 230)
-            } else if animation_active {
+            } else if elapsed < startup_logo_animation_duration() {
                 Color::RGB(184, 174, 146)
             } else {
                 Color::RGB(244, 238, 210)
@@ -7775,32 +7774,52 @@ fn compact_build_date(value: &str) -> &str {
     }
 }
 
-fn startup_logo_pulse(elapsed: Duration, index: usize) -> f32 {
-    let lead_in = Duration::from_millis(320);
-    let stagger = Duration::from_millis(180 * startup_logo_reveal_step(index));
-    let pulse_duration = Duration::from_millis(520);
-    let animation_duration = startup_logo_animation_duration();
-    let start = lead_in + stagger;
-    if elapsed >= animation_duration || elapsed < start || elapsed > start + pulse_duration {
+fn startup_logo_intensity(elapsed: Duration, index: usize) -> f32 {
+    let phase1_lead_ms = 220_u64;
+    let phase1_step_ms = 220_u64;
+    let phase1_len_ms = phase1_step_ms * 5;
+    let phase1_start = Duration::from_millis(phase1_lead_ms);
+    let phase1_end = phase1_start + Duration::from_millis(phase1_len_ms);
+    if elapsed < phase1_start {
+        return 0.0;
+    }
+    if elapsed < phase1_end {
+        let since = elapsed - phase1_start;
+        let active = ((since.as_millis() / phase1_step_ms as u128) as usize).min(4);
+        if active != index {
+            return 0.0;
+        }
+        let local_start = Duration::from_millis(phase1_step_ms * active as u64);
+        let t = (since - local_start).as_secs_f32()
+            / Duration::from_millis(phase1_step_ms).as_secs_f32();
+        return if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }.clamp(0.0, 1.0);
+    }
+
+    let phase2_gap_ms = 140_u64;
+    let phase2_start = phase1_end + Duration::from_millis(phase2_gap_ms);
+    let phase2_step_ms = 240_u64;
+    let phase2_step = Duration::from_millis(phase2_step_ms);
+    let reveal_index = startup_logo_reveal_step(index) as f32;
+    if elapsed < phase2_start {
         return 0.0;
     }
 
-    let t = (elapsed - start).as_secs_f32() / pulse_duration.as_secs_f32();
-    if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }
+    let since_phase2 = elapsed - phase2_start;
+    let progressive = (since_phase2.as_secs_f32() / phase2_step.as_secs_f32()) - reveal_index;
+    progressive.clamp(0.0, 1.0)
 }
 
 fn startup_logo_animation_duration() -> Duration {
-    Duration::from_millis(2_100)
+    // phase1 lead + pulse-through + phase2 gap + center-out reveal + white hold
+    Duration::from_millis(220 + (220 * 5) + 140 + (240 * 3) + 320)
 }
 
 fn startup_logo_reveal_step(index: usize) -> u64 {
     match index {
-        2 => 0, // E
-        1 => 1, // left inner R
-        3 => 2, // right inner K
-        0 => 3, // left outer T
-        4 => 4, // right outer R
-        _ => 0,
+        2 => 0,     // E first
+        1 | 3 => 1, // inner pair
+        0 | 4 => 2, // outer pair
+        _ => 2,
     }
 }
 
