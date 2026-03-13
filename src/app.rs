@@ -62,6 +62,7 @@ pub struct App {
     link_snapshot: LinkSnapshot,
     note_additive_select_held: bool,
     focused_track_view: bool,
+    startup_started_at: Instant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,6 +251,7 @@ impl App {
             link_snapshot,
             note_additive_select_held: false,
             focused_track_view: false,
+            startup_started_at: Instant::now(),
         }
     }
 
@@ -746,13 +748,7 @@ impl App {
             return Ok(());
         }
 
-        crate::ui::draw_text_fitted(
-            canvas,
-            BRAND_NAME,
-            Rect::new(bounds.x, bounds.y + 2, 84, 14),
-            2,
-            Color::RGB(244, 238, 210),
-        )?;
+        self.draw_brand_name(canvas, bounds)?;
         if let Some(date) = brand_build_date() {
             crate::ui::draw_text_fitted(
                 canvas,
@@ -808,6 +804,35 @@ impl App {
         );
         canvas.set_draw_color(Color::RGB(72, 82, 100));
         canvas.fill_rect(divider)?;
+        Ok(())
+    }
+
+    fn draw_brand_name<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let step = crate::ui::text_width("T", 2) as i32;
+        let y = bounds.y + 2;
+        let elapsed = self.startup_started_at.elapsed();
+        for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
+            let pulse = startup_logo_pulse(elapsed, index);
+            let color = if pulse > 0.66 {
+                Color::RGB(255, 250, 234)
+            } else if pulse > 0.33 {
+                Color::RGB(250, 244, 220)
+            } else {
+                Color::RGB(244, 238, 210)
+            };
+            crate::ui::draw_text(
+                canvas,
+                &letter.to_string(),
+                bounds.x + index as i32 * step,
+                y,
+                2,
+                color,
+            )?;
+        }
         Ok(())
     }
 
@@ -7739,6 +7764,18 @@ fn compact_build_date(value: &str) -> &str {
     } else {
         value
     }
+}
+
+fn startup_logo_pulse(elapsed: Duration, index: usize) -> f32 {
+    let stagger = Duration::from_millis(120 * index as u64);
+    let pulse_duration = Duration::from_millis(360);
+    let animation_duration = Duration::from_millis(1_200);
+    if elapsed >= animation_duration || elapsed < stagger || elapsed > stagger + pulse_duration {
+        return 0.0;
+    }
+
+    let t = (elapsed - stagger).as_secs_f32() / pulse_duration.as_secs_f32();
+    if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 }
 }
 
 fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
