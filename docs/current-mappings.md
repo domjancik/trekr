@@ -16,6 +16,8 @@ Keyboard mappings currently implemented:
 - `Home`: reset song loop to full song range
 - `G`: toggle global loop
 - `L`: toggle current track loop
+- `Shift+L`: toggle global quantized stored-loop recall
+- `Shift+Q`: cycle global stored-loop launch quantize (`Off`, `1/16`, `1/8`, `1/4`, `Bar`, `LoopEnd`)
 - `[` / `]`: set current track loop start/end at playhead
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `,` / `.`: nudge current track loop backward/forward

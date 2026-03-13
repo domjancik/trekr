@@ -153,6 +153,8 @@ Current controls:
 - `Alt+1`..`Alt+8`: laptop fallback for recalling stored loop slots `1`..`8` on the active track
 - `Shift+Numpad1`..`Shift+Numpad8`: store the current active-track loop to stored loop slots `1`..`8`
 - `Shift+Alt+1`..`Shift+Alt+8`: laptop fallback for storing the current active-track loop to slots `1`..`8`
+- `Shift+L`: toggle global quantized stored-loop recall
+- `Shift+Q`: cycle global stored-loop launch quantize (`Off`, `1/16`, `1/8`, `1/4`, `Bar`, `LoopEnd`)
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead
 - `Shift+,` / `Shift+.`: nudge global loop backward/forward by one quantize step
 - `Shift+-` / `Shift+=`: shorten/extend global loop by one quantize step
@@ -177,7 +179,7 @@ Current controls:
 - `D` / `F`: nudge selected notes down/up by one semitone
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view
 
-Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels.
+Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected global launch boundary (or immediately when launch quantize is `Off` / transport is stopped). Recalls are blocked on actively recording tracks.
 - `Shift+Delete`: delete the selected committed recording clip in stacked view
 - `Shift+F8`: toggle focused-track timeline view for the active track
 - `Left` / `Right`: select previous/next track directly

@@ -33,6 +33,40 @@ impl RecordMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LaunchQuantizeMode {
+    Off,
+    Sixteenth,
+    Eighth,
+    Quarter,
+    Bar,
+    LoopEnd,
+}
+
+impl LaunchQuantizeMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Sixteenth,
+            Self::Sixteenth => Self::Eighth,
+            Self::Eighth => Self::Quarter,
+            Self::Quarter => Self::Bar,
+            Self::Bar => Self::LoopEnd,
+            Self::LoopEnd => Self::Off,
+        }
+    }
+
+    pub fn step_ticks(self, ppqn: u16) -> Option<u64> {
+        match self {
+            Self::Off => None,
+            Self::Sixteenth => Some((ppqn / 4) as u64),
+            Self::Eighth => Some((ppqn / 2) as u64),
+            Self::Quarter => Some(ppqn as u64),
+            Self::Bar => Some((ppqn * 4) as u64),
+            Self::LoopEnd => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Transport {
     pub tempo_bpm: u16,
@@ -40,6 +74,8 @@ pub struct Transport {
     pub quantize: QuantizeMode,
     pub record_mode: RecordMode,
     pub loop_recording_extends_clip: bool,
+    pub stored_loop_recall_quantized: bool,
+    pub stored_loop_launch_quantize: LaunchQuantizeMode,
     pub link_enabled: bool,
     pub link_start_stop_sync: bool,
     pub loop_enabled: bool,
@@ -55,6 +91,8 @@ impl Default for Transport {
             quantize: QuantizeMode::Sixteenth,
             record_mode: RecordMode::Overdub,
             loop_recording_extends_clip: true,
+            stored_loop_recall_quantized: false,
+            stored_loop_launch_quantize: LaunchQuantizeMode::Bar,
             link_enabled: false,
             link_start_stop_sync: false,
             loop_enabled: true,
@@ -99,7 +137,7 @@ impl Transport {
 
 #[cfg(test)]
 mod tests {
-    use super::{QuantizeMode, RecordMode, Transport};
+    use super::{LaunchQuantizeMode, QuantizeMode, RecordMode, Transport};
 
     #[test]
     fn quantize_to_nearest_prefers_nearest_boundary() {
@@ -137,5 +175,22 @@ mod tests {
     #[test]
     fn transport_defaults_loop_recording_extension_on() {
         assert!(Transport::default().loop_recording_extends_clip);
+    }
+
+    #[test]
+    fn launch_quantize_cycles_through_all_modes() {
+        let mut mode = LaunchQuantizeMode::Off;
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::Sixteenth);
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::Eighth);
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::Quarter);
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::Bar);
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::LoopEnd);
+        mode = mode.next();
+        assert_eq!(mode, LaunchQuantizeMode::Off);
     }
 }
