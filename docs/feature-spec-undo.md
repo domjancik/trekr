@@ -8,11 +8,12 @@ The core requirement is:
 
 - any user-issued action that changes meaningful app state should be reversible
 
-To make that practical, the app should distinguish three state domains:
+To make that practical, the app should distinguish three undo domains plus one non-undo session layer:
 
 - `Timeline`: project content and timeline-adjacent editor state
 - `Mappings`: mapping definitions and mapping-editor context
 - `UI`: page navigation and other non-document interface state
+- `Session`: runtime transport/playback state that is intentionally not in undo history
 
 The recommended shape is:
 
@@ -83,7 +84,6 @@ This domain covers mapping content and mapping-editor context that should rewind
 - mapping source kind/device/value
 - mapping target and scope
 - selected mapping row when caused by a mapping edit
-- mapping learn arming when it directly participates in an edit flow
 
 Rationale:
 
@@ -114,6 +114,7 @@ This state is not part of undo history:
 
 - playhead advancement from elapsed time
 - transport tick accumulation
+- explicit playback start/stop session control (`TogglePlayback`, `StartRecording`, `StopRecording`)
 - hover state
 - status messages
 - Link peer/tempo snapshots arriving from runtime refresh
@@ -280,7 +281,8 @@ These are `UI` entries:
 - timeline flow changes
 - MIDI I/O page focus changes
 - routing page field focus changes
-- mappings write-mode toggle if it changes interface mode only
+- mappings write-mode toggle
+- mappings MIDI-learn arming/disarming unless a committed learn write creates a mapping mutation
 
 The intent is literal reversibility of interface actions without polluting `Timeline` or `Mappings`.
 
@@ -310,7 +312,7 @@ Optional later coalescing:
 - repeated loop nudges/resizes
 - repeated page-item adjustments on the same field
 
-V1 does not need aggressive coalescing beyond the required transaction cases.
+Coalescing is intentionally deferred until after baseline undo behavior is stable in real use.
 
 ## Redo Rule
 
@@ -423,6 +425,29 @@ Important likely refactor:
 
 At minimum, `active_track_index` should be deliberately classified rather than inherited as "project" merely because of current struct placement.
 
+## Persistence Model
+
+Undo history should persist across relaunches.
+
+Implementation shape:
+
+- keep undo history in a separate file from the main app state
+- store it next to the main state path as a sibling file (for example, `undo-history.json`)
+- do not embed undo history inside `PersistedAppState`
+
+V1 format recommendation:
+
+- bounded snapshot journal, not a pure event-sourcing log
+- each journal entry stores `domain`, `label`, and compact `before`/`after` snapshots for the domain slice
+- include a schema version and maximum-entry cap
+- truncate oldest entries once cap is exceeded
+
+Why this over event log first:
+
+- current actions already mutate structs directly; inverse/event reconstruction would add significant complexity
+- snapshot journal keeps restore logic deterministic and straightforward
+- it still supports later migration to event-log-plus-checkpoint if history size/perf requires it
+
 ## Likely Code Touch Points
 
 - `src/actions.rs`
@@ -453,9 +478,9 @@ At minimum, `active_track_index` should be deliberately classified rather than i
 - every committed entry has a user-facing label and domain tag
 - the architecture permits later `Undo Timeline`, `Undo Mappings`, and `Undo UI` actions without replacing the history model
 
-## Open Questions
+## Resolved Decisions (March 13, 2026)
 
-- should `TogglePlayback` and explicit transport start/stop be treated as undoable `UI` actions, or remain outside history as session controls
-- should mapping write-mode and MIDI-learn arming be `UI` or `Mappings`
-- should repeated nudges coalesce in V1, or only after basic undo feels correct
-- should undo history persist across app relaunch, or reset per session in the first implementation
+- `TogglePlayback` and explicit transport start/stop remain in a non-undo `Session` layer.
+- Mapping write-mode and MIDI-learn arming are `UI`; created/edited mapping rows are `Mappings`.
+- Nudge coalescing is deferred until after baseline undo/redo is implemented and validated.
+- Undo persists across relaunches using a separate undo-history file, not bundled into the main state file.
