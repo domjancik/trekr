@@ -265,6 +265,16 @@ Recommended V1 extension:
 
 This keeps default selection behavior consistent with routing and mappings, which already preserve intent by name.
 
+## Decision Defaults
+
+The following decisions close the initial open questions and should be treated as the default implementation target:
+
+- Refresh cadence estimate: run periodic refresh at about `1 Hz` (`~1000 ms`) on the current UI-thread model, with immediate refresh on MIDI I/O failure signals. If low-end profiling shows this is too expensive, relax to `2 Hz` intervals before changing architecture.
+- Status noise policy: keep refresh behavior silent by default and only surface status text when device state actually changes (disconnect/reconnect/offline resolution).
+- Missing-default visibility: show explicit offline entries on `MIDI I/O` for preferred default input/output names that are currently unavailable.
+- Reconnect warning UX: when playback output was interrupted, show explicit user options instead of a passive notice only.
+  - recommended first shape: `Dismiss` and `Send All Notes Off` options in the transient reconnect surface.
+
 ## Implementation Notes
 
 Suggested incremental implementation:
@@ -295,9 +305,6 @@ Likely code touch points:
 - The UI shows offline/unavailable state inline on the relevant pages without relying on hover.
 - Disconnect/reconnect handling does not clear recorded track content, mappings, or routing assignments.
 
-## Open Questions
+## Remaining Questions
 
-- what refresh cadence is acceptable before it becomes too expensive on the lowest-end target devices
-- whether the app should surface a small `last refresh` timestamp/status line or keep refresh mostly silent unless state changes
-- whether `MIDI I/O` should list recently missing preferred defaults as explicit offline rows or summarize them in header/status text only
-- whether output reconnect should trigger any one-time transport-visible warning when playback events are dropped during the outage
+- should the reconnect options be rendered as a modal, inline transport chip, or footer action prompt in the first implementation slice
