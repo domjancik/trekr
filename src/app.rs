@@ -4836,7 +4836,7 @@ impl App {
     }
 
     fn effective_track_playhead(&self, track: &Track) -> u64 {
-        let raw = self.playhead_ticks;
+        let raw = self.transport_ticks;
         if !track.state.loop_enabled || track.loop_region.length_ticks == 0 {
             return raw;
         }
@@ -7992,6 +7992,7 @@ mod tests {
         track.state.loop_enabled = true;
         track.loop_region.start_ticks = 960;
         track.loop_region.length_ticks = 960;
+        app.transport_ticks = 2_400;
         app.playhead_ticks = 2_400;
 
         assert_eq!(
@@ -8007,6 +8008,7 @@ mod tests {
         track.state.loop_enabled = true;
         track.loop_region.start_ticks = 1_920;
         track.loop_region.length_ticks = 960;
+        app.transport_ticks = 480;
         app.playhead_ticks = 480;
 
         assert_eq!(
