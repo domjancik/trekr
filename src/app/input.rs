@@ -293,7 +293,7 @@ impl App {
         })
     }
 
-    fn handle_pointer_down(
+    pub(super) fn handle_pointer_down(
         &mut self,
         x: i32,
         y: i32,

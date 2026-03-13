@@ -47,16 +47,34 @@ if ($captureCount -eq 0) {
     throw "trekr UI capture produced no screenshots in $outputRoot"
 }
 
-$manifest = foreach ($capture in $captures) {
-    [pscustomobject]@{
-        page = [System.IO.Path]::GetFileNameWithoutExtension($capture.Name)
-        path = $capture.FullName
+$manifestPath = Join-Path $outputRoot "manifest.json"
+$manifest = $null
+if (Test-Path $manifestPath) {
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+}
+if ($null -eq $manifest) {
+    $manifest = [pscustomobject]@{
+        generated_at = [DateTimeOffset]::Now.ToString("o")
+        output_dir = $outputRoot
+        state_mode = $StateMode
+        files = @(
+            foreach ($capture in $captures) {
+                [pscustomobject]@{
+                    filename = $capture.Name
+                    path = $capture.FullName
+                    page = [System.IO.Path]::GetFileNameWithoutExtension($capture.Name)
+                    width = 0
+                    height = 0
+                }
+            }
+        )
     }
+    $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $manifestPath
 }
 
-$manifestPath = Join-Path $outputRoot "manifest.json"
-$manifest | ConvertTo-Json | Set-Content -Encoding UTF8 $manifestPath
-
 Write-Host "Captured renderer-level screenshots:"
-$manifest | ForEach-Object { Write-Host " - $($_.page): $($_.path)" }
+foreach ($entry in $manifest.files) {
+    $label = if ($entry.page) { $entry.page } else { [System.IO.Path]::GetFileNameWithoutExtension($entry.filename) }
+    Write-Host " - $label: $($entry.path)"
+}
 Write-Host "Manifest: $(Resolve-Path $manifestPath)"

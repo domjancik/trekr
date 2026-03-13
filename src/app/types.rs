@@ -2,6 +2,7 @@ use crate::actions::{ActionSource, AppAction};
 use crate::mapping::MappingSourceKind;
 use crate::pages::AppPage;
 use crate::timeline_fx::TimelineContext;
+use serde::{Deserialize, Serialize};
 use sdl3::rect::Rect;
 use std::path::PathBuf;
 
@@ -175,6 +176,13 @@ pub(crate) struct RecordingLaneWindow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiCaptureOptions {
     pub output_dir: PathBuf,
+    pub state_mode: String,
+    pub script_path: Option<PathBuf>,
+    pub capture_region: Option<String>,
+    pub capture_rect: Option<CaptureRect>,
+    pub capture_padding: Option<CapturePadding>,
+    pub annotation_path: Option<PathBuf>,
+    pub sequence_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -196,6 +204,22 @@ pub enum UiScalingMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RunOptions {
     pub video_mode: VideoMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptureRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapturePadding {
+    pub left: u32,
+    pub top: u32,
+    pub right: u32,
+    pub bottom: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

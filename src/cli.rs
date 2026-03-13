@@ -1,4 +1,4 @@
-use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
+use crate::app::{App, CapturePadding, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 use crate::state;
 use crate::theme::ThemePreset;
 use std::io::{self, BufRead, Write};
@@ -178,12 +178,7 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
         StateMode::Persisted => {
             if options.state_file.exists() {
                 match state::load(&options.state_file) {
-                    Ok(state) => {
-                        let mut app = App::from_persisted_state(state);
-                        let undo_path = state::undo_history_path(&options.state_file);
-                        app.set_undo_history(state::load_undo_history(&undo_path));
-                        app
-                    }
+                    Ok(state) => App::from_persisted_state(state),
                     Err(_) => App::new_demo(),
                 }
             } else {
@@ -204,8 +199,6 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
             let result = app.run_with_options(run_options);
             if result.is_ok() && options.state_mode == StateMode::Persisted {
                 state::save(&options.state_file, &app.persisted_state())?;
-                let undo_path = state::undo_history_path(&options.state_file);
-                state::save_undo_history(&undo_path, app.undo_history())?;
             }
             result
         }
@@ -260,6 +253,30 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(
         writer,
         "  --capture-dir <path>          capture-ui only, default: {DEFAULT_CAPTURE_DIR}"
+    )?;
+    writeln!(
+        writer,
+        "  --script <path>               capture-ui only, pre-capture interaction script"
+    )?;
+    writeln!(
+        writer,
+        "  --sequence <path>             capture-ui only, emit sequence-###.png per script step"
+    )?;
+    writeln!(
+        writer,
+        "  --capture-region <id>         capture-ui only, crop to a named UI region"
+    )?;
+    writeln!(
+        writer,
+        "  --capture-rect x,y,w,h        capture-ui only, crop to explicit rectangle"
+    )?;
+    writeln!(
+        writer,
+        "  --capture-padding <px|l,t,r,b> capture-ui only, expand crop region with padding"
+    )?;
+    writeln!(
+        writer,
+        "  --annotate <path>             capture-ui only, optional overlay annotations JSON"
     )?;
     writeln!(writer)?;
     writeln!(writer, "compatibility:")?;
@@ -365,6 +382,36 @@ pub fn launch_command_args(options: &LaunchOptions) -> Vec<String> {
                 args.push("--capture-dir".to_owned());
                 args.push(capture.output_dir.display().to_string());
             }
+            if let Some(path) = &capture.script_path {
+                args.push("--script".to_owned());
+                args.push(path.display().to_string());
+            }
+            if let Some(path) = &capture.sequence_path {
+                args.push("--sequence".to_owned());
+                args.push(path.display().to_string());
+            }
+            if let Some(region) = &capture.capture_region {
+                args.push("--capture-region".to_owned());
+                args.push(region.clone());
+            }
+            if let Some(rect) = &capture.capture_rect {
+                args.push("--capture-rect".to_owned());
+                args.push(format!(
+                    "{},{},{},{}",
+                    rect.x, rect.y, rect.width, rect.height
+                ));
+            }
+            if let Some(padding) = &capture.capture_padding {
+                args.push("--capture-padding".to_owned());
+                args.push(format!(
+                    "{},{},{},{}",
+                    padding.left, padding.top, padding.right, padding.bottom
+                ));
+            }
+            if let Some(path) = &capture.annotation_path {
+                args.push("--annotate".to_owned());
+                args.push(path.display().to_string());
+            }
         }
     }
 
@@ -398,6 +445,12 @@ where
 {
     let mut args = args.into_iter();
     let mut capture_dir = capture_mode.then(|| PathBuf::from(DEFAULT_CAPTURE_DIR));
+    let mut capture_script = None;
+    let mut capture_region = None;
+    let mut capture_rect = None;
+    let mut capture_padding = None;
+    let mut annotation_path = None;
+    let mut sequence_path = None;
     let mut options = LaunchOptions::default();
     let mut run_options = RunOptions::default();
 
@@ -413,6 +466,66 @@ where
                     .next()
                     .ok_or_else(|| "--capture-dir requires a path".to_owned())?;
                 capture_dir = Some(PathBuf::from(value));
+            }
+            "--script" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err("--script is only valid with the capture-ui command".to_owned());
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--script requires a path".to_owned())?;
+                capture_script = Some(PathBuf::from(value));
+            }
+            "--sequence" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err("--sequence is only valid with the capture-ui command".to_owned());
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--sequence requires a path".to_owned())?;
+                sequence_path = Some(PathBuf::from(value));
+            }
+            "--capture-region" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err(
+                        "--capture-region is only valid with the capture-ui command".to_owned()
+                    );
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--capture-region requires an id".to_owned())?;
+                capture_region = Some(value);
+            }
+            "--capture-rect" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err(
+                        "--capture-rect is only valid with the capture-ui command".to_owned()
+                    );
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--capture-rect requires x,y,w,h".to_owned())?;
+                capture_rect = Some(parse_capture_rect(&value)?);
+            }
+            "--capture-padding" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err(
+                        "--capture-padding is only valid with the capture-ui command".to_owned(),
+                    );
+                }
+                let value = args.next().ok_or_else(|| {
+                    "--capture-padding requires <px> or left,top,right,bottom".to_owned()
+                })?;
+                capture_padding = Some(parse_capture_padding(&value)?);
+            }
+            "--annotate" => {
+                if !capture_mode && capture_dir.is_none() {
+                    return Err("--annotate is only valid with the capture-ui command".to_owned());
+                }
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--annotate requires a path".to_owned())?;
+                annotation_path = Some(PathBuf::from(value));
             }
             "--state-mode" => {
                 let value = args
@@ -466,7 +579,16 @@ where
     }
 
     options.run_mode = match capture_dir {
-        Some(output_dir) => LaunchMode::Capture(UiCaptureOptions { output_dir }),
+        Some(output_dir) => LaunchMode::Capture(UiCaptureOptions {
+            output_dir,
+            state_mode: state_mode_label(options.state_mode).to_owned(),
+            script_path: capture_script,
+            capture_region,
+            capture_rect,
+            capture_padding,
+            annotation_path,
+            sequence_path,
+        }),
         None => LaunchMode::Interactive(run_options),
     };
 
@@ -479,6 +601,80 @@ fn parse_video_mode(value: &str) -> Result<VideoMode, String> {
         "fullscreen" => Ok(VideoMode::Fullscreen),
         "kmsdrm-console" | "kmsdrm" => Ok(VideoMode::KmsDrmConsole),
         other => Err(format!("unknown video mode: {other}")),
+    }
+}
+
+fn parse_capture_rect(value: &str) -> Result<crate::app::CaptureRect, String> {
+    let parts = value.split(',').collect::<Vec<_>>();
+    if parts.len() != 4 {
+        return Err("--capture-rect requires x,y,w,h".to_owned());
+    }
+    let x = parts[0]
+        .parse::<u32>()
+        .map_err(|_| format!("invalid capture rect x value: {}", parts[0]))?;
+    let y = parts[1]
+        .parse::<u32>()
+        .map_err(|_| format!("invalid capture rect y value: {}", parts[1]))?;
+    let width = parts[2]
+        .parse::<u32>()
+        .map_err(|_| format!("invalid capture rect width value: {}", parts[2]))?;
+    let height = parts[3]
+        .parse::<u32>()
+        .map_err(|_| format!("invalid capture rect height value: {}", parts[3]))?;
+    if width == 0 || height == 0 {
+        return Err("capture rect width and height must be greater than zero".to_owned());
+    }
+    Ok(crate::app::CaptureRect {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+fn parse_capture_padding(value: &str) -> Result<CapturePadding, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("--capture-padding requires <px> or left,top,right,bottom".to_owned());
+    }
+    let parts = trimmed
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    match parts.len() {
+        1 => {
+            let uniform = parts[0]
+                .parse::<u32>()
+                .map_err(|_| format!("invalid capture padding value: {}", parts[0]))?;
+            Ok(CapturePadding {
+                left: uniform,
+                top: uniform,
+                right: uniform,
+                bottom: uniform,
+            })
+        }
+        4 => {
+            let left = parts[0]
+                .parse::<u32>()
+                .map_err(|_| format!("invalid capture padding left value: {}", parts[0]))?;
+            let top = parts[1]
+                .parse::<u32>()
+                .map_err(|_| format!("invalid capture padding top value: {}", parts[1]))?;
+            let right = parts[2]
+                .parse::<u32>()
+                .map_err(|_| format!("invalid capture padding right value: {}", parts[2]))?;
+            let bottom = parts[3]
+                .parse::<u32>()
+                .map_err(|_| format!("invalid capture padding bottom value: {}", parts[3]))?;
+            Ok(CapturePadding {
+                left,
+                top,
+                right,
+                bottom,
+            })
+        }
+        _ => Err("--capture-padding requires <px> or left,top,right,bottom".to_owned()),
     }
 }
 
@@ -496,7 +692,6 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         "Press Enter to keep the default path.",
     )?;
     let ui_scale = prompt_optional_ui_scale(writer, reader)?;
-    let ui_scaling_mode = prompt_ui_scaling_mode(writer, reader)?;
 
     let run_mode = if capture_mode {
         let output_dir = prompt_path(
@@ -506,7 +701,16 @@ fn prompt_launch_options<R: BufRead, W: Write>(
             DEFAULT_CAPTURE_DIR,
             "Press Enter to keep the tracked screenshot directory.",
         )?;
-        LaunchMode::Capture(UiCaptureOptions { output_dir })
+        LaunchMode::Capture(UiCaptureOptions {
+            output_dir,
+            state_mode: state_mode_label(state_mode).to_owned(),
+            script_path: None,
+            capture_region: None,
+            capture_rect: None,
+            capture_padding: None,
+            annotation_path: None,
+            sequence_path: None,
+        })
     } else {
         let video_mode = prompt_video_mode(writer, reader)?;
         LaunchMode::Interactive(RunOptions { video_mode })
@@ -593,24 +797,6 @@ fn prompt_optional_ui_scale<R: BufRead, W: Write>(
     }
 }
 
-fn prompt_ui_scaling_mode<R: BufRead, W: Write>(
-    writer: &mut W,
-    reader: &mut R,
-) -> Result<UiScalingMode, Box<dyn std::error::Error>> {
-    match prompt_menu(
-        writer,
-        reader,
-        "UI scaling mode",
-        &["auto", "nearest", "linear"],
-        0,
-    )? {
-        0 => Ok(UiScalingMode::Auto),
-        1 => Ok(UiScalingMode::Nearest),
-        2 => Ok(UiScalingMode::Linear),
-        _ => unreachable!(),
-    }
-}
-
 fn prompt_path<R: BufRead, W: Write>(
     writer: &mut W,
     reader: &mut R,
@@ -688,23 +874,6 @@ fn video_mode_label(video_mode: VideoMode) -> &'static str {
     }
 }
 
-fn parse_ui_scaling_mode(value: &str) -> Result<UiScalingMode, String> {
-    match value {
-        "auto" => Ok(UiScalingMode::Auto),
-        "nearest" => Ok(UiScalingMode::Nearest),
-        "linear" => Ok(UiScalingMode::Linear),
-        other => Err(format!("unknown ui scaling mode: {other}")),
-    }
-}
-
-fn ui_scaling_mode_label(mode: UiScalingMode) -> &'static str {
-    match mode {
-        UiScalingMode::Auto => "auto",
-        UiScalingMode::Nearest => "nearest",
-        UiScalingMode::Linear => "linear",
-    }
-}
-
 fn parse_state_mode(value: &str) -> Result<StateMode, String> {
     match value {
         "persisted" => Ok(StateMode::Persisted),
@@ -723,6 +892,7 @@ mod tests {
     use super::{AppCommand, LaunchMode, StateMode, parse_app_command_from};
     use crate::app::{UiScalingMode, VideoMode};
     use crate::theme::ThemePreset;
+    use crate::app::CapturePadding;
     use std::path::PathBuf;
 
     #[test]
@@ -781,6 +951,69 @@ mod tests {
         match options.run_mode {
             LaunchMode::Capture(capture) => {
                 assert_eq!(capture.output_dir, PathBuf::from("artifacts/screenshots"));
+                assert_eq!(capture.state_mode, "demo");
+                assert!(capture.script_path.is_none());
+                assert!(capture.sequence_path.is_none());
+                assert!(capture.capture_region.is_none());
+                assert!(capture.capture_rect.is_none());
+                assert!(capture.capture_padding.is_none());
+                assert!(capture.annotation_path.is_none());
+            }
+            LaunchMode::Interactive(_) => panic!("expected capture mode"),
+        }
+    }
+
+    #[test]
+    fn capture_ui_accepts_script_region_rect_and_annotations() {
+        let command = parse_app_command_from(vec![
+            "capture-ui".to_owned(),
+            "--script".to_owned(),
+            "artifacts/capture-scripts/direct-map.json".to_owned(),
+            "--sequence".to_owned(),
+            "artifacts/capture-scripts/tutorial-sequence.json".to_owned(),
+            "--capture-region".to_owned(),
+            "timeline_transport".to_owned(),
+            "--capture-rect".to_owned(),
+            "12,24,320,120".to_owned(),
+            "--capture-padding".to_owned(),
+            "16".to_owned(),
+            "--annotate".to_owned(),
+            "artifacts/capture-scripts/overlay.json".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        match options.run_mode {
+            LaunchMode::Capture(capture) => {
+                assert_eq!(
+                    capture.script_path,
+                    Some(PathBuf::from("artifacts/capture-scripts/direct-map.json"))
+                );
+                assert_eq!(
+                    capture.sequence_path,
+                    Some(PathBuf::from(
+                        "artifacts/capture-scripts/tutorial-sequence.json"
+                    ))
+                );
+                assert_eq!(
+                    capture.capture_region,
+                    Some("timeline_transport".to_owned())
+                );
+                assert_eq!(capture.capture_rect.expect("capture rect").width, 320);
+                assert_eq!(
+                    capture.capture_padding,
+                    Some(CapturePadding {
+                        left: 16,
+                        top: 16,
+                        right: 16,
+                        bottom: 16
+                    })
+                );
+                assert_eq!(
+                    capture.annotation_path,
+                    Some(PathBuf::from("artifacts/capture-scripts/overlay.json"))
+                );
             }
             LaunchMode::Interactive(_) => panic!("expected capture mode"),
         }
@@ -814,26 +1047,52 @@ mod tests {
     }
 
     #[test]
-    fn run_subcommand_accepts_ui_scaling_mode() {
+    fn legacy_capture_flag_accepts_new_capture_options() {
         let command = parse_app_command_from(vec![
-            "run".to_owned(),
-            "--ui-scaling".to_owned(),
-            "linear".to_owned(),
+            "--capture-ui".to_owned(),
+            "--script".to_owned(),
+            "artifacts/capture-scripts/direct-map.json".to_owned(),
         ])
         .expect("parse command");
         let AppCommand::Launch(options) = command else {
             panic!("expected launch command");
         };
-        assert_eq!(options.ui_scaling_mode, UiScalingMode::Linear);
+        match options.run_mode {
+            LaunchMode::Capture(capture) => {
+                assert_eq!(
+                    capture.script_path,
+                    Some(PathBuf::from("artifacts/capture-scripts/direct-map.json"))
+                );
+            }
+            LaunchMode::Interactive(_) => panic!("expected capture mode"),
+        }
     }
 
     #[test]
-    fn ui_scaling_defaults_to_auto() {
-        let command = parse_app_command_from(vec!["run".to_owned()]).expect("parse command");
+    fn capture_ui_accepts_per_edge_padding() {
+        let command = parse_app_command_from(vec![
+            "capture-ui".to_owned(),
+            "--capture-padding".to_owned(),
+            "4,8,12,16".to_owned(),
+        ])
+        .expect("parse command");
         let AppCommand::Launch(options) = command else {
             panic!("expected launch command");
         };
-        assert_eq!(options.ui_scaling_mode, UiScalingMode::Auto);
+        match options.run_mode {
+            LaunchMode::Capture(capture) => {
+                assert_eq!(
+                    capture.capture_padding,
+                    Some(CapturePadding {
+                        left: 4,
+                        top: 8,
+                        right: 12,
+                        bottom: 16
+                    })
+                );
+            }
+            LaunchMode::Interactive(_) => panic!("expected capture mode"),
+        }
     }
 
     #[test]

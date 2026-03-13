@@ -32,13 +32,9 @@ use crate::theme::{Theme, ThemePreset};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
 use crate::undo::UndoHistory;
-use image::RgbaImage;
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
-use sdl3::surface::SurfaceRef;
-use std::fs;
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 mod capture;
@@ -57,9 +53,7 @@ mod stored_loops;
 mod timeline;
 mod types;
 
-use capture::{
-    capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
-};
+use capture::{chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track};
 use discoverability_ui::track_indicator_target;
 pub(super) use input::rect_contains;
 use mapping::input as mapping_input;
@@ -94,7 +88,9 @@ use types::{
     MappingTargetLookupLayout, MappingTargetLookupState, OverlayState, RecordingLaneLayout,
     RecordingLaneWindow, StatusState, TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
 };
-pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
+pub use types::{
+    CapturePadding, CaptureRect, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode,
+};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 
@@ -486,34 +482,6 @@ impl App {
         Ok(())
     }
 
-    pub fn capture_ui_pages(
-        &mut self,
-        options: UiCaptureOptions,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        fs::create_dir_all(&options.output_dir)?;
-
-        let _sdl_context = sdl3::init()?;
-        self.viewport_size = (1280, 720);
-        // Keep renderer-owned screenshots deterministic by bypassing startup-only pulses.
-        self.startup_started_at = Instant::now() - Duration::from_secs(10);
-
-        for spec in capture_specs() {
-            self.page_state.current_page = spec.page;
-            self.overlay_state.active = spec.overlay;
-            self.focused_track_view = spec.focused_track_view;
-            let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
-            let mut canvas = surface.into_canvas()?;
-            canvas.set_scale(1.0, 1.0)?;
-            self.draw(&mut canvas)?;
-            let output_path = options.output_dir.join(spec.filename);
-            self.capture_surface_to_png(canvas.surface(), &output_path)?;
-        }
-
-        self.overlay_state.active = None;
-
-        Ok(())
-    }
-
     pub fn seed_capture_demo_timeline_overlaps(&mut self) {
         for (track_index, track) in self.project.tracks.iter_mut().enumerate() {
             seed_capture_demo_track(track, track_index);
@@ -548,33 +516,6 @@ impl App {
             ),
             Color::RGB(32, 64, 220),
         )?;
-        Ok(())
-    }
-
-    fn capture_surface_to_png(
-        &self,
-        surface: &SurfaceRef,
-        path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let surface = surface.convert_format(PixelFormat::RGBA32)?;
-        let width = surface.width();
-        let height = surface.height();
-        let pitch = surface.pitch() as usize;
-        let row_len = width as usize * 4;
-        let mut pixels = vec![0_u8; row_len * height as usize];
-
-        surface.with_lock(|src| {
-            for row in 0..height as usize {
-                let src_start = row * pitch;
-                let dst_start = row * row_len;
-                pixels[dst_start..dst_start + row_len]
-                    .copy_from_slice(&src[src_start..src_start + row_len]);
-            }
-        });
-
-        let image = RgbaImage::from_raw(width, height, pixels)
-            .ok_or_else(|| "failed to convert renderer pixels to image".to_owned())?;
-        image.save(path)?;
         Ok(())
     }
 
