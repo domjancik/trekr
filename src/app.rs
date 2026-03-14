@@ -4887,7 +4887,7 @@ impl App {
         if track.state.loop_enabled {
             Some(crate::project::RecordContext {
                 range: track.loop_region,
-                wrap_basis_ticks: track.loop_region.start_ticks,
+                wrap_basis_ticks: 0,
                 extend_clip_on_wrap: self.project.transport.loop_recording_extends_clip,
             })
         } else if self.project.transport.loop_enabled {
@@ -9038,6 +9038,55 @@ mod tests {
     }
 
     #[test]
+    fn looped_track_recorded_note_stays_aligned_before_loop_start() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = Some(MidiPortRef::new("Test Input"));
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        app.project.transport.quantize = crate::transport::QuantizeMode::Off;
+        app.project.transport.loop_enabled = false;
+
+        app.transport_ticks = 120;
+        app.playhead_ticks = 120;
+        app.apply_action(AppAction::ToggleRecording);
+
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.clone())
+            .expect("test track should have explicit input port");
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
+        app.transport_ticks = 220;
+        app.playhead_ticks = 220;
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+        });
+        app.apply_action(AppAction::ToggleRecording);
+
+        let active = app.project.active_track().unwrap();
+        let recorded = active
+            .midi_notes
+            .iter()
+            .find(|note| note.pitch == 64)
+            .expect("recorded note should exist");
+
+        assert_eq!(recorded.start_ticks, 1_080);
+        assert_eq!(recorded.length_ticks, 100);
+    }
+
+    #[test]
     fn looped_track_recording_can_extend_clip_after_wrap() {
         let mut app = App::new();
         let track = app.project.active_track_mut().unwrap();
@@ -9118,6 +9167,21 @@ mod tests {
             record_context.range,
             crate::timeline::LoopRegion::new(0, 3_840)
         );
+        assert_eq!(record_context.wrap_basis_ticks, 0);
+    }
+
+    #[test]
+    fn record_context_uses_zero_wrap_basis_for_track_loop() {
+        let mut app = App::new();
+        app.project.transport.loop_enabled = false;
+        let track = app.project.active_track_mut().unwrap();
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+
+        let record_context = app
+            .record_context(app.project.active_track().unwrap())
+            .unwrap();
+
         assert_eq!(record_context.wrap_basis_ticks, 0);
     }
 
