@@ -226,3 +226,8 @@ Before pushing or opening follow-up PR changes, re-check branch state and whethe
 4. Design the timeline note/region editing UX before implementing pointer editing.
 5. Refresh screenshots/UI review again if the next FX/timeline polish materially changes the renderer output.
 
+## Branch Integration Safety (capture worktree note)
+
+This `vk/03a2-docs-capture-scr` line includes focused screenshot-capture infrastructure changes (`src/app.rs`, `src/cli.rs`, `scripts/capture-ui-screens.ps1`, `README.md`, and `artifacts/capture-scripts/*`).
+If integrating into a newer docs branch, prefer cherry-picking only the capture-related commits/files to avoid unintentionally regressing newer docs-tree structure.
+

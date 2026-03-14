@@ -41,23 +41,6 @@ if ($StateFile -ne "") {
     $args += @("--state-file", $statePath)
 }
 
-& $binaryPath @args | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "trekr UI capture failed with exit code $LASTEXITCODE"
-}
-
-$captures = Get-ChildItem -Path $outputRoot -Filter *.png | Sort-Object Name
-$captureCount = @($captures).Count
-if ($captureCount -eq 0) {
-    throw "trekr UI capture produced no screenshots in $outputRoot"
-}
-
-$manifestPath = Join-Path $outputRoot "manifest.json"
-$manifest = $null
-if (Test-Path $manifestPath) {
-    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-}
-
 if ($Script -ne "") {
     $scriptPath = if ([System.IO.Path]::IsPathRooted($Script)) {
         $Script
@@ -92,6 +75,24 @@ if ($Annotate -ne "") {
     }
     $args += @("--annotate", $annotationPath)
 }
+
+& $binaryPath @args | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "trekr UI capture failed with exit code $LASTEXITCODE"
+}
+
+$captures = Get-ChildItem -Path $outputRoot -Filter *.png | Sort-Object Name
+$captureCount = @($captures).Count
+if ($captureCount -eq 0) {
+    throw "trekr UI capture produced no screenshots in $outputRoot"
+}
+
+$manifestPath = Join-Path $outputRoot "manifest.json"
+$manifest = $null
+if (Test-Path $manifestPath) {
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+}
+
 if ($null -eq $manifest) {
     $manifest = [pscustomobject]@{
         generated_at = [DateTimeOffset]::Now.ToString("o")
