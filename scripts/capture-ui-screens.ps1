@@ -6,6 +6,7 @@ param(
     [string]$Sequence = "",
     [string]$CaptureRegion = "",
     [string]$CaptureRect = "",
+    [string]$CapturePadding = "",
     [string]$Annotate = ""
 )
 
@@ -65,6 +66,10 @@ if ($CaptureRegion -ne "") {
 
 if ($CaptureRect -ne "") {
     $args += @("--capture-rect", $CaptureRect)
+}
+
+if ($CapturePadding -ne "") {
+    $args += @("--capture-padding", $CapturePadding)
 }
 
 if ($Annotate -ne "") {

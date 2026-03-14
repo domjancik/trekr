@@ -102,7 +102,7 @@ Launch state:
 - `cargo run -- capture-ui --state-mode demo --script artifacts/capture-scripts/direct-mapping-awaiting.json --capture-region timeline_direct_mapping_target` stages direct-mapping highlight screenshots
 - `cargo run -- capture-ui --state-mode demo --script artifacts/capture-scripts/routing-direct-mapping-awaiting.json --capture-region routing_direct_mapping_target` stages routing-page direct-mapping highlight screenshots
 - `cargo run -- capture-ui --state-mode demo --capture-region timeline_stacked_clip_controls --capture-padding 24` adds context padding around a named region crop
-- `cargo run -- capture-ui --state-mode demo --capture-rect 460,220,220,120 --capture-padding 8,12,24,12` applies per-edge padding to explicit rect crops
+- `cargo run -- capture-ui --state-mode demo --capture-rect 460,220,220,120 --capture-padding 8,12,24,12` applies per-edge padding (left,top,right,bottom) to explicit rect crops
 - `cargo run -- capture-ui --state-mode demo --sequence artifacts/capture-scripts/tutorial-sequence.json --annotate artifacts/capture-scripts/transport-annotations.json` renders numbered storyboard frames with optional overlays
 - `cargo run -- capture-ui --state-mode demo --script artifacts/capture-scripts/routing-fanout.json --capture-region routing_channel_fanout_rows` stages multi-track channel fan-out screenshots deterministically
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
@@ -114,7 +114,7 @@ CLI notes:
 - `run`, `capture-ui`, `commands`, and `help` are the first-class app commands
 - the older flag-only form is still supported for compatibility, so existing commands like `cargo run -- --state-mode demo` still work
 - `capture-ui` accepts launch-state options plus `--capture-dir`, `--script`, `--sequence`, `--capture-region`, `--capture-rect`, `--capture-padding`, and `--annotate`; `--video-mode` remains interactive-only
-- `--capture-padding` accepts either a uniform pixel value (`--capture-padding 16`) or per-edge values (`--capture-padding left,top,right,bottom`) and works with both `--capture-region` and `--capture-rect` after region/rect resolution, clamped to image bounds
+- `--capture-padding` accepts either a uniform pixel value (`--capture-padding 16`) or per-edge values (`--capture-padding left,top,right,bottom`) and works with both `--capture-region` and `--capture-rect` (applied after region/rect resolution, clamped to image bounds)
 - each capture manifest entry includes stable automation target IDs (`targets`) so scripts can click named controls instead of raw pixels
 - supported named capture regions and names: `timeline_transport` (Timeline transport strip), `timeline_recwrap_quantize_strip` (RecWrap + quantize row), `timeline_link_status_strip` (Link/sync/peer status area), `timeline_track_header_active` (active track header), `timeline_stacked_clip_controls` (stacked clip mute/delete controls), `timeline_direct_mapping_target` (timeline direct-mapping target highlight), `mappings_selected_row` (selected mapping row), `mappings_bank_panel` (mapping bank panel), `mappings_direct_mapping_target` (mappings direct-mapping target highlight), `routing_active_row` (selected routing row), `routing_passthrough_block` (routing passthrough block), `routing_channel_fanout_rows` (routing fan-out rows), `routing_direct_mapping_target` (routing direct-mapping target highlight), `midi_io_selected_list` (selected MIDI I/O list), `midi_io_inputs_list` (MIDI input list), `midi_io_outputs_list` (MIDI output list)
 - capture scripts (`--script` / `--sequence`) support deterministic steps: `show_page`, `send_action`, `click` (`x/y` or `named_target`), `wait_frames`, and `set_state_override`
@@ -413,7 +413,7 @@ The repo includes a scripted screenshot-and-review loop for visual QA:
 
 - `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `timeline-focused`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
   - capture explicitly uses `--state-mode demo` so screenshots stay deterministic instead of depending on the last persisted interactive state
-  - supports scripted capture options (`-Script`, `-Sequence`, `-CaptureRegion`, `-CaptureRect`, `-Annotate`) and forwards them to `capture-ui`
+  - supports scripted capture options (`-Script`, `-Sequence`, `-CaptureRegion`, `-CaptureRect`, `-CapturePadding`, `-Annotate`) and forwards them to `capture-ui`
   - `capture-ui` now emits `artifacts/screenshots/manifest.json` with file metadata (dimensions, state mode, crop metadata, sequence metadata, and commit hash when available)
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`
