@@ -126,6 +126,7 @@ Validated docs coverage snapshot (3 representative user articles):
 - `docs/user/how-to/channel-fan-out-routing-workflow.md`: **covered**
 - `docs/user/how-to/use-stacked-recording-clips-live.md`: **covered**
 - `docs/user/how-to/build-a-performance-mapping-layer.md`: **partially covered** (timeline + routing direct-mapping highlight capture supported; controller-bank-specific captures remain blocked by missing app surface)
+- `docs/user/how-to/build-a-performance-mapping-layer.md`: **partially covered** (timeline + routing direct-mapping highlight capture supported; controller-bank-specific captures remain blocked by missing app surface)
 
 Pi console launch on-device:
 
