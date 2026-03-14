@@ -5421,7 +5421,8 @@ impl App {
     }
 
     fn refresh_midi_devices(&mut self, force: bool, now: Instant) {
-        if !force && now.saturating_duration_since(self.last_midi_refresh_at) < MIDI_REFRESH_INTERVAL
+        if !force
+            && now.saturating_duration_since(self.last_midi_refresh_at) < MIDI_REFRESH_INTERVAL
         {
             return;
         }
@@ -5445,21 +5446,18 @@ impl App {
         };
 
         if self.preferred_default_input_name.is_none() {
-            self.preferred_default_input_name = next.selected_input_port().map(|port| port.name.clone());
+            self.preferred_default_input_name =
+                next.selected_input_port().map(|port| port.name.clone());
         }
         if self.preferred_default_output_name.is_none() {
             self.preferred_default_output_name =
                 next.selected_output_port().map(|port| port.name.clone());
         }
 
-        next.selected_input = resolve_port_by_name(
-            &next.inputs,
-            self.preferred_default_input_name.as_deref(),
-        );
-        next.selected_output = resolve_port_by_name(
-            &next.outputs,
-            self.preferred_default_output_name.as_deref(),
-        );
+        next.selected_input =
+            resolve_port_by_name(&next.inputs, self.preferred_default_input_name.as_deref());
+        next.selected_output =
+            resolve_port_by_name(&next.outputs, self.preferred_default_output_name.as_deref());
 
         if next == previous_catalog {
             return;
@@ -5478,11 +5476,17 @@ impl App {
     }
 
     fn input_port_is_available(&self, name: &str) -> bool {
-        self.midi_devices.inputs.iter().any(|port| port.name == name)
+        self.midi_devices
+            .inputs
+            .iter()
+            .any(|port| port.name == name)
     }
 
     fn output_port_is_available(&self, name: &str) -> bool {
-        self.midi_devices.outputs.iter().any(|port| port.name == name)
+        self.midi_devices
+            .outputs
+            .iter()
+            .any(|port| port.name == name)
     }
 
     fn set_preferred_default_input_from_index(&mut self, index: usize) {
