@@ -1,0 +1,10 @@
+{
+  "steps": [
+    { "type": "show_page", "page": "timeline" },
+    {
+      "type": "set_state_override",
+      "direct_mapping_mode": "awaiting_input",
+      "direct_mapping_target_action": "toggle_current_track_passthrough"
+    }
+  ]
+}

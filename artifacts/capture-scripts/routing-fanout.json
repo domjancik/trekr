@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "type": "show_page", "page": "routing" },
+    {
+      "type": "set_state_override",
+      "selected_track_index": 0,
+      "routing": [
+        { "track_index": 0, "output_channel": 1, "passthrough": true },
+        { "track_index": 1, "output_channel": 2, "passthrough": true },
+        { "track_index": 2, "output_channel": 3, "passthrough": true },
+        { "track_index": 3, "output_channel": 4, "passthrough": true },
+        { "track_index": 4, "output_channel": 5, "passthrough": true },
+        { "track_index": 5, "output_channel": 6, "passthrough": true }
+      ],
+      "track_states": [
+        { "track_index": 0, "armed": true },
+        { "track_index": 1, "armed": true },
+        { "track_index": 2, "armed": true },
+        { "track_index": 3, "armed": true },
+        { "track_index": 4, "armed": true },
+        { "track_index": 5, "armed": true }
+      ]
+    }
+  ]
+}

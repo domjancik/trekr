@@ -1,7 +1,12 @@
 param(
     [string]$OutputDir = "artifacts/screenshots",
     [string]$StateMode = "demo",
-    [string]$StateFile = ""
+    [string]$StateFile = "",
+    [string]$Script = "",
+    [string]$Sequence = "",
+    [string]$CaptureRegion = "",
+    [string]$CaptureRect = "",
+    [string]$Annotate = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,6 +56,41 @@ $manifestPath = Join-Path $outputRoot "manifest.json"
 $manifest = $null
 if (Test-Path $manifestPath) {
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+}
+
+if ($Script -ne "") {
+    $scriptPath = if ([System.IO.Path]::IsPathRooted($Script)) {
+        $Script
+    } else {
+        Join-Path $repoRoot $Script
+    }
+    $args += @("--script", $scriptPath)
+}
+
+if ($Sequence -ne "") {
+    $sequencePath = if ([System.IO.Path]::IsPathRooted($Sequence)) {
+        $Sequence
+    } else {
+        Join-Path $repoRoot $Sequence
+    }
+    $args += @("--sequence", $sequencePath)
+}
+
+if ($CaptureRegion -ne "") {
+    $args += @("--capture-region", $CaptureRegion)
+}
+
+if ($CaptureRect -ne "") {
+    $args += @("--capture-rect", $CaptureRect)
+}
+
+if ($Annotate -ne "") {
+    $annotationPath = if ([System.IO.Path]::IsPathRooted($Annotate)) {
+        $Annotate
+    } else {
+        Join-Path $repoRoot $Annotate
+    }
+    $args += @("--annotate", $annotationPath)
 }
 if ($null -eq $manifest) {
     $manifest = [pscustomobject]@{

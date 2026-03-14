@@ -1,0 +1,15 @@
+{
+  "overlays": [
+    {
+      "type": "region_tint",
+      "region_id": "timeline_recwrap_quantize_strip",
+      "label": "RecWrap + Quantize"
+    },
+    {
+      "type": "region_tint",
+      "region_id": "timeline_link_status_strip",
+      "color": [92, 182, 232, 96],
+      "label": "Link + Sync"
+    }
+  ]
+}

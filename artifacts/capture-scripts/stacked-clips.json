@@ -1,0 +1,12 @@
+{
+  "steps": [
+    {
+      "type": "set_state_override",
+      "state_file": "state-fixtures/ui-looped.json",
+      "selected_track_index": 0,
+      "recording_view": "stacked",
+      "selected_recording_clip_index": 0
+    },
+    { "type": "show_page", "page": "timeline" }
+  ]
+}
