@@ -1,3 +1,4 @@
+use crate::midi_fx::TrackMidiFx;
 use crate::routing::TrackRouting;
 use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{LaunchQuantizeMode, RecordMode, Transport};
@@ -155,6 +156,8 @@ pub struct Track {
     pub kind: TrackKind,
     pub state: TrackState,
     pub routing: TrackRouting,
+    #[serde(default)]
+    pub midi_fx: TrackMidiFx,
     pub loop_region: LoopRegion,
     pub active_take: Option<RecordingTake>,
     pub midi_notes: Vec<MidiNote>,
@@ -194,6 +197,7 @@ impl Track {
             kind,
             state: TrackState::default(),
             routing: TrackRouting::default(),
+            midi_fx: TrackMidiFx::default(),
             loop_region: LoopRegion::new(0, 4 * 960),
             active_take: None,
             midi_notes: Vec::new(),
@@ -218,6 +222,7 @@ impl Track {
             kind,
             state: TrackState::default(),
             routing: TrackRouting::default(),
+            midi_fx: TrackMidiFx::default(),
             loop_region: LoopRegion::new(0, 4 * 960),
             active_take: None,
             midi_notes: Vec::new(),

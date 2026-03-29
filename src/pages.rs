@@ -154,15 +154,35 @@ pub enum RoutingField {
     OutputDevice,
     OutputChannel,
     Passthrough,
+    RecordInputFx,
+    MonitorInputFx,
+    InputFxSlot,
+    InputFxKind,
+    InputFxEnabled,
+    InputFxValue,
+    OutputFxSlot,
+    OutputFxKind,
+    OutputFxEnabled,
+    OutputFxValue,
 }
 
 impl RoutingField {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 15] = [
         Self::InputDevice,
         Self::InputChannel,
         Self::OutputDevice,
         Self::OutputChannel,
         Self::Passthrough,
+        Self::RecordInputFx,
+        Self::MonitorInputFx,
+        Self::InputFxSlot,
+        Self::InputFxKind,
+        Self::InputFxEnabled,
+        Self::InputFxValue,
+        Self::OutputFxSlot,
+        Self::OutputFxKind,
+        Self::OutputFxEnabled,
+        Self::OutputFxValue,
     ];
 
     pub fn next(self) -> Self {
@@ -171,7 +191,17 @@ impl RoutingField {
             Self::InputChannel => Self::OutputDevice,
             Self::OutputDevice => Self::OutputChannel,
             Self::OutputChannel => Self::Passthrough,
-            Self::Passthrough => Self::InputDevice,
+            Self::Passthrough => Self::RecordInputFx,
+            Self::RecordInputFx => Self::MonitorInputFx,
+            Self::MonitorInputFx => Self::InputFxSlot,
+            Self::InputFxSlot => Self::InputFxKind,
+            Self::InputFxKind => Self::InputFxEnabled,
+            Self::InputFxEnabled => Self::InputFxValue,
+            Self::InputFxValue => Self::OutputFxSlot,
+            Self::OutputFxSlot => Self::OutputFxKind,
+            Self::OutputFxKind => Self::OutputFxEnabled,
+            Self::OutputFxEnabled => Self::OutputFxValue,
+            Self::OutputFxValue => Self::InputDevice,
         }
     }
 
@@ -182,6 +212,16 @@ impl RoutingField {
             Self::OutputDevice => Self::InputChannel,
             Self::OutputChannel => Self::OutputDevice,
             Self::Passthrough => Self::OutputChannel,
+            Self::RecordInputFx => Self::Passthrough,
+            Self::MonitorInputFx => Self::RecordInputFx,
+            Self::InputFxSlot => Self::MonitorInputFx,
+            Self::InputFxKind => Self::InputFxSlot,
+            Self::InputFxEnabled => Self::InputFxKind,
+            Self::InputFxValue => Self::InputFxEnabled,
+            Self::OutputFxSlot => Self::InputFxValue,
+            Self::OutputFxKind => Self::OutputFxSlot,
+            Self::OutputFxEnabled => Self::OutputFxKind,
+            Self::OutputFxValue => Self::OutputFxEnabled,
         }
     }
 
@@ -192,6 +232,16 @@ impl RoutingField {
             Self::OutputDevice => "Output Device",
             Self::OutputChannel => "Output Channel",
             Self::Passthrough => "Passthrough",
+            Self::RecordInputFx => "Rec FX",
+            Self::MonitorInputFx => "Mon FX",
+            Self::InputFxSlot => "InFX Slot",
+            Self::InputFxKind => "InFX Kind",
+            Self::InputFxEnabled => "InFX On",
+            Self::InputFxValue => "InFX Val",
+            Self::OutputFxSlot => "OutFX Slot",
+            Self::OutputFxKind => "OutFX Kind",
+            Self::OutputFxEnabled => "OutFX On",
+            Self::OutputFxValue => "OutFX Val",
         }
     }
 }
@@ -206,6 +256,8 @@ pub struct AppPageState {
     pub selected_mapping_field: MappingField,
     pub mapping_midi_learn_armed: bool,
     pub selected_routing_field: RoutingField,
+    pub selected_input_fx_slot: usize,
+    pub selected_output_fx_slot: usize,
 }
 
 impl Default for AppPageState {
@@ -218,6 +270,8 @@ impl Default for AppPageState {
             selected_mapping_field: MappingField::SourceValue,
             mapping_midi_learn_armed: false,
             selected_routing_field: RoutingField::InputDevice,
+            selected_input_fx_slot: 0,
+            selected_output_fx_slot: 0,
         }
     }
 }
@@ -241,9 +295,16 @@ mod tests {
     fn routing_fields_cycle() {
         assert_eq!(
             RoutingField::InputDevice.previous(),
-            RoutingField::Passthrough
+            RoutingField::OutputFxValue
         );
-        assert_eq!(RoutingField::Passthrough.next(), RoutingField::InputDevice);
+        assert_eq!(
+            RoutingField::Passthrough.next(),
+            RoutingField::RecordInputFx
+        );
+        assert_eq!(
+            RoutingField::OutputFxValue.next(),
+            RoutingField::InputDevice
+        );
     }
 
     #[test]
