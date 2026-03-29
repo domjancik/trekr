@@ -21,21 +21,11 @@ impl AppPage {
     }
 
     pub fn next(self) -> Self {
-        match self {
-            Self::Timeline => Self::Mappings,
-            Self::Mappings => Self::MidiIo,
-            Self::MidiIo => Self::Routing,
-            Self::Routing => Self::Timeline,
-        }
+        cycle_enum(Self::ALL, self, 1)
     }
 
     pub fn previous(self) -> Self {
-        match self {
-            Self::Timeline => Self::Routing,
-            Self::Mappings => Self::Timeline,
-            Self::MidiIo => Self::Mappings,
-            Self::Routing => Self::MidiIo,
-        }
+        cycle_enum(Self::ALL, self, -1)
     }
 }
 
@@ -66,25 +56,11 @@ impl MappingField {
     ];
 
     pub fn next(self) -> Self {
-        match self {
-            Self::SourceKind => Self::SourceDevice,
-            Self::SourceDevice => Self::SourceValue,
-            Self::SourceValue => Self::Target,
-            Self::Target => Self::Scope,
-            Self::Scope => Self::Enabled,
-            Self::Enabled => Self::SourceKind,
-        }
+        cycle_enum(Self::ALL, self, 1)
     }
 
     pub fn previous(self) -> Self {
-        match self {
-            Self::SourceKind => Self::Enabled,
-            Self::SourceDevice => Self::SourceKind,
-            Self::SourceValue => Self::SourceDevice,
-            Self::Target => Self::SourceValue,
-            Self::Scope => Self::Target,
-            Self::Enabled => Self::Scope,
-        }
+        cycle_enum(Self::ALL, self, -1)
     }
 
     pub fn label(self) -> &'static str {
@@ -186,43 +162,11 @@ impl RoutingField {
     ];
 
     pub fn next(self) -> Self {
-        match self {
-            Self::InputDevice => Self::InputChannel,
-            Self::InputChannel => Self::OutputDevice,
-            Self::OutputDevice => Self::OutputChannel,
-            Self::OutputChannel => Self::Passthrough,
-            Self::Passthrough => Self::RecordInputFx,
-            Self::RecordInputFx => Self::MonitorInputFx,
-            Self::MonitorInputFx => Self::InputFxSlot,
-            Self::InputFxSlot => Self::InputFxKind,
-            Self::InputFxKind => Self::InputFxEnabled,
-            Self::InputFxEnabled => Self::InputFxValue,
-            Self::InputFxValue => Self::OutputFxSlot,
-            Self::OutputFxSlot => Self::OutputFxKind,
-            Self::OutputFxKind => Self::OutputFxEnabled,
-            Self::OutputFxEnabled => Self::OutputFxValue,
-            Self::OutputFxValue => Self::InputDevice,
-        }
+        cycle_enum(Self::ALL, self, 1)
     }
 
     pub fn previous(self) -> Self {
-        match self {
-            Self::InputDevice => Self::Passthrough,
-            Self::InputChannel => Self::InputDevice,
-            Self::OutputDevice => Self::InputChannel,
-            Self::OutputChannel => Self::OutputDevice,
-            Self::Passthrough => Self::OutputChannel,
-            Self::RecordInputFx => Self::Passthrough,
-            Self::MonitorInputFx => Self::RecordInputFx,
-            Self::InputFxSlot => Self::MonitorInputFx,
-            Self::InputFxKind => Self::InputFxSlot,
-            Self::InputFxEnabled => Self::InputFxKind,
-            Self::InputFxValue => Self::InputFxEnabled,
-            Self::OutputFxSlot => Self::InputFxValue,
-            Self::OutputFxKind => Self::OutputFxSlot,
-            Self::OutputFxEnabled => Self::OutputFxKind,
-            Self::OutputFxValue => Self::OutputFxEnabled,
-        }
+        cycle_enum(Self::ALL, self, -1)
     }
 
     pub fn label(self) -> &'static str {
@@ -274,6 +218,13 @@ impl Default for AppPageState {
             selected_output_fx_slot: 0,
         }
     }
+}
+
+fn cycle_enum<T: Copy + Eq, const N: usize>(all: [T; N], current: T, delta: isize) -> T {
+    let index = all.iter().position(|item| *item == current).unwrap_or(0) as isize;
+    let len = N as isize;
+    let next_index = (index + delta).rem_euclid(len) as usize;
+    all[next_index]
 }
 
 #[cfg(test)]
