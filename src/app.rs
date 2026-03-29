@@ -10,6 +10,10 @@ use crate::mapping::{
     default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
     mapping_entry_key_actions, mapping_entry_targets_action, mapping_entry_to_actions,
 };
+use crate::midi_fx::{
+    LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind, MidiFxSlot,
+    cycle_fx_kind, fx_slot_label, process_live_event, transform_notes,
+};
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
     MidiPortRef,
@@ -59,9 +63,8 @@ pub struct App {
     note_additive_select_held: bool,
     focused_track_view: bool,
     startup_started_at: Instant,
-    preferred_default_input_name: Option<String>,
-    preferred_default_output_name: Option<String>,
-    last_midi_refresh_at: Instant,
+    input_fx_live_states: Vec<LiveMidiFxState>,
+    output_fx_live_states: Vec<LiveMidiFxState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +245,7 @@ impl App {
         link.set_enabled(project.transport.link_enabled);
         link.set_start_stop_sync(project.transport.link_start_stop_sync);
         let link_snapshot = link.refresh();
+        let track_count = project.tracks.len();
         Self {
             project,
             engine_config: EngineConfig::default(),
@@ -266,9 +270,8 @@ impl App {
             note_additive_select_held: false,
             focused_track_view: false,
             startup_started_at: Instant::now(),
-            preferred_default_input_name,
-            preferred_default_output_name,
-            last_midi_refresh_at: Instant::now(),
+            input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
+            output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
         }
     }
 
@@ -3996,7 +3999,7 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Input and output routing for the active track",
+            "Input/output routing plus MIDI FX for the active track",
             Rect::new(
                 header.x + 208,
                 header.y + 24,
@@ -4007,10 +4010,16 @@ impl App {
             Color::RGB(208, 216, 228),
         )?;
 
-        let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
-        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
-            let row = rows[index];
+        for (field, row) in self.routing_field_rects(body) {
             let selected = field == self.page_state.selected_routing_field;
+            let is_toggle_field = matches!(
+                field,
+                RoutingField::Passthrough
+                    | RoutingField::RecordInputFx
+                    | RoutingField::MonitorInputFx
+                    | RoutingField::InputFxEnabled
+                    | RoutingField::OutputFxEnabled
+            );
 
             canvas.set_draw_color(if selected {
                 Color::RGB(52, 64, 92)
@@ -4034,6 +4043,16 @@ impl App {
                 RoutingField::InputChannel => Color::RGB(106, 152, 218),
                 RoutingField::OutputDevice => Color::RGB(218, 142, 98),
                 RoutingField::OutputChannel => Color::RGB(208, 122, 160),
+                RoutingField::RecordInputFx => Color::RGB(112, 188, 152),
+                RoutingField::MonitorInputFx => Color::RGB(102, 182, 196),
+                RoutingField::InputFxSlot
+                | RoutingField::InputFxKind
+                | RoutingField::InputFxEnabled
+                | RoutingField::InputFxValue => Color::RGB(120, 152, 214),
+                RoutingField::OutputFxSlot
+                | RoutingField::OutputFxKind
+                | RoutingField::OutputFxEnabled
+                | RoutingField::OutputFxValue => Color::RGB(200, 138, 186),
                 RoutingField::Passthrough => {
                     if active_track.state.passthrough {
                         Color::RGB(92, 220, 216)
@@ -4069,7 +4088,7 @@ impl App {
             );
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
-            if field != RoutingField::Passthrough {
+            if !is_toggle_field {
                 canvas.set_draw_color(Color::RGB(34, 42, 56));
                 canvas.fill_rect(left_adjust)?;
                 canvas.fill_rect(right_adjust)?;
@@ -4093,14 +4112,18 @@ impl App {
                 1,
                 Color::RGB(244, 244, 236),
             )?;
-            if field == RoutingField::Passthrough {
+            if is_toggle_field {
                 let bool_chip = Rect::new(
                     value.x + 6,
                     value.y + 2,
                     54,
                     value.height().saturating_sub(4),
                 );
-                canvas.set_draw_color(if active_track.state.passthrough {
+                let toggled_on = matches!(
+                    self.routing_field_value(active_track, field).as_str(),
+                    "On" | "Post FX"
+                );
+                canvas.set_draw_color(if toggled_on {
                     Color::RGB(52, 156, 150)
                 } else {
                     Color::RGB(88, 94, 102)
@@ -4158,7 +4181,7 @@ impl App {
             }
             crate::ui::draw_text_fitted(
                 canvas,
-                if field == RoutingField::Passthrough {
+                if is_toggle_field {
                     "Toggle"
                 } else if selected {
                     "Tap +/-"
@@ -4181,6 +4204,23 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn routing_field_rects(&self, body: Rect) -> Vec<(RoutingField, Rect)> {
+        let columns = crate::ui::equal_columns(body, 2, 12);
+        let left_count = RoutingField::ALL.len().div_ceil(2);
+        let left_rows = crate::ui::stacked_rows(columns[0], left_count, 10);
+        let right_rows = crate::ui::stacked_rows(columns[1], RoutingField::ALL.len() - left_count, 10);
+        let mut rects = Vec::with_capacity(RoutingField::ALL.len());
+        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
+            let rect = if index < left_count {
+                left_rows[index]
+            } else {
+                right_rows[index - left_count]
+            };
+            rects.push((field, rect));
+        }
+        rects
     }
 
     fn update_window_title(
@@ -4270,7 +4310,7 @@ impl App {
                 )
             }
             AppPage::Routing => format!(
-                "trekr | Page:{} (Tab/F1-F4) | T{} {} | F8 Direct:{} | Up/Down Field | Q/E Adjust | Enter Toggle | Field:{} | In:{} {} | Out:{} {} | Thru:{}",
+                "trekr | Page:{} (Tab/F1-F4) | T{} {} | F8 Direct:{} | Up/Down Field | Q/E Adjust | Enter Toggle | Field:{} | In:{} {} | Out:{} {} | Thru:{} | RecFX:{} | MonFX:{} | IFX:{} | OFX:{}",
                 self.page_state.current_page.label(),
                 self.project.active_track_index + 1,
                 active.name,
@@ -4281,6 +4321,22 @@ impl App {
                 port_name(active.routing.output_port.as_ref()),
                 output_channel_label(active.routing.output_channel),
                 on_off(active.state.passthrough),
+                active.midi_fx.record_input_fx_mode.label(),
+                on_off(active.midi_fx.monitor_input_fx),
+                fx_slot_label(
+                    active
+                        .midi_fx
+                        .input_fx
+                        .get(self.page_state.selected_input_fx_slot)
+                        .and_then(|slot| slot.as_ref())
+                ),
+                fx_slot_label(
+                    active
+                        .midi_fx
+                        .output_fx
+                        .get(self.page_state.selected_output_fx_slot)
+                        .and_then(|slot| slot.as_ref())
+                ),
             ),
         };
         window.set_title(&title)?;
@@ -5119,6 +5175,26 @@ impl App {
             track.routing.output_port =
                 self.midi_devices.outputs.get(index % output_count).cloned();
             track.routing.output_channel = Some(((index % 16) + 1) as u8);
+            if index == 0 {
+                track.midi_fx.input_fx[0] = Some(MidiFxSlot {
+                    enabled: true,
+                    effect: MidiFx::Transpose { semitones: 12 },
+                });
+                track.midi_fx.output_fx[0] = Some(MidiFxSlot {
+                    enabled: true,
+                    effect: MidiFx::Velocity { percent: 120 },
+                });
+            } else if index == 1 {
+                track.midi_fx.output_fx[0] = Some(MidiFxSlot {
+                    enabled: true,
+                    effect: MidiFx::Arp { step_ticks: 120 },
+                });
+            } else if index == 2 {
+                track.midi_fx.output_fx[0] = Some(MidiFxSlot {
+                    enabled: true,
+                    effect: MidiFx::TimeShift { ticks: 120 },
+                });
+            }
         }
         self.sync_midi_inputs();
     }
@@ -5241,13 +5317,14 @@ impl App {
                     self.page_state.midi_io.selected_output_index,
                 ),
             },
-            AppPage::Routing => {
-                if self.page_state.selected_routing_field == RoutingField::Passthrough {
-                    if let Some(track) = self.project.active_track_mut() {
-                        track.state.passthrough = !track.state.passthrough;
-                    }
-                }
-            }
+            AppPage::Routing => match self.page_state.selected_routing_field {
+                RoutingField::Passthrough
+                | RoutingField::RecordInputFx
+                | RoutingField::MonitorInputFx
+                | RoutingField::InputFxEnabled
+                | RoutingField::OutputFxEnabled => self.adjust_routing_field(1),
+                _ => {}
+            },
         }
     }
 
@@ -5456,35 +5533,161 @@ impl App {
         !matches!(field, MappingField::SourceDevice) || entry.source_kind == MappingSourceKind::Midi
     }
 
+    fn selected_fx_slot_index(&self, chain_kind: MidiFxChainKind) -> usize {
+        match chain_kind {
+            MidiFxChainKind::Input => self
+                .page_state
+                .selected_input_fx_slot
+                .min(MIDI_FX_SLOT_COUNT - 1),
+            MidiFxChainKind::Output => self
+                .page_state
+                .selected_output_fx_slot
+                .min(MIDI_FX_SLOT_COUNT - 1),
+        }
+    }
+
+    fn set_selected_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, index: usize) {
+        let clamped = index.min(MIDI_FX_SLOT_COUNT - 1);
+        match chain_kind {
+            MidiFxChainKind::Input => self.page_state.selected_input_fx_slot = clamped,
+            MidiFxChainKind::Output => self.page_state.selected_output_fx_slot = clamped,
+        }
+    }
+
+    fn fx_chain<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> &'a [Option<MidiFxSlot>] {
+        match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &track.midi_fx.output_fx,
+        }
+    }
+
+    fn selected_fx_slot<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<&'a MidiFxSlot> {
+        self.fx_chain(track, chain_kind)
+            .get(self.selected_fx_slot_index(chain_kind))
+            .and_then(|slot| slot.as_ref())
+    }
+
+    fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let current = self.selected_fx_slot_index(chain_kind) as i32;
+        let next = (current + delta).rem_euclid(MIDI_FX_SLOT_COUNT as i32) as usize;
+        self.set_selected_fx_slot_index(chain_kind, next);
+    }
+
+    fn adjust_fx_kind(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let track_count = self.project.tracks.len();
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        if slot_index >= chain.len() {
+            return;
+        }
+        let current = chain[slot_index].as_ref();
+        chain[slot_index] = cycle_fx_kind(current, delta);
+        if let Some(slot) = chain[slot_index].as_mut() {
+            if let MidiFx::TrackClone { source_track } = &mut slot.effect {
+                let max_source = track_count.saturating_sub(1);
+                *source_track = (*source_track).min(max_source);
+            }
+        }
+    }
+
+    fn toggle_fx_enabled(&mut self, chain_kind: MidiFxChainKind) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        if let Some(Some(slot)) = chain.get_mut(slot_index) {
+            slot.enabled = !slot.enabled;
+        }
+    }
+
+    fn adjust_fx_value(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let track_count = self.project.tracks.len();
+        let ppqn = self.project.transport.ppqn;
+        let active_track_index = self.project.active_track_index;
+        let source_muted: Vec<bool> = self
+            .project
+            .tracks
+            .iter()
+            .map(|track| track.state.muted)
+            .collect();
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        let Some(Some(slot)) = chain.get_mut(slot_index) else {
+            return;
+        };
+        slot.effect.adjust_value(delta, track_count, ppqn);
+        if let MidiFx::TrackClone { source_track } = &mut slot.effect {
+            if *source_track == active_track_index && track_count > 1 {
+                *source_track = if delta >= 0 { 1 } else { track_count - 1 };
+            }
+            if source_muted.get(*source_track).copied().unwrap_or(false) && track_count > 1 {
+                let step = if delta >= 0 { 1 } else { track_count - 1 };
+                *source_track = (*source_track + step) % track_count;
+            }
+        }
+    }
+
     fn adjust_routing_field(&mut self, delta: i32) {
         let current_input = self.midi_devices.selected_input_port().cloned();
         let current_output = self.midi_devices.selected_output_port().cloned();
-        if let Some(track) = self.project.active_track_mut() {
-            match self.page_state.selected_routing_field {
-                RoutingField::InputDevice => {
+        match self.page_state.selected_routing_field {
+            RoutingField::InputDevice => {
+                if let Some(track) = self.project.active_track_mut() {
                     track.routing.input_port = cycle_optional_port(
                         track.routing.input_port.as_ref(),
                         &self.midi_devices.inputs,
                         delta,
                     );
-                    self.sync_midi_inputs();
                 }
-                RoutingField::InputChannel => {
+                self.sync_midi_inputs();
+            }
+            RoutingField::InputChannel => {
+                if let Some(track) = self.project.active_track_mut() {
                     track.routing.input_channel =
                         cycle_input_channel(track.routing.input_channel, delta);
                 }
-                RoutingField::OutputDevice => {
+            }
+            RoutingField::OutputDevice => {
+                if let Some(track) = self.project.active_track_mut() {
                     track.routing.output_port = cycle_optional_port(
                         track.routing.output_port.as_ref(),
                         &self.midi_devices.outputs,
                         delta,
                     );
                 }
-                RoutingField::OutputChannel => {
+            }
+            RoutingField::OutputChannel => {
+                if let Some(track) = self.project.active_track_mut() {
                     track.routing.output_channel =
                         cycle_output_channel(track.routing.output_channel, delta);
                 }
-                RoutingField::Passthrough => {
+            }
+            RoutingField::Passthrough => {
+                if let Some(track) = self.project.active_track_mut() {
                     track.state.passthrough = !track.state.passthrough;
                     if track.routing.input_port.is_none() {
                         track.routing.input_port = current_input;
@@ -5492,9 +5695,28 @@ impl App {
                     if track.routing.output_port.is_none() {
                         track.routing.output_port = current_output;
                     }
-                    self.sync_midi_inputs();
+                }
+                self.sync_midi_inputs();
+            }
+            RoutingField::RecordInputFx => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.midi_fx.record_input_fx_mode =
+                        track.midi_fx.record_input_fx_mode.toggle();
                 }
             }
+            RoutingField::MonitorInputFx => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.midi_fx.monitor_input_fx = !track.midi_fx.monitor_input_fx;
+                }
+            }
+            RoutingField::InputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Input, delta),
+            RoutingField::InputFxKind => self.adjust_fx_kind(MidiFxChainKind::Input, delta),
+            RoutingField::InputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Input),
+            RoutingField::InputFxValue => self.adjust_fx_value(MidiFxChainKind::Input, delta),
+            RoutingField::OutputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Output, delta),
+            RoutingField::OutputFxKind => self.adjust_fx_kind(MidiFxChainKind::Output, delta),
+            RoutingField::OutputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Output),
+            RoutingField::OutputFxValue => self.adjust_fx_value(MidiFxChainKind::Output, delta),
         }
     }
 
@@ -5616,6 +5838,129 @@ impl App {
         self.midi_input.sync_ports(&ports);
     }
 
+    fn ensure_fx_live_state_len(&mut self) {
+        let track_count = self.project.tracks.len();
+        if self.input_fx_live_states.len() < track_count {
+            self.input_fx_live_states
+                .resize(track_count, LiveMidiFxState::default());
+        }
+        if self.output_fx_live_states.len() < track_count {
+            self.output_fx_live_states
+                .resize(track_count, LiveMidiFxState::default());
+        }
+    }
+
+    fn monitor_source_events(
+        &mut self,
+        track_index: usize,
+        event: LiveMidiFxEvent,
+        input_chain: &[Option<MidiFxSlot>],
+        monitor_input_fx: bool,
+    ) -> (Vec<LiveMidiFxEvent>, Vec<LiveMidiFxEvent>) {
+        self.ensure_fx_live_state_len();
+        let processed = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
+            process_live_event(input_chain, state, event.clone())
+        } else {
+            vec![event.clone()]
+        };
+        let monitor_source = if monitor_input_fx {
+            processed.clone()
+        } else {
+            vec![event]
+        };
+        (processed, monitor_source)
+    }
+
+    fn send_live_monitor_events(
+        &mut self,
+        track_index: usize,
+        output_chain: &[Option<MidiFxSlot>],
+        output_port: Option<&MidiPortRef>,
+        output_channel: Option<u8>,
+        events: Vec<LiveMidiFxEvent>,
+    ) {
+        let (Some(port), Some(channel)) = (output_port, output_channel) else {
+            return;
+        };
+        self.ensure_fx_live_state_len();
+        for event in events {
+            let processed_events =
+                if let Some(state) = self.output_fx_live_states.get_mut(track_index) {
+                    process_live_event(output_chain, state, event)
+                } else {
+                    Vec::new()
+                };
+            for processed in processed_events {
+                match processed {
+                    LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                        let _ = self.midi_output.send_note_on(
+                            port,
+                            channel.clamp(1, 16),
+                            pitch,
+                            velocity,
+                        );
+                    }
+                    LiveMidiFxEvent::NoteOff { pitch } => {
+                        let _ = self
+                            .midi_output
+                            .send_note_off(port, channel.clamp(1, 16), pitch);
+                    }
+                }
+            }
+        }
+    }
+
+    fn cloned_track_notes(&self, target_track_index: usize) -> Vec<MidiNote> {
+        let Some(track) = self.project.tracks.get(target_track_index) else {
+            return Vec::new();
+        };
+        let mut notes = Vec::new();
+        for slot in track
+            .midi_fx
+            .input_fx
+            .iter()
+            .flatten()
+            .filter(|slot| slot.enabled)
+        {
+            let MidiFx::TrackClone { source_track } = slot.effect else {
+                continue;
+            };
+            if source_track == target_track_index {
+                continue;
+            }
+            let Some(source) = self.project.tracks.get(source_track) else {
+                continue;
+            };
+            if source.state.muted {
+                continue;
+            }
+            notes.extend(source.midi_notes.iter().copied());
+        }
+        notes
+    }
+
+    fn effective_track_output_notes(&self, track_index: usize) -> Vec<MidiNote> {
+        let Some(track) = self.project.tracks.get(track_index) else {
+            return Vec::new();
+        };
+        let input_transform_only: Vec<Option<MidiFxSlot>> = track
+            .midi_fx
+            .input_fx
+            .iter()
+            .map(|slot| match slot {
+                Some(slot) if !matches!(slot.effect, MidiFx::TrackClone { .. }) => {
+                    Some(slot.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let cloned_notes =
+            transform_notes(&self.cloned_track_notes(track_index), &input_transform_only);
+        let mut notes = track.midi_notes.clone();
+        notes.extend(cloned_notes);
+        transform_notes(&notes, &track.midi_fx.output_fx)
+    }
+
     fn poll_midi_input(&mut self) {
         let events = self.midi_input.drain_events();
         for event in events {
@@ -5660,48 +6005,96 @@ impl App {
                 .map(|track| self.record_capture_ticks(track))
                 .unwrap_or(self.playhead_ticks);
 
-            if let Some(track) = self.project.tracks.get_mut(index) {
-                match event.message {
-                    MidiInputMessage::NoteOn { pitch, velocity } => {
+            let Some(track_view) = self.project.tracks.get(index) else {
+                continue;
+            };
+
+            let (
+                record_mode,
+                monitor_input_fx,
+                passthrough,
+                output_port,
+                output_channel,
+                input_chain,
+                output_chain,
+            ) = (
+                track_view.midi_fx.record_input_fx_mode,
+                track_view.midi_fx.monitor_input_fx,
+                track_view.state.passthrough,
+                track_view.routing.output_port.clone(),
+                track_view.routing.output_channel,
+                track_view.midi_fx.input_fx.clone(),
+                track_view.midi_fx.output_fx.clone(),
+            );
+
+            match event.message {
+                MidiInputMessage::NoteOn { pitch, velocity } => {
+                    let raw_event = LiveMidiFxEvent::NoteOn { pitch, velocity };
+                    let (post_input_events, monitor_source_events) = self.monitor_source_events(
+                        index,
+                        raw_event,
+                        &input_chain,
+                        monitor_input_fx,
+                    );
+                    if let Some(track) = self.project.tracks.get_mut(index) {
                         if track.active_take.is_some() {
-                            track.record_note_on(pitch, velocity, input_ticks);
-                        }
-                        if track.state.passthrough {
-                            if let (Some(port), Some(channel)) = (
-                                track.routing.output_port.as_ref(),
-                                track.routing.output_channel,
-                            ) {
-                                if self
-                                    .midi_output
-                                    .send_note_on(port, channel.clamp(1, 16), pitch, velocity)
-                                    .is_err()
-                                {
-                                    self.refresh_midi_devices_now();
+                            let record_events =
+                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
+                                    post_input_events.clone()
+                                } else {
+                                    vec![LiveMidiFxEvent::NoteOn { pitch, velocity }]
+                                };
+                            for record_event in record_events {
+                                if let LiveMidiFxEvent::NoteOn { pitch, velocity } = record_event {
+                                    track.record_note_on(pitch, velocity, input_ticks);
                                 }
                             }
                         }
                     }
-                    MidiInputMessage::NoteOff { pitch } => {
-                        if track.active_take.is_some() {
-                            track.record_note_off(pitch, input_ticks);
-                        }
-                        if track.state.passthrough {
-                            if let (Some(port), Some(channel)) = (
-                                track.routing.output_port.as_ref(),
-                                track.routing.output_channel,
-                            ) {
-                                if self
-                                    .midi_output
-                                    .send_note_off(port, channel.clamp(1, 16), pitch)
-                                    .is_err()
-                                {
-                                    self.refresh_midi_devices_now();
-                                }
-                            }
-                        }
+                    if passthrough {
+                        self.send_live_monitor_events(
+                            index,
+                            &output_chain,
+                            output_port.as_ref(),
+                            output_channel,
+                            monitor_source_events,
+                        );
                     }
-                    MidiInputMessage::ControlChange { .. } => {}
                 }
+                MidiInputMessage::NoteOff { pitch } => {
+                    let raw_event = LiveMidiFxEvent::NoteOff { pitch };
+                    let (post_input_events, monitor_source_events) = self.monitor_source_events(
+                        index,
+                        raw_event,
+                        &input_chain,
+                        monitor_input_fx,
+                    );
+                    if let Some(track) = self.project.tracks.get_mut(index) {
+                        if track.active_take.is_some() {
+                            let record_events =
+                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
+                                    post_input_events.clone()
+                                } else {
+                                    vec![LiveMidiFxEvent::NoteOff { pitch }]
+                                };
+                            for record_event in record_events {
+                                if let LiveMidiFxEvent::NoteOff { pitch } = record_event {
+                                    track.record_note_off(pitch, input_ticks);
+                                }
+                            }
+                        }
+                    }
+                    if passthrough {
+                        self.send_live_monitor_events(
+                            index,
+                            &output_chain,
+                            output_port.as_ref(),
+                            output_channel,
+                            monitor_source_events,
+                        );
+                    }
+                }
+                MidiInputMessage::ControlChange { .. } => {}
             }
         }
     }
@@ -5848,7 +6241,8 @@ impl App {
             .project
             .tracks
             .iter()
-            .map(|track| {
+            .enumerate()
+            .map(|(track_index, track)| {
                 let channel = track.routing.output_channel.unwrap_or(1).clamp(1, 16);
                 let port = track.routing.output_port.clone();
                 let loop_range = if track.state.loop_enabled {
@@ -5856,18 +6250,15 @@ impl App {
                 } else {
                     global_loop
                 };
-                let live_notes = track.playback_preview_notes(
+                let mut notes = self.effective_track_output_notes(track_index);
+                let preview_notes = track.playback_preview_notes(
                     self.project.transport,
                     self.transport_ticks,
                     self.record_context(track),
                 );
-                let events = scheduled_note_events(
-                    track,
-                    live_notes.as_slice(),
-                    previous_ticks,
-                    advanced_ticks,
-                    loop_range,
-                );
+                notes.extend(preview_notes);
+                let events =
+                    scheduled_note_events(track, &notes, previous_ticks, advanced_ticks, loop_range);
                 (port, channel, events)
             })
             .collect();
@@ -5949,6 +6340,50 @@ impl App {
                 .unwrap_or_else(|| "none".to_string()),
             RoutingField::OutputChannel => output_channel_label(track.routing.output_channel),
             RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
+            RoutingField::RecordInputFx => track.midi_fx.record_input_fx_mode.label().to_string(),
+            RoutingField::MonitorInputFx => on_off(track.midi_fx.monitor_input_fx).to_string(),
+            RoutingField::InputFxSlot => {
+                format!(
+                    "Slot {}",
+                    self.selected_fx_slot_index(MidiFxChainKind::Input) + 1
+                )
+            }
+            RoutingField::InputFxKind => self
+                .selected_fx_slot(track, MidiFxChainKind::Input)
+                .map(|slot| slot.effect.kind().label().to_string())
+                .unwrap_or_else(|| "None".to_string()),
+            RoutingField::InputFxEnabled => self
+                .selected_fx_slot(track, MidiFxChainKind::Input)
+                .map(|slot| on_off(slot.enabled).to_string())
+                .unwrap_or_else(|| "None".to_string()),
+            RoutingField::InputFxValue => fx_slot_label(
+                track
+                    .midi_fx
+                    .input_fx
+                    .get(self.selected_fx_slot_index(MidiFxChainKind::Input))
+                    .and_then(|slot| slot.as_ref()),
+            ),
+            RoutingField::OutputFxSlot => {
+                format!(
+                    "Slot {}",
+                    self.selected_fx_slot_index(MidiFxChainKind::Output) + 1
+                )
+            }
+            RoutingField::OutputFxKind => self
+                .selected_fx_slot(track, MidiFxChainKind::Output)
+                .map(|slot| slot.effect.kind().label().to_string())
+                .unwrap_or_else(|| "None".to_string()),
+            RoutingField::OutputFxEnabled => self
+                .selected_fx_slot(track, MidiFxChainKind::Output)
+                .map(|slot| on_off(slot.enabled).to_string())
+                .unwrap_or_else(|| "None".to_string()),
+            RoutingField::OutputFxValue => fx_slot_label(
+                track
+                    .midi_fx
+                    .output_fx
+                    .get(self.selected_fx_slot_index(MidiFxChainKind::Output))
+                    .and_then(|slot| slot.as_ref()),
+            ),
         }
     }
 
@@ -6450,14 +6885,19 @@ impl App {
             return Some(AppControl::Continue);
         }
 
-        let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
-        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
-            let row = rows[index];
+        for (field, row) in self.routing_field_rects(body) {
             if !rect_contains(row, x, y) {
                 continue;
             }
             self.page_state.selected_routing_field = field;
-            if field == RoutingField::Passthrough {
+            if matches!(
+                field,
+                RoutingField::Passthrough
+                    | RoutingField::RecordInputFx
+                    | RoutingField::MonitorInputFx
+                    | RoutingField::InputFxEnabled
+                    | RoutingField::OutputFxEnabled
+            ) {
                 self.activate_page_item();
                 return Some(AppControl::Continue);
             }
@@ -6744,12 +7184,10 @@ impl App {
             },
         ));
 
-        let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
-        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
+        for (field, row) in self.routing_field_rects(body) {
             if field != RoutingField::Passthrough {
                 continue;
             }
-            let row = rows[index];
             let value = Rect::new(
                 row.x + 156,
                 row.y + 8,
@@ -7171,7 +7609,7 @@ fn pointer_hover_position(
 
 fn scheduled_note_events(
     track: &Track,
-    live_notes: &[MidiNote],
+    notes: &[MidiNote],
     previous_ticks: u64,
     advanced_ticks: u64,
     loop_range: Option<crate::timeline::LoopRegion>,
@@ -7191,7 +7629,7 @@ fn scheduled_note_events(
 
     let mut events = Vec::new();
     for (segment_start, segment_end) in segments {
-        for note in track.midi_notes.iter().chain(live_notes.iter()) {
+        for note in notes {
             if track.recording_clip_is_muted(note.recording_clip_id) {
                 continue;
             }
