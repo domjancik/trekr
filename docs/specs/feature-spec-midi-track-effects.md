@@ -59,7 +59,7 @@ But it does not yet support a reusable per-track MIDI processing pipeline. That 
 - keep UI compact in the timeline
 - reuse the current active-track and action/mapping model
 - support duplicate/additive layering where it is musically useful
-- leave room for future modulation and automation without redesigning parameter storage
+- ship with a parameter model that can support modulation from the start
 
 ## Non-Goals
 
@@ -160,6 +160,18 @@ Track clone sources follow the same rule:
 - in `Record Dry Input`, clone-generated notes are heard but not committed
 - in `Record Post Input FX`, clone-generated notes after input-chain processing are recordable
 
+The track should also expose an explicit effect-setting toggle:
+
+- `Monitor Input FX`
+
+Recommended V1 behavior:
+
+- default `on`
+- when `off`, live monitoring/passthrough uses the dry matched track input
+- recording still follows the selected record source mode
+
+This keeps monitoring and recording policy separable without introducing per-effect recording exceptions.
+
 ## Effect Categories
 
 ### Source Effects
@@ -182,6 +194,7 @@ Transform effects accept a note stream and emit a transformed note stream.
 
 Initial target set:
 
+- arp
 - note filter
 - transpose
 - velocity control
@@ -204,7 +217,7 @@ Rules:
 - clone cycles are invalid
 - direct self-clone is invalid
 - indirect cycles must be blocked
-- muted source-track playback should not suppress clone generation unless a later policy explicitly says so
+- source-track mute/solo state should influence clone generation rather than being ignored
 
 Recommended tap semantics:
 
@@ -216,7 +229,15 @@ Recommended tap semantics:
 
 - filters by note range
 - should support inclusive low/high note bounds
+- should support selective note enable/disable lists
 - may later support explicit pitch-class or whitelist modes
+
+### Arp
+
+- generates or reshapes note timing/pattern from incoming held notes
+- is part of the first implementation slice
+- is expected to need richer parameter editing than compact one-value effects
+- should still use the same parameter schema/instance model as all other effects
 
 ### Transpose
 
@@ -292,6 +313,16 @@ These should be blocked, not merely warned:
 - clone graph cycles
 - source track reference to a non-MIDI track type if audio/hybrid arrives later and is unsupported
 
+### Stronger Harmonic Conflict Warning
+
+If both `scale quantize` and `chord progression quantize` appear in the same effective chain, the UI should show a stronger warning than the generic stack warning.
+
+Recommended wording concept:
+
+- `Harmonic quantizers stacked`
+
+This remains valid, but the warning should make it obvious that the later quantizer may significantly override the earlier one.
+
 ## Parameter Model
 
 Parameters should use one consistent, extensible representation across all effects.
@@ -309,6 +340,16 @@ Parameter types should support at least:
 - integer range
 - normalized scalar
 - note/range pair where relevant
+- list/collection values for cases like note toggle lists
+
+List parameter support should be first-class rather than encoded as ad hoc effect-specific blobs.
+
+Examples:
+
+- enabled note list
+- enabled pitch-class list
+- ordered progression step list
+- step pattern list for arp/modulation shapes
 
 UI hint levels:
 
@@ -357,8 +398,24 @@ Recommended Routing page additions:
 - output chain list
 - selected effect inspector
 - record source mode selector
+- monitor input FX toggle
 
 This fits the page's existing role as the active-track configuration surface.
+
+### Possible Later FX Overview Page
+
+A separate FX editing page is interesting as a future global overview across all tracks, but it is not required to begin implementation.
+
+Recommended approach:
+
+- start with timeline-local compact display plus active-track editing in `Routing`
+- only add a dedicated FX overview page if implementation or usability proves the active-track editor insufficient
+
+Possible future use cases for a separate page:
+
+- seeing all input/output chains across tracks at once
+- bulk auditing bypass/conflict states
+- quicker multi-track navigation for controller-heavy setups
 
 ### Expanded Editing
 
@@ -367,6 +424,13 @@ For effects with more than one compact parameter:
 - selecting the effect on the Routing page reveals an inspector panel
 - touch may use a modal sheet/full-screen overlay
 - desktop may use inline panel space first
+
+This richer editing path is expected to be used by:
+
+- arp
+- chord progression quantize
+- modulation-capable parameters
+- list-valued parameters such as note toggle lists
 
 ## Interaction Model
 
@@ -475,9 +539,11 @@ Runtime-only fields may include:
 - cycle-detection cache
 - live modulation runtime phase
 
-## Future Modulation
+## Modulation
 
-The parameter model should leave room for:
+The first implementation direction should treat modulation as shipping-relevant, not purely aspirational.
+
+The parameter model should support:
 
 - procedural modulation
 - recorded automation
@@ -486,6 +552,8 @@ The parameter model should leave room for:
 Recommended principle:
 
 - modulation targets parameters by stable parameter id on stable effect instance id
+
+Modulation is considered in-scope for shipping directionally with this feature family, so the parameter model should not treat it as a purely theoretical extension.
 
 This avoids redesigning storage when automation arrives.
 
@@ -496,8 +564,12 @@ This avoids redesigning storage when automation arrives.
 - input effects can be heard before recording and support an explicit dry-vs-post-input-FX record mode
 - a user can add more than one track clone and the result is additive
 - clone cycles and self-clones are prevented
+- input effect settings include an explicit monitoring toggle
 - effect order is user-controlled and musically significant
 - effects are manageable from a compact timeline presentation and an active-track editor on the Routing page
+- arp is supported in the initial effect family using the same extensible parameter model as other effects
+- list-valued parameters are supported for effects that need selective note or step collections
+- stacked scale/chord quantizers surface a stronger warning than generic duplicate-stack notices
 - effect control routes through the canonical action layer and supports active-track and absolute-track mapping scope
 - parameter storage is schema-driven enough to support future effects and modulation without per-effect ad hoc UI state
 
@@ -506,6 +578,7 @@ This avoids redesigning storage when automation arrives.
 - `src/project.rs`
   - add serialized track effect-chain state
   - add per-track record source mode
+  - add monitor-input-FX toggle
 - `src/routing.rs`
   - extend routing/processing model beyond ports/channels
 - `src/app.rs`
@@ -529,7 +602,6 @@ Likely new module(s):
 
 ## Open Questions
 
-- should source-track mute/solo influence track-clone generation, or should clone tapping be independent of destination playback state
-- should input-chain monitoring be independently bypassable from recording source mode
-- should the first implementation include an arp, or reserve richer sequence-generating effects for a later spec
-- when both scale quantize and chord progression quantize are present, should the UI surface a stronger conflict warning than a generic stack warning
+- exact mute/solo policy details for clone tapping still need one final implementation rule, but source-track playback state should remain relevant
+- if a later dedicated FX overview page is added, should it be read/write from its first version or initially audit-only
+- how procedural modulation and recorded parameter automation should share one editing surface in the first shipped implementation
