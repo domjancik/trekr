@@ -4337,34 +4337,40 @@ impl App {
 
     fn routing_panel_rects(&self, body: Rect) -> (Rect, Rect, Rect, Rect) {
         let gap = 12_i32;
-        let total_gap = gap * 2;
-        let signal_width = ((body.width() as i32 * 42) / 100).max(170) as u32;
-        let remaining = body
+        let signal_width = ((body.width() as i32 * 46) / 100).max(180) as u32;
+        let right_width = body
             .width()
             .saturating_sub(signal_width)
-            .saturating_sub(total_gap as u32);
-        let side_width = ((remaining as i32) / 2).max(120) as u32;
-        let last_width = remaining.saturating_sub(side_width);
+            .saturating_sub(gap as u32);
         let signal_panel = Rect::new(body.x, body.y, signal_width, body.height());
-        let input_fx_panel = Rect::new(
+        let right = Rect::new(
             body.x + signal_width as i32 + gap,
             body.y,
-            side_width,
-            body.height(),
-        );
-        let right = Rect::new(
-            input_fx_panel.x + input_fx_panel.width() as i32 + gap,
-            body.y,
-            last_width,
+            right_width,
             body.height(),
         );
         let panel_gap = 10_i32;
-        let rec_height = ((right.height() as i32 * 28) / 100).max(72) as u32;
-        let output_height = right.height().saturating_sub(rec_height + panel_gap as u32);
+        let rec_height = 72_u32.min(right.height());
+        let remaining = right
+            .height()
+            .saturating_sub(rec_height)
+            .saturating_sub((panel_gap * 2) as u32);
+        let input_height = (remaining / 2).max(84);
+        let output_height = right
+            .height()
+            .saturating_sub(rec_height)
+            .saturating_sub(input_height)
+            .saturating_sub((panel_gap * 2) as u32);
         let rec_panel = Rect::new(right.x, right.y, right.width(), rec_height);
-        let output_fx_panel = Rect::new(
+        let input_fx_panel = Rect::new(
             right.x,
             right.y + rec_height as i32 + panel_gap,
+            right.width(),
+            input_height,
+        );
+        let output_fx_panel = Rect::new(
+            right.x,
+            input_fx_panel.y + input_fx_panel.height() as i32 + panel_gap,
             right.width(),
             output_height,
         );
@@ -4416,20 +4422,8 @@ impl App {
             inner.width(),
             inner.height().saturating_sub(18),
         );
-        if fields.len() == 4 {
-            let grid_rows = crate::ui::stacked_rows(rows_bounds, 2, 8);
-            let mut rects = Vec::with_capacity(4);
-            for (row_index, grid_row) in grid_rows.into_iter().enumerate() {
-                let columns = crate::ui::equal_columns(grid_row, 2, 8);
-                let start = row_index * 2;
-                rects.push((fields[start], columns[0]));
-                rects.push((fields[start + 1], columns[1]));
-            }
-            rects
-        } else {
-            let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
-            fields.iter().copied().zip(rows).collect()
-        }
+        let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
+        fields.iter().copied().zip(rows).collect()
     }
 
     fn draw_routing_group_panel<T: RenderTarget>(
