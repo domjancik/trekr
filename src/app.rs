@@ -1944,25 +1944,13 @@ impl App {
         } else {
             &track.midi_fx.output_fx
         };
-        let active_count = chain.iter().flatten().count();
-        let visible_count = active_count.max(1).min(2);
-        let chip_w = 14_i32;
-        let gap = 2_i32;
-        let total_w =
-            visible_count as i32 * chip_w + (visible_count.saturating_sub(1) as i32 * gap);
-        let start_x = (role_badge.x + role_badge.width() as i32 + 4)
-            .max(right_limit - total_w)
-            .min(right_limit - chip_w);
         let y = label_rect.y + label_rect.height() as i32 - 10;
-        let mut rects = Vec::with_capacity(visible_count);
-        for index in 0..visible_count {
-            let x = start_x + index as i32 * (chip_w + gap);
-            if x + chip_w > right_limit {
-                break;
-            }
-            rects.push((index, Rect::new(x, y, chip_w as u32, 8)));
+        let left = role_badge.x + role_badge.width() as i32 + 4;
+        let width = (right_limit - left).max(0) as u32;
+        if width < 16 || chain.is_empty() {
+            return Vec::new();
         }
-        rects
+        vec![(0, Rect::new(left, y, width, 8))]
     }
 
     fn draw_track_fx_inserts<T: RenderTarget>(
@@ -1982,31 +1970,27 @@ impl App {
             return Ok(());
         }
 
-        let visible_slots: Vec<Option<&MidiFxSlot>> = chain
-            .iter()
-            .flatten()
-            .map(Some)
-            .chain(std::iter::repeat(None))
-            .take(rects.len())
-            .collect();
-        for ((_, rect), slot) in rects.into_iter().zip(visible_slots.into_iter()) {
-            let label = slot.map(track_fx_insert_label).unwrap_or("--");
-            let enabled = slot.map(|slot| slot.enabled).unwrap_or(false);
+        let active_slots: Vec<&MidiFxSlot> = chain.iter().flatten().collect();
+        let active_count = active_slots.len();
+        let first_slot = active_slots.first().copied();
+        for (_, rect) in rects.into_iter() {
+            let label = track_fx_insert_summary_label(detail, first_slot, active_count);
+            let enabled = first_slot.map(|slot| slot.enabled).unwrap_or(false);
             let fill = if detail {
                 if enabled {
-                    Color::RGB(86, 132, 194)
+                    Color::RGB(78, 128, 198)
                 } else {
-                    Color::RGB(56, 66, 84)
+                    Color::RGB(52, 64, 84)
                 }
             } else if enabled {
-                Color::RGB(160, 104, 148)
+                Color::RGB(172, 108, 156)
             } else {
-                Color::RGB(60, 66, 80)
+                Color::RGB(62, 68, 82)
             };
             let border = if enabled {
-                Color::RGB(228, 232, 216)
+                Color::RGB(236, 238, 228)
             } else {
-                Color::RGB(116, 124, 138)
+                Color::RGB(130, 136, 148)
             };
             canvas.set_draw_color(fill);
             canvas.fill_rect(rect)?;
@@ -2014,8 +1998,8 @@ impl App {
             canvas.draw_rect(rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                label,
-                Rect::new(rect.x + 1, rect.y + 1, rect.width().saturating_sub(2), 7),
+                &label,
+                Rect::new(rect.x + 2, rect.y + 1, rect.width().saturating_sub(4), 7),
                 1,
                 if enabled {
                     Color::RGB(248, 244, 236)
@@ -4195,45 +4179,34 @@ impl App {
                     }
                 }
             };
-            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
-            let label_text_rect = Rect::new(
-                label_chip.x + 6,
-                label_chip.y + 4,
-                label_chip.width().saturating_sub(12),
-                8,
-            );
+            let control_height = row.height().saturating_sub(20).max(10);
+            let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
+            let label_text_rect =
+                Rect::new(row.x + 8, row.y + 4, row.width().saturating_sub(16), 8);
             let value = Rect::new(
-                label_chip.x + label_chip.width() as i32 + 8,
-                row.y + 6,
-                row.width().saturating_sub(172),
-                row.height().saturating_sub(12),
+                row.x + 8,
+                control_y,
+                row.width().saturating_sub(64),
+                control_height,
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 56,
-                row.y + 6,
-                48,
-                row.height().saturating_sub(12),
+                row.x + row.width() as i32 - 48,
+                control_y,
+                40,
+                control_height,
             );
             let left_adjust = Rect::new(
                 value.x + 3,
-                value.y + 3,
-                18,
-                value.height().saturating_sub(6),
+                value.y + 2,
+                14,
+                value.height().saturating_sub(4),
             );
             let right_adjust = Rect::new(
-                value.x + value.width() as i32 - 21,
-                value.y + 3,
-                18,
-                value.height().saturating_sub(6),
+                value.x + value.width() as i32 - 17,
+                value.y + 2,
+                14,
+                value.height().saturating_sub(4),
             );
-            canvas.set_draw_color(Color::RGB(68, 78, 102));
-            canvas.fill_rect(label_chip)?;
-            canvas.set_draw_color(if selected {
-                Color::RGB(212, 222, 236)
-            } else {
-                Color::RGB(126, 136, 154)
-            });
-            canvas.draw_rect(label_chip)?;
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
             if !is_toggle_field {
@@ -4256,16 +4229,16 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 field.label(),
-                label_text_rect,
+                centered_text_rect(label_text_rect),
                 1,
                 Color::RGB(244, 244, 236),
             )?;
             if is_toggle_field {
                 let bool_chip = Rect::new(
                     value.x + 6,
-                    value.y + 2,
-                    54,
-                    value.height().saturating_sub(4),
+                    value.y + 1,
+                    value.width().saturating_sub(12).min(64),
+                    value.height().saturating_sub(2),
                 );
                 let toggled_on = matches!(
                     self.routing_field_value(active_track, field).as_str(),
@@ -4282,7 +4255,7 @@ impl App {
                     &self.routing_field_value(active_track, field),
                     Rect::new(
                         bool_chip.x + 6,
-                        bool_chip.y + 3,
+                        bool_chip.y + ((bool_chip.height() as i32 - 8) / 2).max(0),
                         bool_chip.width().saturating_sub(12),
                         8,
                     ),
@@ -4294,9 +4267,9 @@ impl App {
                     canvas,
                     "-",
                     Rect::new(
-                        left_adjust.x + 7,
-                        left_adjust.y + 3,
-                        left_adjust.width().saturating_sub(14),
+                        left_adjust.x + 3,
+                        left_adjust.y + ((left_adjust.height() as i32 - 8) / 2).max(0),
+                        left_adjust.width().saturating_sub(6),
                         8,
                     ),
                     1,
@@ -4306,9 +4279,9 @@ impl App {
                     canvas,
                     "+",
                     Rect::new(
-                        right_adjust.x + 7,
-                        right_adjust.y + 3,
-                        right_adjust.width().saturating_sub(14),
+                        right_adjust.x + 3,
+                        right_adjust.y + ((right_adjust.height() as i32 - 8) / 2).max(0),
+                        right_adjust.width().saturating_sub(6),
                         8,
                     ),
                     1,
@@ -4319,26 +4292,26 @@ impl App {
                     &self.routing_field_value(active_track, field),
                     Rect::new(
                         value.x + 24,
-                        value.y + 6,
+                        value.y + ((value.height() as i32 - 8) / 2).max(0),
                         value.width().saturating_sub(48),
                         8,
                     ),
                     1,
-                    Color::RGB(24, 28, 36),
+                    contrasting_text_color(value_color),
                 )?;
             }
             crate::ui::draw_text_fitted(
                 canvas,
                 if is_toggle_field {
-                    "Toggle"
+                    "TGL"
                 } else if selected {
-                    "Tap +/-"
+                    "ADJ"
                 } else {
-                    "Select"
+                    "SET"
                 },
                 Rect::new(
-                    affordance.x + 6,
-                    affordance.y + 4,
+                    affordance.x + 4,
+                    affordance.y + ((affordance.height() as i32 - 8) / 2).max(0),
                     affordance.width().saturating_sub(12),
                     8,
                 ),
@@ -4424,8 +4397,20 @@ impl App {
             inner.width(),
             inner.height().saturating_sub(18),
         );
-        let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
-        fields.iter().copied().zip(rows).collect()
+        if fields.len() == 4 {
+            let grid_rows = crate::ui::stacked_rows(rows_bounds, 2, 8);
+            let mut rects = Vec::with_capacity(4);
+            for (row_index, grid_row) in grid_rows.into_iter().enumerate() {
+                let columns = crate::ui::equal_columns(grid_row, 2, 8);
+                let start = row_index * 2;
+                rects.push((fields[start], columns[0]));
+                rects.push((fields[start + 1], columns[1]));
+            }
+            rects
+        } else {
+            let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
+            fields.iter().copied().zip(rows).collect()
+        }
     }
 
     fn draw_routing_group_panel<T: RenderTarget>(
@@ -7169,18 +7154,19 @@ impl App {
                 self.activate_page_item();
                 return Some(AppControl::Continue);
             }
-            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
+            let control_height = row.height().saturating_sub(20).max(10);
+            let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
             let value = Rect::new(
-                label_chip.x + label_chip.width() as i32 + 8,
-                row.y + 6,
-                row.width().saturating_sub(172),
-                row.height().saturating_sub(12),
+                row.x + 8,
+                control_y,
+                row.width().saturating_sub(64),
+                control_height,
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 56,
-                row.y + 6,
-                48,
-                row.height().saturating_sub(12),
+                row.x + row.width() as i32 - 48,
+                control_y,
+                40,
+                control_height,
             );
             if rect_contains(value, x, y) {
                 let delta = if x < value.x + value.width() as i32 / 2 {
@@ -7479,12 +7465,13 @@ impl App {
             if field != RoutingField::Passthrough {
                 continue;
             }
-            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
+            let control_height = row.height().saturating_sub(20).max(10);
+            let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
             let value = Rect::new(
-                label_chip.x + label_chip.width() as i32 + 8,
-                row.y + 6,
-                row.width().saturating_sub(172),
-                row.height().saturating_sub(12),
+                row.x + 8,
+                control_y,
+                row.width().saturating_sub(64),
+                control_height,
             );
             targets.push((
                 value,
@@ -8181,6 +8168,39 @@ fn track_fx_insert_label(slot: &MidiFxSlot) -> &'static str {
         crate::midi_fx::MidiFxKind::ChordQuantize => "CQ",
         crate::midi_fx::MidiFxKind::TimeShift => "TS",
         crate::midi_fx::MidiFxKind::TrackClone => "CL",
+    }
+}
+
+fn track_fx_insert_summary_label(
+    detail: bool,
+    first_slot: Option<&MidiFxSlot>,
+    active_count: usize,
+) -> String {
+    let prefix = if detail { "IN" } else { "OUT" };
+    match (first_slot, active_count) {
+        (Some(slot), count) if count > 1 => {
+            format!("{prefix} {}+{}", track_fx_insert_label(slot), count - 1)
+        }
+        (Some(slot), _) => format!("{prefix} {}", track_fx_insert_label(slot)),
+        (None, _) => format!("{prefix} --"),
+    }
+}
+
+fn centered_text_rect(rect: Rect) -> Rect {
+    Rect::new(
+        rect.x,
+        rect.y + ((rect.height() as i32 - 8) / 2).max(0),
+        rect.width(),
+        8,
+    )
+}
+
+fn contrasting_text_color(fill: Color) -> Color {
+    let brightness = u32::from(fill.r) * 299 + u32::from(fill.g) * 587 + u32::from(fill.b) * 114;
+    if brightness / 1000 < 140 {
+        Color::RGB(244, 244, 236)
+    } else {
+        Color::RGB(24, 28, 36)
     }
 }
 
