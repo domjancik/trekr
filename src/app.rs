@@ -4109,12 +4109,13 @@ impl App {
             Color::RGB(208, 216, 228),
         )?;
 
-        let (signal_panel, input_fx_panel, output_fx_panel) = self.routing_panel_rects(body);
+        let (signal_panel, input_fx_panel, rec_panel, output_fx_panel) =
+            self.routing_panel_rects(body);
         self.draw_routing_group_panel(
             canvas,
             signal_panel,
             "Signal",
-            "Ports, channels, thru, and rec/monitor mode",
+            "Ports, channels, and thru",
             Color::RGB(94, 186, 152),
         )?;
         self.draw_routing_group_panel(
@@ -4123,6 +4124,13 @@ impl App {
             "Input FX",
             "Clone and input-shaping chain",
             Color::RGB(104, 152, 214),
+        )?;
+        self.draw_routing_group_panel(
+            canvas,
+            rec_panel,
+            "Rec/Mon",
+            "Input recording and monitor mode",
+            Color::RGB(112, 188, 152),
         )?;
         self.draw_routing_group_panel(
             canvas,
@@ -4327,43 +4335,52 @@ impl App {
         Ok(())
     }
 
-    fn routing_panel_rects(&self, body: Rect) -> (Rect, Rect, Rect) {
+    fn routing_panel_rects(&self, body: Rect) -> (Rect, Rect, Rect, Rect) {
         let gap = 12_i32;
-        let signal_width = ((body.width() as i32 * 47) / 100).max(180) as u32;
-        let right_width = body
+        let total_gap = gap * 2;
+        let signal_width = ((body.width() as i32 * 42) / 100).max(170) as u32;
+        let remaining = body
             .width()
             .saturating_sub(signal_width)
-            .saturating_sub(gap as u32);
+            .saturating_sub(total_gap as u32);
+        let side_width = ((remaining as i32) / 2).max(120) as u32;
+        let last_width = remaining.saturating_sub(side_width);
         let signal_panel = Rect::new(body.x, body.y, signal_width, body.height());
-        let right = Rect::new(
+        let input_fx_panel = Rect::new(
             body.x + signal_width as i32 + gap,
             body.y,
-            right_width,
+            side_width,
+            body.height(),
+        );
+        let right = Rect::new(
+            input_fx_panel.x + input_fx_panel.width() as i32 + gap,
+            body.y,
+            last_width,
             body.height(),
         );
         let panel_gap = 10_i32;
-        let top_height = ((right.height() as i32 - panel_gap) / 2).max(72) as u32;
-        let bottom_height = right.height().saturating_sub(top_height + panel_gap as u32);
-        let input_fx_panel = Rect::new(right.x, right.y, right.width(), top_height);
+        let rec_height = ((right.height() as i32 * 28) / 100).max(72) as u32;
+        let output_height = right.height().saturating_sub(rec_height + panel_gap as u32);
+        let rec_panel = Rect::new(right.x, right.y, right.width(), rec_height);
         let output_fx_panel = Rect::new(
             right.x,
-            right.y + top_height as i32 + panel_gap,
+            right.y + rec_height as i32 + panel_gap,
             right.width(),
-            bottom_height,
+            output_height,
         );
-        (signal_panel, input_fx_panel, output_fx_panel)
+        (signal_panel, input_fx_panel, rec_panel, output_fx_panel)
     }
 
     fn routing_field_rects(&self, body: Rect) -> Vec<(RoutingField, Rect)> {
-        const SIGNAL_FIELDS: [RoutingField; 7] = [
+        const SIGNAL_FIELDS: [RoutingField; 5] = [
             RoutingField::InputDevice,
             RoutingField::InputChannel,
             RoutingField::OutputDevice,
             RoutingField::OutputChannel,
             RoutingField::Passthrough,
-            RoutingField::RecordInputFx,
-            RoutingField::MonitorInputFx,
         ];
+        const REC_FIELDS: [RoutingField; 2] =
+            [RoutingField::RecordInputFx, RoutingField::MonitorInputFx];
         const INPUT_FX_FIELDS: [RoutingField; 4] = [
             RoutingField::InputFxSlot,
             RoutingField::InputFxKind,
@@ -4377,10 +4394,12 @@ impl App {
             RoutingField::OutputFxValue,
         ];
 
-        let (signal_panel, input_fx_panel, output_fx_panel) = self.routing_panel_rects(body);
+        let (signal_panel, input_fx_panel, rec_panel, output_fx_panel) =
+            self.routing_panel_rects(body);
         let mut rects = Vec::with_capacity(RoutingField::ALL.len());
         rects.extend(self.routing_group_rows(signal_panel, &SIGNAL_FIELDS));
         rects.extend(self.routing_group_rows(input_fx_panel, &INPUT_FX_FIELDS));
+        rects.extend(self.routing_group_rows(rec_panel, &REC_FIELDS));
         rects.extend(self.routing_group_rows(output_fx_panel, &OUTPUT_FX_FIELDS));
         rects
     }
