@@ -1101,8 +1101,8 @@ impl App {
             ))?;
         }
 
-        let label_rect = crate::ui::track_label_rect(bounds, self.timeline_flow);
-        let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
+        let label_rect = timeline_subcolumn_label_rect(bounds, self.timeline_flow);
+        let content_rect = timeline_subcolumn_content_rect(bounds, self.timeline_flow);
         canvas.set_draw_color(accent);
         canvas.fill_rect(label_rect)?;
 
@@ -2048,8 +2048,12 @@ impl App {
                 continue;
             }
 
+            let visible_lines = active_slots.len() as i32;
+            let content_height =
+                visible_lines * line_height + (visible_lines - 1).max(0) * line_gap;
+            let start_y = inner.y + ((inner.height() as i32 - content_height) / 2).max(0);
             for (line_index, slot) in active_slots.iter().enumerate() {
-                let y = inner.y + (line_index as i32 * (line_height + line_gap));
+                let y = start_y + (line_index as i32 * (line_height + line_gap));
                 if y + line_height > inner.y + inner.height() as i32 {
                     break;
                 }
@@ -8261,6 +8265,30 @@ fn track_fx_line_label(detail: bool, slot: &MidiFxSlot) -> String {
         track_fx_insert_label(slot),
         slot.effect.value_label()
     )
+}
+
+fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 24),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height().saturating_sub(14)),
+    }
+}
+
+fn timeline_subcolumn_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + 24,
+            lane.width(),
+            lane.height().saturating_sub(24),
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x + 56,
+            lane.y,
+            lane.width().saturating_sub(56),
+            lane.height(),
+        ),
+    }
 }
 
 fn centered_text_rect(rect: Rect) -> Rect {
