@@ -938,7 +938,7 @@ impl App {
             Color::RGB(74, 54, 40)
         };
         let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds, track);
+            self.track_column_body_bounds(full_bounds, detail_bounds);
 
         self.draw_track_subcolumn(
             canvas,
@@ -1914,15 +1914,10 @@ impl App {
         rects
     }
 
-    fn track_column_body_bounds(
-        &self,
-        full_bounds: Rect,
-        detail_bounds: Rect,
-        track: &Track,
-    ) -> (Rect, Rect) {
+    fn track_column_body_bounds(&self, full_bounds: Rect, detail_bounds: Rect) -> (Rect, Rect) {
         let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
         let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let (top_band_height, bottom_band_height) = self.track_fx_band_heights(track);
+        let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
         let top_gap = 4_i32;
         let bottom_gap = 4_i32;
         let top_reserve = (status_rect.y + status_rect.height() as i32 + top_gap + top_band_height
@@ -1948,22 +1943,33 @@ impl App {
         (full, detail)
     }
 
-    fn track_fx_band_heights(&self, track: &Track) -> (i32, i32) {
-        (
-            track_fx_band_height(&track.midi_fx.input_fx),
-            track_fx_band_height(&track.midi_fx.output_fx),
-        )
+    fn timeline_fx_band_heights(&self) -> (i32, i32) {
+        let input = self
+            .project
+            .tracks
+            .iter()
+            .map(|track| track_fx_band_height(&track.midi_fx.input_fx))
+            .max()
+            .unwrap_or(track_fx_band_height(&[]));
+        let output = self
+            .project
+            .tracks
+            .iter()
+            .map(|track| track_fx_band_height(&track.midi_fx.output_fx))
+            .max()
+            .unwrap_or(track_fx_band_height(&[]));
+        (input, output)
     }
 
     fn track_fx_band_rects(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
-        track: &Track,
+        _track: &Track,
     ) -> (Rect, Rect) {
         let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
         let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let (top_band_height, bottom_band_height) = self.track_fx_band_heights(track);
+        let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
         let top = Rect::new(
             pair_bounds.x + 4,
             status_rect.y + status_rect.height() as i32 + 4,
