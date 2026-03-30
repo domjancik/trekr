@@ -171,21 +171,21 @@ impl RoutingField {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::InputDevice => "Input Device",
-            Self::InputChannel => "Input Channel",
-            Self::OutputDevice => "Output Device",
-            Self::OutputChannel => "Output Channel",
+            Self::InputDevice => "Input Dev",
+            Self::InputChannel => "Input Ch",
+            Self::OutputDevice => "Output Dev",
+            Self::OutputChannel => "Output Ch",
             Self::Passthrough => "Passthrough",
             Self::RecordInputFx => "Rec FX",
             Self::MonitorInputFx => "Mon FX",
-            Self::InputFxSlot => "InFX Slot",
-            Self::InputFxKind => "InFX Kind",
-            Self::InputFxEnabled => "InFX On",
-            Self::InputFxValue => "InFX Val",
-            Self::OutputFxSlot => "OutFX Slot",
-            Self::OutputFxKind => "OutFX Kind",
-            Self::OutputFxEnabled => "OutFX On",
-            Self::OutputFxValue => "OutFX Val",
+            Self::InputFxSlot => "Input Slot",
+            Self::InputFxKind => "Input Kind",
+            Self::InputFxEnabled => "Input On",
+            Self::InputFxValue => "Input Val",
+            Self::OutputFxSlot => "Output Slot",
+            Self::OutputFxKind => "Output Kind",
+            Self::OutputFxEnabled => "Output On",
+            Self::OutputFxValue => "Output Val",
         }
     }
 }
