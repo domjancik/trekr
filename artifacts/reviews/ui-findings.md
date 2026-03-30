@@ -1,21 +1,17 @@
 Findings
 
-1. **severity: high** | **screenshot/page: `routing.png`** | **issue:** `OUTPUT CHA...` is visibly clipped, so a core control label is truncated and ambiguous. | **brief suggested fix:** Widen the label column or shorten with a deliberate abbreviation (`OUTPUT CH`) used consistently across the app.
+1. **severity: medium** | **screenshot/page:** `timeline.png` | **issue:** The six-track view is visually overcrowded; per-track labels, note lanes, and loop chips are too dense to scan quickly. | **brief suggested fix:** Increase minimum column width or reduce simultaneous columns (pagination/zoom mode) and simplify per-column header content.
 
-2. **severity: high** | **screenshot/page: `routing.png`** | **issue:** Multiple headings read like placeholders (`PORTS? CHANNELS?`, `PRE-OUTPUT CHAIN?`, etc.), which makes the UI feel uncertain/misleading. | **brief suggested fix:** Replace `?` copy with finalized labels and reserve punctuation only for help/tooltips.
+2. **severity: medium** | **screenshot/page:** `timeline.png` | **issue:** Several header tokens look truncated/cryptic (for example the small chips like `+2..`, `FE / SHIFT+F6`), which weakens immediate comprehension. | **brief suggested fix:** Use explicit abbreviations with consistent width rules and tooltips/help text for shortened labels.
 
-3. **severity: medium** | **screenshot/page: `timeline.png`** | **issue:** Track header strips are overcrowded (`1 2 3 4 5 6 7 8 + TRACK + LOOP`), weakening quick scan and state recognition. | **brief suggested fix:** Split header info into two rows (track identity vs step/loop state) or increase track card width/padding.
+3. **severity: low** | **screenshot/page:** `timeline-focused.png` | **issue:** State communication is better than the full timeline, but REC/MUT/SOL headers are low-salience compared to large content panes, so track state is easy to miss. | **brief suggested fix:** Increase contrast/emphasis for active state headers and add clearer active/inactive markers.
 
-4. **severity: medium** | **screenshot/page: `timeline-focused.png`** | **issue:** Focused mode still carries dense micro-labels with low legibility, so “focused” state does not communicate enough simplification. | **brief suggested fix:** In focused mode, enlarge key labels and hide secondary metadata until selected/hovered.
+4. **severity: medium** | **screenshot/page:** `mappings.png` | **issue:** Bottom command hint strip is crowded and reads like a single dense sentence, making key actions hard to discover fast. | **brief suggested fix:** Group hints by function (edit/navigation/mapping) with spacing separators and stronger visual hierarchy.
 
-5. **severity: medium** | **screenshot/page: `mappings.png`** | **issue:** Bottom hotkey/action legend is tightly packed and visually noisy, making control affordances hard to parse quickly. | **brief suggested fix:** Group actions into 2-3 labeled clusters (edit, learn, navigation) with stronger spacing and separators.
+5. **severity: low** | **screenshot/page:** `mappings-overlay.png` | **issue:** Overlay top actions (`F5 CLOSE`, `W WRITE`) are small and visually similar to static labels, so actionability is unclear. | **brief suggested fix:** Style actionable commands as distinct buttons/chips and separate them from passive text.
 
-6. **severity: medium** | **screenshot/page: `mappings-overlay.png`** | **issue:** Large unused lower area and minimal framing around row-range (`ROWS 1-19 / 30`) make pagination/state feel unclear. | **brief suggested fix:** Add explicit pagination/status block near the table and rebalance panel height to match content.
+6. **severity: medium** | **screenshot/page:** `midi-io.png` | **issue:** Large empty interior blocks dominate each device card without clear meaning, creating visual noise and weak information density. | **brief suggested fix:** Either remove/reduce those blocks or repurpose them with explicit status content (activity, channels, routing summary).
 
-7. **severity: medium** | **screenshot/page: `midi-io.png`** | **issue:** Device cards are dominated by large empty gray fields, so information hierarchy is weak (name/state controls don’t stand out). | **brief suggested fix:** Reduce empty fill height, promote device metadata/status, and surface actionable controls near the title area.
+7. **severity: low** | **screenshot/page:** `midi-io.png` | **issue:** Selection/default indicators (`DEF`, `SEL`) are tiny and easy to miss in the top-right of cards. | **brief suggested fix:** Promote these to stronger badges/toggles with clearer contrast and consistent placement.
 
-8. **severity: low** | **screenshot/page: `midi-io.png`** | **issue:** `DEF`/`SEL` chips are tiny and cramped at card edges, which weakens selected/default state communication. | **brief suggested fix:** Increase chip size/contrast and place state badges in a consistent, padded position.
-
-9. **severity: low** | **screenshot/page: `mappings.png` and `mappings-overlay.png`** | **issue:** Inconsistent row density and spacing between main table vs overlay creates a visual jump between related views. | **brief suggested fix:** Normalize row height, header spacing, and column rhythm across both mappings views.
-
-10. **severity: low** | **screenshot/page: `timeline.png` and `routing.png`** | **issue:** Several top-bar secondary labels are very low-contrast/tiny compared to primary tabs, making global mode/state hard to understand at a glance. | **brief suggested fix:** Increase contrast and font size for key secondary state labels, or reduce non-critical copy in the top region.
+8. **severity: low** | **screenshot/page:** `routing.png` | **issue:** Control types (`SELECT` vs `TOGGLE`) are repetitive and visually similar at a glance, which slows interaction parsing. | **brief suggested fix:** Differentiate control styles more strongly (shape/color/icon) and surface current state inline (for example `ON/OFF` as primary badge).
