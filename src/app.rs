@@ -938,7 +938,7 @@ impl App {
             Color::RGB(74, 54, 40)
         };
         let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds);
+            self.track_column_body_bounds(full_bounds, detail_bounds, track);
 
         self.draw_track_subcolumn(
             canvas,
@@ -1914,11 +1914,15 @@ impl App {
         rects
     }
 
-    fn track_column_body_bounds(&self, full_bounds: Rect, detail_bounds: Rect) -> (Rect, Rect) {
+    fn track_column_body_bounds(
+        &self,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track: &Track,
+    ) -> (Rect, Rect) {
         let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
         let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let top_band_height = 10_i32;
-        let bottom_band_height = 10_i32;
+        let (top_band_height, bottom_band_height) = self.track_fx_band_heights(track);
         let top_gap = 4_i32;
         let bottom_gap = 4_i32;
         let top_reserve = (status_rect.y + status_rect.height() as i32 + top_gap + top_band_height
@@ -1944,20 +1948,33 @@ impl App {
         (full, detail)
     }
 
-    fn track_fx_band_rects(&self, full_bounds: Rect, detail_bounds: Rect) -> (Rect, Rect) {
+    fn track_fx_band_heights(&self, track: &Track) -> (i32, i32) {
+        (
+            track_fx_band_height(&track.midi_fx.input_fx),
+            track_fx_band_height(&track.midi_fx.output_fx),
+        )
+    }
+
+    fn track_fx_band_rects(
+        &self,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track: &Track,
+    ) -> (Rect, Rect) {
         let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
         let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
+        let (top_band_height, bottom_band_height) = self.track_fx_band_heights(track);
         let top = Rect::new(
             pair_bounds.x + 4,
             status_rect.y + status_rect.height() as i32 + 4,
             pair_bounds.width().saturating_sub(8),
-            10,
+            top_band_height as u32,
         );
         let bottom = Rect::new(
             pair_bounds.x + 4,
-            pair_bounds.y + pair_bounds.height() as i32 - 14,
+            pair_bounds.y + pair_bounds.height() as i32 - (bottom_band_height + 4),
             pair_bounds.width().saturating_sub(8),
-            10,
+            bottom_band_height as u32,
         );
         (top, bottom)
     }
@@ -1970,7 +1987,7 @@ impl App {
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (input_rect, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds);
+        let (input_rect, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
         for (detail, rect) in [(true, input_rect), (false, output_rect)] {
             let chain = if detail {
                 &track.midi_fx.input_fx
@@ -1978,10 +1995,7 @@ impl App {
                 &track.midi_fx.output_fx
             };
             let active_slots: Vec<&MidiFxSlot> = chain.iter().flatten().collect();
-            let active_count = active_slots.len();
-            let first_slot = active_slots.first().copied();
-            let label = track_fx_insert_summary_label(detail, first_slot, active_count);
-            let enabled = first_slot.map(|slot| slot.enabled).unwrap_or(false);
+            let enabled = active_slots.iter().any(|slot| slot.enabled);
             let fill = if detail {
                 if enabled {
                     Color::RGB(78, 128, 198)
@@ -2008,22 +2022,45 @@ impl App {
             canvas.fill_rect(rect)?;
             canvas.set_draw_color(border);
             canvas.draw_rect(rect)?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                &label,
-                Rect::new(
-                    rect.x + 4,
-                    rect.y + ((rect.height() as i32 - 8) / 2).max(0),
-                    rect.width().saturating_sub(8),
-                    8,
-                ),
-                1,
-                if enabled {
-                    Color::RGB(248, 244, 236)
-                } else {
-                    Color::RGB(186, 190, 198)
-                },
-            )?;
+
+            let line_height = 8_i32;
+            let line_gap = 2_i32;
+            let inner = Rect::new(
+                rect.x + 4,
+                rect.y + 2,
+                rect.width().saturating_sub(8),
+                rect.height().saturating_sub(4),
+            );
+            if active_slots.is_empty() {
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    if detail { "IN --" } else { "OUT --" },
+                    Rect::new(inner.x, inner.y, inner.width(), line_height as u32),
+                    1,
+                    Color::RGB(186, 190, 198),
+                )?;
+                continue;
+            }
+
+            for (line_index, slot) in active_slots.iter().enumerate() {
+                let y = inner.y + (line_index as i32 * (line_height + line_gap));
+                if y + line_height > inner.y + inner.height() as i32 {
+                    break;
+                }
+                let line_rect = Rect::new(inner.x, y, inner.width(), line_height as u32);
+                let label = track_fx_line_label(detail, slot);
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    &label,
+                    line_rect,
+                    1,
+                    if slot.enabled {
+                        Color::RGB(248, 244, 236)
+                    } else {
+                        Color::RGB(198, 202, 210)
+                    },
+                )?;
+            }
         }
         Ok(())
     }
@@ -4439,8 +4476,26 @@ impl App {
             inner.width(),
             inner.height().saturating_sub(18),
         );
-        let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
-        fields.iter().copied().zip(rows).collect()
+        match fields.len() {
+            2 => {
+                let columns = crate::ui::equal_columns(rows_bounds, 2, 8);
+                vec![(fields[0], columns[0]), (fields[1], columns[1])]
+            }
+            4 => {
+                let row_rects = crate::ui::stacked_rows(rows_bounds, 2, 8);
+                let mut rects = Vec::with_capacity(4);
+                for row_index in 0..2 {
+                    let columns = crate::ui::equal_columns(row_rects[row_index], 2, 8);
+                    rects.push((fields[row_index * 2], columns[0]));
+                    rects.push((fields[row_index * 2 + 1], columns[1]));
+                }
+                rects
+            }
+            _ => {
+                let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
+                fields.iter().copied().zip(rows).collect()
+            }
+        }
     }
 
     fn draw_routing_group_panel<T: RenderTarget>(
@@ -6914,7 +6969,7 @@ impl App {
             }
 
             let (input_fx_rect, output_fx_rect) =
-                self.track_fx_band_rects(full_bounds, detail_bounds);
+                self.track_fx_band_rects(full_bounds, detail_bounds, &self.project.tracks[index]);
             if rect_contains(output_fx_rect, x, y) {
                 self.project.active_track_index = index;
                 self.page_state.selected_routing_field = RoutingField::OutputFxSlot;
@@ -7414,7 +7469,8 @@ impl App {
             },
         ));
         let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
-        let (input_fx_rect, output_fx_rect) = self.track_fx_band_rects(full_bounds, detail_bounds);
+        let (input_fx_rect, output_fx_rect) =
+            self.track_fx_band_rects(full_bounds, detail_bounds, track);
         for rect in [output_fx_rect, input_fx_rect] {
             targets.push((
                 rect,
@@ -8184,19 +8240,21 @@ fn track_fx_insert_label(slot: &MidiFxSlot) -> &'static str {
     }
 }
 
-fn track_fx_insert_summary_label(
-    detail: bool,
-    first_slot: Option<&MidiFxSlot>,
-    active_count: usize,
-) -> String {
+fn track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
+    let line_height = 8_i32;
+    let line_gap = 2_i32;
+    let vertical_padding = 4_i32;
+    let line_count = chain.iter().flatten().count().max(1) as i32;
+    vertical_padding + line_count * line_height + (line_count - 1) * line_gap
+}
+
+fn track_fx_line_label(detail: bool, slot: &MidiFxSlot) -> String {
     let prefix = if detail { "IN" } else { "OUT" };
-    match (first_slot, active_count) {
-        (Some(slot), count) if count > 1 => {
-            format!("{prefix} {}+{}", track_fx_insert_label(slot), count - 1)
-        }
-        (Some(slot), _) => format!("{prefix} {}", track_fx_insert_label(slot)),
-        (None, _) => format!("{prefix} --"),
-    }
+    format!(
+        "{prefix} {} {}",
+        track_fx_insert_label(slot),
+        slot.effect.value_label()
+    )
 }
 
 fn centered_text_rect(rect: Rect) -> Rect {
@@ -10556,7 +10614,8 @@ mod tests {
                 .expect("timeline body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[0];
-        let (_, output_band) = app.track_fx_band_rects(full_bounds, detail_bounds);
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
 
         let control = app.handle_timeline_pointer(
             content_bounds,
