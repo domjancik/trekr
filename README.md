@@ -55,6 +55,7 @@ Latest renderer-owned captures from the demo state:
 - real MIDI device enumeration via `midir`
 - basic routed MIDI note playback on track output ports/channels
 - per-track MIDI input/output FX slots with compact editing on the Routing page
+- a timeline-level active-track MIDI FX slice that previews input and output stacks and jumps into Routing editing
 - live input monitoring can run dry or through input FX, and playback can run through output FX
 - MIDI output runs on a dedicated worker thread so device stalls or hot-plug churn do not block the UI thread
 - in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
@@ -223,7 +224,8 @@ Pointer/touch notes:
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
 - routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
-- the Routing page now includes `Record Input FX`, `Monitor Input FX`, and per-slot `Input FX` / `Output FX` fields for cycling slot, kind, enabled state, and value
+- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with `Record Input FX`, `Monitor Input FX`, and per-slot `Input FX` / `Output FX` fields for cycling slot, kind, enabled state, and value
+- the Timeline page includes an active-track MIDI FX slice overview; tapping the input or output pane jumps to the matching Routing editor section
 - timeline note and region editing is still not implemented for pointer/touch input
 
 Recording flow notes:

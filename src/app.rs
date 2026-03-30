@@ -823,8 +823,10 @@ impl App {
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
-        let (transport_bounds, timeline_bounds) =
+        let (transport_bounds, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)?;
+        let (fx_overview_bounds, timeline_bounds) =
+            self.timeline_content_layout(timeline_body_bounds)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
         let focus_button = self.focused_track_view_button_rect(header_bounds);
         canvas.set_draw_color(Color::RGB(34, 44, 64));
@@ -898,6 +900,7 @@ impl App {
             Color::RGB(248, 244, 212),
         )?;
         self.draw_transport_strip(canvas, transport_bounds)?;
+        self.draw_timeline_fx_overview(canvas, fx_overview_bounds)?;
 
         for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
             let track = &self.project.tracks[index];
@@ -909,6 +912,170 @@ impl App {
             self.draw_timeline_discoverability_overlay(canvas, content_bounds)?;
         }
 
+        Ok(())
+    }
+
+    fn draw_timeline_fx_overview<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let active_track = self
+            .project
+            .active_track()
+            .expect("demo project always has an active track");
+        canvas.set_draw_color(Color::RGB(24, 30, 44));
+        canvas.fill_rect(bounds)?;
+        canvas.set_draw_color(Color::RGB(82, 92, 116));
+        canvas.draw_rect(bounds)?;
+
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!("Track T{} FX Slice", self.project.active_track_index + 1),
+            Rect::new(bounds.x + 8, bounds.y + 6, 120, 8),
+            1,
+            Color::RGB(238, 230, 166),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "Timeline overview; tap a pane to jump to Routing edit",
+            Rect::new(
+                bounds.x + 136,
+                bounds.y + 6,
+                bounds.width().saturating_sub(144),
+                8,
+            ),
+            1,
+            Color::RGB(184, 194, 206),
+        )?;
+
+        let body = crate::ui::inset_rect(bounds, 8, 18)?;
+        let panes = crate::ui::equal_columns(body, 2, 10);
+        self.draw_timeline_fx_pane(
+            canvas,
+            panes[0],
+            "Input FX",
+            Some(format!(
+                "Rec {}  Mon {}",
+                active_track.midi_fx.record_input_fx_mode.label(),
+                on_off(active_track.midi_fx.monitor_input_fx)
+            )),
+            &active_track.midi_fx.input_fx,
+            Color::RGB(84, 144, 214),
+        )?;
+        self.draw_timeline_fx_pane(
+            canvas,
+            panes[1],
+            "Output FX",
+            Some("Post-track output only".to_string()),
+            &active_track.midi_fx.output_fx,
+            Color::RGB(202, 136, 184),
+        )?;
+        Ok(())
+    }
+
+    fn draw_timeline_fx_pane<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        pane: Rect,
+        title: &str,
+        subtitle: Option<String>,
+        chain: &[Option<MidiFxSlot>],
+        accent: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGB(30, 36, 54));
+        canvas.fill_rect(pane)?;
+        canvas.set_draw_color(accent);
+        canvas.draw_rect(pane)?;
+        let title_chip = Rect::new(pane.x + 8, pane.y + 6, 72, 12);
+        canvas.set_draw_color(accent);
+        canvas.fill_rect(title_chip)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            title,
+            Rect::new(
+                title_chip.x + 4,
+                title_chip.y + 2,
+                title_chip.width().saturating_sub(8),
+                8,
+            ),
+            1,
+            Color::RGB(18, 22, 30),
+        )?;
+        if let Some(subtitle) = subtitle {
+            crate::ui::draw_text_fitted(
+                canvas,
+                &subtitle,
+                Rect::new(
+                    title_chip.x + title_chip.width() as i32 + 8,
+                    pane.y + 8,
+                    (pane.x + pane.width() as i32 - title_chip.x - title_chip.width() as i32 - 16)
+                        .max(0) as u32,
+                    8,
+                ),
+                1,
+                Color::RGB(196, 204, 216),
+            )?;
+        }
+
+        let stack_bounds = Rect::new(
+            pane.x + 8,
+            pane.y + 24,
+            pane.width().saturating_sub(16),
+            pane.height().saturating_sub(32),
+        );
+        let rows = crate::ui::stacked_rows(stack_bounds, chain.len().max(1), 4);
+        if chain.is_empty() {
+            return Ok(());
+        }
+        for (index, row) in rows.into_iter().enumerate().take(chain.len()) {
+            let slot = chain.get(index).and_then(|slot| slot.as_ref());
+            canvas.set_draw_color(if slot.is_some() {
+                Color::RGB(48, 56, 78)
+            } else {
+                Color::RGB(34, 40, 58)
+            });
+            canvas.fill_rect(row)?;
+            canvas.set_draw_color(if slot.is_some() {
+                accent
+            } else {
+                Color::RGB(82, 90, 108)
+            });
+            canvas.draw_rect(row)?;
+            let slot_badge = Rect::new(row.x + 4, row.y + 3, 18, row.height().saturating_sub(6));
+            canvas.set_draw_color(if slot.is_some() {
+                accent
+            } else {
+                Color::RGB(78, 84, 96)
+            });
+            canvas.fill_rect(slot_badge)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &(index + 1).to_string(),
+                Rect::new(
+                    slot_badge.x + 2,
+                    slot_badge.y + 2,
+                    slot_badge.width().saturating_sub(4),
+                    8,
+                ),
+                1,
+                Color::RGB(18, 22, 30),
+            )?;
+            let summary = slot
+                .map(|slot| fx_slot_label(Some(slot)))
+                .unwrap_or_else(|| "Empty".to_string());
+            crate::ui::draw_text_fitted(
+                canvas,
+                &summary,
+                Rect::new(row.x + 28, row.y + 4, row.width().saturating_sub(36), 8),
+                1,
+                if slot.is_some() {
+                    Color::RGB(236, 238, 244)
+                } else {
+                    Color::RGB(154, 164, 176)
+                },
+            )?;
+        }
         Ok(())
     }
 
@@ -4010,6 +4177,29 @@ impl App {
             Color::RGB(208, 216, 228),
         )?;
 
+        let (signal_panel, input_fx_panel, output_fx_panel) = self.routing_panel_rects(body);
+        self.draw_routing_group_panel(
+            canvas,
+            signal_panel,
+            "Signal",
+            "Ports, channels, thru, and rec/monitor mode",
+            Color::RGB(94, 186, 152),
+        )?;
+        self.draw_routing_group_panel(
+            canvas,
+            input_fx_panel,
+            "Input FX",
+            "Clone and input-shaping chain",
+            Color::RGB(104, 152, 214),
+        )?;
+        self.draw_routing_group_panel(
+            canvas,
+            output_fx_panel,
+            "Output FX",
+            "Post-track playback shaping",
+            Color::RGB(198, 138, 186),
+        )?;
+
         for (field, row) in self.routing_field_rects(body) {
             let selected = field == self.page_state.selected_routing_field;
             let is_toggle_field = matches!(
@@ -4024,7 +4214,7 @@ impl App {
             canvas.set_draw_color(if selected {
                 Color::RGB(52, 64, 92)
             } else {
-                Color::RGB(30, 36, 52)
+                Color::RGB(34, 40, 58)
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if selected {
@@ -4033,10 +4223,6 @@ impl App {
                 Color::RGB(78, 88, 110)
             });
             canvas.draw_rect(row)?;
-
-            let label = Rect::new(row.x + 8, row.y + 8, 18, row.height().saturating_sub(16));
-            canvas.set_draw_color(Color::RGB(110, 120, 140));
-            canvas.fill_rect(label)?;
 
             let value_color = match field {
                 RoutingField::InputDevice => Color::RGB(94, 186, 152),
@@ -4061,31 +4247,45 @@ impl App {
                     }
                 }
             };
-            let label_text_rect = Rect::new(row.x + 34, row.y + 8, 112, 8);
+            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
+            let label_text_rect = Rect::new(
+                label_chip.x + 6,
+                label_chip.y + 4,
+                label_chip.width().saturating_sub(12),
+                8,
+            );
             let value = Rect::new(
-                row.x + 156,
-                row.y + 8,
-                row.width().saturating_sub(220),
-                row.height().saturating_sub(16),
+                label_chip.x + label_chip.width() as i32 + 8,
+                row.y + 6,
+                row.width().saturating_sub(172),
+                row.height().saturating_sub(12),
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 72,
-                row.y + 8,
-                62,
-                row.height().saturating_sub(16),
+                row.x + row.width() as i32 - 56,
+                row.y + 6,
+                48,
+                row.height().saturating_sub(12),
             );
             let left_adjust = Rect::new(
-                value.x + 4,
-                value.y + 4,
-                20,
-                value.height().saturating_sub(8),
+                value.x + 3,
+                value.y + 3,
+                18,
+                value.height().saturating_sub(6),
             );
             let right_adjust = Rect::new(
-                value.x + value.width() as i32 - 24,
-                value.y + 4,
-                20,
-                value.height().saturating_sub(8),
+                value.x + value.width() as i32 - 21,
+                value.y + 3,
+                18,
+                value.height().saturating_sub(6),
             );
+            canvas.set_draw_color(Color::RGB(68, 78, 102));
+            canvas.fill_rect(label_chip)?;
+            canvas.set_draw_color(if selected {
+                Color::RGB(212, 222, 236)
+            } else {
+                Color::RGB(126, 136, 154)
+            });
+            canvas.draw_rect(label_chip)?;
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
             if !is_toggle_field {
@@ -4170,9 +4370,9 @@ impl App {
                     canvas,
                     &self.routing_field_value(active_track, field),
                     Rect::new(
-                        value.x + 30,
+                        value.x + 24,
                         value.y + 6,
-                        value.width().saturating_sub(60),
+                        value.width().saturating_sub(48),
                         8,
                     ),
                     1,
@@ -4206,21 +4406,118 @@ impl App {
         Ok(())
     }
 
+    fn routing_panel_rects(&self, body: Rect) -> (Rect, Rect, Rect) {
+        let gap = 12_i32;
+        let signal_width = ((body.width() as i32 * 47) / 100).max(180) as u32;
+        let right_width = body
+            .width()
+            .saturating_sub(signal_width)
+            .saturating_sub(gap as u32);
+        let signal_panel = Rect::new(body.x, body.y, signal_width, body.height());
+        let right = Rect::new(
+            body.x + signal_width as i32 + gap,
+            body.y,
+            right_width,
+            body.height(),
+        );
+        let panel_gap = 10_i32;
+        let top_height = ((right.height() as i32 - panel_gap) / 2).max(72) as u32;
+        let bottom_height = right.height().saturating_sub(top_height + panel_gap as u32);
+        let input_fx_panel = Rect::new(right.x, right.y, right.width(), top_height);
+        let output_fx_panel = Rect::new(
+            right.x,
+            right.y + top_height as i32 + panel_gap,
+            right.width(),
+            bottom_height,
+        );
+        (signal_panel, input_fx_panel, output_fx_panel)
+    }
+
     fn routing_field_rects(&self, body: Rect) -> Vec<(RoutingField, Rect)> {
-        let columns = crate::ui::equal_columns(body, 2, 12);
-        let left_count = RoutingField::ALL.len().div_ceil(2);
-        let left_rows = crate::ui::stacked_rows(columns[0], left_count, 10);
-        let right_rows = crate::ui::stacked_rows(columns[1], RoutingField::ALL.len() - left_count, 10);
+        const SIGNAL_FIELDS: [RoutingField; 7] = [
+            RoutingField::InputDevice,
+            RoutingField::InputChannel,
+            RoutingField::OutputDevice,
+            RoutingField::OutputChannel,
+            RoutingField::Passthrough,
+            RoutingField::RecordInputFx,
+            RoutingField::MonitorInputFx,
+        ];
+        const INPUT_FX_FIELDS: [RoutingField; 4] = [
+            RoutingField::InputFxSlot,
+            RoutingField::InputFxKind,
+            RoutingField::InputFxEnabled,
+            RoutingField::InputFxValue,
+        ];
+        const OUTPUT_FX_FIELDS: [RoutingField; 4] = [
+            RoutingField::OutputFxSlot,
+            RoutingField::OutputFxKind,
+            RoutingField::OutputFxEnabled,
+            RoutingField::OutputFxValue,
+        ];
+
+        let (signal_panel, input_fx_panel, output_fx_panel) = self.routing_panel_rects(body);
         let mut rects = Vec::with_capacity(RoutingField::ALL.len());
-        for (index, field) in RoutingField::ALL.iter().copied().enumerate() {
-            let rect = if index < left_count {
-                left_rows[index]
-            } else {
-                right_rows[index - left_count]
-            };
-            rects.push((field, rect));
-        }
+        rects.extend(self.routing_group_rows(signal_panel, &SIGNAL_FIELDS));
+        rects.extend(self.routing_group_rows(input_fx_panel, &INPUT_FX_FIELDS));
+        rects.extend(self.routing_group_rows(output_fx_panel, &OUTPUT_FX_FIELDS));
         rects
+    }
+
+    fn routing_group_rows(
+        &self,
+        panel: Rect,
+        fields: &[RoutingField],
+    ) -> Vec<(RoutingField, Rect)> {
+        let inner = crate::ui::inset_rect(panel, 10, 10).unwrap_or(panel);
+        let rows_bounds = Rect::new(
+            inner.x,
+            inner.y + 18,
+            inner.width(),
+            inner.height().saturating_sub(18),
+        );
+        let rows = crate::ui::stacked_rows(rows_bounds, fields.len().max(1), 8);
+        fields.iter().copied().zip(rows).collect()
+    }
+
+    fn draw_routing_group_panel<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        panel: Rect,
+        title: &str,
+        subtitle: &str,
+        accent: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGB(24, 30, 46));
+        canvas.fill_rect(panel)?;
+        canvas.set_draw_color(accent);
+        canvas.draw_rect(panel)?;
+        let header = Rect::new(
+            panel.x + 8,
+            panel.y + 6,
+            panel.width().saturating_sub(16),
+            12,
+        );
+        crate::ui::draw_text_fitted(
+            canvas,
+            title,
+            Rect::new(header.x, header.y, 74, 8),
+            1,
+            accent,
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            subtitle,
+            Rect::new(
+                header.x + 78,
+                header.y,
+                header.width().saturating_sub(78),
+                8,
+            ),
+            1,
+            Color::RGB(176, 186, 198),
+        )?;
+        Ok(())
     }
 
     fn update_window_title(
@@ -6595,8 +6892,10 @@ impl App {
     ) -> Option<AppControl> {
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (transport_bounds, timeline_bounds) =
+        let (transport_bounds, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+        let (fx_overview_bounds, timeline_bounds) =
+            self.timeline_content_layout(timeline_body_bounds).ok()?;
         if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
             return Some(self.apply_action_with_source(AppAction::ToggleFocusedTrackView, source));
         }
@@ -6608,6 +6907,20 @@ impl App {
             if rect_contains(rect, x, y) {
                 return Some(self.apply_action_with_source(action, source));
             }
+        }
+
+        let (input_fx_pane, output_fx_pane) = self.timeline_fx_pane_rects(fx_overview_bounds);
+        if rect_contains(input_fx_pane, x, y) {
+            self.page_state.selected_routing_field = RoutingField::InputFxSlot;
+            return Some(
+                self.apply_action_with_source(AppAction::ShowPage(AppPage::Routing), source),
+            );
+        }
+        if rect_contains(output_fx_pane, x, y) {
+            self.page_state.selected_routing_field = RoutingField::OutputFxSlot;
+            return Some(
+                self.apply_action_with_source(AppAction::ShowPage(AppPage::Routing), source),
+            );
         }
 
         for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
@@ -6901,17 +7214,18 @@ impl App {
                 self.activate_page_item();
                 return Some(AppControl::Continue);
             }
+            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
             let value = Rect::new(
-                row.x + 156,
-                row.y + 8,
-                row.width().saturating_sub(220),
-                row.height().saturating_sub(16),
+                label_chip.x + label_chip.width() as i32 + 8,
+                row.y + 6,
+                row.width().saturating_sub(172),
+                row.height().saturating_sub(12),
             );
             let affordance = Rect::new(
-                row.x + row.width() as i32 - 72,
-                row.y + 8,
-                62,
-                row.height().saturating_sub(16),
+                row.x + row.width() as i32 - 56,
+                row.y + 6,
+                48,
+                row.height().saturating_sub(12),
             );
             if rect_contains(value, x, y) {
                 let delta = if x < value.x + value.width() as i32 / 2 {
@@ -6982,9 +7296,12 @@ impl App {
         let mut targets = Vec::new();
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline layout");
-        let (transport_bounds, timeline_bounds) =
+        let (transport_bounds, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
                 .expect("timeline transport");
+        let (fx_overview_bounds, timeline_bounds) = self
+            .timeline_content_layout(timeline_body_bounds)
+            .expect("timeline fx overview");
         targets.push((
             self.focused_track_view_button_rect(header_bounds),
             DiscoverabilityTarget {
@@ -7021,6 +7338,19 @@ impl App {
                     action,
                     display_scope,
                     allowed_mapping_scopes,
+                    overlay_slot: None,
+                },
+            ));
+        }
+
+        let (input_fx_pane, output_fx_pane) = self.timeline_fx_pane_rects(fx_overview_bounds);
+        for pane in [input_fx_pane, output_fx_pane] {
+            targets.push((
+                pane,
+                DiscoverabilityTarget {
+                    action: AppAction::ShowPage(AppPage::Routing),
+                    display_scope: Some("Global"),
+                    allowed_mapping_scopes: &["Global"],
                     overlay_slot: None,
                 },
             ));
@@ -7188,11 +7518,12 @@ impl App {
             if field != RoutingField::Passthrough {
                 continue;
             }
+            let label_chip = Rect::new(row.x + 8, row.y + 6, 92, row.height().saturating_sub(12));
             let value = Rect::new(
-                row.x + 156,
-                row.y + 8,
-                row.width().saturating_sub(220),
-                row.height().saturating_sub(16),
+                label_chip.x + label_chip.width() as i32 + 8,
+                row.y + 6,
+                row.width().saturating_sub(172),
+                row.height().saturating_sub(12),
             );
             targets.push((
                 value,
@@ -7239,6 +7570,16 @@ impl App {
         )
     }
 
+    fn timeline_content_layout(&self, timeline_body_bounds: Rect) -> Result<(Rect, Rect), String> {
+        crate::ui::split_top_strip(timeline_body_bounds, 72, 8)
+    }
+
+    fn timeline_fx_pane_rects(&self, fx_overview_bounds: Rect) -> (Rect, Rect) {
+        let body = crate::ui::inset_rect(fx_overview_bounds, 8, 18).unwrap_or(fx_overview_bounds);
+        let panes = crate::ui::equal_columns(body, 2, 10);
+        (panes[0], panes[1])
+    }
+
     fn visible_track_columns(&self, timeline_bounds: Rect) -> Vec<(usize, Rect, Rect)> {
         if self.project.tracks.is_empty() {
             return Vec::new();
@@ -7266,8 +7607,9 @@ impl App {
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
         let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (_, timeline_bounds) =
+        let (_, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+        let (_, timeline_bounds) = self.timeline_content_layout(timeline_body_bounds).ok()?;
         self.visible_track_columns(timeline_bounds)
             .into_iter()
             .find(|(index, _, _)| *index == self.project.active_track_index)
@@ -10094,9 +10436,12 @@ mod tests {
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
+        let (_, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
                 .expect("timeline body");
+        let (_, timeline_bounds) = app
+            .timeline_content_layout(timeline_body_bounds)
+            .expect("timeline fx body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[1];
         let status_rect = crate::ui::track_status_rect(
@@ -10123,9 +10468,12 @@ mod tests {
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
+        let (_, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
                 .expect("timeline body");
+        let (_, timeline_bounds) = app
+            .timeline_content_layout(timeline_body_bounds)
+            .expect("timeline fx body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[2];
         let status_rect = crate::ui::track_status_rect(
@@ -10183,9 +10531,12 @@ mod tests {
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
+        let (_, timeline_body_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
                 .expect("timeline body");
+        let (_, timeline_bounds) = app
+            .timeline_content_layout(timeline_body_bounds)
+            .expect("timeline fx body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (_, detail_bounds) = columns[1];
         let detail_label_rect = crate::ui::track_label_rect(detail_bounds, app.timeline_flow);
@@ -10203,6 +10554,35 @@ mod tests {
         assert_eq!(
             app.project.tracks[1].loop_region,
             crate::timeline::LoopRegion::new(2_880, 960)
+        );
+    }
+
+    #[test]
+    fn timeline_fx_slice_click_opens_routing_on_matching_chain() {
+        let mut app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_body_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let (fx_bounds, _) = app
+            .timeline_content_layout(timeline_body_bounds)
+            .expect("timeline fx body");
+        let (_, output_pane) = app.timeline_fx_pane_rects(fx_bounds);
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            output_pane.x + output_pane.width() as i32 / 2,
+            output_pane.y + output_pane.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.page_state.current_page, AppPage::Routing);
+        assert_eq!(
+            app.page_state.selected_routing_field,
+            RoutingField::OutputFxSlot
         );
     }
 
