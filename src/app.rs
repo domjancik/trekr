@@ -984,7 +984,40 @@ impl App {
         )?;
         self.draw_track_fx_bands(canvas, full_bounds, detail_bounds, track, is_active)?;
         self.draw_track_status_strip(canvas, full_bounds, detail_bounds, track, is_active)?;
+        self.draw_timeline_context_highlight(canvas, full_bounds, detail_bounds, track, is_active)?;
 
+        Ok(())
+    }
+
+    fn draw_timeline_context_highlight<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track: &Track,
+        is_active: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !is_active {
+            return Ok(());
+        }
+        let highlight = Color::RGB(244, 232, 146);
+        match self.page_state.selected_timeline_context {
+            TimelineContext::InputFx => {
+                let (input_rect, _) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
+                canvas.set_draw_color(highlight);
+                canvas.draw_rect(input_rect)?;
+            }
+            TimelineContext::OutputFx => {
+                let (_, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
+                canvas.set_draw_color(highlight);
+                canvas.draw_rect(output_rect)?;
+            }
+            TimelineContext::TrackTimeline => {
+                canvas.set_draw_color(highlight);
+                canvas.draw_rect(full_bounds)?;
+                canvas.draw_rect(detail_bounds)?;
+            }
+        }
         Ok(())
     }
 
