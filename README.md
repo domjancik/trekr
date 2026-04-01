@@ -184,7 +184,7 @@ Current controls:
 - `B`: contract note selection from the focused edge
 - `Z` / `X`: nudge selected notes earlier/later by the current quantize step, or `120` ticks when quantize is off
 - `D` / `F`: nudge selected notes down/up by one semitone
-- `Shift+M`: mute/unmute the selected committed recording clip in stacked view
+- `Shift+M`: mute/unmute the selected committed recording clip in stacked view, or toggle the selected timeline FX on/off when an `Input FX` / `Output FX` context is active
 - when `Input FX` or `Output FX` timeline context is selected:
   - `Up` / `Down`: select FX row
   - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
