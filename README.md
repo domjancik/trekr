@@ -55,7 +55,7 @@ Latest renderer-owned captures from the demo state:
 - real MIDI device enumeration via `midir`
 - basic routed MIDI note playback on track output ports/channels
 - per-track MIDI input/output FX slots with compact editing on the Routing page
-- compact per-track MIDI FX inserts in the timeline headers, using the song column for output FX and the loop column for input FX
+- direct-editable per-track MIDI FX bands on the timeline, with input FX above the track pair and output FX below it
 - live input monitoring can run dry or through input FX, and playback can run through output FX
 - MIDI output runs on a dedicated worker thread so device stalls or hot-plug churn do not block the UI thread
 - in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
@@ -138,9 +138,9 @@ Current controls:
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `Up` / `Down`: select current page item
-- `Shift+Left` / `Shift+Right`: select current editable field on the mappings page in write mode
+- `Shift+Left` / `Shift+Right`: select current editable field on the mappings page in write mode, or switch timeline control context on the timeline page
 - `Q` / `E`: adjust current page item
-- `Enter`: activate/toggle current page item
+- `Enter`: activate/toggle current page item, or advance the selected timeline FX edit field
 - `W`: toggle mappings page mode between read-only overview and write mode
 - `N`: add a mapping row on the mappings page in write mode
 - `Delete`: remove the selected mapping row on the mappings page in write mode
@@ -185,6 +185,11 @@ Current controls:
 - `Z` / `X`: nudge selected notes earlier/later by the current quantize step, or `120` ticks when quantize is off
 - `D` / `F`: nudge selected notes down/up by one semitone
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view
+- when `Input FX` or `Output FX` timeline context is selected:
+  - `Up` / `Down`: select FX row
+  - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
+  - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
+  - `Q` / `E`: apply the selected FX field action (toggle, kind switch, parameter adjust, scrollbar/page scroll, reorder)
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
 - `Shift+Delete`: delete the selected committed recording clip in stacked view
@@ -212,6 +217,7 @@ Pointer/touch notes:
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
+- each timeline FX row is clickable/tappable for direct selection, toggle, kind cycle, parameter stepping, parameter-window scroll, and discrete reordering
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips

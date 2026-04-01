@@ -11,8 +11,9 @@ use crate::mapping::{
     mapping_entry_key_actions, mapping_entry_targets_action, mapping_entry_to_actions,
 };
 use crate::midi_fx::{
-    LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind, MidiFxSlot,
-    cycle_fx_kind, fx_slot_label, process_live_event, transform_notes,
+    LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
+    MidiFxInlineParam, MidiFxSlot, cycle_fx_kind, fx_slot_label, process_live_event,
+    transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -25,6 +26,7 @@ use crate::pages::{
 use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
+use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
 use sdl3::pixels::Color;
@@ -82,6 +84,24 @@ struct OverlayState {
 struct StatusState {
     hovered_target: Option<DiscoverabilityTarget>,
     last_action: Option<LastActionStatus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimelineFxRowRef {
+    context: TimelineContext,
+    row_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimelineFxRowLayout {
+    row: Rect,
+    enabled: Rect,
+    kind: Rect,
+    param_primary: Rect,
+    param_secondary: Rect,
+    overflow: Rect,
+    move_left: Rect,
+    move_right: Rect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1994,15 +2014,19 @@ impl App {
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (input_rect, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
-        for (detail, rect) in [(true, input_rect), (false, output_rect)] {
-            let chain = if detail {
-                &track.midi_fx.input_fx
-            } else {
-                &track.midi_fx.output_fx
-            };
-            let active_slots: Vec<&MidiFxSlot> = chain.iter().flatten().collect();
-            let enabled = active_slots.iter().any(|slot| slot.enabled);
-            let fill = if detail {
+        for (context, rect) in [
+            (TimelineContext::InputFx, input_rect),
+            (TimelineContext::OutputFx, output_rect),
+        ] {
+            let chain_kind = context.chain_kind().expect("fx context");
+            let chain = self.fx_chain(track, chain_kind);
+            let active_slots: Vec<(usize, &MidiFxSlot)> = chain
+                .iter()
+                .enumerate()
+                .filter_map(|(index, slot)| slot.as_ref().map(|slot| (index, slot)))
+                .collect();
+            let enabled = active_slots.iter().any(|(_, slot)| slot.enabled);
+            let fill = if context == TimelineContext::InputFx {
                 if enabled {
                     Color::RGB(78, 128, 198)
                 } else if is_active {
@@ -2029,50 +2053,390 @@ impl App {
             canvas.set_draw_color(border);
             canvas.draw_rect(rect)?;
 
-            let line_height = 8_i32;
-            let line_gap = 2_i32;
-            let inner = Rect::new(
-                rect.x + 4,
-                rect.y + 2,
-                rect.width().saturating_sub(8),
-                rect.height().saturating_sub(4),
-            );
+            let layouts = self.timeline_fx_row_layouts(rect, active_slots.len().max(1));
             if active_slots.is_empty() {
                 crate::ui::draw_text_fitted(
                     canvas,
-                    if detail { "IN --" } else { "OUT --" },
-                    Rect::new(inner.x, inner.y, inner.width(), line_height as u32),
+                    if context == TimelineContext::InputFx {
+                        "IN --"
+                    } else {
+                        "OUT --"
+                    },
+                    centered_text_rect(layouts[0].row),
                     1,
                     Color::RGB(186, 190, 198),
                 )?;
                 continue;
             }
 
-            let visible_lines = active_slots.len() as i32;
-            let content_height =
-                visible_lines * line_height + (visible_lines - 1).max(0) * line_gap;
-            let start_y = inner.y + ((inner.height() as i32 - content_height) / 2).max(0);
-            for (line_index, slot) in active_slots.iter().enumerate() {
-                let y = start_y + (line_index as i32 * (line_height + line_gap));
-                if y + line_height > inner.y + inner.height() as i32 {
-                    break;
+            let selected_row = if is_active && self.page_state.selected_timeline_context == context
+            {
+                self.selected_timeline_fx_row(chain_kind)
+            } else {
+                usize::MAX
+            };
+            for (line_index, ((slot_index, slot), layout)) in
+                active_slots.iter().zip(layouts.iter()).enumerate()
+            {
+                let selected = line_index == selected_row;
+                if selected {
+                    canvas.set_draw_color(Color::RGB(244, 232, 146));
+                    canvas.draw_rect(layout.row)?;
                 }
-                let line_rect = Rect::new(inner.x, y, inner.width(), line_height as u32);
-                let label = track_fx_line_label(detail, slot);
-                crate::ui::draw_text_fitted(
+                let text_color = if slot.enabled {
+                    Color::RGB(248, 244, 236)
+                } else {
+                    Color::RGB(198, 202, 210)
+                };
+                self.draw_timeline_fx_row(
                     canvas,
-                    &label,
-                    line_rect,
-                    1,
-                    if slot.enabled {
-                        Color::RGB(248, 244, 236)
-                    } else {
-                        Color::RGB(198, 202, 210)
-                    },
+                    context,
+                    *slot_index,
+                    slot,
+                    *layout,
+                    selected,
+                    text_color,
                 )?;
             }
         }
         Ok(())
+    }
+
+    fn draw_timeline_fx_row<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        context: TimelineContext,
+        slot_index: usize,
+        slot: &MidiFxSlot,
+        layout: TimelineFxRowLayout,
+        selected: bool,
+        text_color: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let enabled_fill = if slot.enabled {
+            Color::RGB(96, 170, 118)
+        } else {
+            Color::RGB(76, 84, 100)
+        };
+        canvas.set_draw_color(enabled_fill);
+        canvas.fill_rect(layout.enabled)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            if slot.enabled { "ON" } else { "OFF" },
+            centered_text_rect(layout.enabled),
+            1,
+            Color::RGB(244, 244, 236),
+        )?;
+
+        let kind_fill =
+            if selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind {
+                Color::RGB(78, 90, 126)
+            } else {
+                Color::RGB(52, 58, 80)
+            };
+        canvas.set_draw_color(kind_fill);
+        canvas.fill_rect(layout.kind)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            &timeline_fx_kind_label(slot),
+            centered_text_rect(layout.kind),
+            1,
+            text_color,
+        )?;
+
+        let params = slot.effect.inline_parameters();
+        let window_start = self
+            .timeline_fx_param_window_for_slot(context, slot_index)
+            .min(params.len().saturating_sub(1));
+        let primary = params.get(window_start);
+        let secondary = params.get(window_start + 1);
+        self.draw_timeline_fx_param_zone(
+            canvas,
+            layout.param_primary,
+            primary,
+            selected && self.page_state.selected_timeline_fx_field == TimelineFxField::ParamPrimary,
+            text_color,
+        )?;
+        self.draw_timeline_fx_param_zone(
+            canvas,
+            layout.param_secondary,
+            secondary,
+            selected
+                && self.page_state.selected_timeline_fx_field == TimelineFxField::ParamSecondary,
+            text_color,
+        )?;
+
+        let overflow_selected =
+            selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Scroll;
+        self.draw_timeline_fx_overflow_zone(
+            canvas,
+            layout.overflow,
+            params.len(),
+            window_start,
+            overflow_selected,
+            text_color,
+        )?;
+
+        let move_selected =
+            selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Move;
+        self.draw_timeline_fx_move_zone(canvas, layout.move_left, "<", move_selected, text_color)?;
+        self.draw_timeline_fx_move_zone(canvas, layout.move_right, ">", move_selected, text_color)?;
+        Ok(())
+    }
+
+    fn draw_timeline_fx_param_zone<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        rect: Rect,
+        param: Option<&MidiFxInlineParam>,
+        selected: bool,
+        text_color: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(if selected {
+            Color::RGB(82, 92, 128)
+        } else {
+            Color::RGB(52, 58, 80)
+        });
+        canvas.fill_rect(rect)?;
+        if let Some(param) = param {
+            let label = format!("{} {}", param.label, param.value);
+            crate::ui::draw_text_fitted(canvas, &label, centered_text_rect(rect), 1, text_color)?;
+        } else {
+            crate::ui::draw_text_fitted(
+                canvas,
+                "--",
+                centered_text_rect(rect),
+                1,
+                Color::RGB(160, 166, 178),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_timeline_fx_overflow_zone<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        rect: Rect,
+        param_count: usize,
+        window_start: usize,
+        selected: bool,
+        text_color: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(if selected {
+            Color::RGB(82, 92, 128)
+        } else {
+            Color::RGB(52, 58, 80)
+        });
+        canvas.fill_rect(rect)?;
+        if param_count <= 2 {
+            crate::ui::draw_text_fitted(
+                canvas,
+                "--",
+                centered_text_rect(rect),
+                1,
+                Color::RGB(160, 166, 178),
+            )?;
+            return Ok(());
+        }
+        let indicator = format!("{}/{}", window_start + 1, param_count);
+        crate::ui::draw_text_fitted(
+            canvas,
+            &indicator,
+            Rect::new(rect.x, rect.y + 1, rect.width(), 8),
+            1,
+            text_color,
+        )?;
+        let track_rect = Rect::new(
+            rect.x + 2,
+            rect.y + rect.height() as i32 - 3,
+            rect.width().saturating_sub(4),
+            1,
+        );
+        canvas.set_draw_color(Color::RGB(116, 126, 150));
+        canvas.fill_rect(track_rect)?;
+        let thumb_width = (track_rect.width() / param_count.max(1) as u32).max(2);
+        let max_start = param_count.saturating_sub(2).max(1);
+        let thumb_x = track_rect.x
+            + (((track_rect.width().saturating_sub(thumb_width)) as usize * window_start)
+                / max_start) as i32;
+        canvas.set_draw_color(Color::RGB(236, 238, 228));
+        canvas.fill_rect(Rect::new(thumb_x, track_rect.y, thumb_width, 1))?;
+        Ok(())
+    }
+
+    fn draw_timeline_fx_move_zone<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        rect: Rect,
+        label: &str,
+        selected: bool,
+        text_color: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(if selected {
+            Color::RGB(82, 92, 128)
+        } else {
+            Color::RGB(52, 58, 80)
+        });
+        canvas.fill_rect(rect)?;
+        crate::ui::draw_text_fitted(canvas, label, centered_text_rect(rect), 1, text_color)?;
+        Ok(())
+    }
+
+    fn timeline_fx_row_layouts(
+        &self,
+        band_rect: Rect,
+        row_count: usize,
+    ) -> Vec<TimelineFxRowLayout> {
+        let rows = crate::ui::stacked_rows(
+            Rect::new(
+                band_rect.x + 2,
+                band_rect.y + 2,
+                band_rect.width().saturating_sub(4),
+                band_rect.height().saturating_sub(4),
+            ),
+            row_count.max(1),
+            2,
+        );
+        rows.into_iter()
+            .map(|row| {
+                let columns = crate::ui::equal_columns(row, 7, 2);
+                TimelineFxRowLayout {
+                    row,
+                    enabled: columns[0],
+                    kind: Rect::new(
+                        columns[1].x,
+                        columns[1].y,
+                        columns[1].width() + columns[2].width() + 2,
+                        columns[1].height(),
+                    ),
+                    param_primary: columns[3],
+                    param_secondary: columns[4],
+                    overflow: columns[5],
+                    move_left: Rect::new(
+                        columns[6].x,
+                        columns[6].y,
+                        columns[6].width() / 2,
+                        columns[6].height(),
+                    ),
+                    move_right: Rect::new(
+                        columns[6].x + (columns[6].width() / 2) as i32 + 1,
+                        columns[6].y,
+                        columns[6]
+                            .width()
+                            .saturating_sub(columns[6].width() / 2 + 1),
+                        columns[6].height(),
+                    ),
+                }
+            })
+            .collect()
+    }
+
+    fn timeline_fx_hit(
+        &self,
+        context: TimelineContext,
+        band_rect: Rect,
+        track: &Track,
+        x: i32,
+        y: i32,
+    ) -> Option<TimelineFxRowRef> {
+        let chain_kind = context.chain_kind()?;
+        let active_count = self
+            .fx_chain(track, chain_kind)
+            .iter()
+            .flatten()
+            .count()
+            .max(1);
+        self.timeline_fx_row_layouts(band_rect, active_count)
+            .into_iter()
+            .enumerate()
+            .find_map(|(row_index, layout)| {
+                rect_contains(layout.row, x, y).then_some(TimelineFxRowRef { context, row_index })
+            })
+    }
+
+    fn handle_timeline_fx_pointer_hit(
+        &mut self,
+        hit: TimelineFxRowRef,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+        was_selected: bool,
+    ) -> Option<AppControl> {
+        let chain_kind = hit.context.chain_kind()?;
+        self.normalize_timeline_fx_selection();
+        let track = self.project.active_track()?;
+        let active_count = self
+            .fx_chain(track, chain_kind)
+            .iter()
+            .flatten()
+            .count()
+            .max(1);
+        let layout = {
+            let content_bounds =
+                crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+            let inset = crate::ui::inset_rect(content_bounds, 24, 24).ok()?;
+            let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 48, 12).ok()?;
+            let footer_height = 22_u32;
+            let footer_gap = 8_i32;
+            let content_bounds = Rect::new(
+                page_area_bounds.x,
+                page_area_bounds.y,
+                page_area_bounds.width(),
+                page_area_bounds
+                    .height()
+                    .saturating_sub(footer_height)
+                    .saturating_sub(footer_gap as u32),
+            );
+            let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+            let (_, timeline_bounds) =
+                crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+            let visible = self.visible_track_columns(timeline_bounds);
+            let (_, full_bounds, detail_bounds) = visible
+                .into_iter()
+                .find(|(index, _, _)| *index == self.project.active_track_index)?;
+            let track = self.project.active_track()?;
+            let (input_rect, output_rect) =
+                self.track_fx_band_rects(full_bounds, detail_bounds, track);
+            let band = if hit.context == TimelineContext::InputFx {
+                input_rect
+            } else {
+                output_rect
+            };
+            *self
+                .timeline_fx_row_layouts(band, active_count)
+                .get(hit.row_index)?
+        };
+        if !was_selected {
+            return Some(AppControl::Continue);
+        }
+        if rect_contains(layout.enabled, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::Enabled;
+            return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
+        }
+        if rect_contains(layout.kind, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        if rect_contains(layout.param_primary, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::ParamPrimary;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        if rect_contains(layout.param_secondary, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::ParamSecondary;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        if rect_contains(layout.overflow, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::Scroll;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        if rect_contains(layout.move_left, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::Move;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemBackward, source));
+        }
+        if rect_contains(layout.move_right, x, y) {
+            self.page_state.selected_timeline_fx_field = TimelineFxField::Move;
+            return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        Some(AppControl::Continue)
     }
 
     fn draw_track_loop_markers<T: RenderTarget>(
@@ -2840,6 +3204,22 @@ impl App {
                     10,
                 )?;
             }
+        } else if let Some((title, detail)) = self.timeline_fx_footer_content() {
+            let label_width = crate::ui::text_width(&title, 1) + 4;
+            let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
+            crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, Color::RGB(244, 232, 146))?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &detail,
+                Rect::new(
+                    label_rect.x + label_rect.width() as i32 + 8,
+                    bounds.y + 7,
+                    (right_edge - label_rect.x - label_rect.width() as i32 - 12).max(0) as u32,
+                    8,
+                ),
+                1,
+                Color::RGB(188, 198, 212),
+            )?;
         } else {
             let last_action = self
                 .status_state
@@ -2867,6 +3247,27 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn timeline_fx_footer_content(&self) -> Option<(String, String)> {
+        if self.page_state.current_page != AppPage::Timeline {
+            return None;
+        }
+        let context = self.page_state.selected_timeline_context;
+        let chain_kind = context.chain_kind()?;
+        let track = self.project.active_track()?;
+        let slot = self.selected_timeline_fx_slot(track, chain_kind)?;
+        Some((
+            format!(
+                "{} {}",
+                context.label(),
+                self.page_state.selected_timeline_fx_field.label()
+            ),
+            format!(
+                "Shift+Left/Right context  Up/Down row  Enter next field  Q/E {}",
+                slot.effect.kind().label()
+            ),
+        ))
     }
 
     fn direct_mapping_footer_content(&self) -> Option<(String, String, Vec<MappingBadge>)> {
@@ -5526,7 +5927,13 @@ impl App {
 
     fn select_previous_page_item(&mut self) {
         match self.page_state.current_page {
-            AppPage::Timeline => self.project.select_previous_track(),
+            AppPage::Timeline => {
+                if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
+                    self.project.select_previous_track();
+                } else {
+                    self.select_timeline_fx_row(-1);
+                }
+            }
             AppPage::Mappings => {
                 if !self.mappings.is_empty() {
                     let count = self.mappings.len();
@@ -5557,7 +5964,13 @@ impl App {
 
     fn select_next_page_item(&mut self) {
         match self.page_state.current_page {
-            AppPage::Timeline => self.project.select_next_track(),
+            AppPage::Timeline => {
+                if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
+                    self.project.select_next_track();
+                } else {
+                    self.select_timeline_fx_row(1);
+                }
+            }
             AppPage::Mappings => {
                 if !self.mappings.is_empty() {
                     self.page_state.selected_mapping_index =
@@ -5586,28 +5999,304 @@ impl App {
     }
 
     fn select_previous_page_field(&mut self) {
-        if self.page_state.current_page == AppPage::Mappings
-            && self.page_state.mapping_mode == MappingPageMode::Write
-        {
-            self.page_state.selected_mapping_field =
-                self.previous_enabled_mapping_field(self.page_state.selected_mapping_field);
-            self.page_state.mapping_midi_learn_armed = false;
+        match self.page_state.current_page {
+            AppPage::Timeline => self.select_previous_timeline_context(),
+            AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
+                self.page_state.selected_mapping_field =
+                    self.previous_enabled_mapping_field(self.page_state.selected_mapping_field);
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            _ => {}
         }
     }
 
     fn select_next_page_field(&mut self) {
-        if self.page_state.current_page == AppPage::Mappings
-            && self.page_state.mapping_mode == MappingPageMode::Write
-        {
-            self.page_state.selected_mapping_field =
-                self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
-            self.page_state.mapping_midi_learn_armed = false;
+        match self.page_state.current_page {
+            AppPage::Timeline => self.select_next_timeline_context(),
+            AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
+                self.page_state.selected_mapping_field =
+                    self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            _ => {}
         }
+    }
+
+    fn select_previous_timeline_context(&mut self) {
+        self.page_state.selected_timeline_context =
+            self.page_state.selected_timeline_context.previous();
+        self.normalize_timeline_fx_selection();
+    }
+
+    fn select_next_timeline_context(&mut self) {
+        self.page_state.selected_timeline_context =
+            self.page_state.selected_timeline_context.next();
+        self.normalize_timeline_fx_selection();
+    }
+
+    fn select_timeline_fx_row(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let active_rows = self.active_timeline_fx_slot_indices(chain_kind);
+        if active_rows.is_empty() {
+            return;
+        }
+        let current = self.selected_timeline_fx_row(chain_kind) as i32;
+        let next = (current + delta).rem_euclid(active_rows.len() as i32) as usize;
+        self.set_selected_timeline_fx_row(chain_kind, next);
+    }
+
+    fn selected_timeline_fx_row(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let stored = match chain_kind {
+            MidiFxChainKind::Input => track.midi_fx.timeline_ui.input_selected_row,
+            MidiFxChainKind::Output => track.midi_fx.timeline_ui.output_selected_row,
+        };
+        let len = self.active_timeline_fx_slot_indices(chain_kind).len();
+        if len == 0 { 0 } else { stored.min(len - 1) }
+    }
+
+    fn set_selected_timeline_fx_row(&mut self, chain_kind: MidiFxChainKind, row_index: usize) {
+        let len = self.active_timeline_fx_slot_indices(chain_kind).len();
+        let clamped = if len == 0 { 0 } else { row_index.min(len - 1) };
+        if let Some(track) = self.project.active_track_mut() {
+            match chain_kind {
+                MidiFxChainKind::Input => track.midi_fx.timeline_ui.input_selected_row = clamped,
+                MidiFxChainKind::Output => track.midi_fx.timeline_ui.output_selected_row = clamped,
+            }
+        }
+    }
+
+    fn active_timeline_fx_slot_indices(&self, chain_kind: MidiFxChainKind) -> Vec<usize> {
+        let Some(track) = self.project.active_track() else {
+            return Vec::new();
+        };
+        self.fx_chain(track, chain_kind)
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| slot.as_ref().map(|_| index))
+            .collect()
+    }
+
+    fn selected_timeline_fx_slot_index(&self, chain_kind: MidiFxChainKind) -> Option<usize> {
+        self.active_timeline_fx_slot_indices(chain_kind)
+            .get(self.selected_timeline_fx_row(chain_kind))
+            .copied()
+    }
+
+    fn selected_timeline_fx_slot<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<&'a MidiFxSlot> {
+        self.selected_timeline_fx_slot_index(chain_kind)
+            .and_then(|slot_index| self.fx_chain(track, chain_kind).get(slot_index))
+            .and_then(|slot| slot.as_ref())
+    }
+
+    fn selected_timeline_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return 0;
+        };
+        let windows = match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.timeline_ui.input_param_windows,
+            MidiFxChainKind::Output => &track.midi_fx.timeline_ui.output_param_windows,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    fn timeline_fx_param_window_for_slot(
+        &self,
+        context: TimelineContext,
+        slot_index: usize,
+    ) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let windows = match context.chain_kind() {
+            Some(MidiFxChainKind::Input) => &track.midi_fx.timeline_ui.input_param_windows,
+            Some(MidiFxChainKind::Output) => &track.midi_fx.timeline_ui.output_param_windows,
+            None => return 0,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    fn set_selected_timeline_fx_param_window(&mut self, chain_kind: MidiFxChainKind, start: usize) {
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        if let Some(track) = self.project.active_track_mut() {
+            let windows = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.timeline_ui.input_param_windows,
+                MidiFxChainKind::Output => &mut track.midi_fx.timeline_ui.output_param_windows,
+            };
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = start;
+            }
+        }
+    }
+
+    fn normalize_timeline_fx_selection(&mut self) {
+        if let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() {
+            let active = self.active_timeline_fx_slot_indices(chain_kind);
+            if active.is_empty() {
+                self.set_selected_timeline_fx_row(chain_kind, 0);
+                return;
+            }
+            self.set_selected_timeline_fx_row(
+                chain_kind,
+                self.selected_timeline_fx_row(chain_kind),
+            );
+        }
+    }
+
+    fn adjust_timeline_context(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        match self.page_state.selected_timeline_fx_field {
+            TimelineFxField::Enabled => self.toggle_selected_timeline_fx_enabled(),
+            TimelineFxField::Kind => self.adjust_selected_timeline_fx_kind(delta),
+            TimelineFxField::ParamPrimary => self.adjust_selected_timeline_fx_parameter(0, delta),
+            TimelineFxField::ParamSecondary => self.adjust_selected_timeline_fx_parameter(1, delta),
+            TimelineFxField::Scroll => self.scroll_selected_timeline_fx_parameter_window(delta),
+            TimelineFxField::Move => self.move_selected_timeline_fx(delta),
+        }
+        self.normalize_timeline_fx_selection();
+        if self.page_state.selected_timeline_context.chain_kind() != Some(chain_kind) {
+            self.page_state.selected_timeline_context = match chain_kind {
+                MidiFxChainKind::Input => TimelineContext::InputFx,
+                MidiFxChainKind::Output => TimelineContext::OutputFx,
+            };
+        }
+    }
+
+    fn activate_timeline_context_item(&mut self) {
+        if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
+            return;
+        }
+        self.page_state.selected_timeline_fx_field =
+            self.page_state.selected_timeline_fx_field.next();
+    }
+
+    fn toggle_selected_timeline_fx_enabled(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        if let Some(Some(slot)) = chain.get_mut(slot_index) {
+            slot.enabled = !slot.enabled;
+        }
+    }
+
+    fn adjust_selected_timeline_fx_kind(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        self.set_selected_fx_slot_index(chain_kind, slot_index);
+        self.adjust_fx_kind(chain_kind, delta);
+    }
+
+    fn adjust_selected_timeline_fx_parameter(&mut self, visible_offset: usize, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let track_count = self.project.tracks.len();
+        let ppqn = self.project.transport.ppqn;
+        let window_start = self.selected_timeline_fx_param_window(chain_kind);
+        let parameter_index = window_start + visible_offset;
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        let Some(Some(slot)) = chain.get_mut(slot_index) else {
+            return;
+        };
+        slot.effect
+            .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
+    }
+
+    fn scroll_selected_timeline_fx_parameter_window(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(track) = self.project.active_track() else {
+            return;
+        };
+        let Some(slot) = self.selected_timeline_fx_slot(track, chain_kind) else {
+            return;
+        };
+        let param_count = slot.effect.inline_parameters().len();
+        let max_start = param_count.saturating_sub(2);
+        let current = self.selected_timeline_fx_param_window(chain_kind);
+        let next = (current as i32 + delta).clamp(0, max_start as i32) as usize;
+        self.set_selected_timeline_fx_param_window(chain_kind, next);
+    }
+
+    fn move_selected_timeline_fx(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let active_slots = self.active_timeline_fx_slot_indices(chain_kind);
+        if active_slots.len() < 2 {
+            return;
+        }
+        let row_index = self.selected_timeline_fx_row(chain_kind);
+        let target_row = if delta < 0 {
+            row_index.saturating_sub(1)
+        } else {
+            (row_index + 1).min(active_slots.len() - 1)
+        };
+        if row_index == target_row {
+            return;
+        }
+        let source_slot = active_slots[row_index];
+        let target_slot = active_slots[target_row];
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let (chain, windows) = match chain_kind {
+            MidiFxChainKind::Input => (
+                &mut track.midi_fx.input_fx,
+                &mut track.midi_fx.timeline_ui.input_param_windows,
+            ),
+            MidiFxChainKind::Output => (
+                &mut track.midi_fx.output_fx,
+                &mut track.midi_fx.timeline_ui.output_param_windows,
+            ),
+        };
+        chain.swap(source_slot, target_slot);
+        windows.swap(source_slot, target_slot);
+        self.set_selected_timeline_fx_row(chain_kind, target_row);
     }
 
     fn adjust_page_item(&mut self, delta: i32) {
         match self.page_state.current_page {
-            AppPage::Timeline => {}
+            AppPage::Timeline => self.adjust_timeline_context(delta),
             AppPage::Mappings => {
                 if self.page_state.mapping_mode == MappingPageMode::Write
                     && !self.mappings.is_empty()
@@ -5624,7 +6313,7 @@ impl App {
 
     fn activate_page_item(&mut self) {
         match self.page_state.current_page {
-            AppPage::Timeline => {}
+            AppPage::Timeline => self.activate_timeline_context_item(),
             AppPage::Mappings => {
                 if self.page_state.mapping_mode == MappingPageMode::Write
                     && !self.mappings.is_empty()
@@ -6980,12 +7669,20 @@ impl App {
 
             let (input_fx_rect, output_fx_rect) =
                 self.track_fx_band_rects(full_bounds, detail_bounds, &self.project.tracks[index]);
-            if rect_contains(output_fx_rect, x, y) {
+            if let Some(hit) = self.timeline_fx_hit(
+                TimelineContext::OutputFx,
+                output_fx_rect,
+                &self.project.tracks[index],
+                x,
+                y,
+            ) {
+                let was_selected = self.project.active_track_index == index
+                    && self.page_state.selected_timeline_context == hit.context
+                    && self.selected_timeline_fx_row(MidiFxChainKind::Output) == hit.row_index;
                 self.project.active_track_index = index;
-                self.page_state.selected_routing_field = RoutingField::OutputFxSlot;
-                return Some(
-                    self.apply_action_with_source(AppAction::ShowPage(AppPage::Routing), source),
-                );
+                self.page_state.selected_timeline_context = hit.context;
+                self.set_selected_timeline_fx_row(MidiFxChainKind::Output, hit.row_index);
+                return self.handle_timeline_fx_pointer_hit(hit, x, y, source, was_selected);
             }
 
             if self.project.tracks[index]
@@ -7012,12 +7709,20 @@ impl App {
             }
 
             let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
-            if rect_contains(input_fx_rect, x, y) {
+            if let Some(hit) = self.timeline_fx_hit(
+                TimelineContext::InputFx,
+                input_fx_rect,
+                &self.project.tracks[index],
+                x,
+                y,
+            ) {
+                let was_selected = self.project.active_track_index == index
+                    && self.page_state.selected_timeline_context == hit.context
+                    && self.selected_timeline_fx_row(MidiFxChainKind::Input) == hit.row_index;
                 self.project.active_track_index = index;
-                self.page_state.selected_routing_field = RoutingField::InputFxSlot;
-                return Some(
-                    self.apply_action_with_source(AppAction::ShowPage(AppPage::Routing), source),
-                );
+                self.page_state.selected_timeline_context = hit.context;
+                self.set_selected_timeline_fx_row(MidiFxChainKind::Input, hit.row_index);
+                return self.handle_timeline_fx_pointer_hit(hit, x, y, source, was_selected);
             }
             for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
                 if !rect_contains(slot_rect, x, y) {
@@ -8236,20 +8941,6 @@ fn draw_loop_label_underline<T: RenderTarget>(
     Ok(())
 }
 
-fn track_fx_insert_label(slot: &MidiFxSlot) -> &'static str {
-    match slot.effect.kind() {
-        crate::midi_fx::MidiFxKind::Arp => "AR",
-        crate::midi_fx::MidiFxKind::NoteFilter => "NF",
-        crate::midi_fx::MidiFxKind::Transpose => "TR",
-        crate::midi_fx::MidiFxKind::Velocity => "VL",
-        crate::midi_fx::MidiFxKind::Duration => "DU",
-        crate::midi_fx::MidiFxKind::ScaleQuantize => "SQ",
-        crate::midi_fx::MidiFxKind::ChordQuantize => "CQ",
-        crate::midi_fx::MidiFxKind::TimeShift => "TS",
-        crate::midi_fx::MidiFxKind::TrackClone => "CL",
-    }
-}
-
 fn track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
     let line_height = 8_i32;
     let line_gap = 2_i32;
@@ -8258,13 +8949,8 @@ fn track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
     vertical_padding + line_count * line_height + (line_count - 1) * line_gap
 }
 
-fn track_fx_line_label(detail: bool, slot: &MidiFxSlot) -> String {
-    let prefix = if detail { "IN" } else { "OUT" };
-    format!(
-        "{prefix} {} {}",
-        track_fx_insert_label(slot),
-        slot.effect.value_label()
-    )
+fn timeline_fx_kind_label(slot: &MidiFxSlot) -> String {
+    slot.effect.kind().short_label().to_string()
 }
 
 fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
@@ -8866,11 +9552,13 @@ mod tests {
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
+    use crate::midi_fx::MidiFxChainKind;
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::project::{RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind};
     use crate::routing::MidiChannelFilter;
     use crate::timeline::RecordingTake;
+    use crate::timeline_fx::{TimelineContext, TimelineFxField};
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
     use sdl3::pixels::Color;
@@ -10590,7 +11278,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_track_fx_insert_click_opens_routing_on_matching_chain() {
+    fn timeline_track_fx_row_click_selects_output_fx_context() {
         let mut app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
@@ -10602,20 +11290,47 @@ mod tests {
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let row = app.timeline_fx_row_layouts(output_band, 1)[0].row;
 
         let control = app.handle_timeline_pointer(
             content_bounds,
-            output_band.x + output_band.width() as i32 / 2,
-            output_band.y + output_band.height() as i32 / 2,
+            row.x + 2,
+            row.y + row.height() as i32 / 2,
             ActionSource::Pointer,
         );
 
         assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(app.page_state.current_page, AppPage::Routing);
         assert_eq!(
-            app.page_state.selected_routing_field,
-            RoutingField::OutputFxSlot
+            app.page_state.selected_timeline_context,
+            TimelineContext::OutputFx
         );
+    }
+
+    #[test]
+    fn timeline_fx_adjust_and_move_actions_update_selected_output_row() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
+
+        let before_kind = app
+            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
+            .unwrap()
+            .effect
+            .kind();
+        app.adjust_page_item(1);
+        let after_kind = app
+            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
+            .unwrap()
+            .effect
+            .kind();
+        assert_ne!(before_kind, after_kind);
+
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Move;
+        let before_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
+        app.adjust_page_item(1);
+        let after_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
+        assert!(after_row >= before_row);
     }
 
     #[test]
