@@ -529,3 +529,15 @@ The `Routing` page remains appropriate for:
 - whether `Track Timeline` and `Stacked Recordings` should share one context family or split into separate families once note editing lands
 - whether a small context badge or breadcrumb should appear in the footer/status bar while editing inside the timeline
 - whether direct kind switching should be enabled in V1 timeline editing or deferred to `Routing` while toggle/adjust/reorder ship first
+
+## Current Direction Updates
+
+The current agreed direction for implementation is:
+
+- include `kind switching` in timeline direct editing
+- include parameter-window `scrolling` in timeline direct editing
+- prefer an overflow indicator that can also behave like a compact `scrollbar`, aligned with the stacked-recordings visual language when space allows
+- persist timeline FX context, selected row, selected field, and parameter-window position rather than treating them as purely transient
+- keep the code shape modular by preferring feature- or module-oriented files for shared timeline-FX logic instead of growing a single monolithic app file further
+
+Icon work should be explored in parallel, but timeline direct editing should not wait on final icon assets. The text-first row layout remains the required fallback.

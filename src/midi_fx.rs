@@ -37,6 +37,8 @@ pub struct TrackMidiFx {
     pub input_fx: Vec<Option<MidiFxSlot>>,
     #[serde(default = "default_fx_slots")]
     pub output_fx: Vec<Option<MidiFxSlot>>,
+    #[serde(default)]
+    pub timeline_ui: TimelineFxUiState,
 }
 
 fn default_monitor_input_fx() -> bool {
@@ -54,6 +56,34 @@ impl Default for TrackMidiFx {
             monitor_input_fx: default_monitor_input_fx(),
             input_fx: default_fx_slots(),
             output_fx: default_fx_slots(),
+            timeline_ui: TimelineFxUiState::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimelineFxUiState {
+    #[serde(default)]
+    pub input_selected_row: usize,
+    #[serde(default)]
+    pub output_selected_row: usize,
+    #[serde(default = "default_fx_param_windows")]
+    pub input_param_windows: Vec<usize>,
+    #[serde(default = "default_fx_param_windows")]
+    pub output_param_windows: Vec<usize>,
+}
+
+fn default_fx_param_windows() -> Vec<usize> {
+    vec![0; MIDI_FX_SLOT_COUNT]
+}
+
+impl Default for TimelineFxUiState {
+    fn default() -> Self {
+        Self {
+            input_selected_row: 0,
+            output_selected_row: 0,
+            input_param_windows: default_fx_param_windows(),
+            output_param_windows: default_fx_param_windows(),
         }
     }
 }
@@ -173,6 +203,12 @@ pub enum MidiFx {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MidiFxInlineParam {
+    pub label: &'static str,
+    pub value: String,
+}
+
 impl MidiFx {
     pub fn default_for_kind(kind: MidiFxKind) -> Self {
         match kind {
@@ -232,6 +268,93 @@ impl MidiFx {
 
     pub fn summary(&self) -> String {
         format!("{} {}", self.kind().short_label(), self.value_label())
+    }
+
+    pub fn inline_parameters(&self) -> Vec<MidiFxInlineParam> {
+        match self {
+            Self::Arp { step_ticks } => vec![MidiFxInlineParam {
+                label: "Step",
+                value: format!("{step_ticks}t"),
+            }],
+            Self::NoteFilter {
+                low,
+                high,
+                enabled_notes,
+            } => vec![
+                MidiFxInlineParam {
+                    label: "Low",
+                    value: low.to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "High",
+                    value: high.to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "List",
+                    value: if enabled_notes.is_empty() {
+                        "All".to_string()
+                    } else {
+                        enabled_notes.len().to_string()
+                    },
+                },
+            ],
+            Self::Transpose { semitones } => vec![MidiFxInlineParam {
+                label: "Semi",
+                value: format!("{:+}", semitones),
+            }],
+            Self::Velocity { percent } => vec![MidiFxInlineParam {
+                label: "Vel",
+                value: format!("{percent}%"),
+            }],
+            Self::Duration { percent } => vec![MidiFxInlineParam {
+                label: "Len",
+                value: format!("{percent}%"),
+            }],
+            Self::ScaleQuantize { root } => vec![MidiFxInlineParam {
+                label: "Root",
+                value: note_name(*root).to_string(),
+            }],
+            Self::ChordQuantize { root } => vec![MidiFxInlineParam {
+                label: "Root",
+                value: note_name(*root).to_string(),
+            }],
+            Self::TimeShift { ticks } => vec![MidiFxInlineParam {
+                label: "Time",
+                value: format!("{:+}t", ticks),
+            }],
+            Self::TrackClone { source_track } => vec![MidiFxInlineParam {
+                label: "Src",
+                value: format!("T{}", source_track + 1),
+            }],
+        }
+    }
+
+    pub fn adjust_inline_parameter(
+        &mut self,
+        param_index: usize,
+        delta: i32,
+        track_count: usize,
+        ppqn: u16,
+    ) {
+        match self {
+            Self::Arp { .. }
+            | Self::Transpose { .. }
+            | Self::Velocity { .. }
+            | Self::Duration { .. }
+            | Self::ScaleQuantize { .. }
+            | Self::ChordQuantize { .. }
+            | Self::TimeShift { .. }
+            | Self::TrackClone { .. } => self.adjust_value(delta, track_count, ppqn),
+            Self::NoteFilter {
+                low,
+                high,
+                enabled_notes,
+            } => match param_index {
+                0 => *low = (*low as i32 + delta).clamp(0, i32::from(*high)) as u8,
+                1 => *high = (*high as i32 + delta).clamp(i32::from(*low), 127) as u8,
+                _ => toggle_enabled_note(enabled_notes, delta),
+            },
+        }
     }
 
     pub fn adjust_value(&mut self, delta: i32, track_count: usize, ppqn: u16) {

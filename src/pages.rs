@@ -1,3 +1,4 @@
+use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +203,8 @@ pub struct AppPageState {
     pub selected_routing_field: RoutingField,
     pub selected_input_fx_slot: usize,
     pub selected_output_fx_slot: usize,
+    pub selected_timeline_context: TimelineContext,
+    pub selected_timeline_fx_field: TimelineFxField,
 }
 
 impl Default for AppPageState {
@@ -216,6 +219,8 @@ impl Default for AppPageState {
             selected_routing_field: RoutingField::InputDevice,
             selected_input_fx_slot: 0,
             selected_output_fx_slot: 0,
+            selected_timeline_context: TimelineContext::default(),
+            selected_timeline_fx_field: TimelineFxField::default(),
         }
     }
 }
