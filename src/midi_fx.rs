@@ -128,6 +128,18 @@ pub enum MidiFxKind {
 }
 
 impl MidiFxKind {
+    pub const ALL: [Self; 9] = [
+        Self::Arp,
+        Self::NoteFilter,
+        Self::Transpose,
+        Self::Velocity,
+        Self::Duration,
+        Self::ScaleQuantize,
+        Self::ChordQuantize,
+        Self::TimeShift,
+        Self::TrackClone,
+    ];
+
     pub const ALL_WITH_NONE: [Option<Self>; 10] = [
         None,
         Some(Self::Arp),
@@ -468,6 +480,19 @@ pub fn cycle_fx_kind(current: Option<&MidiFxSlot>, delta: i32) -> Option<MidiFxS
     })
 }
 
+pub fn cycle_existing_fx_kind(current: &MidiFxSlot, delta: i32) -> MidiFxSlot {
+    let current_index = MidiFxKind::ALL
+        .iter()
+        .position(|candidate| *candidate == current.effect.kind())
+        .unwrap_or(0);
+    let next_index =
+        (current_index as i32 + delta).rem_euclid(MidiFxKind::ALL.len() as i32) as usize;
+    MidiFxSlot {
+        enabled: current.enabled,
+        effect: MidiFx::default_for_kind(MidiFxKind::ALL[next_index]),
+    }
+}
+
 pub fn fx_slot_label(slot: Option<&MidiFxSlot>) -> String {
     match slot {
         Some(slot) if slot.enabled => slot.effect.summary(),
@@ -762,8 +787,8 @@ fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, cycle_fx_kind, process_live_event,
-        transform_notes,
+        LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, cycle_existing_fx_kind,
+        cycle_fx_kind, process_live_event, transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -771,6 +796,17 @@ mod tests {
     fn cycle_kind_creates_first_effect() {
         let slot = cycle_fx_kind(None, 1).expect("slot");
         assert!(matches!(slot.effect, MidiFx::Arp { .. }));
+    }
+
+    #[test]
+    fn cycle_existing_kind_skips_none() {
+        let slot = MidiFxSlot {
+            enabled: false,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        };
+        let next = cycle_existing_fx_kind(&slot, 1);
+        assert!(matches!(next.effect, MidiFx::Arp { .. }));
+        assert!(!next.enabled);
     }
 
     #[test]

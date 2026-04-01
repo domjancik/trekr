@@ -190,6 +190,7 @@ Current controls:
   - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
   - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
   - `Q` / `E`: apply the selected FX field action (toggle, kind switch, parameter adjust, scrollbar/page scroll, reorder)
+  - kind switching on an existing row cycles between effect kinds without removing the row; `None` is only reached through an empty `ADD ... FX` row
   - when a free slot exists, an `ADD IN FX` / `ADD OUT FX` row appears; selecting it and using `Q` / `E` on `Kind` inserts a new effect into the next empty slot
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
@@ -218,7 +219,7 @@ Pointer/touch notes:
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
-- each timeline FX row is clickable/tappable for direct selection, toggle, kind cycle, parameter stepping, parameter-window scroll, and discrete reordering
+- each timeline FX row is clickable/tappable for direct selection, toggle, kind cycle, parameter stepping, parameter-window scroll, and discrete reordering; mouse/touch acts on the clicked zone immediately while also selecting that row/context
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
