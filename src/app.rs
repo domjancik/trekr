@@ -5553,7 +5553,15 @@ impl App {
                 AppControl::Continue
             }
             AppAction::ToggleSelectedRecordingClipMute => {
-                if let Some(track) = self.project.active_track_mut() {
+                if self.page_state.current_page == AppPage::Timeline
+                    && self
+                        .page_state
+                        .selected_timeline_context
+                        .chain_kind()
+                        .is_some()
+                {
+                    self.toggle_selected_timeline_fx_enabled();
+                } else if let Some(track) = self.project.active_track_mut() {
                     track.toggle_selected_recording_clip_mute();
                 }
                 AppControl::Continue
@@ -11364,6 +11372,24 @@ mod tests {
         app.adjust_page_item(1);
         let after_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
         assert!(after_row >= before_row);
+    }
+
+    #[test]
+    fn shift_m_action_toggles_selected_timeline_fx_when_fx_context_is_active() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+
+        let before = app
+            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
+            .unwrap()
+            .enabled;
+        app.apply_action(AppAction::ToggleSelectedRecordingClipMute);
+        let after = app
+            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
+            .unwrap()
+            .enabled;
+        assert_ne!(before, after);
     }
 
     #[test]
