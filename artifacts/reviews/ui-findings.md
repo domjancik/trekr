@@ -1,21 +1,33 @@
 Findings
 
-1. severity: high | screenshot/page name: `timeline.png` | issue: Dense per-track headers and tiny labels (`ARM/REC/MUT/SOL`, mode chips, track footers) compete at the same visual weight, making scan order unclear and slowing comprehension. | brief suggested fix: Increase hierarchy by enlarging/brightening primary row labels, de-emphasizing secondary metadata, and grouping controls into clearer bands (global, per-track, footer).
+1. **Severity: high** — **Screenshot/Page:** `timeline.png`  
+   **Issue:** Track headers and control rows are visually overloaded; several labels are truncated (for example `ADD I...`) and become hard to parse at a glance.  
+   **Suggested fix:** Reduce per-track header density (fewer always-visible fields), prioritize key states, and expose secondary controls via focus/expand.
 
-2. severity: high | screenshot/page name: `timeline-focused.png` | issue: The focused state is not immediately obvious beyond size change; selected track/loop boundaries are subtle in a visually busy grid. | brief suggested fix: Add a stronger focus treatment (clear accent frame + background tint + explicit “Focused: Track 1” badge near header).
+2. **Severity: high** — **Screenshot/Page:** `timeline-focused.png`  
+   **Issue:** State communication is weak between global vs focused mode; the page still looks nearly as dense as all-tracks view, so focus mode benefit is unclear.  
+   **Suggested fix:** In focused mode, increase contrast/size for the active track context and hide or strongly mute non-essential global controls.
 
-3. severity: medium | screenshot/page name: `mappings.png` | issue: Header columns (`TYPE / DEVICE / SOURCE / TARGET / SCOPE / ON`) are weakly separated from row content; rows read like continuous bars, reducing column clarity. | brief suggested fix: Add stronger vertical separators or alternating cell backgrounds per column, especially between `TARGET`, `SCOPE`, and toggle state.
+3. **Severity: medium** — **Screenshot/Page:** `timeline.png` and `timeline-focused.png`  
+   **Issue:** Heavy abbreviation (`TRN`, `MUT`, `SOL`, `ADD O...`, etc.) makes controls ambiguous for first-pass understanding.  
+   **Suggested fix:** Expand key labels where possible or add a persistent legend/help strip for abbreviations and state colors.
 
-4. severity: medium | screenshot/page name: `mappings.png` | issue: Top mode chips (`TAP MODE`, `TAP LEARN`, `TAP DIRECT MAP`) look like editable fields/buttons but unclear which are status vs actions. | brief suggested fix: Split status pills from action buttons with distinct styles and labels (e.g., “Status: Read Only”, “Action: Direct Map”).
+4. **Severity: medium** — **Screenshot/Page:** `routing.png`  
+   **Issue:** The standalone `TAP VALUE` control appears detached from a clear target field, making interaction intent unclear.  
+   **Suggested fix:** Attach it to the currently editable value panel (inline or grouped) and show explicit “editing X” state.
 
-5. severity: medium | screenshot/page name: `mappings-overlay.png` | issue: Overlay title and control hints (`F5 CLOSE`, `W WRITE`) are cramped at top-left, while row count sits far right, creating awkward balance and weak orientation. | brief suggested fix: Use a structured overlay header row with left title/actions and right pagination/scope aligned on the same baseline.
+5. **Severity: medium** — **Screenshot/Page:** `routing.png`  
+   **Issue:** Inconsistent spacing and grouping depth across right-side sections (`REC/MON`, `INPUT FX`, `OUTPUT FX`) weakens visual hierarchy.  
+   **Suggested fix:** Standardize section padding, header-to-content spacing, and control row heights across all cards.
 
-6. severity: medium | screenshot/page name: `midi-io.png` | issue: Large empty gray panels inside device cards dominate visual weight and look like missing content rather than intentional list bodies. | brief suggested fix: Reduce empty panel prominence and add explicit empty/list affordances (row separators, “no additional ports”, or count badges).
+6. **Severity: medium** — **Screenshot/Page:** `mappings.png`  
+   **Issue:** Bottom command strip is dense and cryptic (`TAP AGAIN ACT`, `W WRITE`, `F8 DIRECT`) with weak separation between shortcuts and actions.  
+   **Suggested fix:** Split into labeled groups (navigation/edit/modes), add separators, and increase spacing between tokens.
 
-7. severity: low | screenshot/page name: `midi-io.png` | issue: `DEF/SEL` chips are very small and close to card borders, making state hard to parse quickly. | brief suggested fix: Increase chip contrast and padding; align consistently with device names on a stable baseline.
+7. **Severity: low** — **Screenshot/Page:** `midi-io.png`  
+   **Issue:** Very large empty list panes read as inactive/placeholder areas; selected/default state tags are small and easy to miss.  
+   **Suggested fix:** Add empty/loaded list cues and enlarge/strengthen selected/default badges for faster scan.
 
-8. severity: medium | screenshot/page name: `routing.png` | issue: Multiple similar control blocks (`SET`, `TGL`, plus/minus) repeat with minimal differentiation between editable values and toggles, which can mislead interaction expectations. | brief suggested fix: Standardize control semantics visually (buttons vs fields vs toggles) and add concise inline labels/tooltips for action meaning.
-
-9. severity: low | screenshot/page name: `routing.png` | issue: Inconsistent spacing between stacked cards and section gutters (left signal panel vs right FX panels) makes alignment feel uneven. | brief suggested fix: Normalize vertical rhythm and gutter sizes using a single spacing scale across both columns.
-
-10. severity: low | screenshot/page name: `mappings-overlay.png`, `timeline.png`, `routing.png` | issue: Bottom shortcut strip (`F5 MAPPINGS`, `F7 DISCOVER`, `F8 DIRECT`) appears in multiple contexts with equal emphasis, but current/active shortcut state is not obvious. | brief suggested fix: Highlight the active shortcut context and mute inactive ones to improve state communication.
+8. **Severity: low** — **Screenshot/Page:** `mappings-overlay.png`  
+   **Issue:** Overlay and base screen look very similar in contrast and structure, so mode change is subtle.  
+   **Suggested fix:** Increase overlay distinction (stronger backdrop dimming, clearer title bar treatment, and stronger active-row emphasis).

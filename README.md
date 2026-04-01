@@ -190,6 +190,7 @@ Current controls:
   - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
   - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
   - `Q` / `E`: apply the selected FX field action (toggle, kind switch, parameter adjust, scrollbar/page scroll, reorder)
+  - when a free slot exists, an `ADD IN FX` / `ADD OUT FX` row appears; selecting it and using `Q` / `E` on `Kind` inserts a new effect into the next empty slot
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
 - `Shift+Delete` / `Shift+Backspace`: delete the selected committed recording clip in stacked view
