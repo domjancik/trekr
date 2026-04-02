@@ -7991,9 +7991,11 @@ impl App {
         }
 
         for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
-            let full_label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
             let (body_full_bounds, body_detail_bounds) =
                 self.track_column_body_bounds(full_bounds, detail_bounds);
+            let full_label_rect = crate::ui::track_label_rect(body_full_bounds, self.timeline_flow);
+            let detail_label_rect =
+                crate::ui::track_label_rect(body_detail_bounds, self.timeline_flow);
             let status_rect = crate::ui::track_status_rect(
                 crate::ui::union_rect(full_bounds, detail_bounds),
                 self.timeline_flow,
@@ -8076,7 +8078,6 @@ impl App {
                 }
             }
 
-            let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
             if let Some(hit) = self.timeline_fx_hit(
                 TimelineContext::InputFx,
                 input_fx_rect,
@@ -8462,9 +8463,10 @@ impl App {
             crate::ui::union_rect(full_bounds, detail_bounds),
             self.timeline_flow,
         );
-        let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
         let (body_full_bounds, body_detail_bounds) =
             self.track_column_body_bounds(full_bounds, detail_bounds);
+        let label_rect = crate::ui::track_label_rect(body_full_bounds, self.timeline_flow);
+        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, self.timeline_flow);
         if track.recording_view == RecordingView::Stacked {
             let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
             targets.push((
@@ -8557,7 +8559,6 @@ impl App {
                 overlay_slot: None,
             },
         ));
-        let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
         let (input_fx_rect, output_fx_rect) =
             self.track_fx_band_rects(full_bounds, detail_bounds, track);
         targets.extend(self.timeline_fx_discoverability_targets_for_track(
@@ -11741,8 +11742,9 @@ mod tests {
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
                 .expect("timeline body");
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (_, detail_bounds) = columns[1];
-        let detail_label_rect = crate::ui::track_label_rect(detail_bounds, app.timeline_flow);
+        let (full_bounds, detail_bounds) = columns[1];
+        let (_, body_detail_bounds) = app.track_column_body_bounds(full_bounds, detail_bounds);
+        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, app.timeline_flow);
         let (_, slot_rect) = app.stored_loop_slot_rects(detail_label_rect)[0];
 
         let control = app.handle_timeline_pointer(
@@ -11758,6 +11760,40 @@ mod tests {
             app.project.tracks[1].loop_region,
             crate::timeline::LoopRegion::new(2_880, 960)
         );
+    }
+
+    #[test]
+    fn timeline_body_label_controls_do_not_overlap_input_fx_band() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (body_full_bounds, body_detail_bounds) =
+            app.track_column_body_bounds(full_bounds, detail_bounds);
+        let full_label_rect = crate::ui::track_label_rect(body_full_bounds, app.timeline_flow);
+        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, app.timeline_flow);
+        let (input_fx_rect, _) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let view_rect = app.recording_view_chip_rect(full_label_rect);
+        let thru_rect = app.track_passthrough_button_rect(full_label_rect);
+        let detail_badge = crate::ui::detail_badge_rect(detail_label_rect);
+        let stored_slot = app.stored_loop_slot_rects(detail_label_rect)[0].1;
+        let intersects = |a: Rect, b: Rect| {
+            a.x < b.x + b.width() as i32
+                && a.x + a.width() as i32 > b.x
+                && a.y < b.y + b.height() as i32
+                && a.y + a.height() as i32 > b.y
+        };
+
+        assert!(!intersects(input_fx_rect, view_rect));
+        assert!(!intersects(input_fx_rect, thru_rect));
+        assert!(!intersects(input_fx_rect, detail_badge));
+        assert!(!intersects(input_fx_rect, stored_slot));
     }
 
     #[test]
