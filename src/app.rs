@@ -2217,8 +2217,8 @@ impl App {
 
         let move_selected =
             selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Move;
-        self.draw_timeline_fx_move_zone(canvas, layout.move_up, "U", move_selected, text_color)?;
-        self.draw_timeline_fx_move_zone(canvas, layout.move_down, "D", move_selected, text_color)?;
+        self.draw_timeline_fx_move_zone(canvas, layout.move_up, "↑", move_selected, text_color)?;
+        self.draw_timeline_fx_move_zone(canvas, layout.move_down, "↓", move_selected, text_color)?;
         self.draw_timeline_fx_delete_zone(canvas, layout.delete, text_color)?;
         Ok(())
     }
