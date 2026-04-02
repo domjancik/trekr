@@ -1,33 +1,21 @@
 Findings
 
-1. **Severity: high** — **Screenshot/Page:** `timeline.png`  
-   **Issue:** Track headers and control rows are visually overloaded; several labels are truncated (for example `ADD I...`) and become hard to parse at a glance.  
-   **Suggested fix:** Reduce per-track header density (fewer always-visible fields), prioritize key states, and expose secondary controls via focus/expand.
+1. **severity: high** | **screenshot/page:** `timeline.png` | **issue:** Track header controls and status tokens are visually overcrowded (`THRU TRACK`, loop step chips, per-track mode labels), making it hard to parse what belongs to which track at a glance. | **brief suggested fix:** Increase horizontal padding and split header content into 2 rows (identity row + controls row) or collapse secondary tokens behind a focused state.
 
-2. **Severity: high** — **Screenshot/Page:** `timeline-focused.png`  
-   **Issue:** State communication is weak between global vs focused mode; the page still looks nearly as dense as all-tracks view, so focus mode benefit is unclear.  
-   **Suggested fix:** In focused mode, increase contrast/size for the active track context and hide or strongly mute non-essential global controls.
+2. **severity: high** | **screenshot/page:** `timeline-focused.png` | **issue:** Right-edge micro-label cluster in the focused track header (transpose/effect state tokens) is cramped and partially ambiguous due to tiny spacing. | **brief suggested fix:** Group these into a dedicated “Track State” strip with separators and minimum token width; hide non-critical chips until focus/hover.
 
-3. **Severity: medium** — **Screenshot/Page:** `timeline.png` and `timeline-focused.png`  
-   **Issue:** Heavy abbreviation (`TRN`, `MUT`, `SOL`, `ADD O...`, etc.) makes controls ambiguous for first-pass understanding.  
-   **Suggested fix:** Expand key labels where possible or add a persistent legend/help strip for abbreviations and state colors.
+3. **severity: medium** | **screenshot/page:** `routing.png` | **issue:** Repeated `SET`/`TGL` buttons are visually similar and close to adjacent value fields, so control intent is unclear (set value vs toggle enable). | **brief suggested fix:** Differentiate button styles by action type (e.g., filled for toggles, outlined for set/apply) and add short labels like `SET KIND`, `TOGGLE ON`.
 
-4. **Severity: medium** — **Screenshot/Page:** `routing.png`  
-   **Issue:** The standalone `TAP VALUE` control appears detached from a clear target field, making interaction intent unclear.  
-   **Suggested fix:** Attach it to the currently editable value panel (inline or grouped) and show explicit “editing X” state.
+4. **severity: medium** | **screenshot/page:** `routing.png` | **issue:** Section hierarchy is weak between `REC/MON`, `INPUT FX`, and `OUTPUT FX`; all panels share near-identical visual weight. | **brief suggested fix:** Strengthen hierarchy with clearer section titles, slightly larger heading text, and more distinct panel spacing/dividers.
 
-5. **Severity: medium** — **Screenshot/Page:** `routing.png`  
-   **Issue:** Inconsistent spacing and grouping depth across right-side sections (`REC/MON`, `INPUT FX`, `OUTPUT FX`) weakens visual hierarchy.  
-   **Suggested fix:** Standardize section padding, header-to-content spacing, and control row heights across all cards.
+5. **severity: medium** | **screenshot/page:** `midi-io.png` | **issue:** Large empty device list regions look like inactive placeholders, but state messaging is missing (no count, no hint, no selection instructions). | **brief suggested fix:** Add explicit empty/selection helper text and device counts (`1 input detected`, `Select default output`) inside panels.
 
-6. **Severity: medium** — **Screenshot/Page:** `mappings.png`  
-   **Issue:** Bottom command strip is dense and cryptic (`TAP AGAIN ACT`, `W WRITE`, `F8 DIRECT`) with weak separation between shortcuts and actions.  
-   **Suggested fix:** Split into labeled groups (navigation/edit/modes), add separators, and increase spacing between tokens.
+6. **severity: medium** | **screenshot/page:** `mappings.png` | **issue:** Row density is very high; columns (`TYPE/DEVICE/SOURCE/TARGET/SCOPE`) have tight spacing, reducing scan speed and increasing misread risk. | **brief suggested fix:** Increase row height slightly, add subtle zebra striping or stronger column separators, and prioritize primary columns with wider widths.
 
-7. **Severity: low** — **Screenshot/Page:** `midi-io.png`  
-   **Issue:** Very large empty list panes read as inactive/placeholder areas; selected/default state tags are small and easy to miss.  
-   **Suggested fix:** Add empty/loaded list cues and enlarge/strengthen selected/default badges for faster scan.
+7. **severity: low** | **screenshot/page:** `mappings-overlay.png` | **issue:** Overlay header metadata (`ROWS 1-19/30`, `SCOPE`) is detached from table headers, so context mapping is not immediate. | **brief suggested fix:** Align metadata directly with the corresponding column header row or move it into a compact top-right status bar with clearer labels.
 
-8. **Severity: low** — **Screenshot/Page:** `mappings-overlay.png`  
-   **Issue:** Overlay and base screen look very similar in contrast and structure, so mode change is subtle.  
-   **Suggested fix:** Increase overlay distinction (stronger backdrop dimming, clearer title bar treatment, and stronger active-row emphasis).
+8. **severity: low** | **screenshot/page:** `mappings.png` and `mappings-overlay.png` | **issue:** Bottom shortcut/footer bar has many similarly styled key hints, making primary actions hard to identify quickly. | **brief suggested fix:** Emphasize top 2–3 primary actions with stronger contrast and demote secondary shortcuts with lower-intensity text.
+
+9. **severity: low** | **screenshot/page:** `timeline.png` | **issue:** Top utility controls (`LINK OFF`, `START/STOP OFF`, `F6 / SHIFT+F6`) are tightly packed at the right edge, weakening readability and state clarity. | **brief suggested fix:** Add consistent spacing groups and a dedicated transport-state cluster with clearer active/inactive styling.
+
+10. **severity: low** | **screenshot/page:** all pages | **issue:** Active-state communication relies heavily on subtle color shifts; in dense areas this is easy to miss quickly. | **brief suggested fix:** Pair color with secondary cues (icon, marker, underline, or prefix text like `ON`/`ACTIVE`) for faster state recognition.

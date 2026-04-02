@@ -91,6 +91,7 @@ struct TimelineFxRowRef {
     context: TimelineContext,
     row_index: usize,
     slot_index: Option<usize>,
+    layout: TimelineFxRowLayout,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +104,7 @@ struct TimelineFxRowLayout {
     overflow: Rect,
     move_up: Rect,
     move_down: Rect,
+    delete: Rect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -1001,25 +1003,35 @@ impl App {
         if !is_active {
             return Ok(());
         }
-        let highlight = Color::RGB(244, 232, 146);
+        if let Some(rect) = self.timeline_context_highlight_rect(full_bounds, detail_bounds, track)
+        {
+            canvas.set_draw_color(Color::RGB(244, 232, 146));
+            canvas.draw_rect(rect)?;
+        }
+        Ok(())
+    }
+
+    fn timeline_context_highlight_rect(
+        &self,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+        track: &Track,
+    ) -> Option<Rect> {
         match self.page_state.selected_timeline_context {
             TimelineContext::InputFx => {
                 let (input_rect, _) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
-                canvas.set_draw_color(highlight);
-                canvas.draw_rect(input_rect)?;
+                Some(input_rect)
             }
             TimelineContext::OutputFx => {
                 let (_, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
-                canvas.set_draw_color(highlight);
-                canvas.draw_rect(output_rect)?;
+                Some(output_rect)
             }
             TimelineContext::TrackTimeline => {
-                canvas.set_draw_color(highlight);
-                canvas.draw_rect(full_bounds)?;
-                canvas.draw_rect(detail_bounds)?;
+                let (body_full_bounds, body_detail_bounds) =
+                    self.track_column_body_bounds(full_bounds, detail_bounds);
+                Some(crate::ui::union_rect(body_full_bounds, body_detail_bounds))
             }
         }
-        Ok(())
     }
 
     fn draw_track_status_strip<T: RenderTarget>(
@@ -2002,16 +2014,16 @@ impl App {
             .project
             .tracks
             .iter()
-            .map(|track| track_fx_band_height(&track.midi_fx.input_fx))
+            .map(|track| displayed_track_fx_band_height(&track.midi_fx.input_fx))
             .max()
-            .unwrap_or(track_fx_band_height(&[]));
+            .unwrap_or(displayed_track_fx_band_height(&[]));
         let output = self
             .project
             .tracks
             .iter()
-            .map(|track| track_fx_band_height(&track.midi_fx.output_fx))
+            .map(|track| displayed_track_fx_band_height(&track.midi_fx.output_fx))
             .max()
-            .unwrap_or(track_fx_band_height(&[]));
+            .unwrap_or(displayed_track_fx_band_height(&[]));
         (input, output)
     }
 
@@ -2059,17 +2071,8 @@ impl App {
                 .enumerate()
                 .filter_map(|(index, slot)| slot.as_ref().map(|slot| (index, slot)))
                 .collect();
-            let mut displayed_rows = self
-                .active_timeline_fx_slot_indices_for_track(track, chain_kind)
-                .into_iter()
-                .map(Some)
-                .collect::<Vec<_>>();
-            if self
-                .first_empty_timeline_fx_slot_index_for_track(track, chain_kind)
-                .is_some()
-            {
-                displayed_rows.push(None);
-            }
+            let displayed_rows =
+                self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind);
             let enabled = active_slots.iter().any(|(_, slot)| slot.enabled);
             let fill = if context == TimelineContext::InputFx {
                 if enabled {
@@ -2216,6 +2219,7 @@ impl App {
             selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Move;
         self.draw_timeline_fx_move_zone(canvas, layout.move_up, "U", move_selected, text_color)?;
         self.draw_timeline_fx_move_zone(canvas, layout.move_down, "D", move_selected, text_color)?;
+        self.draw_timeline_fx_delete_zone(canvas, layout.delete, text_color)?;
         Ok(())
     }
 
@@ -2227,7 +2231,19 @@ impl App {
         selected: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let text_color = Color::RGB(226, 232, 238);
-        canvas.set_draw_color(Color::RGB(40, 46, 64));
+        canvas.set_draw_color(if selected {
+            Color::RGB(82, 92, 128)
+        } else {
+            Color::RGB(40, 46, 64)
+        });
+        canvas.fill_rect(layout.row)?;
+        canvas.set_draw_color(if selected {
+            Color::RGB(244, 232, 146)
+        } else {
+            Color::RGB(90, 98, 116)
+        });
+        canvas.draw_rect(layout.row)?;
+        canvas.set_draw_color(Color::RGB(52, 58, 80));
         canvas.fill_rect(layout.enabled)?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -2236,42 +2252,25 @@ impl App {
             1,
             text_color,
         )?;
-        canvas.set_draw_color(
-            if selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind {
-                Color::RGB(82, 92, 128)
-            } else {
-                Color::RGB(52, 58, 80)
-            },
-        );
-        canvas.fill_rect(layout.kind)?;
         crate::ui::draw_text_fitted(
             canvas,
             if context == TimelineContext::InputFx {
-                "ADD IN FX"
+                "Add Input FX"
             } else {
-                "ADD OUT FX"
+                "Add Output FX"
             },
-            centered_text_rect(layout.kind),
+            Rect::new(
+                layout.kind.x + 3,
+                layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
+                layout
+                    .row
+                    .width()
+                    .saturating_sub((layout.kind.x - layout.row.x) as u32 + 6),
+                8,
+            ),
             1,
             text_color,
         )?;
-        for rect in [
-            layout.param_primary,
-            layout.param_secondary,
-            layout.overflow,
-            layout.move_up,
-            layout.move_down,
-        ] {
-            canvas.set_draw_color(Color::RGB(40, 46, 64));
-            canvas.fill_rect(rect)?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                "--",
-                centered_text_rect(rect),
-                1,
-                Color::RGB(132, 140, 154),
-            )?;
-        }
         Ok(())
     }
 
@@ -2383,6 +2382,20 @@ impl App {
         Ok(())
     }
 
+    fn draw_timeline_fx_delete_zone<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        rect: Rect,
+        text_color: Color,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(Color::RGB(108, 56, 62));
+        canvas.fill_rect(rect)?;
+        canvas.set_draw_color(Color::RGB(204, 124, 132));
+        canvas.draw_rect(rect)?;
+        crate::ui::draw_text_fitted(canvas, "X", centered_text_rect(rect), 1, text_color)?;
+        Ok(())
+    }
+
     fn timeline_fx_row_layouts(
         &self,
         band_rect: Rect,
@@ -2400,33 +2413,52 @@ impl App {
         );
         rows.into_iter()
             .map(|row| {
-                let columns = crate::ui::equal_columns(row, 7, 2);
+                let enabled_width = row.width().min(18);
+                let delete_width = row.width().min(14);
+                let move_width = row.width().min(11);
+                let overflow_width = row.width().min(18);
+                let param_width = row.width().min(28).max(18);
+                let mut right = row.x + row.width() as i32;
+                let delete = Rect::new(
+                    right - delete_width as i32,
+                    row.y,
+                    delete_width,
+                    row.height(),
+                );
+                right = delete.x - 1;
+                let move_down =
+                    Rect::new(right - move_width as i32, row.y, move_width, row.height());
+                right = move_down.x - 1;
+                let move_up = Rect::new(right - move_width as i32, row.y, move_width, row.height());
+                right = move_up.x - 1;
+                let overflow = Rect::new(
+                    right - overflow_width as i32,
+                    row.y,
+                    overflow_width,
+                    row.height(),
+                );
+                right = overflow.x - 1;
+                let param_secondary =
+                    Rect::new(right - param_width as i32, row.y, param_width, row.height());
+                right = param_secondary.x - 1;
+                let param_primary =
+                    Rect::new(right - param_width as i32, row.y, param_width, row.height());
+                let enabled = Rect::new(row.x, row.y, enabled_width, row.height());
                 TimelineFxRowLayout {
                     row,
-                    enabled: columns[0],
+                    enabled,
                     kind: Rect::new(
-                        columns[1].x,
-                        columns[1].y,
-                        columns[1].width() + columns[2].width() + 2,
-                        columns[1].height(),
+                        enabled.x + enabled.width() as i32 + 1,
+                        row.y,
+                        (param_primary.x - enabled.x - enabled.width() as i32 - 2).max(8) as u32,
+                        row.height(),
                     ),
-                    param_primary: columns[3],
-                    param_secondary: columns[4],
-                    overflow: columns[5],
-                    move_up: Rect::new(
-                        columns[6].x,
-                        columns[6].y,
-                        columns[6].width() / 2,
-                        columns[6].height(),
-                    ),
-                    move_down: Rect::new(
-                        columns[6].x + (columns[6].width() / 2) as i32 + 1,
-                        columns[6].y,
-                        columns[6]
-                            .width()
-                            .saturating_sub(columns[6].width() / 2 + 1),
-                        columns[6].height(),
-                    ),
+                    param_primary,
+                    param_secondary,
+                    overflow,
+                    move_up,
+                    move_down,
+                    delete,
                 }
             })
             .collect()
@@ -2441,17 +2473,7 @@ impl App {
         y: i32,
     ) -> Option<TimelineFxRowRef> {
         let chain_kind = context.chain_kind()?;
-        let mut displayed = self
-            .active_timeline_fx_slot_indices_for_track(_track, chain_kind)
-            .into_iter()
-            .map(Some)
-            .collect::<Vec<_>>();
-        if self
-            .first_empty_timeline_fx_slot_index_for_track(_track, chain_kind)
-            .is_some()
-        {
-            displayed.push(None);
-        }
+        let displayed = self.displayed_timeline_fx_slot_indices_for_track(_track, chain_kind);
         self.timeline_fx_row_layouts(band_rect, displayed.len().max(1))
             .into_iter()
             .enumerate()
@@ -2460,6 +2482,7 @@ impl App {
                     context,
                     row_index,
                     slot_index: displayed.get(row_index).copied().flatten(),
+                    layout,
                 })
             })
     }
@@ -2472,51 +2495,12 @@ impl App {
         source: ActionSource,
         _was_selected: bool,
     ) -> Option<AppControl> {
-        let chain_kind = hit.context.chain_kind()?;
         self.normalize_timeline_fx_selection();
-        let displayed_count = self
-            .displayed_timeline_fx_slot_indices(chain_kind)
-            .len()
-            .max(1);
-        let layout = {
-            let content_bounds =
-                crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
-            let inset = crate::ui::inset_rect(content_bounds, 24, 24).ok()?;
-            let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 48, 12).ok()?;
-            let footer_height = 22_u32;
-            let footer_gap = 8_i32;
-            let content_bounds = Rect::new(
-                page_area_bounds.x,
-                page_area_bounds.y,
-                page_area_bounds.width(),
-                page_area_bounds
-                    .height()
-                    .saturating_sub(footer_height)
-                    .saturating_sub(footer_gap as u32),
-            );
-            let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-            let (_, timeline_bounds) =
-                crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
-            let visible = self.visible_track_columns(timeline_bounds);
-            let (_, full_bounds, detail_bounds) = visible
-                .into_iter()
-                .find(|(index, _, _)| *index == self.project.active_track_index)?;
-            let track = self.project.active_track()?;
-            let (input_rect, output_rect) =
-                self.track_fx_band_rects(full_bounds, detail_bounds, track);
-            let band = if hit.context == TimelineContext::InputFx {
-                input_rect
-            } else {
-                output_rect
-            };
-            *self
-                .timeline_fx_row_layouts(band, displayed_count)
-                .get(hit.row_index)?
-        };
+        let layout = hit.layout;
+        if hit.slot_index.is_none() && rect_contains(layout.row, x, y) {
+            return Some(self.apply_action_with_source(AppAction::AddSelectedTimelineFx, source));
+        }
         if rect_contains(layout.enabled, x, y) {
-            if hit.slot_index.is_none() {
-                return Some(AppControl::Continue);
-            }
             self.page_state.selected_timeline_fx_field = TimelineFxField::Enabled;
             return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
         }
@@ -2543,6 +2527,11 @@ impl App {
         if rect_contains(layout.move_down, x, y) {
             self.page_state.selected_timeline_fx_field = TimelineFxField::Move;
             return Some(self.apply_action_with_source(AppAction::AdjustPageItemForward, source));
+        }
+        if rect_contains(layout.delete, x, y) {
+            return Some(
+                self.apply_action_with_source(AppAction::DeleteSelectedTimelineFx, source),
+            );
         }
         Some(AppControl::Continue)
     }
@@ -3364,18 +3353,24 @@ impl App {
         let context = self.page_state.selected_timeline_context;
         let chain_kind = context.chain_kind()?;
         let track = self.project.active_track()?;
-        let slot = self.selected_timeline_fx_slot(track, chain_kind)?;
-        Some((
-            format!(
-                "{} {}",
-                context.label(),
-                self.page_state.selected_timeline_fx_field.label()
-            ),
-            format!(
-                "Shift+Left/Right context  Up/Down row  Enter next field  Q/E {}",
-                slot.effect.kind().label()
-            ),
-        ))
+        if let Some(slot) = self.selected_timeline_fx_slot(track, chain_kind) {
+            Some((
+                format!(
+                    "{} {}",
+                    context.label(),
+                    self.page_state.selected_timeline_fx_field.label()
+                ),
+                format!(
+                    "Shift+Left/Right ctx  Up/Down row  Enter field  Q/E edit  Delete remove  {}",
+                    slot.effect.kind().label()
+                ),
+            ))
+        } else {
+            Some((
+                format!("{} Add", context.label()),
+                "Shift+Left/Right ctx  Up/Down row  Q/E or click add row".to_string(),
+            ))
+        }
     }
 
     fn direct_mapping_footer_content(&self) -> Option<(String, String, Vec<MappingBadge>)> {
@@ -5641,11 +5636,65 @@ impl App {
                 }
                 AppControl::Continue
             }
+            AppAction::DeletePageItem => {
+                match self.page_state.current_page {
+                    AppPage::Timeline
+                        if self
+                            .page_state
+                            .selected_timeline_context
+                            .chain_kind()
+                            .is_some() =>
+                    {
+                        self.delete_selected_timeline_fx();
+                    }
+                    AppPage::Mappings => {
+                        self.remove_selected_mapping();
+                    }
+                    _ => {}
+                }
+                AppControl::Continue
+            }
             AppAction::DeleteSelectedRecordingClip => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.delete_selected_recording_clip();
                 }
                 self.sync_active_track_recording_clip_scroll();
+                AppControl::Continue
+            }
+            AppAction::ToggleSelectedTimelineFx => {
+                self.toggle_selected_timeline_fx_enabled();
+                AppControl::Continue
+            }
+            AppAction::CycleSelectedTimelineFxKind => {
+                self.adjust_selected_timeline_fx_kind(1);
+                AppControl::Continue
+            }
+            AppAction::AdjustSelectedTimelineFxPrimary => {
+                self.adjust_selected_timeline_fx_parameter(0, 1);
+                AppControl::Continue
+            }
+            AppAction::AdjustSelectedTimelineFxSecondary => {
+                self.adjust_selected_timeline_fx_parameter(1, 1);
+                AppControl::Continue
+            }
+            AppAction::ScrollSelectedTimelineFxWindow => {
+                self.scroll_selected_timeline_fx_parameter_window(1);
+                AppControl::Continue
+            }
+            AppAction::MoveSelectedTimelineFxUp => {
+                self.move_selected_timeline_fx(-1);
+                AppControl::Continue
+            }
+            AppAction::MoveSelectedTimelineFxDown => {
+                self.move_selected_timeline_fx(1);
+                AppControl::Continue
+            }
+            AppAction::AddSelectedTimelineFx => {
+                self.add_selected_timeline_fx();
+                AppControl::Continue
+            }
+            AppAction::DeleteSelectedTimelineFx => {
+                self.delete_selected_timeline_fx();
                 AppControl::Continue
             }
             AppAction::ToggleFocusedTrackView => {
@@ -6209,23 +6258,29 @@ impl App {
         &self,
         chain_kind: MidiFxChainKind,
     ) -> Vec<Option<usize>> {
+        let Some(track) = self.project.active_track() else {
+            return Vec::new();
+        };
+        self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind)
+    }
+
+    fn displayed_timeline_fx_slot_indices_for_track(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Vec<Option<usize>> {
         let mut rows = self
-            .active_timeline_fx_slot_indices(chain_kind)
+            .active_timeline_fx_slot_indices_for_track(track, chain_kind)
             .into_iter()
             .map(Some)
             .collect::<Vec<_>>();
         if self
-            .first_empty_timeline_fx_slot_index(chain_kind)
+            .first_empty_timeline_fx_slot_index_for_track(track, chain_kind)
             .is_some()
         {
             rows.push(None);
         }
         rows
-    }
-
-    fn first_empty_timeline_fx_slot_index(&self, chain_kind: MidiFxChainKind) -> Option<usize> {
-        let track = self.project.active_track()?;
-        self.first_empty_timeline_fx_slot_index_for_track(track, chain_kind)
     }
 
     fn first_empty_timeline_fx_slot_index_for_track(
@@ -6381,6 +6436,44 @@ impl App {
             }
         } else if let Some(empty_slot) = chain.iter().position(|slot| slot.is_none()) {
             chain[empty_slot] = cycle_fx_kind(None, delta);
+        }
+        self.normalize_timeline_fx_selection();
+    }
+
+    fn add_selected_timeline_fx(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let selected_slot_index = self.selected_timeline_fx_slot_index(chain_kind);
+        if selected_slot_index.is_some() {
+            return;
+        }
+        self.adjust_selected_timeline_fx_kind(1);
+    }
+
+    fn delete_selected_timeline_fx(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let (chain, windows) = match chain_kind {
+            MidiFxChainKind::Input => (
+                &mut track.midi_fx.input_fx,
+                &mut track.midi_fx.timeline_ui.input_param_windows,
+            ),
+            MidiFxChainKind::Output => (
+                &mut track.midi_fx.output_fx,
+                &mut track.midi_fx.timeline_ui.output_param_windows,
+            ),
+        };
+        chain[slot_index] = None;
+        if let Some(window) = windows.get_mut(slot_index) {
+            *window = 0;
         }
         self.normalize_timeline_fx_selection();
     }
@@ -8356,17 +8449,16 @@ impl App {
         let detail_label_rect = crate::ui::track_label_rect(detail_bounds, self.timeline_flow);
         let (input_fx_rect, output_fx_rect) =
             self.track_fx_band_rects(full_bounds, detail_bounds, track);
-        for rect in [output_fx_rect, input_fx_rect] {
-            targets.push((
-                rect,
-                DiscoverabilityTarget {
-                    action: AppAction::ShowPage(AppPage::Routing),
-                    display_scope: Some("Global"),
-                    allowed_mapping_scopes: &["Global"],
-                    overlay_slot: None,
-                },
-            ));
-        }
+        targets.extend(self.timeline_fx_discoverability_targets_for_track(
+            track,
+            TimelineContext::OutputFx,
+            output_fx_rect,
+        ));
+        targets.extend(self.timeline_fx_discoverability_targets_for_track(
+            track,
+            TimelineContext::InputFx,
+            input_fx_rect,
+        ));
         for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
             if let Some(action) = stored_loop_slot_recall_action(slot_index) {
                 targets.push((
@@ -8390,6 +8482,111 @@ impl App {
             },
         ));
 
+        targets
+    }
+
+    fn timeline_fx_discoverability_targets_for_track(
+        &self,
+        track: &Track,
+        context: TimelineContext,
+        band_rect: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let Some(chain_kind) = context.chain_kind() else {
+            return Vec::new();
+        };
+        let displayed_rows = self
+            .displayed_timeline_fx_slot_indices_for_track(track, chain_kind)
+            .len()
+            .max(1);
+        let layouts = self.timeline_fx_row_layouts(band_rect, displayed_rows);
+        let rows = self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind);
+        let mut targets = Vec::new();
+        for (row, layout) in rows.iter().zip(layouts.into_iter()) {
+            if row.is_none() {
+                targets.push((
+                    layout.row,
+                    DiscoverabilityTarget {
+                        action: AppAction::AddSelectedTimelineFx,
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot: None,
+                    },
+                ));
+                continue;
+            }
+            targets.push((
+                layout.enabled,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleSelectedTimelineFx,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.kind,
+                DiscoverabilityTarget {
+                    action: AppAction::CycleSelectedTimelineFxKind,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.param_primary,
+                DiscoverabilityTarget {
+                    action: AppAction::AdjustSelectedTimelineFxPrimary,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.param_secondary,
+                DiscoverabilityTarget {
+                    action: AppAction::AdjustSelectedTimelineFxSecondary,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.overflow,
+                DiscoverabilityTarget {
+                    action: AppAction::ScrollSelectedTimelineFxWindow,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.move_up,
+                DiscoverabilityTarget {
+                    action: AppAction::MoveSelectedTimelineFxUp,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.move_down,
+                DiscoverabilityTarget {
+                    action: AppAction::MoveSelectedTimelineFxDown,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.delete,
+                DiscoverabilityTarget {
+                    action: AppAction::DeleteSelectedTimelineFx,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
         targets
     }
 
@@ -9111,11 +9308,13 @@ fn draw_loop_label_underline<T: RenderTarget>(
     Ok(())
 }
 
-fn track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
+fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
     let line_height = 8_i32;
     let line_gap = 2_i32;
     let vertical_padding = 4_i32;
-    let line_count = chain.iter().flatten().count().max(1) as i32;
+    let active = chain.iter().flatten().count();
+    let show_add = active < chain.len().max(MIDI_FX_SLOT_COUNT);
+    let line_count = (active + usize::from(show_add)).max(1) as i32;
     vertical_padding + line_count * line_height + (line_count - 1) * line_gap
 }
 
@@ -9722,7 +9921,7 @@ mod tests {
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
-    use crate::midi_fx::MidiFxChainKind;
+    use crate::midi_fx::{MidiFxChainKind, MidiFxSlot};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::project::{RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind};
@@ -11460,7 +11659,13 @@ mod tests {
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let row = app.timeline_fx_row_layouts(output_band, 1)[0].row;
+        let row = app.timeline_fx_row_layouts(
+            output_band,
+            app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+                .len()
+                .max(1),
+        )[0]
+        .row;
 
         let control = app.handle_timeline_pointer(
             content_bounds,
@@ -11561,6 +11766,152 @@ mod tests {
             .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
             .len();
         assert_eq!(after, existing + 1);
+    }
+
+    #[test]
+    fn timeline_fx_delete_chip_click_removes_effect() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let layout = app.timeline_fx_row_layouts(
+            output_band,
+            app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+                .len()
+                .max(1),
+        )[0];
+        let before = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            layout.delete.x + layout.delete.width() as i32 / 2,
+            layout.delete.y + layout.delete.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        let after = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        assert_eq!(after, before - 1);
+    }
+
+    #[test]
+    fn timeline_add_row_click_inserts_effect_on_first_click() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let layouts = app.timeline_fx_row_layouts(
+            output_band,
+            app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+                .len()
+                .max(1),
+        );
+        let add_row = layouts.last().expect("add row").row;
+        let before = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            add_row.x + 4,
+            add_row.y + add_row.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        let after = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        assert_eq!(after, before + 1);
+    }
+
+    #[test]
+    fn timeline_fx_hover_targets_kind_action_not_routing() {
+        let app = App::new();
+        let mut app = app;
+        app.project.active_track_mut().unwrap().midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let layout = app.timeline_fx_row_layouts(
+            output_band,
+            app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+                .len()
+                .max(1),
+        )[0];
+
+        let target = app
+            .timeline_discoverability_targets(content_bounds)
+            .into_iter()
+            .find_map(|(rect, target)| {
+                super::rect_contains(
+                    rect,
+                    layout.kind.x + layout.kind.width() as i32 / 2,
+                    layout.kind.y + layout.kind.height() as i32 / 2,
+                )
+                .then_some(target)
+            })
+            .expect("discoverability target");
+
+        assert_eq!(target.action, AppAction::CycleSelectedTimelineFxKind);
+    }
+
+    #[test]
+    fn timeline_context_highlight_excludes_fx_bands() {
+        let mut app = App::new();
+        app.page_state.selected_timeline_context = TimelineContext::TrackTimeline;
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let track = &app.project.tracks[0];
+        let (input_rect, output_rect) = app.track_fx_band_rects(full_bounds, detail_bounds, track);
+        let highlight = app
+            .timeline_context_highlight_rect(full_bounds, detail_bounds, track)
+            .expect("highlight rect");
+
+        let intersects = |a: Rect, b: Rect| {
+            a.x < b.x + b.width() as i32
+                && a.x + a.width() as i32 > b.x
+                && a.y < b.y + b.height() as i32
+                && a.y + a.height() as i32 > b.y
+        };
+        assert!(!intersects(highlight, input_rect));
+        assert!(!intersects(highlight, output_rect));
     }
 
     #[test]
