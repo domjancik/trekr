@@ -7912,6 +7912,8 @@ impl App {
 
         for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
             let full_label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
+            let (body_full_bounds, body_detail_bounds) =
+                self.track_column_body_bounds(full_bounds, detail_bounds);
             let status_rect = crate::ui::track_status_rect(
                 crate::ui::union_rect(full_bounds, detail_bounds),
                 self.timeline_flow,
@@ -8020,7 +8022,7 @@ impl App {
                 }
             }
 
-            for bounds in [full_bounds, detail_bounds] {
+            for bounds in [body_full_bounds, body_detail_bounds] {
                 let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
                 if let Some(clip_id) =
                     self.recording_lane_hit_clip(content_rect, &self.project.tracks[index], x, y)
@@ -8381,7 +8383,8 @@ impl App {
             self.timeline_flow,
         );
         let label_rect = crate::ui::track_label_rect(full_bounds, self.timeline_flow);
-        let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
+        let (body_full_bounds, body_detail_bounds) =
+            self.track_column_body_bounds(full_bounds, detail_bounds);
         if track.recording_view == RecordingView::Stacked {
             let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
             targets.push((
@@ -8433,17 +8436,22 @@ impl App {
                 },
             ));
         }
-        for lane in self.recording_lane_layouts(content_rect, track) {
-            if let Some(clip_id) = lane.clip_id {
-                targets.push((
-                    lane.rect,
-                    DiscoverabilityTarget {
-                        action: AppAction::SelectRecordingClip(clip_id),
-                        display_scope: Some("Active Track"),
-                        allowed_mapping_scopes: &["Active Track"],
-                        overlay_slot: None,
-                    },
-                ));
+        for content_rect in [
+            crate::ui::track_content_rect(body_full_bounds, self.timeline_flow),
+            crate::ui::track_content_rect(body_detail_bounds, self.timeline_flow),
+        ] {
+            for lane in self.recording_lane_layouts(content_rect, track) {
+                if let Some(clip_id) = lane.clip_id {
+                    targets.push((
+                        lane.rect,
+                        DiscoverabilityTarget {
+                            action: AppAction::SelectRecordingClip(clip_id),
+                            display_scope: Some("Active Track"),
+                            allowed_mapping_scopes: &["Active Track"],
+                            overlay_slot: None,
+                        },
+                    ));
+                }
             }
         }
         for indicator in crate::ui::track_indicators(status_rect) {
@@ -11702,6 +11710,34 @@ mod tests {
             app.page_state.selected_timeline_context,
             TimelineContext::OutputFx
         );
+    }
+
+    #[test]
+    fn timeline_resized_content_rects_do_not_overlap_input_fx_band() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (body_full_bounds, body_detail_bounds) =
+            app.track_column_body_bounds(full_bounds, detail_bounds);
+        let (input_band, _) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let full_content = crate::ui::track_content_rect(body_full_bounds, app.timeline_flow);
+        let detail_content = crate::ui::track_content_rect(body_detail_bounds, app.timeline_flow);
+        let intersects = |a: Rect, b: Rect| {
+            a.x < b.x + b.width() as i32
+                && a.x + a.width() as i32 > b.x
+                && a.y < b.y + b.height() as i32
+                && a.y + a.height() as i32 > b.y
+        };
+
+        assert!(!intersects(input_band, full_content));
+        assert!(!intersects(input_band, detail_content));
     }
 
     #[test]
