@@ -6301,6 +6301,26 @@ impl App {
             .flatten()
     }
 
+    fn selected_timeline_fx_active_row_index(&self, chain_kind: MidiFxChainKind) -> Option<usize> {
+        let selected_slot = self.selected_timeline_fx_slot_index(chain_kind)?;
+        self.active_timeline_fx_slot_indices(chain_kind)
+            .iter()
+            .position(|slot_index| *slot_index == selected_slot)
+    }
+
+    fn set_selected_timeline_fx_slot_index(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        slot_index: usize,
+    ) {
+        let row_index = self
+            .displayed_timeline_fx_slot_indices(chain_kind)
+            .iter()
+            .position(|candidate| *candidate == Some(slot_index))
+            .unwrap_or(0);
+        self.set_selected_timeline_fx_row(chain_kind, row_index);
+    }
+
     fn selected_timeline_fx_slot<'a>(
         &self,
         track: &'a Track,
@@ -6436,6 +6456,7 @@ impl App {
             }
         } else if let Some(empty_slot) = chain.iter().position(|slot| slot.is_none()) {
             chain[empty_slot] = cycle_fx_kind(None, delta);
+            self.set_selected_timeline_fx_slot_index(chain_kind, empty_slot);
         }
         self.normalize_timeline_fx_selection();
     }
@@ -6528,7 +6549,9 @@ impl App {
         if active_slots.len() < 2 {
             return;
         }
-        let row_index = self.selected_timeline_fx_row(chain_kind);
+        let Some(row_index) = self.selected_timeline_fx_active_row_index(chain_kind) else {
+            return;
+        };
         let target_row = if delta < 0 {
             row_index.saturating_sub(1)
         } else {
@@ -11814,6 +11837,67 @@ mod tests {
             .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
             .len();
         assert_eq!(after, existing + 1);
+    }
+
+    #[test]
+    fn timeline_add_row_selects_newly_inserted_fx_row() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx = vec![
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            None,
+            None,
+        ];
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        let add_row = app
+            .displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len()
+            - 1;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, add_row);
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
+
+        app.adjust_page_item(1);
+
+        assert_eq!(
+            app.selected_timeline_fx_slot_index(MidiFxChainKind::Output),
+            Some(2)
+        );
+        assert_eq!(
+            app.selected_timeline_fx_active_row_index(MidiFxChainKind::Output),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn timeline_move_after_insert_from_add_row_does_not_panic() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx = vec![
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            None,
+            None,
+        ];
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        let add_row = app
+            .displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len()
+            - 1;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, add_row);
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
+        app.adjust_page_item(1);
+
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Move;
+        app.adjust_page_item(1);
+
+        assert!(
+            app.selected_timeline_fx_slot(
+                app.project.active_track().unwrap(),
+                MidiFxChainKind::Output
+            )
+            .is_some()
+        );
     }
 
     #[test]
