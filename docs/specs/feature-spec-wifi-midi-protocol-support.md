@@ -25,22 +25,35 @@ Observed current vendor guidance:
 
 - AKAI documents wireless remote MIDI control for standalone MPC hardware via an **Akai Network MIDI Driver** and MPC output port set to **Remote**.
 - Setup requires MPC and host on the same network (Wi-Fi or Ethernet), then DAW-side MIDI ports labeled as Akai network/remote ports.
+- AKAI’s published setup path depends on installing the driver via inMusic Software Center and notes macOS-specific permission behavior in that flow.
 
 Source:
 
 - https://support.akaipro.com/en/support/solutions/articles/69000867660-akai-pro-mpc-series-wireless-remote-midi-control-in-a-daw
+
+### Linux client status (official support check)
+
+- No official AKAI Linux network-MIDI client is documented in the referenced AKAI/inMusic setup materials.
+- inMusic setup guidance repeatedly frames desktop installation paths as Windows/macOS.
+
+Sources:
+
+- https://support.akaipro.com/en/support/solutions/articles/69000867660-akai-pro-mpc-series-wireless-remote-midi-control-in-a-daw
+- https://support.inmusicstore.com/en/support/solutions/articles/69000818519-air-music-tech-installing-and-activating-your-air-plugins
 
 ### Generic network MIDI protocol baseline
 
 - RTP-MIDI payload is standardized in RFC 6295.
 - Apple’s MIDI Network Driver doc describes the common AppleMIDI session model on top of RTP-MIDI payloads (Bonjour advertisement, UDP control+data ports, invitation/accept handshake).
 - Windows interoperability commonly uses rtpMIDI (Tobias Erichsen), compatible with Apple network MIDI.
+- Linux commonly relies on third-party/community AppleMIDI/RTP-MIDI daemons (for example `rtpmidid`) that expose network sessions as ALSA MIDI ports.
 
 Sources:
 
 - https://www.rfc-editor.org/rfc/rfc6295
 - https://developer.apple.com/library/archive/documentation/Audio/Conceptual/MIDINetworkDriverProtocol/MIDI/MIDI.html
 - https://www.tobias-erichsen.de/software/rtpmidi.html
+- https://github.com/davidmoreno/rtpmidid
 
 ### Sync vs control distinction
 
@@ -85,7 +98,10 @@ Introduce transport-level classification, starting with:
 AKAI MPC support policy:
 
 - **Phase 1:** Supported via `SystemMidi` using Akai Network MIDI Driver-created ports (host OS handles protocol).
-- **Phase 2 (optional):** Validate direct/native RTP-MIDI session interoperability where practical.
+- **Phase 2 (Linux-required path):** Support Linux through an RTP-MIDI/AppleMIDI-compatible path when no official AKAI client exists.
+  - first practical path: interop with Linux session daemons that bridge to ALSA (for example `rtpmidid`)
+  - optional long-term path: native RTP-MIDI session implementation in `trekr`
+- **Phase 3 (optional):** Validate direct/native RTP-MIDI session interoperability against AKAI hardware/session behavior where practical.
 
 ## UX Flow
 
@@ -221,10 +237,12 @@ Add runtime descriptor for MIDI ports:
 - Add protocol/network tagging + protocol-aware mapping identity fields.
 - Add tests for matching/conflict with protocol metadata.
 
-### Phase 2 (optional)
+### Phase 2 (required for Linux support target)
 
-- Add native RTP-MIDI session backend.
-- Add discovery/session UX for direct network endpoints when OS driver is unavailable.
+- Add Linux-compatible network-MIDI path:
+  - either interop with an external AppleMIDI daemon that exposes ALSA ports
+  - or ship native RTP-MIDI/AppleMIDI session support in-process
+- Add discovery/session UX guidance for environments without vendor drivers.
 
 ### Phase 3 (future)
 
