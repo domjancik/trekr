@@ -1,4 +1,4 @@
-use crate::app::{App, RunOptions, UiCaptureOptions, VideoMode};
+use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 use crate::state;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -16,6 +16,7 @@ pub struct LaunchOptions {
     pub state_mode: StateMode,
     pub state_file: PathBuf,
     pub ui_scale: Option<f32>,
+    pub ui_scaling_mode: UiScalingMode,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -150,6 +151,7 @@ impl Default for LaunchOptions {
             state_mode: StateMode::Persisted,
             state_file: PathBuf::from(DEFAULT_STATE_FILE),
             ui_scale: None,
+            ui_scaling_mode: UiScalingMode::Auto,
         }
     }
 }
@@ -184,6 +186,7 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
         StateMode::Empty => App::new_empty(),
     };
     app.set_ui_scale_override(options.ui_scale);
+    app.set_ui_scaling_mode(options.ui_scaling_mode);
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
         LaunchMode::Interactive(run_options) => {
@@ -229,6 +232,10 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
         "  --state-file <path>            default: {DEFAULT_STATE_FILE}"
     )?;
     writeln!(writer, "  --ui-scale <number>=1.0+")?;
+    writeln!(
+        writer,
+        "  --ui-scaling <auto|nearest|linear>   default: auto"
+    )?;
     writeln!(
         writer,
         "  --video-mode <windowed|fullscreen|kmsdrm-console>   run only"
@@ -356,6 +363,10 @@ pub fn launch_command_args(options: &LaunchOptions) -> Vec<String> {
         args.push("--ui-scale".to_owned());
         args.push(ui_scale.to_string());
     }
+    if options.ui_scaling_mode != UiScalingMode::Auto {
+        args.push("--ui-scaling".to_owned());
+        args.push(ui_scaling_mode_label(options.ui_scaling_mode).to_owned());
+    }
 
     args
 }
@@ -406,6 +417,12 @@ where
                 }
                 options.ui_scale = Some(parsed);
             }
+            "--ui-scaling" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--ui-scaling requires auto|nearest|linear".to_owned())?;
+                options.ui_scaling_mode = parse_ui_scaling_mode(&value)?;
+            }
             "--video-mode" => {
                 let value = args.next().ok_or_else(|| {
                     "--video-mode requires windowed|fullscreen|kmsdrm-console".to_owned()
@@ -451,6 +468,7 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         "Press Enter to keep the default path.",
     )?;
     let ui_scale = prompt_optional_ui_scale(writer, reader)?;
+    let ui_scaling_mode = prompt_ui_scaling_mode(writer, reader)?;
 
     let run_mode = if capture_mode {
         let output_dir = prompt_path(
@@ -471,6 +489,7 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         state_mode,
         state_file,
         ui_scale,
+        ui_scaling_mode,
     })
 }
 
@@ -542,6 +561,24 @@ fn prompt_optional_ui_scale<R: BufRead, W: Write>(
                 "Enter a numeric scale >= 1.0, or press Enter to skip."
             )?,
         }
+    }
+}
+
+fn prompt_ui_scaling_mode<R: BufRead, W: Write>(
+    writer: &mut W,
+    reader: &mut R,
+) -> Result<UiScalingMode, Box<dyn std::error::Error>> {
+    match prompt_menu(
+        writer,
+        reader,
+        "UI scaling mode",
+        &["auto", "nearest", "linear"],
+        0,
+    )? {
+        0 => Ok(UiScalingMode::Auto),
+        1 => Ok(UiScalingMode::Nearest),
+        2 => Ok(UiScalingMode::Linear),
+        _ => unreachable!(),
     }
 }
 
@@ -622,6 +659,23 @@ fn video_mode_label(video_mode: VideoMode) -> &'static str {
     }
 }
 
+fn parse_ui_scaling_mode(value: &str) -> Result<UiScalingMode, String> {
+    match value {
+        "auto" => Ok(UiScalingMode::Auto),
+        "nearest" => Ok(UiScalingMode::Nearest),
+        "linear" => Ok(UiScalingMode::Linear),
+        other => Err(format!("unknown ui scaling mode: {other}")),
+    }
+}
+
+fn ui_scaling_mode_label(mode: UiScalingMode) -> &'static str {
+    match mode {
+        UiScalingMode::Auto => "auto",
+        UiScalingMode::Nearest => "nearest",
+        UiScalingMode::Linear => "linear",
+    }
+}
+
 fn parse_state_mode(value: &str) -> Result<StateMode, String> {
     match value {
         "persisted" => Ok(StateMode::Persisted),
@@ -634,7 +688,7 @@ fn parse_state_mode(value: &str) -> Result<StateMode, String> {
 #[cfg(test)]
 mod tests {
     use super::{AppCommand, LaunchMode, StateMode, parse_app_command_from};
-    use crate::app::VideoMode;
+    use crate::app::{UiScalingMode, VideoMode};
     use std::path::PathBuf;
 
     #[test]
@@ -723,5 +777,28 @@ mod tests {
         ])
         .expect_err("capture-ui should reject video mode");
         assert_eq!(error, "--video-mode is only valid with the run command");
+    }
+
+    #[test]
+    fn run_subcommand_accepts_ui_scaling_mode() {
+        let command = parse_app_command_from(vec![
+            "run".to_owned(),
+            "--ui-scaling".to_owned(),
+            "linear".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        assert_eq!(options.ui_scaling_mode, UiScalingMode::Linear);
+    }
+
+    #[test]
+    fn ui_scaling_defaults_to_auto() {
+        let command = parse_app_command_from(vec!["run".to_owned()]).expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        assert_eq!(options.ui_scaling_mode, UiScalingMode::Auto);
     }
 }
