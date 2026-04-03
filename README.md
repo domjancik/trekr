@@ -55,7 +55,7 @@ Latest renderer-owned captures from the demo state:
 - a page shell for `Timeline`, `Mappings`, `MIDI I/O`, and `Routing`
 - real MIDI device enumeration via `midir`
 - basic routed MIDI note playback on track output ports/channels
-- per-track MIDI input/output FX slots with compact editing on the Routing page
+- per-track MIDI input/output FX slots with compact multi-parameter editing on the Routing page
 - direct-editable per-track MIDI FX bands on the timeline, with input FX above the track pair and output FX below it
 - live input monitoring can run dry or through input FX, and playback can run through output FX
 - `Track Clone` mirrors the source track's pre-output MIDI signal, so source loop/clip playback can feed later destination input FX and `Post FX` recording
@@ -192,7 +192,7 @@ Current controls:
   - `Up` / `Down`: select FX row
   - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
   - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
-  - `Q` / `E`: apply the selected FX field action (toggle, kind switch, parameter adjust, scrollbar/page scroll, reorder)
+  - `Q` / `E`: apply the selected FX field action (toggle, kind switch, primary/secondary parameter adjust, parameter-window scroll, reorder)
   - `Delete`: remove the selected timeline FX row
   - kind switching on an existing row cycles between effect kinds without removing the row; `None` is only reached through an empty `ADD ... FX` row
   - when a free slot exists, a single `Add Input FX` / `Add Output FX` row appears; selecting it and using `Q` / `E` on `Kind`, or clicking/tapping the row, inserts a new effect into the next empty slot
@@ -223,7 +223,7 @@ Pointer/touch notes:
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
-- each timeline FX row now uses one compact single-line layout in all states; the left chip uses a short effect code with on/off indicated by styling, while tiny always-visible move/delete buttons keep the row stable and mouse/touch still acts on the clicked visible zone immediately while also selecting that row/context
+- each timeline FX row now uses one compact single-line layout in all states; it prioritizes the effect name plus one real parameter value, falls back to a compact `+N` overflow indicator when more parameters exist, and keeps the left chip/action zones clickable without changing row geometry
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
@@ -236,7 +236,7 @@ Pointer/touch notes:
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
 - routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
-- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with `Record Input FX`, `Monitor Input FX`, and per-slot `Input FX` / `Output FX` fields for cycling slot, kind, enabled state, and value
+- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with `Record Input FX`, `Monitor Input FX`, and per-slot `Input FX` / `Output FX` fields for cycling slot, kind, enabled state, `P1`, `P2`, and `More`
 - the Timeline page shows per-track MIDI FX bands for input and output chains, with direct inline editing on the track
 - timeline note and region editing is still not implemented for pointer/touch input
 

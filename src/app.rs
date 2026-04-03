@@ -2417,14 +2417,8 @@ impl App {
             )?;
             return Ok(());
         }
-        let indicator = format!("{}/{}", window_start + 1, param_count);
-        crate::ui::draw_text_fitted(
-            canvas,
-            &indicator,
-            Rect::new(rect.x, rect.y + 1, rect.width(), 8),
-            1,
-            text_color,
-        )?;
+        let indicator = timeline_fx_overflow_label(param_count, window_start);
+        crate::ui::draw_text_fitted(canvas, &indicator, centered_text_rect(rect), 1, text_color)?;
         let track_rect = Rect::new(
             rect.x + 2,
             rect.y + rect.height() as i32 - 3,
@@ -2528,16 +2522,16 @@ impl App {
                 let enabled_width = available.clamp(10, 14);
                 let delete_width = available.clamp(5, 6);
                 let param_primary_width = if available >= 84 {
-                    24
+                    28
                 } else if available >= 64 {
-                    18
+                    22
                 } else {
-                    14
+                    18
                 };
-                let overflow_width = available.clamp(8, 10);
-                let param_secondary_width = if available >= 92 { 16 } else { 0 };
-                let move_width = if available >= 104 { 6 } else { 0 };
-                let kind_min_width = if available >= 84 { 18 } else { 12 };
+                let overflow_width = if available >= 64 { 10 } else { 8 };
+                let param_secondary_width = if available >= 108 { 20 } else { 0 };
+                let move_width = if available >= 120 { 6 } else { 0 };
+                let kind_min_width = if available >= 84 { 16 } else { 10 };
 
                 let base_required = enabled_width + gap + param_primary_width + gap + delete_width;
                 let mut extras = [
@@ -4875,11 +4869,15 @@ impl App {
                 RoutingField::InputFxSlot
                 | RoutingField::InputFxKind
                 | RoutingField::InputFxEnabled
-                | RoutingField::InputFxValue => Color::RGB(120, 152, 214),
+                | RoutingField::InputFxParam1
+                | RoutingField::InputFxParam2
+                | RoutingField::InputFxMore => Color::RGB(120, 152, 214),
                 RoutingField::OutputFxSlot
                 | RoutingField::OutputFxKind
                 | RoutingField::OutputFxEnabled
-                | RoutingField::OutputFxValue => Color::RGB(200, 138, 186),
+                | RoutingField::OutputFxParam1
+                | RoutingField::OutputFxParam2
+                | RoutingField::OutputFxMore => Color::RGB(200, 138, 186),
                 RoutingField::Passthrough => {
                     if active_track.state.passthrough {
                         Color::RGB(92, 220, 216)
@@ -5088,17 +5086,21 @@ impl App {
         ];
         const REC_FIELDS: [RoutingField; 2] =
             [RoutingField::RecordInputFx, RoutingField::MonitorInputFx];
-        const INPUT_FX_FIELDS: [RoutingField; 4] = [
+        const INPUT_FX_FIELDS: [RoutingField; 6] = [
             RoutingField::InputFxSlot,
             RoutingField::InputFxKind,
             RoutingField::InputFxEnabled,
-            RoutingField::InputFxValue,
+            RoutingField::InputFxParam1,
+            RoutingField::InputFxParam2,
+            RoutingField::InputFxMore,
         ];
-        const OUTPUT_FX_FIELDS: [RoutingField; 4] = [
+        const OUTPUT_FX_FIELDS: [RoutingField; 6] = [
             RoutingField::OutputFxSlot,
             RoutingField::OutputFxKind,
             RoutingField::OutputFxEnabled,
-            RoutingField::OutputFxValue,
+            RoutingField::OutputFxParam1,
+            RoutingField::OutputFxParam2,
+            RoutingField::OutputFxMore,
         ];
 
         let (signal_panel, input_fx_panel, rec_panel, output_fx_panel) =
@@ -7008,6 +7010,31 @@ impl App {
         }
     }
 
+    fn selected_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let windows = match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.timeline_ui.input_param_windows,
+            MidiFxChainKind::Output => &track.midi_fx.timeline_ui.output_param_windows,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    fn set_selected_fx_param_window(&mut self, chain_kind: MidiFxChainKind, start: usize) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        if let Some(track) = self.project.active_track_mut() {
+            let windows = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.timeline_ui.input_param_windows,
+                MidiFxChainKind::Output => &mut track.midi_fx.timeline_ui.output_param_windows,
+            };
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = start;
+            }
+        }
+    }
+
     fn fx_chain<'a>(
         &self,
         track: &'a Track,
@@ -7027,6 +7054,40 @@ impl App {
         self.fx_chain(track, chain_kind)
             .get(self.selected_fx_slot_index(chain_kind))
             .and_then(|slot| slot.as_ref())
+    }
+
+    fn selected_fx_visible_params(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> (
+        Option<MidiFxInlineParam>,
+        Option<MidiFxInlineParam>,
+        usize,
+        usize,
+    ) {
+        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
+            return (None, None, 0, 0);
+        };
+        let params = slot.effect.inline_parameters();
+        let window_start = self
+            .selected_fx_param_window(chain_kind)
+            .min(params.len().saturating_sub(1));
+        (
+            params.get(window_start).cloned(),
+            params.get(window_start + 1).cloned(),
+            params.len(),
+            window_start,
+        )
+    }
+
+    fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
+        let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
+        if param_count <= 2 {
+            "--".to_string()
+        } else {
+            format!("+{}", param_count.saturating_sub(window_start + 1))
+        }
     }
 
     fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
@@ -7056,6 +7117,7 @@ impl App {
                 *source_track = (*source_track).min(max_source);
             }
         }
+        self.set_selected_fx_param_window(chain_kind, 0);
     }
 
     fn toggle_fx_enabled(&mut self, chain_kind: MidiFxChainKind) {
@@ -7072,11 +7134,17 @@ impl App {
         }
     }
 
-    fn adjust_fx_value(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+    fn adjust_fx_parameter(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        visible_offset: usize,
+        delta: i32,
+    ) {
         let slot_index = self.selected_fx_slot_index(chain_kind);
         let track_count = self.project.tracks.len();
         let ppqn = self.project.transport.ppqn;
         let active_track_index = self.project.active_track_index;
+        let parameter_index = self.selected_fx_param_window(chain_kind) + visible_offset;
         let source_muted: Vec<bool> = self
             .project
             .tracks
@@ -7093,7 +7161,8 @@ impl App {
         let Some(Some(slot)) = chain.get_mut(slot_index) else {
             return;
         };
-        slot.effect.adjust_value(delta, track_count, ppqn);
+        slot.effect
+            .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
         if let MidiFx::TrackClone { source_track } = &mut slot.effect {
             if *source_track == active_track_index && track_count > 1 {
                 *source_track = if delta >= 0 { 1 } else { track_count - 1 };
@@ -7166,11 +7235,27 @@ impl App {
             RoutingField::InputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Input, delta),
             RoutingField::InputFxKind => self.adjust_fx_kind(MidiFxChainKind::Input, delta),
             RoutingField::InputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Input),
-            RoutingField::InputFxValue => self.adjust_fx_value(MidiFxChainKind::Input, delta),
+            RoutingField::InputFxParam1 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Input, 0, delta)
+            }
+            RoutingField::InputFxParam2 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Input, 1, delta)
+            }
+            RoutingField::InputFxMore => {
+                self.scroll_fx_parameter_window(MidiFxChainKind::Input, delta)
+            }
             RoutingField::OutputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Output, delta),
             RoutingField::OutputFxKind => self.adjust_fx_kind(MidiFxChainKind::Output, delta),
             RoutingField::OutputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Output),
-            RoutingField::OutputFxValue => self.adjust_fx_value(MidiFxChainKind::Output, delta),
+            RoutingField::OutputFxParam1 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Output, 0, delta)
+            }
+            RoutingField::OutputFxParam2 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Output, 1, delta)
+            }
+            RoutingField::OutputFxMore => {
+                self.scroll_fx_parameter_window(MidiFxChainKind::Output, delta)
+            }
         }
     }
 
@@ -7403,7 +7488,12 @@ impl App {
                 self.input_fx_live_states.get_mut(target.target_index),
                 self.project.tracks.get(target.target_index),
             ) {
-                Self::process_track_clone_live_events(track, source_track_index, source_events, state)
+                Self::process_track_clone_live_events(
+                    track,
+                    source_track_index,
+                    source_events,
+                    state,
+                )
             } else {
                 Vec::new()
             };
@@ -7572,7 +7662,8 @@ impl App {
                 }
             }
 
-            let output_events = if let Some(state) = self.output_fx_live_states.get_mut(track_index) {
+            let output_events = if let Some(state) = self.output_fx_live_states.get_mut(track_index)
+            {
                 process_live_chain_tick(&output_chain, state, previous_ticks, current_ticks)
             } else {
                 Vec::new()
@@ -7581,19 +7672,36 @@ impl App {
                 for (_, event) in output_events {
                     match event {
                         LiveMidiFxEvent::NoteOn { pitch, velocity } => {
-                            let _ = self
-                                .midi_output
-                                .send_note_on(port, channel.clamp(1, 16), pitch, velocity);
+                            let _ = self.midi_output.send_note_on(
+                                port,
+                                channel.clamp(1, 16),
+                                pitch,
+                                velocity,
+                            );
                         }
                         LiveMidiFxEvent::NoteOff { pitch } => {
-                            let _ = self
-                                .midi_output
-                                .send_note_off(port, channel.clamp(1, 16), pitch);
+                            let _ =
+                                self.midi_output
+                                    .send_note_off(port, channel.clamp(1, 16), pitch);
                         }
                     }
                 }
             }
         }
+    }
+
+    fn scroll_fx_parameter_window(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let Some(track) = self.project.active_track() else {
+            return;
+        };
+        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
+            return;
+        };
+        let param_count = slot.effect.inline_parameters().len();
+        let max_start = param_count.saturating_sub(2);
+        let current = self.selected_fx_param_window(chain_kind);
+        let next = (current as i32 + delta).clamp(0, max_start as i32) as usize;
+        self.set_selected_fx_param_window(chain_kind, next);
     }
 
     fn effective_track_clone_playback_notes_recursive(
@@ -7989,9 +8097,14 @@ impl App {
                     advanced_ticks,
                     &mut visited,
                 );
-                let transformed_notes = transform_notes(&pre_output_notes, &track.midi_fx.output_fx);
-                let events =
-                    occurrence_note_events(track, &transformed_notes, previous_ticks, advanced_ticks);
+                let transformed_notes =
+                    transform_notes(&pre_output_notes, &track.midi_fx.output_fx);
+                let events = occurrence_note_events(
+                    track,
+                    &transformed_notes,
+                    previous_ticks,
+                    advanced_ticks,
+                );
                 let record_events = if track.active_take.is_some()
                     && track.midi_fx.record_input_fx_mode
                         == crate::midi_fx::RecordInputFxMode::PostInputFx
@@ -8109,13 +8222,19 @@ impl App {
                 .selected_fx_slot(track, MidiFxChainKind::Input)
                 .map(|slot| on_off(slot.enabled).to_string())
                 .unwrap_or_else(|| "None".to_string()),
-            RoutingField::InputFxValue => fx_slot_label(
-                track
-                    .midi_fx
-                    .input_fx
-                    .get(self.selected_fx_slot_index(MidiFxChainKind::Input))
-                    .and_then(|slot| slot.as_ref()),
-            ),
+            RoutingField::InputFxParam1 => self
+                .selected_fx_visible_params(track, MidiFxChainKind::Input)
+                .0
+                .map(|param| format!("{} {}", param.label, param.value))
+                .unwrap_or_else(|| "--".to_string()),
+            RoutingField::InputFxParam2 => self
+                .selected_fx_visible_params(track, MidiFxChainKind::Input)
+                .1
+                .map(|param| format!("{} {}", param.label, param.value))
+                .unwrap_or_else(|| "--".to_string()),
+            RoutingField::InputFxMore => {
+                self.selected_fx_overflow_label(track, MidiFxChainKind::Input)
+            }
             RoutingField::OutputFxSlot => {
                 format!(
                     "Slot {}",
@@ -8130,13 +8249,19 @@ impl App {
                 .selected_fx_slot(track, MidiFxChainKind::Output)
                 .map(|slot| on_off(slot.enabled).to_string())
                 .unwrap_or_else(|| "None".to_string()),
-            RoutingField::OutputFxValue => fx_slot_label(
-                track
-                    .midi_fx
-                    .output_fx
-                    .get(self.selected_fx_slot_index(MidiFxChainKind::Output))
-                    .and_then(|slot| slot.as_ref()),
-            ),
+            RoutingField::OutputFxParam1 => self
+                .selected_fx_visible_params(track, MidiFxChainKind::Output)
+                .0
+                .map(|param| format!("{} {}", param.label, param.value))
+                .unwrap_or_else(|| "--".to_string()),
+            RoutingField::OutputFxParam2 => self
+                .selected_fx_visible_params(track, MidiFxChainKind::Output)
+                .1
+                .map(|param| format!("{} {}", param.label, param.value))
+                .unwrap_or_else(|| "--".to_string()),
+            RoutingField::OutputFxMore => {
+                self.selected_fx_overflow_label(track, MidiFxChainKind::Output)
+            }
         }
     }
 
@@ -9579,8 +9704,7 @@ fn scheduled_note_occurrences(
             occurrences.push(MidiNote {
                 pitch: note.pitch,
                 start_ticks: if note.start_ticks >= segment_start {
-                    transport_cursor
-                        .saturating_add(note.start_ticks.saturating_sub(segment_start))
+                    transport_cursor.saturating_add(note.start_ticks.saturating_sub(segment_start))
                 } else {
                     transport_cursor.saturating_sub(segment_start.saturating_sub(note.start_ticks))
                 },
@@ -9589,7 +9713,8 @@ fn scheduled_note_occurrences(
                 recording_clip_id: note.recording_clip_id,
             });
         }
-        transport_cursor = transport_cursor.saturating_add(segment_end.saturating_sub(segment_start));
+        transport_cursor =
+            transport_cursor.saturating_add(segment_end.saturating_sub(segment_start));
     }
 
     occurrences.sort_by_key(|note| (note.start_ticks, note.pitch, note.length_ticks));
@@ -9881,6 +10006,14 @@ fn timeline_fx_enabled_chip_label(slot: &MidiFxSlot, show_kind_title: bool) -> &
 
 fn timeline_fx_kind_label(slot: &MidiFxSlot) -> String {
     slot.effect.kind().label().to_string()
+}
+
+fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String {
+    if param_count <= 2 {
+        "--".to_string()
+    } else {
+        format!("+{}", param_count.saturating_sub(window_start + 1))
+    }
 }
 
 fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
