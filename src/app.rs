@@ -2537,16 +2537,16 @@ impl App {
                 let enabled_width = available.clamp(10, 14);
                 let delete_width = available.clamp(5, 6);
                 let param_primary_width = if available >= 84 {
-                    34
+                    38
                 } else if available >= 64 {
-                    28
+                    30
                 } else {
-                    20
+                    22
                 };
                 let overflow_width = if available >= 64 { 10 } else { 8 };
-                let param_secondary_width = if available >= 100 { 24 } else { 0 };
-                let move_width = if available >= 120 { 6 } else { 0 };
-                let kind_min_width = if available >= 84 { 8 } else { 6 };
+                let param_secondary_width = if available >= 96 { 26 } else { 0 };
+                let move_width = if available >= 128 { 6 } else { 0 };
+                let kind_min_width = if available >= 84 { 6 } else { 4 };
 
                 let base_required = enabled_width + gap + param_primary_width + gap + delete_width;
                 let mut extras = [
