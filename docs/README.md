@@ -7,6 +7,10 @@ This folder is organized by audience and intent:
 - `docs/planning/` — plans, handoffs, and roadmap/work breakdown documents.
 - `docs/user/` — end-user guides, tutorials, and operator-facing docs.
 
+Recent/additional specs:
+
+- `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
+
 ## Contribution rules
 
 When adding or updating docs:
