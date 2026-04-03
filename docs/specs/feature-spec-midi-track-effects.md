@@ -184,7 +184,7 @@ Initial source effect:
 
 Behavior:
 
-- taps another MIDI track as a note source
+- taps another MIDI track as a source-signal input
 - multiple clone instances are additive
 - each clone instance is independent and may have its own parameters
 
@@ -208,7 +208,7 @@ Initial target set:
 ### Track Clone
 
 - source: another MIDI track
-- tap point: source track note stream before the source track output chain
+- tap point: source track pre-output MIDI signal
 - result: cloned notes are merged into the destination track input bus
 - layering: multiple clone instances sum additively
 
@@ -221,9 +221,11 @@ Rules:
 
 Recommended tap semantics:
 
-- clone the source track's musical note stream, not its final output-FX result
-- input-FX on the source track may influence the source if they are part of what the track itself produces
+- clone the source track's emitted pre-output signal, not a reconstructed arrangement-note copy and not its final output-FX result
+- source track loop/playback phase, recording-clip mute state, and valid upstream clone contributions should influence the cloned result
+- source input-side clone generation and later source input transforms may influence the source if they are part of what the track itself emits
 - output-FX never propagate through cloning
+- the implementation should be structured so tap location can later become a clone parameter without changing the core signal pipeline
 
 ### Note Filter
 
@@ -602,6 +604,6 @@ Likely new module(s):
 
 ## Open Questions
 
-- exact mute/solo policy details for clone tapping still need one final implementation rule, but source-track playback state should remain relevant
+- source-track mute/solo and real playback state should remain part of clone emission rules
 - if a later dedicated FX overview page is added, should it be read/write from its first version or initially audit-only
 - how procedural modulation and recorded parameter automation should share one editing surface in the first shipped implementation
