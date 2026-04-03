@@ -2192,15 +2192,19 @@ impl App {
                 layout.enabled.height().saturating_sub(2),
             ))?;
         }
-        crate::ui::draw_text_fitted(
-            canvas,
-            slot.effect.kind().short_label(),
-            centered_text_rect(layout.enabled),
-            1,
-            Color::RGB(244, 244, 236),
-        )?;
+        let show_kind_title = layout.kind.height() > 0;
+        let enabled_label = timeline_fx_enabled_chip_label(slot, show_kind_title);
+        if !enabled_label.is_empty() {
+            crate::ui::draw_text_fitted(
+                canvas,
+                enabled_label,
+                centered_text_rect(layout.enabled),
+                1,
+                Color::RGB(244, 244, 236),
+            )?;
+        }
 
-        if layout.kind.height() > 0 {
+        if show_kind_title {
             let kind_fill = if selected
                 && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind
             {
@@ -9454,6 +9458,14 @@ fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
     vertical_padding + line_count * line_height + (line_count - 1) * line_gap
 }
 
+fn timeline_fx_enabled_chip_label(slot: &MidiFxSlot, show_kind_title: bool) -> &'static str {
+    if show_kind_title {
+        ""
+    } else {
+        slot.effect.kind().compact_label()
+    }
+}
+
 fn timeline_fx_kind_label(slot: &MidiFxSlot) -> String {
     slot.effect.kind().label().to_string()
 }
@@ -12255,6 +12267,18 @@ mod tests {
         let after_slot = app.project.tracks[0].midi_fx.output_fx[0].as_ref().unwrap();
         assert_ne!(after_slot.enabled, before_enabled);
         assert_eq!(after_slot.effect.kind(), before_kind);
+    }
+
+    #[test]
+    fn timeline_fx_enabled_chip_hides_label_when_kind_title_is_visible() {
+        let slot = MidiFxSlot::default();
+        assert_eq!(super::timeline_fx_enabled_chip_label(&slot, true), "");
+    }
+
+    #[test]
+    fn timeline_fx_enabled_chip_uses_two_letter_code_when_kind_title_is_hidden() {
+        let slot = MidiFxSlot::default();
+        assert_eq!(super::timeline_fx_enabled_chip_label(&slot, false), "TR");
     }
 
     #[test]
