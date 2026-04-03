@@ -168,7 +168,8 @@ The track should also expose an explicit effect-setting toggle:
 Recommended V1 behavior:
 
 - default `on`
-- when `off`, live monitoring/passthrough uses the dry matched track input
+- when `off`, live monitoring uses only dry matched track input when passthrough is enabled
+- when `on`, monitoring auditions the post-input-FX bus, including clone-fed live signal, without requiring destination passthrough
 - recording still follows the selected record source mode
 
 This keeps monitoring and recording policy separable without introducing per-effect recording exceptions.
@@ -212,6 +213,8 @@ Initial target set:
 - tap point: source track pre-output MIDI signal
 - result: cloned notes are merged into the destination track input bus
 - layering: multiple clone instances sum additively
+- live clone monitoring should follow the destination track's `Monitor Input FX` setting rather than requiring destination passthrough
+- destination passthrough should remain a gate for direct matched hardware input only
 
 Rules:
 
