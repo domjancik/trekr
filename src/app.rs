@@ -13,7 +13,7 @@ use crate::mapping::{
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
     MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label,
-    process_live_event, transform_notes,
+    process_live_chain_event, process_live_chain_tick, process_live_event, transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -5989,6 +5989,7 @@ impl App {
 
         self.process_queued_stored_loop_recalls(previous_ticks, self.transport_ticks);
         self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
+        self.dispatch_live_arp_events(previous_ticks, self.transport_ticks);
     }
 
     fn advance_linked_playhead(&mut self) {
@@ -6015,6 +6016,7 @@ impl App {
         }
         self.process_queued_stored_loop_recalls(previous_ticks, linked_ticks);
         self.dispatch_midi_notes(previous_ticks, linked_ticks.saturating_sub(previous_ticks));
+        self.dispatch_live_arp_events(previous_ticks, linked_ticks);
     }
 
     fn process_queued_stored_loop_recalls(
@@ -6214,7 +6216,11 @@ impl App {
             } else if index == 1 {
                 track.midi_fx.output_fx[0] = Some(MidiFxSlot {
                     enabled: true,
-                    effect: MidiFx::Arp { step_ticks: 120 },
+                    effect: MidiFx::Arp {
+                        step_ticks: 240,
+                        order: crate::midi_fx::ArpOrder::Up,
+                        gate_percent: 100,
+                    },
                 });
             } else if index == 2 {
                 track.midi_fx.output_fx[0] = Some(MidiFxSlot {
@@ -7436,6 +7442,7 @@ impl App {
                     target.output_port.as_ref(),
                     target.output_channel,
                     post_input_events,
+                    input_ticks,
                 );
             }
         }
@@ -7447,10 +7454,11 @@ impl App {
         event: LiveMidiFxEvent,
         input_chain: &[Option<MidiFxSlot>],
         monitor_input_fx: bool,
+        current_ticks: u64,
     ) -> (Vec<LiveMidiFxEvent>, Vec<LiveMidiFxEvent>) {
         self.ensure_fx_live_state_len();
         let processed = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
-            process_live_event(input_chain, state, event.clone())
+            process_live_chain_event(input_chain, state, event.clone(), current_ticks)
         } else {
             vec![event.clone()]
         };
@@ -7469,6 +7477,7 @@ impl App {
         output_port: Option<&MidiPortRef>,
         output_channel: Option<u8>,
         events: Vec<LiveMidiFxEvent>,
+        current_ticks: u64,
     ) {
         let (Some(port), Some(channel)) = (output_port, output_channel) else {
             return;
@@ -7477,7 +7486,7 @@ impl App {
         for event in events {
             let processed_events =
                 if let Some(state) = self.output_fx_live_states.get_mut(track_index) {
-                    process_live_event(output_chain, state, event)
+                    process_live_chain_event(output_chain, state, event, current_ticks)
                 } else {
                     Vec::new()
                 };
@@ -7509,6 +7518,81 @@ impl App {
                 .transport
                 .loop_enabled
                 .then_some(self.project.loop_region)
+        }
+    }
+
+    fn dispatch_live_arp_events(&mut self, previous_ticks: u64, current_ticks: u64) {
+        if current_ticks <= previous_ticks {
+            return;
+        }
+        self.ensure_fx_live_state_len();
+        for track_index in 0..self.project.tracks.len() {
+            let Some(track_view) = self.project.tracks.get(track_index) else {
+                continue;
+            };
+            let input_chain = track_view.midi_fx.input_fx.clone();
+            let output_chain = track_view.midi_fx.output_fx.clone();
+            let record_mode = track_view.midi_fx.record_input_fx_mode;
+            let monitor_input_fx = track_view.midi_fx.monitor_input_fx;
+            let passthrough = track_view.state.passthrough;
+            let output_port = track_view.routing.output_port.clone();
+            let output_channel = track_view.routing.output_channel;
+
+            let input_events = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
+                process_live_chain_tick(&input_chain, state, previous_ticks, current_ticks)
+            } else {
+                Vec::new()
+            };
+            if let Some(track) = self.project.tracks.get_mut(track_index) {
+                if track.active_take.is_some()
+                    && record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
+                {
+                    for (tick, event) in &input_events {
+                        match *event {
+                            LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                                track.record_note_on(pitch, velocity, *tick);
+                            }
+                            LiveMidiFxEvent::NoteOff { pitch } => {
+                                track.record_note_off(pitch, *tick);
+                            }
+                        }
+                    }
+                }
+            }
+            if passthrough && monitor_input_fx {
+                for (tick, event) in input_events {
+                    self.send_live_monitor_events(
+                        track_index,
+                        &output_chain,
+                        output_port.as_ref(),
+                        output_channel,
+                        vec![event],
+                        tick,
+                    );
+                }
+            }
+
+            let output_events = if let Some(state) = self.output_fx_live_states.get_mut(track_index) {
+                process_live_chain_tick(&output_chain, state, previous_ticks, current_ticks)
+            } else {
+                Vec::new()
+            };
+            if let (Some(port), Some(channel)) = (output_port.as_ref(), output_channel) {
+                for (_, event) in output_events {
+                    match event {
+                        LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                            let _ = self
+                                .midi_output
+                                .send_note_on(port, channel.clamp(1, 16), pitch, velocity);
+                        }
+                        LiveMidiFxEvent::NoteOff { pitch } => {
+                            let _ = self
+                                .midi_output
+                                .send_note_off(port, channel.clamp(1, 16), pitch);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -7670,6 +7754,7 @@ impl App {
                         raw_event,
                         &input_chain,
                         monitor_input_fx,
+                        input_ticks,
                     );
                     if let Some(track) = self.project.tracks.get_mut(index) {
                         if track.active_take.is_some() {
@@ -7694,6 +7779,7 @@ impl App {
                             output_port.as_ref(),
                             output_channel,
                             monitor_source_events,
+                            input_ticks,
                         );
                     }
                 }
@@ -7704,6 +7790,7 @@ impl App {
                         raw_event,
                         &input_chain,
                         monitor_input_fx,
+                        input_ticks,
                     );
                     if let Some(track) = self.project.tracks.get_mut(index) {
                         if track.active_take.is_some() {
@@ -7728,6 +7815,7 @@ impl App {
                             output_port.as_ref(),
                             output_channel,
                             monitor_source_events,
+                            input_ticks,
                         );
                     }
                 }
@@ -11915,6 +12003,52 @@ mod tests {
                     && *pitch == 60
                     && velocity.is_some())
         );
+    }
+
+    #[test]
+    fn live_input_arp_passthrough_emits_timed_notes() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
+        app.dispatch_live_arp_events(0, 480);
+
+        let sent = app.midi_output.sent_messages();
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_some()
+        }));
     }
 
     #[test]
