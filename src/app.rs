@@ -4935,7 +4935,7 @@ impl App {
             canvas.draw_rect(affordance)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                field.label(),
+                routing_field_short_label(field),
                 centered_text_rect(label_text_rect),
                 1,
                 Color::RGB(244, 244, 236),
@@ -5134,6 +5134,16 @@ impl App {
                 let row_rects = crate::ui::stacked_rows(rows_bounds, 2, 8);
                 let mut rects = Vec::with_capacity(4);
                 for row_index in 0..2 {
+                    let columns = crate::ui::equal_columns(row_rects[row_index], 2, 8);
+                    rects.push((fields[row_index * 2], columns[0]));
+                    rects.push((fields[row_index * 2 + 1], columns[1]));
+                }
+                rects
+            }
+            6 => {
+                let row_rects = crate::ui::stacked_rows(rows_bounds, 3, 8);
+                let mut rects = Vec::with_capacity(6);
+                for row_index in 0..3 {
                     let columns = crate::ui::equal_columns(row_rects[row_index], 2, 8);
                     rects.push((fields[row_index * 2], columns[0]));
                     rects.push((fields[row_index * 2 + 1], columns[1]));
@@ -10058,6 +10068,24 @@ fn contrasting_text_color(fill: Color) -> Color {
     }
 }
 
+fn routing_field_short_label(field: RoutingField) -> &'static str {
+    match field {
+        RoutingField::InputDevice => "Input Device",
+        RoutingField::InputChannel => "Input Chan",
+        RoutingField::OutputDevice => "Output Device",
+        RoutingField::OutputChannel => "Output Chan",
+        RoutingField::Passthrough => "Thru",
+        RoutingField::RecordInputFx => "Rec FX",
+        RoutingField::MonitorInputFx => "Mon FX",
+        RoutingField::InputFxSlot | RoutingField::OutputFxSlot => "Slot",
+        RoutingField::InputFxKind | RoutingField::OutputFxKind => "Kind",
+        RoutingField::InputFxEnabled | RoutingField::OutputFxEnabled => "On",
+        RoutingField::InputFxParam1 | RoutingField::OutputFxParam1 => "P1",
+        RoutingField::InputFxParam2 | RoutingField::OutputFxParam2 => "P2",
+        RoutingField::InputFxMore | RoutingField::OutputFxMore => "More",
+    }
+}
+
 struct RgbaReadback {
     logical_rect: Rect,
     output_rect: Rect,
@@ -10611,7 +10639,8 @@ mod tests {
     use super::{
         App, AppControl, AppOverlay, DirectMappingMode, DirectMappingOrigin, DirectMappingTarget,
         DiscoverabilityTarget, LastActionStatus, cycle_input_channel, cycle_optional_port,
-        cycle_output_channel, mapping_field_index, transport_strip_height,
+        cycle_output_channel, mapping_field_index, routing_field_short_label,
+        transport_strip_height,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -11857,6 +11886,126 @@ mod tests {
             app.project.active_track().unwrap().routing.output_channel,
             before
         );
+    }
+
+    #[test]
+    fn routing_fx_panels_use_two_column_grid_for_six_fields() {
+        let app = App::new();
+        let body = Rect::new(0, 0, 900, 520);
+        let (_, input_panel, _, output_panel) = app.routing_panel_rects(body);
+        let rects = app.routing_field_rects(body);
+
+        let input_slot = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxSlot)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_kind = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxKind)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_on = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxEnabled)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_p1 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxParam1)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_p2 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxParam2)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_more = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxMore)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+
+        assert_eq!(input_slot.y, input_kind.y);
+        assert_eq!(input_on.y, input_p1.y);
+        assert_eq!(input_p2.y, input_more.y);
+        assert!(input_slot.x < input_kind.x);
+        assert!(input_on.x < input_p1.x);
+        assert!(input_p2.x < input_more.x);
+        for rect in [
+            input_slot, input_kind, input_on, input_p1, input_p2, input_more,
+        ] {
+            assert!(input_panel.contains_point((rect.x, rect.y)));
+            assert!(input_panel.contains_point((
+                rect.x + rect.width() as i32 - 1,
+                rect.y + rect.height() as i32 - 1
+            )));
+        }
+
+        let output_slot = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxSlot)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_kind = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxKind)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_on = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxEnabled)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_p1 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxParam1)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_p2 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxParam2)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_more = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxMore)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+
+        assert_eq!(output_slot.y, output_kind.y);
+        assert_eq!(output_on.y, output_p1.y);
+        assert_eq!(output_p2.y, output_more.y);
+        assert!(output_slot.x < output_kind.x);
+        assert!(output_on.x < output_p1.x);
+        assert!(output_p2.x < output_more.x);
+        for rect in [
+            output_slot,
+            output_kind,
+            output_on,
+            output_p1,
+            output_p2,
+            output_more,
+        ] {
+            assert!(output_panel.contains_point((rect.x, rect.y)));
+            assert!(output_panel.contains_point((
+                rect.x + rect.width() as i32 - 1,
+                rect.y + rect.height() as i32 - 1
+            )));
+        }
+    }
+
+    #[test]
+    fn routing_field_short_labels_match_compact_fx_grid() {
+        assert_eq!(routing_field_short_label(RoutingField::InputFxSlot), "Slot");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxKind), "Kind");
+        assert_eq!(
+            routing_field_short_label(RoutingField::InputFxEnabled),
+            "On"
+        );
+        assert_eq!(routing_field_short_label(RoutingField::InputFxParam1), "P1");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxParam2), "P2");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxMore), "More");
     }
 
     #[test]
