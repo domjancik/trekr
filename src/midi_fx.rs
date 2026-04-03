@@ -186,6 +186,20 @@ impl MidiFxKind {
             Self::TrackClone => "CLN",
         }
     }
+
+    pub fn compact_label(self) -> &'static str {
+        match self {
+            Self::Arp => "AR",
+            Self::NoteFilter => "FL",
+            Self::Transpose => "TR",
+            Self::Velocity => "VE",
+            Self::Duration => "DU",
+            Self::ScaleQuantize => "SC",
+            Self::ChordQuantize => "CH",
+            Self::TimeShift => "SH",
+            Self::TrackClone => "CL",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
