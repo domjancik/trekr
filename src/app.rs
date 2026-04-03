@@ -5712,6 +5712,9 @@ impl App {
             AppAction::ToggleCurrentTrackMute => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.muted = !track.state.muted;
+                    if track.state.muted {
+                        self.silence_all_tracks();
+                    }
                 }
                 AppControl::Continue
             }
@@ -11911,6 +11914,29 @@ mod tests {
                     && *pitch == 60
                     && velocity.is_some())
         );
+    }
+
+    #[test]
+    fn muting_track_sends_all_notes_off() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 1_920, 100));
+
+        app.dispatch_midi_notes(0, 960);
+        app.apply_action(AppAction::ToggleCurrentTrackMute);
+
+        let sent = app.midi_output.sent_messages();
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+        }));
     }
 
     #[test]
