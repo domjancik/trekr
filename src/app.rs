@@ -639,13 +639,10 @@ impl App {
         Ok(())
     }
 
-    fn draw_scene<T: RenderTarget>(
+    fn page_frame_layout(
         &self,
-        canvas: &mut Canvas<T>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
-        let surface = crate::ui::surface_rect(width, height);
-        let inset = crate::ui::inset_rect(surface, 24, 24)?;
+        inset: Rect,
+    ) -> Result<(Rect, Rect, Rect), Box<dyn std::error::Error>> {
         let (tabs_bounds, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
         let footer_height = 22_u32;
         let footer_gap = 8_i32;
@@ -664,6 +661,17 @@ impl App {
                 .saturating_sub(footer_height)
                 .saturating_sub(footer_gap as u32),
         );
+        Ok((tabs_bounds, content_bounds, footer_bounds))
+    }
+
+    fn draw_scene<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
+        let surface = crate::ui::surface_rect(width, height);
+        let inset = crate::ui::inset_rect(surface, 24, 24)?;
+        let (tabs_bounds, content_bounds, footer_bounds) = self.page_frame_layout(inset)?;
 
         canvas.set_draw_color(Color::RGB(18, 24, 38));
         canvas.clear();
@@ -2493,16 +2501,21 @@ impl App {
         }
 
         let row_count = displayed_rows.len().max(1);
-        let rows = crate::ui::stacked_rows(
-            Rect::new(
-                band_rect.x + 2,
-                band_rect.y + 2,
-                band_rect.width().saturating_sub(4),
-                band_rect.height().saturating_sub(4),
-            ),
-            row_count.max(1),
-            2,
-        );
+        let line_height = 8_i32;
+        let line_gap = 2_i32;
+        let top_padding = 2_i32;
+        let row_y = band_rect.y + top_padding;
+        let row_width = band_rect.width().saturating_sub(4);
+        let rows: Vec<Rect> = (0..row_count)
+            .map(|row_index| {
+                Rect::new(
+                    band_rect.x + 2,
+                    row_y + row_index as i32 * (line_height + line_gap),
+                    row_width,
+                    line_height as u32,
+                )
+            })
+            .collect();
         rows.into_iter()
             .enumerate()
             .map(|(row_index, row)| {
@@ -7889,7 +7902,7 @@ impl App {
     ) -> Option<AppControl> {
         let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
-        let (tabs_bounds, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
+        let (tabs_bounds, content_bounds, _) = self.page_frame_layout(inset).ok()?;
 
         if let Some(control) =
             self.handle_direct_mapping_pointer_down(tabs_bounds, content_bounds, x, y, source)
@@ -8417,18 +8430,7 @@ impl App {
         }
         let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
-        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
-        let footer_height = 22_u32;
-        let footer_gap = 8_i32;
-        let content_bounds = Rect::new(
-            page_area_bounds.x,
-            page_area_bounds.y,
-            page_area_bounds.width(),
-            page_area_bounds
-                .height()
-                .saturating_sub(footer_height)
-                .saturating_sub(footer_gap as u32),
-        );
+        let (_, content_bounds, _) = self.page_frame_layout(inset).ok()?;
 
         let targets =
             page_discoverability_targets(self.page_state.current_page, self, content_bounds);
@@ -12502,6 +12504,42 @@ mod tests {
     }
 
     #[test]
+    fn output_fx_lower_empty_band_space_does_not_hit_row() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        app.project.tracks[1].midi_fx.output_fx = vec![
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            None,
+        ];
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let row = app.timeline_fx_row_layouts(layout.output_fx_rect, &displayed, Some(0))[0].row;
+        let x = row.x + row.width() as i32 / 2;
+        let y = layout.output_fx_rect.y + layout.output_fx_rect.height() as i32 - 2;
+
+        assert!(y > row.y + row.height() as i32);
+        assert!(
+            app.timeline_fx_hit(
+                TimelineContext::OutputFx,
+                layout.output_fx_rect,
+                &app.project.tracks[0],
+                x,
+                y,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
     fn canonical_timeline_layout_keeps_output_fx_band_disjoint_from_body_content() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
@@ -12717,6 +12755,22 @@ mod tests {
             super::pointer_down_position(&event, (1280, 720)),
             Some((512, 288, crate::actions::ActionSource::Pointer))
         );
+    }
+
+    #[test]
+    fn page_frame_layout_matches_draw_content_height_contract() {
+        let app = App::new();
+        let surface = crate::ui::surface_rect(1280, 720);
+        let inset = crate::ui::inset_rect(surface, 24, 24).expect("inset");
+        let (_, content_bounds, footer_bounds) = app.page_frame_layout(inset).expect("layout");
+        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+
+        assert_eq!(content_bounds.y, page_area_bounds.y);
+        assert_eq!(
+            footer_bounds.y + footer_bounds.height() as i32,
+            page_area_bounds.y + page_area_bounds.height() as i32
+        );
+        assert_eq!(content_bounds.height() + 22 + 8, page_area_bounds.height());
     }
 
     #[test]
