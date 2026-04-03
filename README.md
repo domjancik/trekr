@@ -29,6 +29,7 @@ Latest renderer-owned captures from the demo state:
 ## Docs
 
 - `docs/specs/product-spec.md`: product behavior, UX model, workflows, and MVP scope.
+- `docs/specs/feature-spec-midi-arp.md`: focused arp behavior, parameters, and signal semantics.
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
@@ -58,6 +59,7 @@ Latest renderer-owned captures from the demo state:
 - direct-editable per-track MIDI FX bands on the timeline, with input FX above the track pair and output FX below it
 - live input monitoring can run dry or through input FX, and playback can run through output FX
 - `Track Clone` mirrors the source track's pre-output MIDI signal, so source loop/clip playback can feed later destination input FX and `Post FX` recording
+- `Arp` now uses musical rate labels like `1/16` and supports timed playback/live held-note stepping
 - MIDI output runs on a dedicated worker thread so device stalls or hot-plug churn do not block the UI thread
 - in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
 - active-track highlighting
