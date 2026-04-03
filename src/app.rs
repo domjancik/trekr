@@ -364,7 +364,7 @@ impl App {
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
-            self.draw(&mut canvas)?;
+            self.draw_window(&mut canvas)?;
             if options.video_mode != VideoMode::Windowed {
                 let _ = canvas.window_mut().sync();
             }
@@ -417,7 +417,7 @@ impl App {
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
-            self.draw(&mut canvas)?;
+            self.draw_window(&mut canvas)?;
             let _ = canvas.window_mut().sync();
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -542,6 +542,15 @@ impl App {
         &self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.draw_scene(canvas)?;
+        canvas.present();
+        Ok(())
+    }
+
+    fn draw_scene<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
@@ -582,8 +591,6 @@ impl App {
         self.draw_direct_mapping_targets(canvas, tabs_bounds, content_bounds)?;
         self.draw_overlay(canvas, inset)?;
         self.draw_footer(canvas, footer_bounds)?;
-
-        canvas.present();
         Ok(())
     }
 
@@ -603,6 +610,47 @@ impl App {
         let output_size = canvas.output_size()?;
         self.viewport_size = logical_viewport_size(output_size, scale);
         canvas.set_scale(scale, scale)?;
+        Ok(())
+    }
+
+    fn draw_window(
+        &self,
+        canvas: &mut Canvas<sdl3::video::Window>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (scale_x, scale_y) = canvas.scale();
+        if !uses_fractional_scale_interpolation(scale_x, scale_y) {
+            return self.draw(canvas);
+        }
+
+        let output_size = canvas.output_size()?;
+        let logical_size = self.viewport_size;
+        let texture_creator = canvas.texture_creator();
+        let mut frame = texture_creator.create_texture_target(
+            Some(texture_creator.default_pixel_format()),
+            logical_size.0.max(1),
+            logical_size.1.max(1),
+        )?;
+        frame.set_scale_mode(sdl3::render::ScaleMode::Linear);
+
+        let mut draw_result: Result<(), Box<dyn std::error::Error>> = Ok(());
+        canvas.with_texture_canvas(&mut frame, |texture_canvas| {
+            draw_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                texture_canvas.set_scale(1.0, 1.0)?;
+                self.draw_scene(texture_canvas)
+            })();
+        })?;
+        draw_result?;
+
+        canvas.set_scale(1.0, 1.0)?;
+        canvas.set_draw_color(Color::RGB(18, 24, 38));
+        canvas.clear();
+        canvas.copy(
+            &frame,
+            None,
+            Some(Rect::new(0, 0, output_size.0.max(1), output_size.1.max(1))),
+        )?;
+        canvas.present();
+        canvas.set_scale(scale_x, scale_y)?;
         Ok(())
     }
 
@@ -6865,6 +6913,14 @@ fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
     override_scale.unwrap_or(display_scale).max(1.0)
 }
 
+fn uses_fractional_scale_interpolation(scale_x: f32, scale_y: f32) -> bool {
+    has_fractional_scale_component(scale_x) || has_fractional_scale_component(scale_y)
+}
+
+fn has_fractional_scale_component(scale: f32) -> bool {
+    (scale - scale.round()).abs() > 0.001
+}
+
 fn pointer_hover_position(
     event: &sdl3::event::Event,
     viewport_size: (u32, u32),
@@ -7907,6 +7963,14 @@ mod tests {
         assert_eq!(super::effective_ui_scale(1.5, Some(2.0)), 2.0);
         assert_eq!(super::effective_ui_scale(1.5, None), 1.5);
         assert_eq!(super::effective_ui_scale(0.5, None), 1.0);
+    }
+
+    #[test]
+    fn fractional_scale_interpolation_only_enables_for_non_integer_values() {
+        assert!(super::uses_fractional_scale_interpolation(1.5, 1.0));
+        assert!(super::uses_fractional_scale_interpolation(1.0, 1.25));
+        assert!(!super::uses_fractional_scale_interpolation(1.0, 2.0));
+        assert!(!super::uses_fractional_scale_interpolation(2.0004, 1.0));
     }
 
     #[test]
