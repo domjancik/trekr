@@ -13,7 +13,8 @@ use crate::mapping::{
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
     MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label,
-    process_live_chain_event, process_live_chain_tick, process_live_event, transform_notes,
+    process_live_chain_event, process_live_chain_tick, process_live_event, reset_live_fx_timing,
+    transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -61,6 +62,7 @@ pub struct App {
     ui_scaling_mode: UiScalingMode,
     transport_ticks: u64,
     playhead_ticks: u64,
+    live_fx_ticks: u64,
     link_snapshot: LinkSnapshot,
     note_additive_select_held: bool,
     focused_track_view: bool,
@@ -269,6 +271,7 @@ impl App {
         app.timeline_flow = state.timeline_flow;
         app.transport_ticks = state.transport_ticks;
         app.playhead_ticks = state.playhead_ticks;
+        app.live_fx_ticks = state.transport_ticks;
         app.sync_midi_inputs();
         app
     }
@@ -321,6 +324,7 @@ impl App {
             ui_scaling_mode: UiScalingMode::Auto,
             transport_ticks: 0,
             playhead_ticks: 0,
+            live_fx_ticks: 0,
             link_snapshot,
             note_additive_select_held: false,
             focused_track_view: false,
@@ -5469,6 +5473,7 @@ impl App {
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
+                let was_playing = self.project.transport.playing;
                 if self.project.transport.playing && self.project.transport.recording {
                     self.finish_recording();
                 }
@@ -5481,7 +5486,12 @@ impl App {
                     self.link_snapshot = self.link.refresh();
                 }
                 if !self.project.transport.playing {
+                    self.live_fx_ticks = self.transport_ticks;
+                    self.reset_live_fx_timing(self.live_fx_ticks);
                     self.silence_all_tracks();
+                } else if !was_playing {
+                    self.live_fx_ticks = self.transport_ticks;
+                    self.reset_live_fx_timing(self.transport_ticks);
                 }
                 AppControl::Continue
             }
@@ -6006,11 +6016,12 @@ impl App {
 
     fn advance_playhead(&mut self, delta: Duration) {
         if self.project.transport.link_enabled {
-            self.advance_linked_playhead();
+            self.advance_linked_playhead(delta);
             return;
         }
 
         if !self.project.transport.playing {
+            self.advance_stopped_live_fx(delta, None);
             return;
         }
 
@@ -6024,9 +6035,10 @@ impl App {
         self.process_queued_stored_loop_recalls(previous_ticks, self.transport_ticks);
         self.dispatch_midi_notes(previous_ticks, advanced_ticks as u64);
         self.dispatch_live_arp_events(previous_ticks, self.transport_ticks);
+        self.live_fx_ticks = self.transport_ticks;
     }
 
-    fn advance_linked_playhead(&mut self) {
+    fn advance_linked_playhead(&mut self, delta: Duration) {
         self.link_snapshot = self.link.refresh();
         self.project.transport.tempo_bpm =
             self.link_snapshot.tempo_bpm.round().clamp(20.0, 400.0) as u16;
@@ -6034,6 +6046,7 @@ impl App {
             self.project.transport.playing = self.link_snapshot.is_playing;
         }
         if !self.project.transport.playing {
+            self.advance_stopped_live_fx(delta, Some(self.link_snapshot.tempo_bpm));
             return;
         }
 
@@ -6051,6 +6064,25 @@ impl App {
         self.process_queued_stored_loop_recalls(previous_ticks, linked_ticks);
         self.dispatch_midi_notes(previous_ticks, linked_ticks.saturating_sub(previous_ticks));
         self.dispatch_live_arp_events(previous_ticks, linked_ticks);
+        self.live_fx_ticks = self.transport_ticks;
+    }
+
+    fn advance_stopped_live_fx(&mut self, delta: Duration, tempo_override_bpm: Option<f64>) {
+        let ticks_per_second = ticks_per_second_for_tempo(
+            tempo_override_bpm.unwrap_or(f64::from(self.project.transport.tempo_bpm)),
+            self.project.transport.ppqn,
+        );
+        if ticks_per_second == 0 {
+            return;
+        }
+        let advanced_ticks =
+            (delta.as_nanos() as u128 * u128::from(ticks_per_second)) / 1_000_000_000_u128;
+        if advanced_ticks == 0 {
+            return;
+        }
+        let previous_ticks = self.live_fx_ticks;
+        self.live_fx_ticks = self.live_fx_ticks.saturating_add(advanced_ticks as u64);
+        self.dispatch_live_arp_events(previous_ticks, self.live_fx_ticks);
     }
 
     fn process_queued_stored_loop_recalls(
@@ -8205,6 +8237,15 @@ impl App {
         self.silence_all_tracks();
     }
 
+    fn reset_live_fx_timing(&mut self, current_ticks: u64) {
+        for state in &mut self.input_fx_live_states {
+            reset_live_fx_timing(state, current_ticks);
+        }
+        for state in &mut self.output_fx_live_states {
+            reset_live_fx_timing(state, current_ticks);
+        }
+    }
+
     fn routing_field_value(&self, track: &Track, field: RoutingField) -> String {
         match field {
             RoutingField::InputDevice => track
@@ -10111,6 +10152,11 @@ fn visible_param_label(param: Option<&MidiFxInlineParam>, fallback: &'static str
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
+    let clamped_bpm = tempo_bpm.clamp(20.0, 400.0);
+    ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
+}
+
 struct RgbaReadback {
     logical_rect: Rect,
     output_rect: Rect,
@@ -10666,7 +10712,7 @@ mod tests {
         App, AppControl, AppOverlay, DirectMappingMode, DirectMappingOrigin, DirectMappingTarget,
         DiscoverabilityTarget, LastActionStatus, cycle_input_channel, cycle_optional_port,
         cycle_output_channel, mapping_field_index, routing_field_short_label,
-        timeline_fx_overflow_label, transport_strip_height,
+        ticks_per_second_for_tempo, timeline_fx_overflow_label, transport_strip_height,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -10683,6 +10729,7 @@ mod tests {
     use crate::ui::TimelineFlow;
     use sdl3::pixels::Color;
     use sdl3::rect::Rect;
+    use std::time::Duration;
 
     fn region_span(region: crate::timeline::Region) -> (u64, u64) {
         (region.start_ticks, region.length_ticks)
@@ -13089,6 +13136,60 @@ mod tests {
         assert_eq!(timeline_fx_overflow_label(2, 0), "--");
         assert_eq!(timeline_fx_overflow_label(3, 0), "1/2");
         assert_eq!(timeline_fx_overflow_label(3, 1), "2/2");
+    }
+
+    #[test]
+    fn stopped_live_arp_ticks_without_advancing_playhead() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].midi_fx.monitor_input_fx = true;
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
+        app.advance_playhead(Duration::from_millis(250));
+
+        assert_eq!(app.transport_ticks, 0);
+        assert_eq!(app.playhead_ticks, 0);
+        assert!(app.live_fx_ticks > 0);
+        let sent = app.midi_output.sent_messages();
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
+    }
+
+    #[test]
+    fn live_fx_ticks_per_second_can_follow_external_tempo() {
+        assert_eq!(ticks_per_second_for_tempo(120.0, 960), 1_920);
+        assert_eq!(ticks_per_second_for_tempo(90.0, 960), 1_440);
     }
 
     #[test]

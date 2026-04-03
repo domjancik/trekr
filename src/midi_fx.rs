@@ -790,6 +790,14 @@ pub fn process_live_chain_tick(
     output
 }
 
+pub fn reset_live_fx_timing(state: &mut LiveMidiFxState, current_ticks: u64) {
+    state.arp_pending_note_off_tick = None;
+    state.arp_active_note = None;
+    state.arp_cycle_index = 0;
+    state.arp_direction_forward = true;
+    state.arp_next_step_tick = (!state.arp_held_notes.is_empty()).then_some(current_ticks);
+}
+
 fn first_live_arp_index(chain: &[Option<MidiFxSlot>]) -> Option<usize> {
     chain.iter().position(|slot| {
         slot.as_ref()
