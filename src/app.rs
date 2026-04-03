@@ -65,6 +65,9 @@ pub struct App {
     note_additive_select_held: bool,
     focused_track_view: bool,
     startup_started_at: Instant,
+    last_midi_refresh_at: Instant,
+    preferred_default_input_name: Option<String>,
+    preferred_default_output_name: Option<String>,
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
 }
@@ -293,6 +296,9 @@ impl App {
             note_additive_select_held: false,
             focused_track_view: false,
             startup_started_at: Instant::now(),
+            last_midi_refresh_at: Instant::now() - MIDI_REFRESH_INTERVAL,
+            preferred_default_input_name,
+            preferred_default_output_name,
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
         }
