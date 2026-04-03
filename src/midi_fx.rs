@@ -263,7 +263,10 @@ impl ArpOrder {
             ArpOrder::UpDown,
             ArpOrder::AsPlayed,
         ];
-        let index = ALL.iter().position(|candidate| *candidate == self).unwrap_or(0);
+        let index = ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or(0);
         ALL[(index as i32 + delta).rem_euclid(ALL.len() as i32) as usize]
     }
 }
@@ -314,9 +317,7 @@ impl MidiFx {
     pub fn value_label(&self) -> String {
         match self {
             Self::Arp {
-                step_ticks,
-                order,
-                ..
+                step_ticks, order, ..
             } => format!("{} {}", arp_rate_label(*step_ticks), order.label()),
             Self::NoteFilter {
                 low,
@@ -797,14 +798,20 @@ fn update_live_arp_held_notes(
                 velocity,
                 sequence: state.arp_sequence_counter,
             });
-            state.arp_held_notes.sort_by_key(|note| (note.pitch, note.sequence));
+            state
+                .arp_held_notes
+                .sort_by_key(|note| (note.pitch, note.sequence));
             if state.arp_next_step_tick.is_none() {
                 state.arp_next_step_tick = Some(current_ticks);
             }
             None
         }
         LiveMidiFxEvent::NoteOff { pitch } => {
-            if let Some(index) = state.arp_held_notes.iter().position(|note| note.pitch == pitch) {
+            if let Some(index) = state
+                .arp_held_notes
+                .iter()
+                .position(|note| note.pitch == pitch)
+            {
                 state.arp_held_notes.remove(index);
             }
             if state.arp_held_notes.is_empty() {
@@ -812,7 +819,10 @@ fn update_live_arp_held_notes(
                 state.arp_direction_forward = true;
                 state.arp_next_step_tick = None;
                 state.arp_pending_note_off_tick = None;
-                return state.arp_active_note.take().map(|pitch| LiveMidiFxEvent::NoteOff { pitch });
+                return state
+                    .arp_active_note
+                    .take()
+                    .map(|pitch| LiveMidiFxEvent::NoteOff { pitch });
             }
             None
         }
@@ -1069,7 +1079,12 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
     }
 }
 
-fn apply_arp(notes: &[MidiNote], step_ticks: u64, order: ArpOrder, gate_percent: u8) -> Vec<MidiNote> {
+fn apply_arp(
+    notes: &[MidiNote],
+    step_ticks: u64,
+    order: ArpOrder,
+    gate_percent: u8,
+) -> Vec<MidiNote> {
     if step_ticks == 0 {
         return notes.to_vec();
     }
@@ -1092,9 +1107,8 @@ fn apply_arp(notes: &[MidiNote], step_ticks: u64, order: ArpOrder, gate_percent:
             .map(|note| note.end_ticks())
             .max()
             .unwrap_or(group_start);
-        let gate_ticks =
-            ((u128::from(step_ticks) * u128::from(gate_percent.clamp(10, 100))) / 100).max(1)
-                as u64;
+        let gate_ticks = ((u128::from(step_ticks) * u128::from(gate_percent.clamp(10, 100))) / 100)
+            .max(1) as u64;
         let sequence = arp_group_sequence(group.len(), order);
         let mut step_index = 0_usize;
         let mut current = group_start;
@@ -1271,10 +1285,26 @@ mod tests {
             },
         })];
         let transformed = transform_notes(&notes, &chain);
-        assert!(transformed.iter().any(|note| note.start_ticks == 0 && note.pitch == 60));
-        assert!(transformed.iter().any(|note| note.start_ticks == 240 && note.pitch == 64));
-        assert!(transformed.iter().any(|note| note.start_ticks == 480 && note.pitch == 60));
-        assert!(transformed.iter().any(|note| note.start_ticks == 720 && note.pitch == 64));
+        assert!(
+            transformed
+                .iter()
+                .any(|note| note.start_ticks == 0 && note.pitch == 60)
+        );
+        assert!(
+            transformed
+                .iter()
+                .any(|note| note.start_ticks == 240 && note.pitch == 64)
+        );
+        assert!(
+            transformed
+                .iter()
+                .any(|note| note.start_ticks == 480 && note.pitch == 60)
+        );
+        assert!(
+            transformed
+                .iter()
+                .any(|note| note.start_ticks == 720 && note.pitch == 64)
+        );
     }
 
     #[test]
@@ -1311,8 +1341,20 @@ mod tests {
         assert!(immediate.is_empty());
 
         let scheduled = process_live_chain_tick(&chain, &mut state, 0, 500);
-        assert!(scheduled.contains(&(0, LiveMidiFxEvent::NoteOn { pitch: 60, velocity: 100 })));
+        assert!(scheduled.contains(&(
+            0,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100
+            }
+        )));
         assert!(scheduled.contains(&(240, LiveMidiFxEvent::NoteOff { pitch: 60 })));
-        assert!(scheduled.contains(&(240, LiveMidiFxEvent::NoteOn { pitch: 64, velocity: 100 })));
+        assert!(scheduled.contains(&(
+            240,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 64,
+                velocity: 100
+            }
+        )));
     }
 }
