@@ -7295,6 +7295,133 @@ impl App {
         }
     }
 
+    fn track_emits_clone_source(&self, source_track_index: usize) -> bool {
+        let Some(source) = self.project.tracks.get(source_track_index) else {
+            return false;
+        };
+        if source.state.muted {
+            return false;
+        }
+        let any_solo = self.project.tracks.iter().any(|track| track.state.soloed);
+        !any_solo || source.state.soloed
+    }
+
+    fn input_transform_only_chain(track: &Track) -> Vec<Option<MidiFxSlot>> {
+        track
+            .midi_fx
+            .input_fx
+            .iter()
+            .map(|slot| match slot {
+                Some(slot) if !matches!(slot.effect, MidiFx::TrackClone { .. }) => {
+                    Some(slot.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn propagate_live_clone_events(
+        &mut self,
+        source_track_index: usize,
+        source_events: &[LiveMidiFxEvent],
+    ) {
+        if source_events.is_empty() || !self.track_emits_clone_source(source_track_index) {
+            return;
+        }
+
+        #[derive(Clone)]
+        struct CloneTarget {
+            target_index: usize,
+            record_mode: crate::midi_fx::RecordInputFxMode,
+            passthrough: bool,
+            output_port: Option<MidiPortRef>,
+            output_channel: Option<u8>,
+            input_transform_chain: Vec<Option<MidiFxSlot>>,
+            output_chain: Vec<Option<MidiFxSlot>>,
+        }
+
+        let mut targets = Vec::new();
+        for (target_index, track) in self.project.tracks.iter().enumerate() {
+            if target_index == source_track_index {
+                continue;
+            }
+            let clone_matches = track
+                .midi_fx
+                .input_fx
+                .iter()
+                .flatten()
+                .filter(|slot| slot.enabled)
+                .filter(|slot| matches!(slot.effect, MidiFx::TrackClone { source_track } if source_track == source_track_index))
+                .count();
+            if clone_matches == 0 {
+                continue;
+            }
+            let base = CloneTarget {
+                target_index,
+                record_mode: track.midi_fx.record_input_fx_mode,
+                passthrough: track.state.passthrough,
+                output_port: track.routing.output_port.clone(),
+                output_channel: track.routing.output_channel,
+                input_transform_chain: Self::input_transform_only_chain(track),
+                output_chain: track.midi_fx.output_fx.clone(),
+            };
+            for _ in 0..clone_matches {
+                targets.push(base.clone());
+            }
+        }
+
+        self.ensure_fx_live_state_len();
+        for target in targets {
+            let mut post_input_events = Vec::new();
+            if let Some(state) = self.input_fx_live_states.get_mut(target.target_index) {
+                for event in source_events.iter().cloned() {
+                    post_input_events.extend(process_live_event(
+                        &target.input_transform_chain,
+                        state,
+                        event,
+                    ));
+                }
+            }
+            if post_input_events.is_empty() {
+                continue;
+            }
+
+            let input_ticks = self
+                .project
+                .tracks
+                .get(target.target_index)
+                .map(|track| self.record_capture_ticks(track))
+                .unwrap_or(self.playhead_ticks);
+
+            if let Some(track) = self.project.tracks.get_mut(target.target_index) {
+                if track.active_take.is_some()
+                    && target.record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
+                {
+                    for record_event in &post_input_events {
+                        match *record_event {
+                            LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                                track.record_note_on(pitch, velocity, input_ticks);
+                            }
+                            LiveMidiFxEvent::NoteOff { pitch } => {
+                                track.record_note_off(pitch, input_ticks);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if target.passthrough {
+                self.send_live_monitor_events(
+                    target.target_index,
+                    &target.output_chain,
+                    target.output_port.as_ref(),
+                    target.output_channel,
+                    post_input_events,
+                );
+            }
+        }
+    }
+
     fn monitor_source_events(
         &mut self,
         track_index: usize,
@@ -7373,12 +7500,12 @@ impl App {
             if source_track == target_track_index {
                 continue;
             }
+            if !self.track_emits_clone_source(source_track) {
+                continue;
+            }
             let Some(source) = self.project.tracks.get(source_track) else {
                 continue;
             };
-            if source.state.muted {
-                continue;
-            }
             notes.extend(source.midi_notes.iter().copied());
         }
         notes
@@ -7388,17 +7515,7 @@ impl App {
         let Some(track) = self.project.tracks.get(track_index) else {
             return Vec::new();
         };
-        let input_transform_only: Vec<Option<MidiFxSlot>> = track
-            .midi_fx
-            .input_fx
-            .iter()
-            .map(|slot| match slot {
-                Some(slot) if !matches!(slot.effect, MidiFx::TrackClone { .. }) => {
-                    Some(slot.clone())
-                }
-                _ => None,
-            })
-            .collect();
+        let input_transform_only = Self::input_transform_only_chain(track);
         let cloned_notes =
             transform_notes(&self.cloned_track_notes(track_index), &input_transform_only);
         let mut notes = track.midi_notes.clone();
@@ -7496,6 +7613,7 @@ impl App {
                             }
                         }
                     }
+                    self.propagate_live_clone_events(index, &post_input_events);
                     if passthrough {
                         self.send_live_monitor_events(
                             index,
@@ -10129,7 +10247,7 @@ mod tests {
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
-    use crate::midi_fx::{MidiFxChainKind, MidiFxSlot};
+    use crate::midi_fx::{MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind, MidiFxSlot};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::project::{RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind};
@@ -11467,6 +11585,51 @@ mod tests {
         assert!(active.active_take.is_none());
         assert!(!active.regions.is_empty());
         assert!(active.midi_notes.iter().any(|note| note.pitch == 64));
+    }
+
+    #[test]
+    fn track_clone_records_into_post_input_fx_take() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(1);
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[1].state.armed = true;
+        app.project.tracks[1].midi_fx.record_input_fx_mode =
+            crate::midi_fx::RecordInputFxMode::PostInputFx;
+        app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        });
+        app.project.tracks[1].midi_fx.input_fx[1] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.tracks[1].active_take.is_some());
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+        });
+        app.apply_action(AppAction::ToggleRecording);
+
+        let target = &app.project.tracks[1];
+        assert!(target.midi_notes.iter().any(|note| note.pitch == 72));
     }
 
     #[test]
