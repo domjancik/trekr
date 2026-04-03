@@ -7809,6 +7809,15 @@ impl App {
             .collect()
     }
 
+    fn effective_track_cloned_post_input_notes(&self, track_index: usize) -> Vec<MidiNote> {
+        let Some(track) = self.project.tracks.get(track_index) else {
+            return Vec::new();
+        };
+        let mut visited = vec![false; self.project.tracks.len()];
+        let cloned_notes = self.cloned_track_notes_recursive(track_index, &mut visited);
+        transform_notes(&cloned_notes, &Self::input_transform_only_chain(track))
+    }
+
     fn dispatch_midi_notes(&mut self, previous_ticks: u64, advanced_ticks: u64) {
         if advanced_ticks == 0 {
             return;
@@ -7819,7 +7828,12 @@ impl App {
             .transport
             .loop_enabled
             .then_some(self.project.loop_region);
-        let track_events: Vec<(Option<MidiPortRef>, u8, Vec<(u64, bool, u8, u8)>)> = self
+        let track_events: Vec<(
+            Option<MidiPortRef>,
+            u8,
+            Vec<(u64, bool, u8, u8)>,
+            Vec<(u64, bool, u8, u8)>,
+        )> = self
             .project
             .tracks
             .iter()
@@ -7841,11 +7855,36 @@ impl App {
                 notes.extend(preview_notes);
                 let events =
                     scheduled_note_events(track, &notes, previous_ticks, advanced_ticks, loop_range);
-                (port, channel, events)
+                let record_events = if track.active_take.is_some()
+                    && track.midi_fx.record_input_fx_mode
+                        == crate::midi_fx::RecordInputFxMode::PostInputFx
+                {
+                    scheduled_note_capture_events(
+                        &self.effective_track_cloned_post_input_notes(track_index),
+                        previous_ticks,
+                        advanced_ticks,
+                        loop_range,
+                    )
+                } else {
+                    Vec::new()
+                };
+                (port, channel, events, record_events)
             })
             .collect();
 
-        for (port, channel, events) in track_events {
+        for (track_index, (port, channel, events, record_events)) in
+            track_events.into_iter().enumerate()
+        {
+            if let Some(track) = self.project.tracks.get_mut(track_index) {
+                for (event_ticks, note_on, pitch, velocity) in &record_events {
+                    if *note_on {
+                        track.record_note_on(*pitch, *velocity, *event_ticks);
+                    } else {
+                        track.record_note_off(*pitch, *event_ticks);
+                    }
+                }
+            }
+
             let Some(port) = port else {
                 continue;
             };
@@ -9380,6 +9419,16 @@ fn scheduled_note_events(
     advanced_ticks: u64,
     loop_range: Option<crate::timeline::LoopRegion>,
 ) -> Vec<(u64, bool, u8, u8)> {
+    scheduled_note_events_with_transport(track, notes, previous_ticks, advanced_ticks, loop_range)
+}
+
+fn scheduled_note_events_with_transport(
+    track: &Track,
+    notes: &[MidiNote],
+    previous_ticks: u64,
+    advanced_ticks: u64,
+    loop_range: Option<crate::timeline::LoopRegion>,
+) -> Vec<(u64, bool, u8, u8)> {
     if advanced_ticks == 0 || track.state.muted {
         return Vec::new();
     }
@@ -9394,18 +9443,77 @@ fn scheduled_note_events(
         });
 
     let mut events = Vec::new();
+    let mut transport_cursor = previous_ticks;
     for (segment_start, segment_end) in segments {
         for note in notes {
             if track.recording_clip_is_muted(note.recording_clip_id) {
                 continue;
             }
             if note.start_ticks >= segment_start && note.start_ticks < segment_end {
-                events.push((note.start_ticks, true, note.pitch, note.velocity));
+                events.push((
+                    transport_cursor.saturating_add(note.start_ticks.saturating_sub(segment_start)),
+                    true,
+                    note.pitch,
+                    note.velocity,
+                ));
             }
             if note.end_ticks() >= segment_start && note.end_ticks() < segment_end {
-                events.push((note.end_ticks(), false, note.pitch, note.velocity));
+                events.push((
+                    transport_cursor.saturating_add(note.end_ticks().saturating_sub(segment_start)),
+                    false,
+                    note.pitch,
+                    note.velocity,
+                ));
             }
         }
+        transport_cursor = transport_cursor.saturating_add(segment_end.saturating_sub(segment_start));
+    }
+
+    events.sort_by_key(|event| (event.0, event.1));
+    events
+}
+
+fn scheduled_note_capture_events(
+    notes: &[MidiNote],
+    previous_ticks: u64,
+    advanced_ticks: u64,
+    loop_range: Option<crate::timeline::LoopRegion>,
+) -> Vec<(u64, bool, u8, u8)> {
+    if advanced_ticks == 0 {
+        return Vec::new();
+    }
+
+    let segments = loop_range
+        .map(|range| ranged_segments(previous_ticks, advanced_ticks, range))
+        .unwrap_or_else(|| {
+            vec![(
+                previous_ticks,
+                previous_ticks.saturating_add(advanced_ticks),
+            )]
+        });
+
+    let mut events = Vec::new();
+    let mut transport_cursor = previous_ticks;
+    for (segment_start, segment_end) in segments {
+        for note in notes {
+            if note.start_ticks >= segment_start && note.start_ticks < segment_end {
+                events.push((
+                    transport_cursor.saturating_add(note.start_ticks.saturating_sub(segment_start)),
+                    true,
+                    note.pitch,
+                    note.velocity,
+                ));
+            }
+            if note.end_ticks() >= segment_start && note.end_ticks() < segment_end {
+                events.push((
+                    transport_cursor.saturating_add(note.end_ticks().saturating_sub(segment_start)),
+                    false,
+                    note.pitch,
+                    note.velocity,
+                ));
+            }
+        }
+        transport_cursor = transport_cursor.saturating_add(segment_end.saturating_sub(segment_start));
     }
 
     events.sort_by_key(|event| (event.0, event.1));
@@ -11719,6 +11827,39 @@ mod tests {
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 60 },
         });
+        app.apply_action(AppAction::ToggleRecording);
+
+        let target = &app.project.tracks[1];
+        assert!(target.midi_notes.iter().any(|note| note.pitch == 72));
+    }
+
+    #[test]
+    fn track_clone_records_playback_source_midi_into_post_input_fx_take() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 480, 100));
+        app.project.tracks[1].state.armed = true;
+        app.project.tracks[1].midi_fx.record_input_fx_mode =
+            crate::midi_fx::RecordInputFxMode::PostInputFx;
+        app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        });
+        app.project.tracks[1].midi_fx.input_fx[1] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.tracks[1].active_take.is_some());
+        app.dispatch_midi_notes(0, 960);
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
         app.apply_action(AppAction::ToggleRecording);
 
         let target = &app.project.tracks[1];
