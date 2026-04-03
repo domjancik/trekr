@@ -7647,6 +7647,7 @@ impl App {
                             }
                         }
                     }
+                    self.propagate_live_clone_events(index, &post_input_events);
                     if passthrough {
                         self.send_live_monitor_events(
                             index,
@@ -11585,6 +11586,57 @@ mod tests {
         assert!(active.active_take.is_none());
         assert!(!active.regions.is_empty());
         assert!(active.midi_notes.iter().any(|note| note.pitch == 64));
+    }
+
+    #[test]
+    fn track_clone_passthrough_sends_live_output_to_target_track() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[1].state.passthrough = true;
+        app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_channel = Some(2);
+        app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        });
+        app.project.tracks[1].midi_fx.input_fx[1] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+        app.project.tracks[1].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+        });
+
+        let sent = app.midi_output.sent_messages();
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_some())
+        );
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_none())
+        );
     }
 
     #[test]
