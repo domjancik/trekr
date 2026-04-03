@@ -110,6 +110,35 @@ struct TimelineFxRowLayout {
     delete: Rect,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TimelineTrackLayout {
+    track_index: usize,
+    full_bounds: Rect,
+    detail_bounds: Rect,
+    pair_bounds: Rect,
+    status_rect: Rect,
+    body_full_bounds: Rect,
+    body_detail_bounds: Rect,
+    full_label_rect: Rect,
+    detail_label_rect: Rect,
+    full_content_rect: Rect,
+    detail_content_rect: Rect,
+    input_fx_rect: Rect,
+    output_fx_rect: Rect,
+}
+
+impl TimelineTrackLayout {
+    fn fx_rect(self, context: TimelineContext) -> Rect {
+        match context {
+            TimelineContext::InputFx => self.input_fx_rect,
+            TimelineContext::OutputFx => self.output_fx_rect,
+            TimelineContext::TrackTimeline => {
+                crate::ui::union_rect(self.body_full_bounds, self.body_detail_bounds)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct DirectMappingState {
     mode: DirectMappingMode,
@@ -928,10 +957,10 @@ impl App {
         )?;
         self.draw_transport_strip(canvas, transport_bounds)?;
 
-        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
-            let track = &self.project.tracks[index];
-            let is_active = index == self.project.active_track_index;
-            self.draw_track_column(canvas, full_bounds, detail_bounds, track, is_active)?;
+        for layout in self.visible_timeline_track_layouts(timeline_bounds) {
+            let track = &self.project.tracks[layout.track_index];
+            let is_active = layout.track_index == self.project.active_track_index;
+            self.draw_track_column(canvas, layout, track, is_active)?;
         }
 
         if self.overlay_state.active == Some(AppOverlay::Discoverability) {
@@ -944,8 +973,7 @@ impl App {
     fn draw_track_column<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
-        full_bounds: Rect,
-        detail_bounds: Rect,
+        layout: TimelineTrackLayout,
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -966,12 +994,9 @@ impl App {
         } else {
             Color::RGB(74, 54, 40)
         };
-        let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds);
-
         self.draw_track_subcolumn(
             canvas,
-            body_full_bounds,
+            layout.body_full_bounds,
             full_accent,
             0,
             self.project.full_song_range().length_ticks,
@@ -982,7 +1007,7 @@ impl App {
         )?;
         self.draw_track_subcolumn(
             canvas,
-            body_detail_bounds,
+            layout.body_detail_bounds,
             detail_accent,
             detail_range.start_ticks,
             detail_range.length_ticks,
@@ -991,9 +1016,9 @@ impl App {
             true,
             track,
         )?;
-        self.draw_track_fx_bands(canvas, full_bounds, detail_bounds, track, is_active)?;
-        self.draw_track_status_strip(canvas, full_bounds, detail_bounds, track, is_active)?;
-        self.draw_timeline_context_highlight(canvas, full_bounds, detail_bounds, track, is_active)?;
+        self.draw_track_fx_bands(canvas, layout, track, is_active)?;
+        self.draw_track_status_strip(canvas, layout.status_rect, track, is_active)?;
+        self.draw_timeline_context_highlight(canvas, layout, is_active)?;
 
         Ok(())
     }
@@ -1001,55 +1026,49 @@ impl App {
     fn draw_timeline_context_highlight<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
-        full_bounds: Rect,
-        detail_bounds: Rect,
-        track: &Track,
+        layout: TimelineTrackLayout,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if !is_active {
             return Ok(());
         }
-        if let Some(rect) = self.timeline_context_highlight_rect(full_bounds, detail_bounds, track)
-        {
+        if let Some(rect) = self.timeline_context_highlight_rect_for_layout(layout) {
             canvas.set_draw_color(Color::RGB(244, 232, 146));
             canvas.draw_rect(rect)?;
         }
         Ok(())
     }
 
+    fn timeline_context_highlight_rect_for_layout(
+        &self,
+        layout: TimelineTrackLayout,
+    ) -> Option<Rect> {
+        Some(layout.fx_rect(self.page_state.selected_timeline_context))
+    }
+
+    #[cfg(test)]
     fn timeline_context_highlight_rect(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
         track: &Track,
     ) -> Option<Rect> {
-        match self.page_state.selected_timeline_context {
-            TimelineContext::InputFx => {
-                let (input_rect, _) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
-                Some(input_rect)
-            }
-            TimelineContext::OutputFx => {
-                let (_, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
-                Some(output_rect)
-            }
-            TimelineContext::TrackTimeline => {
-                let (body_full_bounds, body_detail_bounds) =
-                    self.track_column_body_bounds(full_bounds, detail_bounds);
-                Some(crate::ui::union_rect(body_full_bounds, body_detail_bounds))
-            }
-        }
+        let track_index = self
+            .project
+            .tracks
+            .iter()
+            .position(|candidate| std::ptr::eq(candidate, track))?;
+        let layout = self.timeline_track_layout(track_index, full_bounds, detail_bounds);
+        self.timeline_context_highlight_rect_for_layout(layout)
     }
 
     fn draw_track_status_strip<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
-        full_bounds: Rect,
-        detail_bounds: Rect,
+        status_rect: Rect,
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
-        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
         canvas.set_draw_color(Color::RGB(26, 34, 52));
         canvas.fill_rect(status_rect)?;
         canvas.set_draw_color(if is_active {
@@ -2063,15 +2082,13 @@ impl App {
     fn draw_track_fx_bands<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
-        full_bounds: Rect,
-        detail_bounds: Rect,
+        layout: TimelineTrackLayout,
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (input_rect, output_rect) = self.track_fx_band_rects(full_bounds, detail_bounds, track);
         for (context, rect) in [
-            (TimelineContext::InputFx, input_rect),
-            (TimelineContext::OutputFx, output_rect),
+            (TimelineContext::InputFx, layout.input_fx_rect),
+            (TimelineContext::OutputFx, layout.output_fx_rect),
         ] {
             let chain_kind = context.chain_kind().expect("fx context");
             let chain = self.fx_chain(track, chain_kind);
@@ -8025,22 +8042,13 @@ impl App {
             }
         }
 
-        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
-            let (body_full_bounds, body_detail_bounds) =
-                self.track_column_body_bounds(full_bounds, detail_bounds);
-            let full_label_rect =
-                timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
-            let detail_label_rect =
-                timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
-            let full_content_rect =
-                timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow);
-            let detail_content_rect =
-                timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow);
-            let status_rect = crate::ui::track_status_rect(
-                crate::ui::union_rect(full_bounds, detail_bounds),
-                self.timeline_flow,
-            );
-            for indicator in crate::ui::track_indicators(status_rect) {
+        for layout in self.visible_timeline_track_layouts(timeline_bounds) {
+            let index = layout.track_index;
+            let full_label_rect = layout.full_label_rect;
+            let detail_label_rect = layout.detail_label_rect;
+            let full_content_rect = layout.full_content_rect;
+            let detail_content_rect = layout.detail_content_rect;
+            for indicator in crate::ui::track_indicators(layout.status_rect) {
                 if !rect_contains(indicator.rect, x, y) {
                     continue;
                 }
@@ -8077,11 +8085,9 @@ impl App {
                 );
             }
 
-            let (input_fx_rect, output_fx_rect) =
-                self.track_fx_band_rects(full_bounds, detail_bounds, &self.project.tracks[index]);
             if let Some(hit) = self.timeline_fx_hit(
                 TimelineContext::OutputFx,
-                output_fx_rect,
+                layout.output_fx_rect,
                 &self.project.tracks[index],
                 x,
                 y,
@@ -8120,7 +8126,7 @@ impl App {
 
             if let Some(hit) = self.timeline_fx_hit(
                 TimelineContext::InputFx,
-                input_fx_rect,
+                layout.input_fx_rect,
                 &self.project.tracks[index],
                 x,
                 y,
@@ -8483,9 +8489,9 @@ impl App {
             ));
         }
 
-        for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
-            let track = &self.project.tracks[index];
-            targets.extend(self.track_discoverability_targets(full_bounds, detail_bounds, track));
+        for layout in self.visible_timeline_track_layouts(timeline_bounds) {
+            let track = &self.project.tracks[layout.track_index];
+            targets.extend(self.track_discoverability_targets(layout, track));
         }
 
         targets
@@ -8493,20 +8499,13 @@ impl App {
 
     fn track_discoverability_targets(
         &self,
-        full_bounds: Rect,
-        detail_bounds: Rect,
+        layout: TimelineTrackLayout,
         track: &Track,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         let mut targets = Vec::new();
-        let status_rect = crate::ui::track_status_rect(
-            crate::ui::union_rect(full_bounds, detail_bounds),
-            self.timeline_flow,
-        );
-        let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds);
-        let label_rect = timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
-        let detail_label_rect =
-            timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
+        let status_rect = layout.status_rect;
+        let label_rect = layout.full_label_rect;
+        let detail_label_rect = layout.detail_label_rect;
         if track.recording_view == RecordingView::Stacked {
             let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
             targets.push((
@@ -8558,10 +8557,7 @@ impl App {
                 },
             ));
         }
-        for content_rect in [
-            timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow),
-            timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow),
-        ] {
+        for content_rect in [layout.full_content_rect, layout.detail_content_rect] {
             for lane in self.recording_lane_layouts(content_rect, track) {
                 if let Some(clip_id) = lane.clip_id {
                     targets.push((
@@ -8599,17 +8595,15 @@ impl App {
                 overlay_slot: None,
             },
         ));
-        let (input_fx_rect, output_fx_rect) =
-            self.track_fx_band_rects(full_bounds, detail_bounds, track);
         targets.extend(self.timeline_fx_discoverability_targets_for_track(
             track,
             TimelineContext::OutputFx,
-            output_fx_rect,
+            layout.output_fx_rect,
         ));
         targets.extend(self.timeline_fx_discoverability_targets_for_track(
             track,
             TimelineContext::InputFx,
-            input_fx_rect,
+            layout.input_fx_rect,
         ));
         for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
             if let Some(action) = stored_loop_slot_recall_action(slot_index) {
@@ -8843,6 +8837,54 @@ impl App {
             .into_iter()
             .enumerate()
             .map(|(index, (full_bounds, detail_bounds))| (index, full_bounds, detail_bounds))
+            .collect()
+    }
+
+    fn timeline_track_layout(
+        &self,
+        track_index: usize,
+        full_bounds: Rect,
+        detail_bounds: Rect,
+    ) -> TimelineTrackLayout {
+        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
+        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
+        let (body_full_bounds, body_detail_bounds) =
+            self.track_column_body_bounds(full_bounds, detail_bounds);
+        let full_label_rect = timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
+        let detail_label_rect =
+            timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
+        let full_content_rect =
+            timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow);
+        let detail_content_rect =
+            timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow);
+        let (input_fx_rect, output_fx_rect) = self.track_fx_band_rects(
+            full_bounds,
+            detail_bounds,
+            &self.project.tracks[track_index],
+        );
+        TimelineTrackLayout {
+            track_index,
+            full_bounds,
+            detail_bounds,
+            pair_bounds,
+            status_rect,
+            body_full_bounds,
+            body_detail_bounds,
+            full_label_rect,
+            detail_label_rect,
+            full_content_rect,
+            detail_content_rect,
+            input_fx_rect,
+            output_fx_rect,
+        }
+    }
+
+    fn visible_timeline_track_layouts(&self, timeline_bounds: Rect) -> Vec<TimelineTrackLayout> {
+        self.visible_track_columns(timeline_bounds)
+            .into_iter()
+            .map(|(index, full_bounds, detail_bounds)| {
+                self.timeline_track_layout(index, full_bounds, detail_bounds)
+            })
             .collect()
     }
 
@@ -12457,6 +12499,49 @@ mod tests {
             .expect("discoverability target");
 
         assert_eq!(target.action, AppAction::CycleSelectedTimelineFxKind);
+    }
+
+    #[test]
+    fn canonical_timeline_layout_keeps_output_fx_band_disjoint_from_body_content() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
+        let intersects = |a: Rect, b: Rect| {
+            a.x < b.x + b.width() as i32
+                && a.x + a.width() as i32 > b.x
+                && a.y < b.y + b.height() as i32
+                && a.y + a.height() as i32 > b.y
+        };
+
+        assert!(!intersects(layout.output_fx_rect, layout.full_content_rect));
+        assert!(!intersects(
+            layout.output_fx_rect,
+            layout.detail_content_rect
+        ));
+    }
+
+    #[test]
+    fn canonical_output_fx_row_point_does_not_land_in_body_content() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let row = app.timeline_fx_row_layouts(layout.output_fx_rect, &displayed, Some(0))[0].row;
+        let x = row.x + row.width() as i32 / 2;
+        let y = row.y + row.height() as i32 / 2;
+
+        assert!(!super::rect_contains(layout.full_content_rect, x, y));
+        assert!(!super::rect_contains(layout.detail_content_rect, x, y));
     }
 
     #[test]
