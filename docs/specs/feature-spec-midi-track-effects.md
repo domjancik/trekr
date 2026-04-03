@@ -29,6 +29,7 @@ This spec defines UX, behavior, scope, ordering, conflict rules, and likely code
 Related docs:
 
 - `docs/specs/product-spec.md`
+- `docs/specs/feature-spec-midi-arp.md`
 - `docs/specs/feature-spec-midi-manipulation.md`
 - `docs/specs/feature-spec-stacked-recordings.md`
 - `docs/dev/architecture.md`
@@ -240,6 +241,7 @@ Recommended tap semantics:
 - is part of the first implementation slice
 - is expected to need richer parameter editing than compact one-value effects
 - should still use the same parameter schema/instance model as all other effects
+- detailed arp semantics live in `docs/specs/feature-spec-midi-arp.md`
 
 ### Transpose
 

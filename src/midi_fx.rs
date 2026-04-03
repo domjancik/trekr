@@ -206,6 +206,8 @@ impl MidiFxKind {
 pub enum MidiFx {
     Arp {
         step_ticks: u64,
+        order: ArpOrder,
+        gate_percent: u8,
     },
     NoteFilter {
         low: u8,
@@ -235,6 +237,37 @@ pub enum MidiFx {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ArpOrder {
+    #[default]
+    Up,
+    Down,
+    UpDown,
+    AsPlayed,
+}
+
+impl ArpOrder {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Up => "Up",
+            Self::Down => "Down",
+            Self::UpDown => "UpDn",
+            Self::AsPlayed => "Play",
+        }
+    }
+
+    pub fn cycle(self, delta: i32) -> Self {
+        const ALL: [ArpOrder; 4] = [
+            ArpOrder::Up,
+            ArpOrder::Down,
+            ArpOrder::UpDown,
+            ArpOrder::AsPlayed,
+        ];
+        let index = ALL.iter().position(|candidate| *candidate == self).unwrap_or(0);
+        ALL[(index as i32 + delta).rem_euclid(ALL.len() as i32) as usize]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiFxInlineParam {
     pub label: &'static str,
@@ -244,7 +277,11 @@ pub struct MidiFxInlineParam {
 impl MidiFx {
     pub fn default_for_kind(kind: MidiFxKind) -> Self {
         match kind {
-            MidiFxKind::Arp => Self::Arp { step_ticks: 120 },
+            MidiFxKind::Arp => Self::Arp {
+                step_ticks: 240,
+                order: ArpOrder::Up,
+                gate_percent: 100,
+            },
             MidiFxKind::NoteFilter => Self::NoteFilter {
                 low: 0,
                 high: 127,
@@ -276,7 +313,11 @@ impl MidiFx {
 
     pub fn value_label(&self) -> String {
         match self {
-            Self::Arp { step_ticks } => format!("{}t", step_ticks),
+            Self::Arp {
+                step_ticks,
+                order,
+                ..
+            } => format!("{} {}", arp_rate_label(*step_ticks), order.label()),
             Self::NoteFilter {
                 low,
                 high,
@@ -304,10 +345,24 @@ impl MidiFx {
 
     pub fn inline_parameters(&self) -> Vec<MidiFxInlineParam> {
         match self {
-            Self::Arp { step_ticks } => vec![MidiFxInlineParam {
-                label: "Step",
-                value: format!("{step_ticks}t"),
-            }],
+            Self::Arp {
+                step_ticks,
+                order,
+                gate_percent,
+            } => vec![
+                MidiFxInlineParam {
+                    label: "Rate",
+                    value: arp_rate_label(*step_ticks).to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "Ord",
+                    value: order.label().to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "Gate",
+                    value: format!("{gate_percent}%"),
+                },
+            ],
             Self::NoteFilter {
                 low,
                 high,
@@ -369,14 +424,25 @@ impl MidiFx {
         ppqn: u16,
     ) {
         match self {
-            Self::Arp { .. }
-            | Self::Transpose { .. }
+            Self::Transpose { .. }
             | Self::Velocity { .. }
             | Self::Duration { .. }
             | Self::ScaleQuantize { .. }
             | Self::ChordQuantize { .. }
             | Self::TimeShift { .. }
             | Self::TrackClone { .. } => self.adjust_value(delta, track_count, ppqn),
+            Self::Arp {
+                step_ticks,
+                order,
+                gate_percent,
+            } => match param_index {
+                0 => {
+                    let steps = arp_step_choices(ppqn);
+                    *step_ticks = cycle_u64_choice(*step_ticks, &steps, delta);
+                }
+                1 => *order = order.cycle(delta),
+                _ => *gate_percent = (*gate_percent as i32 + delta * 10).clamp(10, 100) as u8,
+            },
             Self::NoteFilter {
                 low,
                 high,
@@ -391,8 +457,8 @@ impl MidiFx {
 
     pub fn adjust_value(&mut self, delta: i32, track_count: usize, ppqn: u16) {
         match self {
-            Self::Arp { step_ticks } => {
-                let steps = [60_u64, 120, 240, 480, u64::from(ppqn.max(1))];
+            Self::Arp { step_ticks, .. } => {
+                let steps = arp_step_choices(ppqn);
                 *step_ticks = cycle_u64_choice(*step_ticks, &steps, delta);
             }
             Self::NoteFilter {
@@ -475,6 +541,32 @@ fn note_name(root: u8) -> &'static str {
     }
 }
 
+fn arp_step_choices(ppqn: u16) -> Vec<u64> {
+    let ppqn = u64::from(ppqn.max(1));
+    vec![
+        (ppqn / 16).max(1),
+        (ppqn / 8).max(1),
+        (ppqn / 4).max(1),
+        (ppqn / 2).max(1),
+        ppqn,
+        ppqn.saturating_mul(2),
+        ppqn.saturating_mul(4),
+    ]
+}
+
+pub fn arp_rate_label(step_ticks: u64) -> &'static str {
+    match step_ticks {
+        60 => "1/64",
+        120 => "1/32",
+        240 => "1/16",
+        480 => "1/8",
+        960 => "1/4",
+        1920 => "1/2",
+        3840 => "1 Bar",
+        _ => "?",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveMidiFxEvent {
     NoteOn { pitch: u8, velocity: u8 },
@@ -484,6 +576,20 @@ pub enum LiveMidiFxEvent {
 #[derive(Debug, Clone, Default)]
 pub struct LiveMidiFxState {
     note_pitch_map: HashMap<u8, Vec<u8>>,
+    arp_held_notes: Vec<ArpHeldNote>,
+    arp_sequence_counter: u64,
+    arp_next_step_tick: Option<u64>,
+    arp_pending_note_off_tick: Option<u64>,
+    arp_active_note: Option<u8>,
+    arp_cycle_index: usize,
+    arp_direction_forward: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArpHeldNote {
+    pitch: u8,
+    velocity: u8,
+    sequence: u64,
 }
 
 pub fn cycle_fx_kind(current: Option<&MidiFxSlot>, delta: i32) -> Option<MidiFxSlot> {
@@ -534,6 +640,224 @@ pub fn process_live_event(
         }
     }
     events
+}
+
+pub fn process_live_chain_event(
+    chain: &[Option<MidiFxSlot>],
+    state: &mut LiveMidiFxState,
+    event: LiveMidiFxEvent,
+    current_ticks: u64,
+) -> Vec<LiveMidiFxEvent> {
+    let Some(arp_index) = first_live_arp_index(chain) else {
+        return process_live_event(chain, state, event);
+    };
+
+    let mut events = vec![event];
+    for slot in chain
+        .iter()
+        .take(arp_index)
+        .flatten()
+        .filter(|slot| slot.enabled)
+    {
+        events = apply_live_fx(slot, state, events);
+        if events.is_empty() {
+            return Vec::new();
+        }
+    }
+    let mut immediate = Vec::new();
+    for event in events {
+        if let Some(return_event) = update_live_arp_held_notes(state, event, current_ticks) {
+            immediate.push(return_event);
+        }
+    }
+    for slot in chain
+        .iter()
+        .skip(arp_index + 1)
+        .flatten()
+        .filter(|slot| slot.enabled)
+    {
+        immediate = apply_live_fx(slot, state, immediate);
+        if immediate.is_empty() {
+            break;
+        }
+    }
+    immediate
+}
+
+pub fn process_live_chain_tick(
+    chain: &[Option<MidiFxSlot>],
+    state: &mut LiveMidiFxState,
+    _previous_ticks: u64,
+    current_ticks: u64,
+) -> Vec<(u64, LiveMidiFxEvent)> {
+    let Some(arp_index) = first_live_arp_index(chain) else {
+        return Vec::new();
+    };
+    let Some(MidiFx::Arp {
+        step_ticks,
+        order,
+        gate_percent,
+    }) = chain
+        .get(arp_index)
+        .and_then(|slot| slot.as_ref())
+        .filter(|slot| slot.enabled)
+        .map(|slot| &slot.effect)
+    else {
+        return Vec::new();
+    };
+    let step_ticks = *step_ticks;
+    if step_ticks == 0 {
+        return Vec::new();
+    }
+    let gate_ticks =
+        ((u128::from(step_ticks) * u128::from(*gate_percent)) / 100).max(1_u128) as u64;
+    let mut scheduled = Vec::new();
+    loop {
+        let next_off = state.arp_pending_note_off_tick;
+        let next_on = state
+            .arp_next_step_tick
+            .filter(|_| !state.arp_held_notes.is_empty());
+        let next_tick = match (next_off, next_on) {
+            (Some(off), Some(on)) => Some(off.min(on)),
+            (Some(off), None) => Some(off),
+            (None, Some(on)) => Some(on),
+            (None, None) => None,
+        };
+        let Some(next_tick) = next_tick else {
+            break;
+        };
+        if next_tick >= current_ticks {
+            break;
+        }
+        if state.arp_pending_note_off_tick == Some(next_tick) {
+            if let Some(pitch) = state.arp_active_note.take() {
+                scheduled.push((next_tick, LiveMidiFxEvent::NoteOff { pitch }));
+            }
+            state.arp_pending_note_off_tick = None;
+            continue;
+        }
+        if state.arp_next_step_tick == Some(next_tick) {
+            if let Some(pitch) = state.arp_active_note.take() {
+                scheduled.push((next_tick, LiveMidiFxEvent::NoteOff { pitch }));
+                state.arp_pending_note_off_tick = None;
+            }
+            if let Some((pitch, velocity)) = next_live_arp_note(state, *order) {
+                scheduled.push((next_tick, LiveMidiFxEvent::NoteOn { pitch, velocity }));
+                state.arp_active_note = Some(pitch);
+                state.arp_pending_note_off_tick = Some(next_tick.saturating_add(gate_ticks));
+                state.arp_next_step_tick = Some(next_tick.saturating_add(step_ticks));
+            } else {
+                state.arp_next_step_tick = None;
+            }
+        }
+    }
+    let raw_events: Vec<LiveMidiFxEvent> =
+        scheduled.iter().map(|(_, event)| event.clone()).collect();
+    let mut events = raw_events;
+    for slot in chain
+        .iter()
+        .skip(arp_index + 1)
+        .flatten()
+        .filter(|slot| slot.enabled)
+    {
+        events = apply_live_fx(slot, state, events);
+        if events.is_empty() {
+            break;
+        }
+    }
+
+    let mut output = Vec::new();
+    let mut post_index = 0;
+    for (tick, _) in scheduled {
+        if let Some(event) = events.get(post_index).cloned() {
+            output.push((tick, event));
+            post_index += 1;
+        }
+    }
+    output
+}
+
+fn first_live_arp_index(chain: &[Option<MidiFxSlot>]) -> Option<usize> {
+    chain.iter().position(|slot| {
+        slot.as_ref()
+            .is_some_and(|slot| slot.enabled && matches!(slot.effect, MidiFx::Arp { .. }))
+    })
+}
+
+fn update_live_arp_held_notes(
+    state: &mut LiveMidiFxState,
+    event: LiveMidiFxEvent,
+    current_ticks: u64,
+) -> Option<LiveMidiFxEvent> {
+    match event {
+        LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+            state.arp_sequence_counter = state.arp_sequence_counter.saturating_add(1);
+            state.arp_held_notes.push(ArpHeldNote {
+                pitch,
+                velocity,
+                sequence: state.arp_sequence_counter,
+            });
+            state.arp_held_notes.sort_by_key(|note| (note.pitch, note.sequence));
+            if state.arp_next_step_tick.is_none() {
+                state.arp_next_step_tick = Some(current_ticks);
+            }
+            None
+        }
+        LiveMidiFxEvent::NoteOff { pitch } => {
+            if let Some(index) = state.arp_held_notes.iter().position(|note| note.pitch == pitch) {
+                state.arp_held_notes.remove(index);
+            }
+            if state.arp_held_notes.is_empty() {
+                state.arp_cycle_index = 0;
+                state.arp_direction_forward = true;
+                state.arp_next_step_tick = None;
+                state.arp_pending_note_off_tick = None;
+                return state.arp_active_note.take().map(|pitch| LiveMidiFxEvent::NoteOff { pitch });
+            }
+            None
+        }
+    }
+}
+
+fn next_live_arp_note(state: &mut LiveMidiFxState, order: ArpOrder) -> Option<(u8, u8)> {
+    if state.arp_held_notes.is_empty() {
+        return None;
+    }
+    let mut notes = state.arp_held_notes.clone();
+    match order {
+        ArpOrder::Up | ArpOrder::UpDown => notes.sort_by_key(|note| (note.pitch, note.sequence)),
+        ArpOrder::Down => notes.sort_by_key(|note| (std::cmp::Reverse(note.pitch), note.sequence)),
+        ArpOrder::AsPlayed => notes.sort_by_key(|note| note.sequence),
+    }
+    let index = match order {
+        ArpOrder::Up | ArpOrder::Down | ArpOrder::AsPlayed => {
+            let index = state.arp_cycle_index % notes.len();
+            state.arp_cycle_index = state.arp_cycle_index.saturating_add(1) % notes.len().max(1);
+            index
+        }
+        ArpOrder::UpDown => {
+            if notes.len() <= 1 {
+                0
+            } else {
+                let index = state.arp_cycle_index.min(notes.len() - 1);
+                if state.arp_direction_forward {
+                    if state.arp_cycle_index + 1 >= notes.len() {
+                        state.arp_direction_forward = false;
+                        state.arp_cycle_index = notes.len().saturating_sub(2);
+                    } else {
+                        state.arp_cycle_index += 1;
+                    }
+                } else if state.arp_cycle_index == 0 {
+                    state.arp_direction_forward = true;
+                    state.arp_cycle_index = 1.min(notes.len() - 1);
+                } else {
+                    state.arp_cycle_index -= 1;
+                }
+                index
+            }
+        }
+    };
+    notes.get(index).map(|note| (note.pitch, note.velocity))
 }
 
 fn apply_live_fx(
@@ -674,7 +998,11 @@ pub fn transform_notes(notes: &[MidiNote], chain: &[Option<MidiFxSlot>]) -> Vec<
 fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
     match &slot.effect {
         MidiFx::TrackClone { .. } => notes.to_vec(),
-        MidiFx::Arp { step_ticks } => apply_arp(notes, *step_ticks),
+        MidiFx::Arp {
+            step_ticks,
+            order,
+            gate_percent,
+        } => apply_arp(notes, *step_ticks, *order, *gate_percent),
         MidiFx::NoteFilter {
             low,
             high,
@@ -741,7 +1069,7 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
     }
 }
 
-fn apply_arp(notes: &[MidiNote], step_ticks: u64) -> Vec<MidiNote> {
+fn apply_arp(notes: &[MidiNote], step_ticks: u64, order: ArpOrder, gate_percent: u8) -> Vec<MidiNote> {
     if step_ticks == 0 {
         return notes.to_vec();
     }
@@ -753,25 +1081,61 @@ fn apply_arp(notes: &[MidiNote], step_ticks: u64) -> Vec<MidiNote> {
 
     let mut transformed = Vec::new();
     for mut group in groups.into_values() {
-        group.sort_by_key(|note| note.pitch);
+        sort_arp_group(&mut group, order);
         if group.len() <= 1 {
             transformed.extend(group);
             continue;
         }
-        let total = group.len() as u64;
-        for (index, mut note) in group.into_iter().enumerate() {
-            note.start_ticks = note
-                .start_ticks
-                .saturating_add(step_ticks.saturating_mul(index as u64));
-            note.length_ticks = note
-                .length_ticks
-                .min(step_ticks.saturating_mul(total).max(step_ticks))
-                .max(step_ticks);
-            transformed.push(note);
+        let group_start = group.iter().map(|note| note.start_ticks).min().unwrap_or(0);
+        let group_end = group
+            .iter()
+            .map(|note| note.end_ticks())
+            .max()
+            .unwrap_or(group_start);
+        let gate_ticks =
+            ((u128::from(step_ticks) * u128::from(gate_percent.clamp(10, 100))) / 100).max(1)
+                as u64;
+        let sequence = arp_group_sequence(group.len(), order);
+        let mut step_index = 0_usize;
+        let mut current = group_start;
+        while current < group_end {
+            let note = &group[sequence[step_index % sequence.len()]];
+            transformed.push(MidiNote {
+                pitch: note.pitch,
+                start_ticks: current,
+                length_ticks: gate_ticks.min(group_end.saturating_sub(current)).max(1),
+                velocity: note.velocity,
+                recording_clip_id: note.recording_clip_id,
+            });
+            current = current.saturating_add(step_ticks);
+            step_index += 1;
         }
     }
     transformed.sort_by_key(|note| (note.start_ticks, note.pitch));
     transformed
+}
+
+fn sort_arp_group(group: &mut [MidiNote], order: ArpOrder) {
+    match order {
+        ArpOrder::Up | ArpOrder::UpDown => group.sort_by_key(|note| note.pitch),
+        ArpOrder::Down => group.sort_by_key(|note| std::cmp::Reverse(note.pitch)),
+        ArpOrder::AsPlayed => {}
+    }
+}
+
+fn arp_group_sequence(len: usize, order: ArpOrder) -> Vec<usize> {
+    if len <= 1 {
+        return vec![0];
+    }
+    match order {
+        ArpOrder::Up | ArpOrder::AsPlayed => (0..len).collect(),
+        ArpOrder::Down => (0..len).rev().collect(),
+        ArpOrder::UpDown => {
+            let mut sequence: Vec<usize> = (0..len).collect();
+            sequence.extend((1..len.saturating_sub(1)).rev());
+            sequence
+        }
+    }
 }
 
 fn transpose_pitch(pitch: u8, semitones: i8) -> u8 {
@@ -807,8 +1171,9 @@ fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, cycle_existing_fx_kind,
-        cycle_fx_kind, process_live_event, transform_notes,
+        ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, arp_rate_label,
+        cycle_existing_fx_kind, cycle_fx_kind, process_live_chain_event, process_live_chain_tick,
+        process_live_event, transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -874,5 +1239,80 @@ mod tests {
         let transformed = transform_notes(&notes, &chain);
         assert_eq!(transformed[0].start_ticks, 124);
         assert_eq!(transformed[0].length_ticks, 60);
+    }
+
+    #[test]
+    fn arp_labels_use_musical_notation() {
+        assert_eq!(arp_rate_label(240), "1/16");
+        assert_eq!(
+            MidiFx::Arp {
+                step_ticks: 480,
+                order: ArpOrder::Down,
+                gate_percent: 100,
+            }
+            .inline_parameters()[0]
+                .value,
+            "1/8"
+        );
+    }
+
+    #[test]
+    fn transform_notes_arp_repeats_held_group_over_duration() {
+        let notes = [
+            MidiNote::new(60, 0, 960, 100),
+            MidiNote::new(64, 0, 960, 100),
+        ];
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: ArpOrder::Up,
+                gate_percent: 100,
+            },
+        })];
+        let transformed = transform_notes(&notes, &chain);
+        assert!(transformed.iter().any(|note| note.start_ticks == 0 && note.pitch == 60));
+        assert!(transformed.iter().any(|note| note.start_ticks == 240 && note.pitch == 64));
+        assert!(transformed.iter().any(|note| note.start_ticks == 480 && note.pitch == 60));
+        assert!(transformed.iter().any(|note| note.start_ticks == 720 && note.pitch == 64));
+    }
+
+    #[test]
+    fn live_chain_arp_emits_steps_for_held_notes() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: ArpOrder::Up,
+                gate_percent: 100,
+            },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        let immediate = process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            0,
+        );
+        assert!(immediate.is_empty());
+        let immediate = process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            0,
+        );
+        assert!(immediate.is_empty());
+
+        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 500);
+        assert!(scheduled.contains(&(0, LiveMidiFxEvent::NoteOn { pitch: 60, velocity: 100 })));
+        assert!(scheduled.contains(&(240, LiveMidiFxEvent::NoteOff { pitch: 60 })));
+        assert!(scheduled.contains(&(240, LiveMidiFxEvent::NoteOn { pitch: 64, velocity: 100 })));
     }
 }
