@@ -136,15 +136,19 @@ pub enum RoutingField {
     InputFxSlot,
     InputFxKind,
     InputFxEnabled,
-    InputFxValue,
+    InputFxParam1,
+    InputFxParam2,
+    InputFxMore,
     OutputFxSlot,
     OutputFxKind,
     OutputFxEnabled,
-    OutputFxValue,
+    OutputFxParam1,
+    OutputFxParam2,
+    OutputFxMore,
 }
 
 impl RoutingField {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 19] = [
         Self::InputDevice,
         Self::InputChannel,
         Self::OutputDevice,
@@ -155,11 +159,15 @@ impl RoutingField {
         Self::InputFxSlot,
         Self::InputFxKind,
         Self::InputFxEnabled,
-        Self::InputFxValue,
+        Self::InputFxParam1,
+        Self::InputFxParam2,
+        Self::InputFxMore,
         Self::OutputFxSlot,
         Self::OutputFxKind,
         Self::OutputFxEnabled,
-        Self::OutputFxValue,
+        Self::OutputFxParam1,
+        Self::OutputFxParam2,
+        Self::OutputFxMore,
     ];
 
     pub fn next(self) -> Self {
@@ -182,11 +190,15 @@ impl RoutingField {
             Self::InputFxSlot => "Input Slot",
             Self::InputFxKind => "Input Kind",
             Self::InputFxEnabled => "Input On",
-            Self::InputFxValue => "Input Val",
+            Self::InputFxParam1 => "Input P1",
+            Self::InputFxParam2 => "Input P2",
+            Self::InputFxMore => "Input More",
             Self::OutputFxSlot => "Output Slot",
             Self::OutputFxKind => "Output Kind",
             Self::OutputFxEnabled => "Output On",
-            Self::OutputFxValue => "Output Val",
+            Self::OutputFxParam1 => "Output P1",
+            Self::OutputFxParam2 => "Output P2",
+            Self::OutputFxMore => "Output More",
         }
     }
 }
@@ -251,16 +263,13 @@ mod tests {
     fn routing_fields_cycle() {
         assert_eq!(
             RoutingField::InputDevice.previous(),
-            RoutingField::OutputFxValue
+            RoutingField::OutputFxMore
         );
         assert_eq!(
             RoutingField::Passthrough.next(),
             RoutingField::RecordInputFx
         );
-        assert_eq!(
-            RoutingField::OutputFxValue.next(),
-            RoutingField::InputDevice
-        );
+        assert_eq!(RoutingField::OutputFxMore.next(), RoutingField::InputDevice);
     }
 
     #[test]
