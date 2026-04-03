@@ -7513,7 +7513,7 @@ impl App {
         struct CloneTarget {
             target_index: usize,
             record_mode: crate::midi_fx::RecordInputFxMode,
-            passthrough: bool,
+            monitor_input_fx: bool,
             output_port: Option<MidiPortRef>,
             output_channel: Option<u8>,
             output_chain: Vec<Option<MidiFxSlot>>,
@@ -7538,7 +7538,7 @@ impl App {
             let base = CloneTarget {
                 target_index,
                 record_mode: track.midi_fx.record_input_fx_mode,
-                passthrough: track.state.passthrough,
+                monitor_input_fx: track.midi_fx.monitor_input_fx,
                 output_port: track.routing.output_port.clone(),
                 output_channel: track.routing.output_channel,
                 output_chain: track.midi_fx.output_fx.clone(),
@@ -7591,7 +7591,7 @@ impl App {
                 }
             }
 
-            if target.passthrough {
+            if target.monitor_input_fx {
                 self.send_live_monitor_events(
                     target.target_index,
                     &target.output_chain,
@@ -12212,6 +12212,7 @@ mod tests {
         app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
         app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
         app.project.tracks[1].state.passthrough = true;
+        app.project.tracks[1].midi_fx.monitor_input_fx = true;
         app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
         app.project.tracks[1].routing.output_channel = Some(2);
         app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
@@ -12253,6 +12254,61 @@ mod tests {
                     && *channel == 2
                     && *pitch == 72
                     && velocity.is_none())
+        );
+    }
+
+    #[test]
+    fn track_clone_monitor_fx_sends_live_output_without_passthrough() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[1].state.passthrough = false;
+        app.project.tracks[1].midi_fx.monitor_input_fx = true;
+        app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_channel = Some(2);
+        app.project.tracks[1].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[1].routing.input_channel = MidiChannelFilter::Channel(1);
+        app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        });
+        app.project.tracks[1].midi_fx.input_fx[1] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+        app.project.tracks[1].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+        });
+
+        let sent = app.midi_output.sent_messages();
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_some())
+        );
+        assert!(
+            !sent
+                .iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 60
+                    && velocity.is_some())
         );
     }
 
