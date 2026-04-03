@@ -2194,26 +2194,29 @@ impl App {
             Color::RGB(244, 244, 236),
         )?;
 
-        let kind_fill =
-            if selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind {
+        if layout.kind.height() > 0 {
+            let kind_fill = if selected
+                && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind
+            {
                 Color::RGB(78, 90, 126)
             } else {
                 Color::RGB(52, 58, 80)
             };
-        canvas.set_draw_color(kind_fill);
-        canvas.fill_rect(layout.kind)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            &timeline_fx_kind_label(slot),
-            Rect::new(
-                layout.kind.x + 2,
-                layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
-                layout.kind.width().saturating_sub(4),
-                8,
-            ),
-            1,
-            text_color,
-        )?;
+            canvas.set_draw_color(kind_fill);
+            canvas.fill_rect(layout.kind)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &timeline_fx_kind_label(slot),
+                Rect::new(
+                    layout.kind.x + 2,
+                    layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
+                    layout.kind.width().saturating_sub(4),
+                    8,
+                ),
+                1,
+                text_color,
+            )?;
+        }
 
         let params = slot.effect.inline_parameters();
         let window_start = self
@@ -2285,22 +2288,24 @@ impl App {
             1,
             text_color,
         )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            if context == TimelineContext::InputFx {
-                "Add Input FX"
-            } else {
-                "Add Output FX"
-            },
-            Rect::new(
-                layout.kind.x + 3,
-                layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
-                (layout.row.x + layout.row.width() as i32 - layout.kind.x - 6).max(0) as u32,
-                8,
-            ),
-            1,
-            text_color,
-        )?;
+        if layout.kind.height() > 0 {
+            crate::ui::draw_text_fitted(
+                canvas,
+                if context == TimelineContext::InputFx {
+                    "Add Input FX"
+                } else {
+                    "Add Output FX"
+                },
+                Rect::new(
+                    layout.kind.x + 3,
+                    layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
+                    (layout.row.x + layout.row.width() as i32 - layout.kind.x - 6).max(0) as u32,
+                    8,
+                ),
+                1,
+                text_color,
+            )?;
+        }
         Ok(())
     }
 
@@ -2312,7 +2317,7 @@ impl App {
         selected: bool,
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if rect.width() == 0 {
+        if rect.height() == 0 {
             return Ok(());
         }
         canvas.set_draw_color(if selected {
@@ -2355,7 +2360,7 @@ impl App {
         selected: bool,
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if rect.width() == 0 {
+        if rect.height() == 0 {
             return Ok(());
         }
         canvas.set_draw_color(if selected {
@@ -2408,7 +2413,7 @@ impl App {
         selected: bool,
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if rect.width() == 0 {
+        if rect.height() == 0 {
             return Ok(());
         }
         canvas.set_draw_color(if selected {
@@ -2427,7 +2432,7 @@ impl App {
         rect: Rect,
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if rect.width() == 0 {
+        if rect.height() == 0 {
             return Ok(());
         }
         canvas.set_draw_color(Color::RGB(108, 56, 62));
@@ -2444,6 +2449,19 @@ impl App {
         displayed_rows: &[Option<usize>],
         selected_row: Option<usize>,
     ) -> Vec<TimelineFxRowLayout> {
+        fn empty_row_rect(row: Rect) -> Rect {
+            Rect::new(-10_000, row.y, 1, 1)
+        }
+
+        fn take_right(row: Rect, right: &mut i32, width: i32, gap: i32) -> Rect {
+            if width <= 0 || *right - width < row.x {
+                return empty_row_rect(row);
+            }
+            let rect = Rect::new(*right - width, row.y, width as u32, row.height());
+            *right = rect.x - gap;
+            rect
+        }
+
         let row_count = displayed_rows.len().max(1);
         let rows = crate::ui::stacked_rows(
             Rect::new(
@@ -2462,55 +2480,61 @@ impl App {
                     .get(row_index)
                     .is_some_and(|row| row.is_none());
                 let _is_selected = selected_row == Some(row_index) && !is_add_row;
-                let enabled_width = row.width().min(18).max(14);
-                let overflow_width = row.width().min(14).max(10);
-                let param_primary_width = row.width().min(30).max(22);
-                let param_secondary_width = row.width().min(18).max(14);
-                let move_width = row.width().min(8).max(6);
-                let delete_width = row.width().min(8).max(6);
+                let gap = 1;
+                let available = row.width() as i32;
+                let enabled_width = available.clamp(10, 14);
+                let delete_width = available.clamp(5, 6);
+                let param_primary_width = if available >= 84 {
+                    24
+                } else if available >= 64 {
+                    18
+                } else {
+                    14
+                };
+                let overflow_width = available.clamp(8, 10);
+                let param_secondary_width = if available >= 92 { 16 } else { 0 };
+                let move_width = if available >= 104 { 6 } else { 0 };
+                let kind_min_width = if available >= 84 { 18 } else { 12 };
+
+                let base_required = enabled_width + gap + param_primary_width + gap + delete_width;
+                let mut extras = [
+                    ("secondary", param_secondary_width),
+                    ("move_down", move_width),
+                    ("move_up", move_width),
+                    ("overflow", overflow_width),
+                ];
+                let mut optional_total: i32 = extras
+                    .iter()
+                    .filter(|(_, width)| *width > 0)
+                    .map(|(_, width)| *width + gap)
+                    .sum();
+                while available - base_required - optional_total < kind_min_width {
+                    if let Some((_, width)) = extras.iter_mut().find(|(_, width)| *width > 0) {
+                        optional_total -= *width + gap;
+                        *width = 0;
+                    } else {
+                        break;
+                    }
+                }
+                let secondary_width = extras[0].1;
+                let move_down_width = extras[1].1;
+                let move_up_width = extras[2].1;
+                let overflow_width = extras[3].1;
+
+                let enabled = Rect::new(row.x, row.y, enabled_width as u32, row.height());
                 let mut right = row.x + row.width() as i32;
-                let delete = Rect::new(
-                    right - delete_width as i32,
-                    row.y,
-                    delete_width,
-                    row.height(),
-                );
-                right = delete.x - 1;
-                let move_down =
-                    Rect::new(right - move_width as i32, row.y, move_width, row.height());
-                right = move_down.x - 1;
-                let move_up = Rect::new(right - move_width as i32, row.y, move_width, row.height());
-                right = move_up.x - 1;
-                let param_secondary = Rect::new(
-                    right - param_secondary_width as i32,
-                    row.y,
-                    param_secondary_width,
-                    row.height(),
-                );
-                right = param_secondary.x - 1;
-                let overflow = Rect::new(
-                    right - overflow_width as i32,
-                    row.y,
-                    overflow_width,
-                    row.height(),
-                );
-                right = overflow.x - 1;
-                let param_primary = Rect::new(
-                    right - param_primary_width as i32,
-                    row.y,
-                    param_primary_width,
-                    row.height(),
-                );
-                let enabled = Rect::new(row.x, row.y, enabled_width, row.height());
+                let delete = take_right(row, &mut right, delete_width, gap);
+                let move_down = take_right(row, &mut right, move_down_width, gap);
+                let move_up = take_right(row, &mut right, move_up_width, gap);
+                let param_secondary = take_right(row, &mut right, secondary_width, gap);
+                let overflow = take_right(row, &mut right, overflow_width, gap);
+                let param_primary = take_right(row, &mut right, param_primary_width, gap);
+                let kind_x = enabled.x + enabled.width() as i32 + gap;
+                let kind_width = (param_primary.x - kind_x - gap).max(0) as u32;
                 TimelineFxRowLayout {
                     row,
                     enabled,
-                    kind: Rect::new(
-                        enabled.x + enabled.width() as i32 + 1,
-                        row.y,
-                        (param_primary.x - enabled.x - enabled.width() as i32 - 2).max(8) as u32,
-                        row.height(),
-                    ),
+                    kind: Rect::new(kind_x, row.y, kind_width, row.height()),
                     param_primary,
                     param_secondary,
                     overflow,
@@ -11950,6 +11974,34 @@ mod tests {
         assert!(layout.kind.width() > layout.param_primary.width());
         assert!(layout.param_secondary.width() > 0);
         assert!(layout.delete.width() > 0);
+    }
+
+    #[test]
+    fn timeline_fx_row_layout_drops_low_priority_controls_when_narrow() {
+        let app = App::new();
+        let displayed = vec![Some(0)];
+        let layout = app.timeline_fx_row_layouts(Rect::new(10, 10, 56, 14), &displayed, None)[0];
+        let row_right = layout.row.x + layout.row.width() as i32;
+        for rect in [
+            layout.enabled,
+            layout.kind,
+            layout.param_primary,
+            layout.param_secondary,
+            layout.overflow,
+            layout.move_up,
+            layout.move_down,
+            layout.delete,
+        ] {
+            if rect.x >= layout.row.x {
+                assert!(rect.x + rect.width() as i32 <= row_right);
+            }
+        }
+        assert!(layout.kind.width() > 0);
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.delete.width() > 0);
+        assert!(layout.param_secondary.x < layout.row.x);
+        assert!(layout.move_up.x < layout.row.x);
+        assert!(layout.move_down.x < layout.row.x);
     }
 
     #[test]
