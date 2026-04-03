@@ -223,7 +223,7 @@ Pointer/touch notes:
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
-- each timeline FX row now uses one compact single-line layout in all states; it prioritizes the effect name plus one real parameter value, falls back to a compact `+N` overflow indicator when more parameters exist, and keeps the left chip/action zones clickable without changing row geometry
+- each timeline FX row now uses one compact single-line layout in all states; it prioritizes the effect name plus real parameter labels/values, keeps `P2` before `More` when both are visible, and uses the `More` cell as a parameter-window position scroller
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
@@ -236,7 +236,7 @@ Pointer/touch notes:
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
 - routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
-- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with compact 2-column FX grids for per-slot `Slot`, `Kind`, `On`, `P1`, `P2`, and `More` editing
+- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with compact 2-column FX grids for per-slot `Slot`, `Kind`, `On`, and label-aware parameter cells that relabel to the current visible `P1` / `P2` parameters while `More` scrolls the parameter window
 - the Timeline page shows per-track MIDI FX bands for input and output chains, with direct inline editing on the track
 - timeline note and region editing is still not implemented for pointer/touch input
 
