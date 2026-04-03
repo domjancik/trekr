@@ -220,7 +220,7 @@ Pointer/touch notes:
 - timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, Link, and Link sync
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
-- each timeline FX row now prioritizes a readable single-line `On + Kind + Primary Param` layout; secondary parameter, reorder, and delete controls appear as compact chips only on the selected row, while mouse/touch still acts on the clicked visible zone immediately and also selects that row/context
+- each timeline FX row now uses one compact single-line layout in all states; the left chip uses a short effect code with on/off indicated by styling, while tiny always-visible move/delete buttons keep the row stable and mouse/touch still acts on the clicked visible zone immediately while also selecting that row/context
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips

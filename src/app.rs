@@ -107,12 +107,6 @@ struct TimelineFxRowLayout {
     delete: Rect,
 }
 
-impl TimelineFxRowLayout {
-    fn hidden_at(row: Rect, x: i32) -> Rect {
-        Rect::new(x + 4_096, row.y, 1, row.height())
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct DirectMappingState {
     mode: DirectMappingMode,
@@ -2194,7 +2188,7 @@ impl App {
         }
         crate::ui::draw_text_fitted(
             canvas,
-            if slot.enabled { "ON" } else { "OFF" },
+            slot.effect.kind().short_label(),
             centered_text_rect(layout.enabled),
             1,
             Color::RGB(244, 244, 236),
@@ -2212,9 +2206,9 @@ impl App {
             canvas,
             &timeline_fx_kind_label(slot),
             Rect::new(
-                layout.kind.x + 3,
+                layout.kind.x + 2,
                 layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
-                layout.kind.width().saturating_sub(6),
+                layout.kind.width().saturating_sub(4),
                 8,
             ),
             1,
@@ -2467,66 +2461,33 @@ impl App {
                 let is_add_row = displayed_rows
                     .get(row_index)
                     .is_some_and(|row| row.is_none());
-                let is_selected = selected_row == Some(row_index) && !is_add_row;
+                let _is_selected = selected_row == Some(row_index) && !is_add_row;
                 let enabled_width = row.width().min(18).max(14);
-                let overflow_width = row.width().min(16).max(12);
-                let param_primary_width = row.width().min(42).max(30);
-                let param_secondary_width = if is_selected {
-                    row.width().min(24).max(18)
-                } else {
-                    0
-                };
-                let move_width = if is_selected {
-                    row.width().min(10).max(8)
-                } else {
-                    0
-                };
-                let delete_width = if is_selected {
-                    row.width().min(10).max(8)
-                } else {
-                    0
-                };
+                let overflow_width = row.width().min(14).max(10);
+                let param_primary_width = row.width().min(30).max(22);
+                let param_secondary_width = row.width().min(18).max(14);
+                let move_width = row.width().min(8).max(6);
+                let delete_width = row.width().min(8).max(6);
                 let mut right = row.x + row.width() as i32;
-                let delete = if delete_width > 0 {
-                    let rect = Rect::new(
-                        right - delete_width as i32,
-                        row.y,
-                        delete_width,
-                        row.height(),
-                    );
-                    right = rect.x - 1;
-                    rect
-                } else {
-                    TimelineFxRowLayout::hidden_at(row, right)
-                };
-                let move_down = if move_width > 0 {
-                    let rect =
-                        Rect::new(right - move_width as i32, row.y, move_width, row.height());
-                    right = rect.x - 1;
-                    rect
-                } else {
-                    TimelineFxRowLayout::hidden_at(row, right)
-                };
-                let move_up = if move_width > 0 {
-                    let rect =
-                        Rect::new(right - move_width as i32, row.y, move_width, row.height());
-                    right = rect.x - 1;
-                    rect
-                } else {
-                    TimelineFxRowLayout::hidden_at(row, right)
-                };
-                let param_secondary = if param_secondary_width > 0 {
-                    let rect = Rect::new(
-                        right - param_secondary_width as i32,
-                        row.y,
-                        param_secondary_width,
-                        row.height(),
-                    );
-                    right = rect.x - 1;
-                    rect
-                } else {
-                    TimelineFxRowLayout::hidden_at(row, right)
-                };
+                let delete = Rect::new(
+                    right - delete_width as i32,
+                    row.y,
+                    delete_width,
+                    row.height(),
+                );
+                right = delete.x - 1;
+                let move_down =
+                    Rect::new(right - move_width as i32, row.y, move_width, row.height());
+                right = move_down.x - 1;
+                let move_up = Rect::new(right - move_width as i32, row.y, move_width, row.height());
+                right = move_up.x - 1;
+                let param_secondary = Rect::new(
+                    right - param_secondary_width as i32,
+                    row.y,
+                    param_secondary_width,
+                    row.height(),
+                );
+                right = param_secondary.x - 1;
                 let overflow = Rect::new(
                     right - overflow_width as i32,
                     row.y,
@@ -11987,12 +11948,12 @@ mod tests {
         let layout = app.timeline_fx_row_layouts(output_band, &displayed, None)[0];
 
         assert!(layout.kind.width() > layout.param_primary.width());
-        assert!(layout.param_secondary.x > layout.row.x + layout.row.width() as i32);
-        assert!(layout.delete.x > layout.row.x + layout.row.width() as i32);
+        assert!(layout.param_secondary.width() > 0);
+        assert!(layout.delete.width() > 0);
     }
 
     #[test]
-    fn timeline_selected_fx_row_exposes_overlay_controls() {
+    fn timeline_selected_fx_row_uses_same_compact_layout() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
@@ -12005,12 +11966,19 @@ mod tests {
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
         let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let unselected_layout = app.timeline_fx_row_layouts(output_band, &displayed, None)[0];
         let layout = app.timeline_fx_row_layouts(output_band, &displayed, Some(0))[0];
 
         assert!(layout.param_secondary.width() > 0);
         assert!(layout.move_up.width() > 0);
         assert!(layout.move_down.width() > 0);
         assert!(layout.delete.width() > 0);
+        assert_eq!(layout.kind.width(), unselected_layout.kind.width());
+        assert_eq!(
+            layout.param_secondary.width(),
+            unselected_layout.param_secondary.width()
+        );
+        assert_eq!(layout.delete.width(), unselected_layout.delete.width());
     }
 
     #[test]
