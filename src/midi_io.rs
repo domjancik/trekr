@@ -172,6 +172,7 @@ pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
     #[cfg(test)]
     sent_commands: Arc<Mutex<Vec<MidiOutputCommand>>>,
+    sent_messages: Arc<Mutex<Vec<(String, u8, u8, Option<u8>)>>>,
 }
 
 pub struct MidiInputRuntime {
@@ -212,6 +213,7 @@ impl Default for MidiOutputRuntime {
         let (sender, receiver) = mpsc::channel();
         #[cfg(test)]
         let sent_commands = Arc::new(Mutex::new(Vec::new()));
+        let sent_messages = Arc::new(Mutex::new(Vec::new()));
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
             .spawn(move || {
@@ -226,6 +228,7 @@ impl Default for MidiOutputRuntime {
             sender,
             #[cfg(test)]
             sent_commands,
+            sent_messages,
         }
     }
 }
@@ -268,6 +271,10 @@ impl MidiOutputRuntime {
             velocity,
         };
         self.record_command_for_test(&command);
+        #[cfg(test)]
+        if let Ok(mut sent) = self.sent_messages.lock() {
+            sent.push((port.name.clone(), channel, pitch, Some(velocity)));
+        }
         self.sender.send(command).map_err(|error| error.to_string())
     }
 
@@ -283,6 +290,10 @@ impl MidiOutputRuntime {
             pitch,
         };
         self.record_command_for_test(&command);
+        #[cfg(test)]
+        if let Ok(mut sent) = self.sent_messages.lock() {
+            sent.push((port.name.clone(), channel, pitch, None));
+        }
         self.sender.send(command).map_err(|error| error.to_string())
     }
 
@@ -292,6 +303,10 @@ impl MidiOutputRuntime {
             channel,
         };
         self.record_command_for_test(&command);
+        #[cfg(test)]
+        if let Ok(mut sent) = self.sent_messages.lock() {
+            sent.push((port.name.clone(), channel, 123, None));
+        }
         self.sender.send(command).map_err(|error| error.to_string())
     }
 
@@ -314,6 +329,16 @@ impl MidiOutputRuntime {
             .iter()
             .filter(|command| matches!(command, MidiOutputCommand::AllNotesOff { .. }))
             .count()
+    }
+}
+
+impl MidiOutputRuntime {
+    #[cfg(test)]
+    pub fn sent_messages(&self) -> Vec<(String, u8, u8, Option<u8>)> {
+        self.sent_messages
+            .lock()
+            .map(|messages| messages.clone())
+            .unwrap_or_default()
     }
 }
 
