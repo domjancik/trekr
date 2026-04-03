@@ -451,7 +451,7 @@ impl MidiFx {
             } => match param_index {
                 0 => *low = (*low as i32 + delta).clamp(0, i32::from(*high)) as u8,
                 1 => *high = (*high as i32 + delta).clamp(i32::from(*low), 127) as u8,
-                _ => toggle_enabled_note(enabled_notes, delta),
+                _ => adjust_enabled_note_list(enabled_notes, *low, *high, delta),
             },
         }
     }
@@ -477,7 +477,7 @@ impl MidiFx {
                         *low = *high;
                     }
                 } else {
-                    toggle_enabled_note(enabled_notes, delta);
+                    adjust_enabled_note_list(enabled_notes, *low, *high, delta);
                 }
             }
             Self::Transpose { semitones } => {
@@ -501,19 +501,31 @@ impl MidiFx {
     }
 }
 
-fn toggle_enabled_note(enabled_notes: &mut Vec<u8>, delta: i32) {
-    let target = if let Some(last) = enabled_notes.last().copied() {
-        ((last as i32 + delta).rem_euclid(128)) as u8
-    } else {
-        60
-    };
-    if let Some(index) = enabled_notes.iter().position(|note| *note == target) {
-        enabled_notes.remove(index);
-    } else {
-        enabled_notes.push(target);
-        enabled_notes.sort_unstable();
-        enabled_notes.dedup();
+fn adjust_enabled_note_list(enabled_notes: &mut Vec<u8>, low: u8, high: u8, delta: i32) {
+    if delta == 0 || low > high {
+        return;
     }
+
+    if enabled_notes.is_empty() {
+        if delta > 0 {
+            return;
+        }
+        enabled_notes.extend(low..=high);
+    }
+
+    if delta < 0 {
+        if enabled_notes.len() > 1 {
+            enabled_notes.pop();
+        }
+        return;
+    }
+
+    let current = enabled_notes.last().copied().unwrap_or(low);
+    if current < high {
+        enabled_notes.push(current + 1);
+    }
+    enabled_notes.sort_unstable();
+    enabled_notes.dedup();
 }
 
 fn cycle_u64_choice(current: u64, options: &[u64], delta: i32) -> u64 {
@@ -1356,5 +1368,23 @@ mod tests {
                 velocity: 100
             }
         )));
+    }
+
+    #[test]
+    fn note_filter_list_parameter_decrements_monotonically() {
+        let mut effect = MidiFx::NoteFilter {
+            low: 60,
+            high: 64,
+            enabled_notes: Vec::new(),
+        };
+
+        effect.adjust_inline_parameter(2, -1, 0, 960);
+        assert_eq!(effect.inline_parameters()[2].value, "4");
+
+        effect.adjust_inline_parameter(2, -1, 0, 960);
+        assert_eq!(effect.inline_parameters()[2].value, "3");
+
+        effect.adjust_inline_parameter(2, -1, 0, 960);
+        assert_eq!(effect.inline_parameters()[2].value, "2");
     }
 }

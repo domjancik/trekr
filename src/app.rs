@@ -2185,9 +2185,9 @@ impl App {
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let enabled_fill = if slot.enabled {
-            Color::RGB(96, 170, 118)
+            Color::RGB(54, 176, 100)
         } else {
-            Color::RGB(76, 84, 100)
+            Color::RGB(88, 54, 62)
         };
         let enabled_selected =
             selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Enabled;
@@ -2202,16 +2202,16 @@ impl App {
         canvas.set_draw_color(if enabled_selected {
             Color::RGB(252, 236, 156)
         } else if slot.enabled {
-            Color::RGB(214, 244, 220)
+            Color::RGB(210, 248, 214)
         } else {
-            Color::RGB(168, 176, 190)
+            Color::RGB(196, 142, 154)
         });
         canvas.draw_rect(layout.enabled)?;
         if layout.enabled.width() > 4 && layout.enabled.height() > 4 {
             canvas.set_draw_color(if slot.enabled {
-                Color::RGB(70, 126, 86)
+                Color::RGB(32, 108, 62)
             } else {
-                Color::RGB(58, 64, 78)
+                Color::RGB(64, 36, 44)
             });
             canvas.draw_rect(Rect::new(
                 layout.enabled.x + 1,
@@ -2365,9 +2365,14 @@ impl App {
         });
         canvas.fill_rect(rect)?;
         if let Some(param) = param {
+            let display = if rect.width() >= 18 {
+                format!("{} {}", param.label, param.value)
+            } else {
+                param.value.clone()
+            };
             crate::ui::draw_text_fitted(
                 canvas,
-                &param.value,
+                &display,
                 Rect::new(
                     rect.x + 3,
                     rect.y + ((rect.height() as i32 - 8) / 2).max(0),
@@ -2522,22 +2527,22 @@ impl App {
                 let enabled_width = available.clamp(10, 14);
                 let delete_width = available.clamp(5, 6);
                 let param_primary_width = if available >= 84 {
-                    28
+                    30
                 } else if available >= 64 {
-                    22
+                    24
                 } else {
                     18
                 };
                 let overflow_width = if available >= 64 { 10 } else { 8 };
-                let param_secondary_width = if available >= 108 { 20 } else { 0 };
+                let param_secondary_width = if available >= 108 { 22 } else { 0 };
                 let move_width = if available >= 120 { 6 } else { 0 };
-                let kind_min_width = if available >= 84 { 16 } else { 10 };
+                let kind_min_width = if available >= 84 { 12 } else { 8 };
 
                 let base_required = enabled_width + gap + param_primary_width + gap + delete_width;
                 let mut extras = [
-                    ("secondary", param_secondary_width),
                     ("move_down", move_width),
                     ("move_up", move_width),
+                    ("secondary", param_secondary_width),
                     ("overflow", overflow_width),
                 ];
                 let mut optional_total: i32 = extras
@@ -2553,9 +2558,9 @@ impl App {
                         break;
                     }
                 }
-                let secondary_width = extras[0].1;
-                let move_down_width = extras[1].1;
-                let move_up_width = extras[2].1;
+                let move_down_width = extras[0].1;
+                let move_up_width = extras[1].1;
+                let secondary_width = extras[2].1;
                 let overflow_width = extras[3].1;
 
                 let enabled = Rect::new(row.x, row.y, enabled_width as u32, row.height());
@@ -2563,8 +2568,8 @@ impl App {
                 let delete = take_right(row, &mut right, delete_width, gap);
                 let move_down = take_right(row, &mut right, move_down_width, gap);
                 let move_up = take_right(row, &mut right, move_up_width, gap);
-                let param_secondary = take_right(row, &mut right, secondary_width, gap);
                 let overflow = take_right(row, &mut right, overflow_width, gap);
+                let param_secondary = take_right(row, &mut right, secondary_width, gap);
                 let param_primary = take_right(row, &mut right, param_primary_width, gap);
                 let kind_x = enabled.x + enabled.width() as i32 + gap;
                 let kind_width = (param_primary.x - kind_x - gap).max(0) as u32;
@@ -4886,6 +4891,17 @@ impl App {
                     }
                 }
             };
+            let (input_p1, input_p2, _, _) =
+                self.selected_fx_visible_params(active_track, MidiFxChainKind::Input);
+            let (output_p1, output_p2, _, _) =
+                self.selected_fx_visible_params(active_track, MidiFxChainKind::Output);
+            let field_label = match field {
+                RoutingField::InputFxParam1 => visible_param_label(input_p1.as_ref(), "P1"),
+                RoutingField::InputFxParam2 => visible_param_label(input_p2.as_ref(), "P2"),
+                RoutingField::OutputFxParam1 => visible_param_label(output_p1.as_ref(), "P1"),
+                RoutingField::OutputFxParam2 => visible_param_label(output_p2.as_ref(), "P2"),
+                _ => routing_field_short_label(field).to_string(),
+            };
             let control_height = row.height().saturating_sub(20).max(10);
             let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
             let label_text_rect =
@@ -4935,7 +4951,7 @@ impl App {
             canvas.draw_rect(affordance)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                routing_field_short_label(field),
+                &field_label,
                 centered_text_rect(label_text_rect),
                 1,
                 Color::RGB(244, 244, 236),
@@ -4949,14 +4965,20 @@ impl App {
                 );
                 let toggled_on = matches!(
                     self.routing_field_value(active_track, field).as_str(),
-                    "On" | "Post FX"
+                    "on" | "Post FX"
                 );
                 canvas.set_draw_color(if toggled_on {
-                    Color::RGB(52, 156, 150)
+                    Color::RGB(48, 170, 108)
                 } else {
-                    Color::RGB(88, 94, 102)
+                    Color::RGB(82, 66, 74)
                 });
                 canvas.fill_rect(bool_chip)?;
+                canvas.set_draw_color(if toggled_on {
+                    Color::RGB(192, 250, 206)
+                } else {
+                    Color::RGB(172, 128, 140)
+                });
+                canvas.draw_rect(bool_chip)?;
                 crate::ui::draw_text_fitted(
                     canvas,
                     &self.routing_field_value(active_track, field),
@@ -7093,11 +7115,7 @@ impl App {
 
     fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
         let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
-        if param_count <= 2 {
-            "--".to_string()
-        } else {
-            format!("+{}", param_count.saturating_sub(window_start + 1))
-        }
+        timeline_fx_overflow_label(param_count, window_start)
     }
 
     fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
@@ -8235,12 +8253,12 @@ impl App {
             RoutingField::InputFxParam1 => self
                 .selected_fx_visible_params(track, MidiFxChainKind::Input)
                 .0
-                .map(|param| format!("{} {}", param.label, param.value))
+                .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
             RoutingField::InputFxParam2 => self
                 .selected_fx_visible_params(track, MidiFxChainKind::Input)
                 .1
-                .map(|param| format!("{} {}", param.label, param.value))
+                .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
             RoutingField::InputFxMore => {
                 self.selected_fx_overflow_label(track, MidiFxChainKind::Input)
@@ -8262,12 +8280,12 @@ impl App {
             RoutingField::OutputFxParam1 => self
                 .selected_fx_visible_params(track, MidiFxChainKind::Output)
                 .0
-                .map(|param| format!("{} {}", param.label, param.value))
+                .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
             RoutingField::OutputFxParam2 => self
                 .selected_fx_visible_params(track, MidiFxChainKind::Output)
                 .1
-                .map(|param| format!("{} {}", param.label, param.value))
+                .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
             RoutingField::OutputFxMore => {
                 self.selected_fx_overflow_label(track, MidiFxChainKind::Output)
@@ -10022,7 +10040,8 @@ fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String
     if param_count <= 2 {
         "--".to_string()
     } else {
-        format!("+{}", param_count.saturating_sub(window_start + 1))
+        let window_count = param_count.saturating_sub(1).max(1);
+        format!("{}/{}", window_start + 1, window_count)
     }
 }
 
@@ -10084,6 +10103,12 @@ fn routing_field_short_label(field: RoutingField) -> &'static str {
         RoutingField::InputFxParam2 | RoutingField::OutputFxParam2 => "P2",
         RoutingField::InputFxMore | RoutingField::OutputFxMore => "More",
     }
+}
+
+fn visible_param_label(param: Option<&MidiFxInlineParam>, fallback: &'static str) -> String {
+    param
+        .map(|param| param.label.to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 struct RgbaReadback {
@@ -10640,7 +10665,7 @@ mod tests {
         App, AppControl, AppOverlay, DirectMappingMode, DirectMappingOrigin, DirectMappingTarget,
         DiscoverabilityTarget, LastActionStatus, cycle_input_channel, cycle_optional_port,
         cycle_output_channel, mapping_field_index, routing_field_short_label,
-        transport_strip_height,
+        timeline_fx_overflow_label, transport_strip_height,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
@@ -12997,6 +13022,25 @@ mod tests {
             unselected_layout.param_secondary.width()
         );
         assert_eq!(layout.delete.width(), unselected_layout.delete.width());
+    }
+
+    #[test]
+    fn timeline_fx_row_places_secondary_parameter_before_overflow() {
+        let app = App::new();
+        let displayed = vec![Some(0)];
+        let layout =
+            app.timeline_fx_row_layouts(Rect::new(10, 10, 120, 14), &displayed, Some(0))[0];
+
+        assert!(layout.param_secondary.width() > 0);
+        assert!(layout.overflow.width() > 0);
+        assert!(layout.param_secondary.x < layout.overflow.x);
+    }
+
+    #[test]
+    fn overflow_label_uses_window_position() {
+        assert_eq!(timeline_fx_overflow_label(2, 0), "--");
+        assert_eq!(timeline_fx_overflow_label(3, 0), "1/2");
+        assert_eq!(timeline_fx_overflow_label(3, 1), "2/2");
     }
 
     #[test]
