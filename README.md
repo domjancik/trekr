@@ -236,7 +236,7 @@ Pointer/touch notes:
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
 - routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
-- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with `Record Input FX`, `Monitor Input FX`, and per-slot `Input FX` / `Output FX` fields for cycling slot, kind, enabled state, `P1`, `P2`, and `More`
+- the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with compact 2-column FX grids for per-slot `Slot`, `Kind`, `On`, `P1`, `P2`, and `More` editing
 - the Timeline page shows per-track MIDI FX bands for input and output chains, with direct inline editing on the track
 - timeline note and region editing is still not implemented for pointer/touch input
 
