@@ -88,8 +88,12 @@ Examples:
 ## Live Semantics
 
 - held live notes should generate arp steps while held
+- held live notes should continue to generate arp steps while transport playback is stopped
+- stopped-mode live arp should use a dedicated live FX clock rather than advancing song playback state
+- when Link is enabled while transport is stopped, arp timing should follow Link tempo without forcing playback to start
 - releasing all held notes should stop future steps and send note-off for the currently sounding arp note if needed
 - `AsPlayed` should follow press order for live input
+- restarting playback may reset stopped-mode arp phase
 
 ## Recording Semantics
 
@@ -102,6 +106,7 @@ Examples:
 - arp rate is shown with musical labels, not raw ticks
 - playback chords can produce repeated arp steps over their held duration
 - live held notes can produce timed arp output
+- live held notes can produce timed arp output even while playback is stopped
 - clone-fed arp behaves like direct source-fed arp
 - chain ordering around arp remains consistent
 - muting/stopping does not leave arp notes hanging
