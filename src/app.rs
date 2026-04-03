@@ -7482,7 +7482,11 @@ impl App {
         }
     }
 
-    fn cloned_track_notes(&self, target_track_index: usize) -> Vec<MidiNote> {
+    fn cloned_track_notes_recursive(
+        &self,
+        target_track_index: usize,
+        visited: &mut [bool],
+    ) -> Vec<MidiNote> {
         let Some(track) = self.project.tracks.get(target_track_index) else {
             return Vec::new();
         };
@@ -7497,17 +7501,34 @@ impl App {
             let MidiFx::TrackClone { source_track } = slot.effect else {
                 continue;
             };
-            if source_track == target_track_index {
+            if source_track == target_track_index || !self.track_emits_clone_source(source_track) {
                 continue;
             }
-            if !self.track_emits_clone_source(source_track) {
-                continue;
-            }
-            let Some(source) = self.project.tracks.get(source_track) else {
-                continue;
-            };
-            notes.extend(source.midi_notes.iter().copied());
+            notes.extend(self.effective_track_pre_output_notes_recursive(source_track, visited));
         }
+        notes
+    }
+
+    fn effective_track_pre_output_notes_recursive(
+        &self,
+        track_index: usize,
+        visited: &mut [bool],
+    ) -> Vec<MidiNote> {
+        let Some(track) = self.project.tracks.get(track_index) else {
+            return Vec::new();
+        };
+        if visited.get(track_index).copied().unwrap_or(true) {
+            return Vec::new();
+        }
+        visited[track_index] = true;
+        let input_transform_only = Self::input_transform_only_chain(track);
+        let cloned_notes = transform_notes(
+            &self.cloned_track_notes_recursive(track_index, visited),
+            &input_transform_only,
+        );
+        let mut notes = track.midi_notes.clone();
+        notes.extend(cloned_notes);
+        visited[track_index] = false;
         notes
     }
 
@@ -7515,11 +7536,8 @@ impl App {
         let Some(track) = self.project.tracks.get(track_index) else {
             return Vec::new();
         };
-        let input_transform_only = Self::input_transform_only_chain(track);
-        let cloned_notes =
-            transform_notes(&self.cloned_track_notes(track_index), &input_transform_only);
-        let mut notes = track.midi_notes.clone();
-        notes.extend(cloned_notes);
+        let mut visited = vec![false; self.project.tracks.len()];
+        let notes = self.effective_track_pre_output_notes_recursive(track_index, &mut visited);
         transform_notes(&notes, &track.midi_fx.output_fx)
     }
 
@@ -10250,7 +10268,9 @@ mod tests {
     use crate::midi_fx::{MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind, MidiFxSlot};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
-    use crate::project::{RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind};
+    use crate::project::{
+        MidiNote, RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind,
+    };
     use crate::routing::MidiChannelFilter;
     use crate::timeline::RecordingTake;
     use crate::timeline_fx::{TimelineContext, TimelineFxField};
@@ -11636,6 +11656,28 @@ mod tests {
                     && *pitch == 72
                     && velocity.is_none())
         );
+    }
+
+    #[test]
+    fn track_clone_uses_recorded_source_midi_for_playback_stream() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(48, 0, 480, 100));
+        app.project.tracks[1].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::TrackClone { source_track: 0 },
+        });
+        app.project.tracks[1].midi_fx.input_fx[1] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+        app.project.tracks[1].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+
+        let notes = app.effective_track_output_notes(1);
+        assert!(notes.iter().any(|note| note.pitch == 60));
     }
 
     #[test]
