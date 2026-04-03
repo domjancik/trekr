@@ -2248,7 +2248,7 @@ impl App {
             canvas.fill_rect(layout.kind)?;
             crate::ui::draw_text_fitted(
                 canvas,
-                &timeline_fx_kind_label(slot),
+                timeline_fx_kind_display(slot, layout.kind.width()),
                 Rect::new(
                     layout.kind.x + 2,
                     layout.kind.y + ((layout.kind.height() as i32 - 8) / 2).max(0),
@@ -2369,8 +2369,14 @@ impl App {
         });
         canvas.fill_rect(rect)?;
         if let Some(param) = param {
-            let display = if rect.width() >= 18 {
-                format!("{} {}", param.label, param.value)
+            let display = if rect.width() >= 26 {
+                format!(
+                    "{} {}",
+                    timeline_param_compact_label(param.label),
+                    param.value
+                )
+            } else if rect.width() >= 18 {
+                param.value.clone()
             } else {
                 param.value.clone()
             };
@@ -2531,16 +2537,16 @@ impl App {
                 let enabled_width = available.clamp(10, 14);
                 let delete_width = available.clamp(5, 6);
                 let param_primary_width = if available >= 84 {
-                    30
+                    34
                 } else if available >= 64 {
-                    24
+                    28
                 } else {
-                    18
+                    20
                 };
                 let overflow_width = if available >= 64 { 10 } else { 8 };
-                let param_secondary_width = if available >= 108 { 22 } else { 0 };
+                let param_secondary_width = if available >= 100 { 24 } else { 0 };
                 let move_width = if available >= 120 { 6 } else { 0 };
-                let kind_min_width = if available >= 84 { 12 } else { 8 };
+                let kind_min_width = if available >= 84 { 8 } else { 6 };
 
                 let base_required = enabled_width + gap + param_primary_width + gap + delete_width;
                 let mut extras = [
@@ -10073,8 +10079,29 @@ fn timeline_fx_enabled_chip_label(slot: &MidiFxSlot, show_kind_title: bool) -> &
     }
 }
 
-fn timeline_fx_kind_label(slot: &MidiFxSlot) -> String {
-    slot.effect.kind().label().to_string()
+fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
+    if width >= 24 {
+        slot.effect.kind().short_label()
+    } else {
+        slot.effect.kind().compact_label()
+    }
+}
+
+fn timeline_param_compact_label(label: &str) -> &str {
+    match label {
+        "Rate" => "Rt",
+        "Gate" => "Gt",
+        "Low" => "Lo",
+        "High" => "Hi",
+        "List" => "Ls",
+        "Semi" => "Sm",
+        "Vel" => "Vl",
+        "Len" => "Ln",
+        "Root" => "Rt",
+        "Time" => "Tm",
+        "Src" => "Sc",
+        other => other,
+    }
 }
 
 fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String {
@@ -13009,7 +13036,8 @@ mod tests {
         let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
         let layout = app.timeline_fx_row_layouts(output_band, &displayed, None)[0];
 
-        assert!(layout.kind.width() > layout.param_primary.width());
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.kind.width() < layout.row.width());
         assert!(layout.param_secondary.width() > 0);
         assert!(layout.delete.width() > 0);
     }
