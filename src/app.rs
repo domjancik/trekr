@@ -2041,6 +2041,9 @@ impl App {
     ) -> (Rect, Rect) {
         let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
         let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
+        let (body_full_bounds, body_detail_bounds) =
+            self.track_column_body_bounds(full_bounds, detail_bounds);
+        let body_pair_bounds = crate::ui::union_rect(body_full_bounds, body_detail_bounds);
         let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
         let top = Rect::new(
             pair_bounds.x + 4,
@@ -2050,7 +2053,7 @@ impl App {
         );
         let bottom = Rect::new(
             pair_bounds.x + 4,
-            pair_bounds.y + pair_bounds.height() as i32 - (bottom_band_height + 4),
+            body_pair_bounds.y + body_pair_bounds.height() as i32 + 4,
             pair_bounds.width().saturating_sub(8),
             bottom_band_height as u32,
         );
@@ -12396,6 +12399,26 @@ mod tests {
             .expect("discoverability target");
 
         assert_eq!(target.action, AppAction::CycleSelectedTimelineFxKind);
+    }
+
+    #[test]
+    fn output_fx_band_starts_below_track_body_with_fixed_gap() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (body_full_bounds, body_detail_bounds) =
+            app.track_column_body_bounds(full_bounds, detail_bounds);
+        let body_pair = crate::ui::union_rect(body_full_bounds, body_detail_bounds);
+        let (_, output_rect) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+
+        assert_eq!(output_rect.y, body_pair.y + body_pair.height() as i32 + 4);
     }
 
     #[test]
