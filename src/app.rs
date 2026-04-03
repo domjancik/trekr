@@ -26,7 +26,7 @@ use image::RgbaImage;
 use sdl3::pixels::Color;
 use sdl3::pixels::PixelFormat;
 use sdl3::rect::Rect;
-use sdl3::render::{Canvas, RenderTarget};
+use sdl3::render::{Canvas, FRect, RenderTarget};
 use sdl3::surface::SurfaceRef;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,6 +50,7 @@ pub struct App {
     direct_mapping_state: DirectMappingState,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
+    ui_scaling_mode: UiScalingMode,
     transport_ticks: u64,
     playhead_ticks: u64,
     link_snapshot: LinkSnapshot,
@@ -167,6 +168,14 @@ pub enum VideoMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UiScalingMode {
+    #[default]
+    Auto,
+    Nearest,
+    Linear,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RunOptions {
     pub video_mode: VideoMode,
 }
@@ -239,6 +248,7 @@ impl App {
             direct_mapping_state: DirectMappingState::default(),
             viewport_size: (1280, 720),
             ui_scale_override: None,
+            ui_scaling_mode: UiScalingMode::Auto,
             transport_ticks: 0,
             playhead_ticks: 0,
             link_snapshot,
@@ -250,6 +260,10 @@ impl App {
 
     pub fn set_ui_scale_override(&mut self, scale: Option<f32>) {
         self.ui_scale_override = scale.filter(|value| *value >= 1.0);
+    }
+
+    pub fn set_ui_scaling_mode(&mut self, mode: UiScalingMode) {
+        self.ui_scaling_mode = mode;
     }
 
     pub fn bootstrap_summary(&self) -> String {
@@ -618,7 +632,7 @@ impl App {
         canvas: &mut Canvas<sdl3::video::Window>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (scale_x, scale_y) = canvas.scale();
-        if !uses_fractional_scale_interpolation(scale_x, scale_y) {
+        if !should_interpolate_window_scale(self.ui_scaling_mode, scale_x, scale_y) {
             return self.draw(canvas);
         }
 
@@ -647,7 +661,12 @@ impl App {
         canvas.copy(
             &frame,
             None,
-            Some(Rect::new(0, 0, output_size.0.max(1), output_size.1.max(1))),
+            FRect::new(
+                0.0,
+                0.0,
+                output_size.0.max(1) as f32,
+                output_size.1.max(1) as f32,
+            ),
         )?;
         canvas.present();
         canvas.set_scale(scale_x, scale_y)?;
@@ -6913,8 +6932,14 @@ fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
     override_scale.unwrap_or(display_scale).max(1.0)
 }
 
-fn uses_fractional_scale_interpolation(scale_x: f32, scale_y: f32) -> bool {
-    has_fractional_scale_component(scale_x) || has_fractional_scale_component(scale_y)
+fn should_interpolate_window_scale(mode: UiScalingMode, scale_x: f32, scale_y: f32) -> bool {
+    match mode {
+        UiScalingMode::Auto => {
+            has_fractional_scale_component(scale_x) || has_fractional_scale_component(scale_y)
+        }
+        UiScalingMode::Nearest => false,
+        UiScalingMode::Linear => true,
+    }
 }
 
 fn has_fractional_scale_component(scale: f32) -> bool {
@@ -7966,11 +7991,41 @@ mod tests {
     }
 
     #[test]
-    fn fractional_scale_interpolation_only_enables_for_non_integer_values() {
-        assert!(super::uses_fractional_scale_interpolation(1.5, 1.0));
-        assert!(super::uses_fractional_scale_interpolation(1.0, 1.25));
-        assert!(!super::uses_fractional_scale_interpolation(1.0, 2.0));
-        assert!(!super::uses_fractional_scale_interpolation(2.0004, 1.0));
+    fn auto_window_scale_interpolation_only_enables_for_non_integer_values() {
+        assert!(super::should_interpolate_window_scale(
+            super::UiScalingMode::Auto,
+            1.5,
+            1.0
+        ));
+        assert!(super::should_interpolate_window_scale(
+            super::UiScalingMode::Auto,
+            1.0,
+            1.25
+        ));
+        assert!(!super::should_interpolate_window_scale(
+            super::UiScalingMode::Auto,
+            1.0,
+            2.0
+        ));
+        assert!(!super::should_interpolate_window_scale(
+            super::UiScalingMode::Auto,
+            2.0004,
+            1.0
+        ));
+    }
+
+    #[test]
+    fn explicit_window_scale_modes_override_auto_behavior() {
+        assert!(!super::should_interpolate_window_scale(
+            super::UiScalingMode::Nearest,
+            1.5,
+            1.5
+        ));
+        assert!(super::should_interpolate_window_scale(
+            super::UiScalingMode::Linear,
+            1.0,
+            1.0
+        ));
     }
 
     #[test]
