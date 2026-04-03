@@ -2161,6 +2161,8 @@ impl App {
         } else {
             Color::RGB(76, 84, 100)
         };
+        let enabled_selected =
+            selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Enabled;
         canvas.set_draw_color(if selected {
             Color::RGB(44, 50, 70)
         } else {
@@ -2169,6 +2171,27 @@ impl App {
         canvas.fill_rect(layout.row)?;
         canvas.set_draw_color(enabled_fill);
         canvas.fill_rect(layout.enabled)?;
+        canvas.set_draw_color(if enabled_selected {
+            Color::RGB(252, 236, 156)
+        } else if slot.enabled {
+            Color::RGB(214, 244, 220)
+        } else {
+            Color::RGB(168, 176, 190)
+        });
+        canvas.draw_rect(layout.enabled)?;
+        if layout.enabled.width() > 4 && layout.enabled.height() > 4 {
+            canvas.set_draw_color(if slot.enabled {
+                Color::RGB(70, 126, 86)
+            } else {
+                Color::RGB(58, 64, 78)
+            });
+            canvas.draw_rect(Rect::new(
+                layout.enabled.x + 1,
+                layout.enabled.y + 1,
+                layout.enabled.width().saturating_sub(2),
+                layout.enabled.height().saturating_sub(2),
+            ))?;
+        }
         crate::ui::draw_text_fitted(
             canvas,
             if slot.enabled { "ON" } else { "OFF" },
