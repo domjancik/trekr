@@ -2590,7 +2590,9 @@ impl App {
         }
         if rect_contains(layout.enabled, x, y) {
             self.page_state.selected_timeline_fx_field = TimelineFxField::Enabled;
-            return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
+            return Some(
+                self.apply_action_with_source(AppAction::ToggleSelectedTimelineFx, source),
+            );
         }
         if rect_contains(layout.kind, x, y) {
             self.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
@@ -12200,6 +12202,62 @@ mod tests {
             )
             .is_some()
         );
+    }
+
+    #[test]
+    fn timeline_fx_enabled_click_toggles_effect_without_changing_kind() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, 0);
+        let before_enabled = app.project.tracks[0].midi_fx.output_fx[0]
+            .as_ref()
+            .unwrap()
+            .enabled;
+        let before_kind = app.project.tracks[0].midi_fx.output_fx[0]
+            .as_ref()
+            .unwrap()
+            .effect
+            .kind();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let layout = app.timeline_fx_row_layouts(output_band, &displayed, Some(0))[0];
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            layout.enabled.x + layout.enabled.width() as i32 / 2,
+            layout.enabled.y + layout.enabled.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(
+            app.page_state.selected_timeline_fx_field,
+            TimelineFxField::Enabled
+        );
+        let after_slot = app.project.tracks[0].midi_fx.output_fx[0].as_ref().unwrap();
+        assert_ne!(after_slot.enabled, before_enabled);
+        assert_eq!(after_slot.effect.kind(), before_kind);
+    }
+
+    #[test]
+    fn timeline_fx_enabled_and_kind_rects_are_disjoint() {
+        let app = App::new();
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let layout =
+            app.timeline_fx_row_layouts(Rect::new(10, 10, 120, 14), &displayed, Some(0))[0];
+        assert!(layout.enabled.x + layout.enabled.width() as i32 <= layout.kind.x);
     }
 
     #[test]
