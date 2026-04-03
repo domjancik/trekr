@@ -7993,9 +7993,14 @@ impl App {
         for (index, full_bounds, detail_bounds) in self.visible_track_columns(timeline_bounds) {
             let (body_full_bounds, body_detail_bounds) =
                 self.track_column_body_bounds(full_bounds, detail_bounds);
-            let full_label_rect = crate::ui::track_label_rect(body_full_bounds, self.timeline_flow);
+            let full_label_rect =
+                timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
             let detail_label_rect =
-                crate::ui::track_label_rect(body_detail_bounds, self.timeline_flow);
+                timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
+            let full_content_rect =
+                timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow);
+            let detail_content_rect =
+                timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow);
             let status_rect = crate::ui::track_status_rect(
                 crate::ui::union_rect(full_bounds, detail_bounds),
                 self.timeline_flow,
@@ -8103,8 +8108,7 @@ impl App {
                 }
             }
 
-            for bounds in [body_full_bounds, body_detail_bounds] {
-                let content_rect = crate::ui::track_content_rect(bounds, self.timeline_flow);
+            for content_rect in [full_content_rect, detail_content_rect] {
                 if let Some(clip_id) =
                     self.recording_lane_hit_clip(content_rect, &self.project.tracks[index], x, y)
                 {
@@ -8465,8 +8469,9 @@ impl App {
         );
         let (body_full_bounds, body_detail_bounds) =
             self.track_column_body_bounds(full_bounds, detail_bounds);
-        let label_rect = crate::ui::track_label_rect(body_full_bounds, self.timeline_flow);
-        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, self.timeline_flow);
+        let label_rect = timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
+        let detail_label_rect =
+            timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
         if track.recording_view == RecordingView::Stacked {
             let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
             targets.push((
@@ -8519,8 +8524,8 @@ impl App {
             ));
         }
         for content_rect in [
-            crate::ui::track_content_rect(body_full_bounds, self.timeline_flow),
-            crate::ui::track_content_rect(body_detail_bounds, self.timeline_flow),
+            timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow),
+            timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow),
         ] {
             for lane in self.recording_lane_layouts(content_rect, track) {
                 if let Some(clip_id) = lane.clip_id {
@@ -11775,8 +11780,10 @@ mod tests {
         let (full_bounds, detail_bounds) = columns[0];
         let (body_full_bounds, body_detail_bounds) =
             app.track_column_body_bounds(full_bounds, detail_bounds);
-        let full_label_rect = crate::ui::track_label_rect(body_full_bounds, app.timeline_flow);
-        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, app.timeline_flow);
+        let full_label_rect =
+            super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
+        let detail_label_rect =
+            super::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
         let (input_fx_rect, _) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
         let view_rect = app.recording_view_chip_rect(full_label_rect);
@@ -11794,6 +11801,65 @@ mod tests {
         assert!(!intersects(input_fx_rect, thru_rect));
         assert!(!intersects(input_fx_rect, detail_badge));
         assert!(!intersects(input_fx_rect, stored_slot));
+    }
+
+    #[test]
+    fn timeline_thru_hit_rect_matches_rendered_subcolumn_header() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
+        let label_rect = super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
+        let content_rect =
+            super::timeline_subcolumn_content_rect(body_full_bounds, app.timeline_flow);
+        let thru_rect = app.track_passthrough_button_rect(label_rect);
+        let intersects = |a: Rect, b: Rect| {
+            a.x < b.x + b.width() as i32
+                && a.x + a.width() as i32 > b.x
+                && a.y < b.y + b.height() as i32
+                && a.y + a.height() as i32 > b.y
+        };
+
+        assert!(super::rect_contains(
+            label_rect,
+            thru_rect.x + thru_rect.width() as i32 / 2,
+            thru_rect.y + thru_rect.height() as i32 / 2,
+        ));
+        assert!(!intersects(thru_rect, content_rect));
+    }
+
+    #[test]
+    fn click_below_thru_does_not_toggle_passthrough() {
+        let mut app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
+        let label_rect = super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
+        let thru_rect = app.track_passthrough_button_rect(label_rect);
+        let before = app.project.tracks[0].state.passthrough;
+        let below_y = thru_rect.y + thru_rect.height() as i32 + 2;
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            thru_rect.x + thru_rect.width() as i32 / 2,
+            below_y,
+            ActionSource::Pointer,
+        );
+
+        assert!(matches!(control, None | Some(AppControl::Continue)));
+        assert_eq!(app.project.tracks[0].state.passthrough, before);
     }
 
     #[test]
