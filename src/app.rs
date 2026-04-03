@@ -6497,13 +6497,21 @@ impl App {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
-        match self.page_state.selected_timeline_fx_field {
-            TimelineFxField::Enabled => self.toggle_selected_timeline_fx_enabled(),
-            TimelineFxField::Kind => self.adjust_selected_timeline_fx_kind(delta),
-            TimelineFxField::ParamPrimary => self.adjust_selected_timeline_fx_parameter(0, delta),
-            TimelineFxField::ParamSecondary => self.adjust_selected_timeline_fx_parameter(1, delta),
-            TimelineFxField::Scroll => self.scroll_selected_timeline_fx_parameter_window(delta),
-            TimelineFxField::Move => self.move_selected_timeline_fx(delta),
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.adjust_selected_timeline_fx_kind(delta);
+        } else {
+            match self.page_state.selected_timeline_fx_field {
+                TimelineFxField::Enabled => self.toggle_selected_timeline_fx_enabled(),
+                TimelineFxField::Kind => self.adjust_selected_timeline_fx_kind(delta),
+                TimelineFxField::ParamPrimary => {
+                    self.adjust_selected_timeline_fx_parameter(0, delta)
+                }
+                TimelineFxField::ParamSecondary => {
+                    self.adjust_selected_timeline_fx_parameter(1, delta)
+                }
+                TimelineFxField::Scroll => self.scroll_selected_timeline_fx_parameter_window(delta),
+                TimelineFxField::Move => self.move_selected_timeline_fx(delta),
+            }
         }
         self.normalize_timeline_fx_selection();
         if self.page_state.selected_timeline_context.chain_kind() != Some(chain_kind) {
@@ -6515,7 +6523,11 @@ impl App {
     }
 
     fn activate_timeline_context_item(&mut self) {
-        if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.add_selected_timeline_fx();
             return;
         }
         self.page_state.selected_timeline_fx_field =
@@ -12139,6 +12151,52 @@ mod tests {
             .unwrap()
             .enabled;
         assert_ne!(before, after);
+    }
+
+    #[test]
+    fn timeline_add_row_adjust_inserts_even_when_non_kind_field_was_selected() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        let existing = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        let add_row = app
+            .displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len()
+            - 1;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, add_row);
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Move;
+
+        app.adjust_page_item(1);
+
+        let after = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        assert_eq!(after, existing + 1);
+    }
+
+    #[test]
+    fn timeline_add_row_activate_inserts_new_fx() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        let existing = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        let add_row = app
+            .displayed_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len()
+            - 1;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, add_row);
+        app.page_state.selected_timeline_fx_field = TimelineFxField::ParamSecondary;
+
+        app.activate_page_item();
+
+        let after = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        assert_eq!(after, existing + 1);
     }
 
     #[test]
