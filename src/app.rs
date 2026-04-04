@@ -5856,8 +5856,18 @@ impl App {
                 } else {
                     global_loop
                 };
-                let events =
-                    scheduled_note_events(track, previous_ticks, advanced_ticks, loop_range);
+                let live_notes = track.playback_preview_notes(
+                    self.project.transport,
+                    self.transport_ticks,
+                    self.record_context(track),
+                );
+                let events = scheduled_note_events(
+                    track,
+                    live_notes.as_slice(),
+                    previous_ticks,
+                    advanced_ticks,
+                    loop_range,
+                );
                 (port, channel, events)
             })
             .collect();
@@ -7161,6 +7171,7 @@ fn pointer_hover_position(
 
 fn scheduled_note_events(
     track: &Track,
+    live_notes: &[MidiNote],
     previous_ticks: u64,
     advanced_ticks: u64,
     loop_range: Option<crate::timeline::LoopRegion>,
@@ -7180,7 +7191,7 @@ fn scheduled_note_events(
 
     let mut events = Vec::new();
     for (segment_start, segment_end) in segments {
-        for note in &track.midi_notes {
+        for note in track.midi_notes.iter().chain(live_notes.iter()) {
             if track.recording_clip_is_muted(note.recording_clip_id) {
                 continue;
             }
@@ -7988,7 +7999,7 @@ mod tests {
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
-    use crate::project::{RecordingView, STORED_LOOP_SLOT_COUNT};
+    use crate::project::{RecordContext, RecordingView, STORED_LOOP_SLOT_COUNT, Track, TrackKind};
     use crate::routing::MidiChannelFilter;
     use crate::timeline::RecordingTake;
     use crate::transport::{QuantizeMode, RecordMode};
@@ -9499,6 +9510,71 @@ mod tests {
         );
 
         assert_eq!(preview, Some(crate::timeline::Region::new(4_600, 200)));
+    }
+
+    #[test]
+    fn scheduled_note_events_include_recorded_take_notes_before_commit() {
+        let transport = crate::transport::Transport {
+            quantize: QuantizeMode::Off,
+            ..crate::transport::Transport::default()
+        };
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        track.begin_recording(1_680);
+        track.record_note_on(64, 100, 1_700);
+        track.record_note_off(64, 1_760);
+
+        let preview_notes = track.playback_preview_notes(
+            transport,
+            2_670,
+            Some(RecordContext {
+                range: track.loop_region,
+                wrap_basis_ticks: 0,
+                extend_clip_on_wrap: true,
+            }),
+        );
+        let events = super::scheduled_note_events(
+            &track,
+            preview_notes.as_slice(),
+            2_650,
+            20,
+            Some(track.loop_region),
+        );
+
+        assert!(events.iter().any(|event| *event == (1_700, true, 64, 100)));
+    }
+
+    #[test]
+    fn scheduled_note_events_ignore_pending_take_notes_until_note_off() {
+        let transport = crate::transport::Transport {
+            quantize: QuantizeMode::Off,
+            ..crate::transport::Transport::default()
+        };
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.state.loop_enabled = true;
+        track.loop_region = crate::timeline::LoopRegion::new(960, 960);
+        track.begin_recording(1_680);
+        track.record_note_on(64, 100, 1_700);
+
+        let preview_notes = track.playback_preview_notes(
+            transport,
+            2_670,
+            Some(RecordContext {
+                range: track.loop_region,
+                wrap_basis_ticks: 0,
+                extend_clip_on_wrap: true,
+            }),
+        );
+        let events = super::scheduled_note_events(
+            &track,
+            preview_notes.as_slice(),
+            2_650,
+            20,
+            Some(track.loop_region),
+        );
+
+        assert!(events.is_empty());
     }
 
     #[test]
