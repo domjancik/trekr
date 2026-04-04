@@ -503,6 +503,31 @@ impl Track {
         notes
     }
 
+    pub fn playback_preview_notes(
+        &self,
+        transport: Transport,
+        current_ticks: u64,
+        record_context: Option<RecordContext>,
+    ) -> Vec<MidiNote> {
+        let Some(take) = self.active_take.as_ref() else {
+            return Vec::new();
+        };
+
+        take.recorded_notes
+            .iter()
+            .filter_map(|recorded_note| {
+                preview_midi_note(
+                    transport,
+                    *recorded_note,
+                    record_context,
+                    take.pressed_at_ticks,
+                    current_ticks,
+                    current_ticks,
+                )
+            })
+            .collect()
+    }
+
     pub fn content_end_ticks(&self) -> u64 {
         let notes_end = self
             .midi_notes
