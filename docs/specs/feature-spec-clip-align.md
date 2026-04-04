@@ -147,6 +147,15 @@ Recommended interpretation:
 - `Start Of Last Note` is the default because it better matches loop creation for repeating phrases such as drum patterns
 - `Last Note End` remains available as an explicit option for clips where the note tail should be included in the aligned phrase length
 
+Exact source-span semantics:
+
+- `Clip Start` uses the selected clip region start tick
+- `First Note` uses the earliest start tick among notes owned by the selected clip; if the clip owns no notes, fall back to `Clip Start`
+- `Start Of Last Note` uses the latest note start tick among notes owned by the selected clip; if the clip owns no notes, fall back to `Clip End`
+- `Last Note End` uses the latest note end tick among notes owned by the selected clip; if the clip owns no notes, fall back to `Clip End`
+- `Clip End` uses the selected clip region end tick
+- if the resolved end is not after the resolved start, the panel should block apply and show an invalid-span warning
+
 ## Core Behavior
 
 ### What “Align” Means
@@ -159,6 +168,14 @@ On apply, the app performs these steps atomically on the target clip:
 4. place the aligned start at the chosen destination loop start
 5. update the chosen loop range to the target length
 6. if `Fit + Tempo` is selected, update global tempo so the phrase still takes the same real time as the original performance
+
+For V1, “remap” should mean **affine time projection inside the selected span**:
+
+- any owned event at the source start maps to destination start
+- any owned event at the source end maps to destination end
+- owned events inside the span keep their relative proportional position
+- owned events completely outside the chosen source span are removed from that clip
+- notes crossing the source-span boundary are clipped to the boundary before projection
 
 ### Recommended Defaults
 
@@ -191,6 +208,15 @@ That means implementation should persist enough clip metadata to preserve a stab
 - or a direct real-time duration value
 
 This metadata should stay with the clip so re-aligning the same clip later does not compound error.
+
+Recommended V1 metadata:
+
+- `native_start_ticks`
+- `native_end_ticks`
+- `native_duration_ticks`
+- `native_capture_tempo_bpm`
+
+These fields are enough to support stable tempo derivation, repeat align operations, and future UI copy such as “original 3.27 beats at 96 BPM”.
 
 ### Link / Tempo Authority
 
@@ -328,6 +354,8 @@ The timeline should communicate:
 
 V1 does not need full ghost-note preview rendering inside the track canvas.
 A textual or compact numeric preview in the panel is enough.
+
+If the selected clip is shown in stacked view, the selected lane highlight should remain visible behind the align panel so the target stays obvious.
 
 ## Data Model Expectations
 
