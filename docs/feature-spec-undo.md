@@ -182,6 +182,15 @@ Use:
 
 Each entry belongs to exactly one domain in V1.
 
+If a single user intent needs to touch multiple domains, the history system should treat it as a transaction made of multiple domain-owned entries that share one transaction id.
+
+Rules:
+
+- each child entry still belongs to exactly one domain
+- generic undo/redo operates on the whole transaction as one step
+- domain-specific undo only operates on transactions whose touched entries all belong to that target domain
+- if a transaction spans multiple domains, it is skipped by domain-specific undo and remains reachable only through generic undo/redo
+
 Generic undo:
 
 - walks the global log backward
@@ -306,6 +315,12 @@ V1-required transaction cases:
 - any future multi-field mapping learn commit
 - any action that updates both a domain value and its required companion selection/context in the same intent
 
+Cross-domain clarification:
+
+- if both pieces belong to the same domain, emit one entry
+- if they belong to different domains, emit one transaction containing one entry per affected domain
+- V1 should minimize cross-domain transactions, but the history format should allow them
+
 Optional later coalescing:
 
 - repeated note nudges
@@ -321,6 +336,14 @@ Redo should behave conventionally:
 - undo moves the relevant cursor backward
 - redo reapplies the next entry if no new conflicting entry was committed
 - committing a new entry clears redo for that same domain and any global future path beyond the current global cursor
+
+Cursor semantics:
+
+- generic undo/redo uses the global cursor and replays whole transactions in chronological order
+- domain-specific undo/redo uses the target domain cursor but may only traverse single-domain transactions for that domain
+- once any new transaction is committed after a generic undo, all global redo beyond the global cursor is discarded
+- once any new single-domain transaction is committed after a domain-specific undo in that same domain, redo for that domain is discarded
+- if a mixed-domain transaction exists beyond a domain cursor, domain-specific redo does not replay it; only generic redo may do so
 
 ## Options Considered
 
@@ -439,14 +462,23 @@ V1 format recommendation:
 
 - bounded snapshot journal, not a pure event-sourcing log
 - each journal entry stores `domain`, `label`, and compact `before`/`after` snapshots for the domain slice
+- multi-entry transactions share a transaction id and adjacent ordering
 - include a schema version and maximum-entry cap
 - truncate oldest entries once cap is exceeded
+- writes should use atomic replace semantics so a partial write does not corrupt the last good history file
 
 Why this over event log first:
 
 - current actions already mutate structs directly; inverse/event reconstruction would add significant complexity
 - snapshot journal keeps restore logic deterministic and straightforward
 - it still supports later migration to event-log-plus-checkpoint if history size/perf requires it
+
+Recovery behavior:
+
+- if the undo-history file is missing, start with empty history
+- if the file has an unknown schema version, ignore it and start with empty history
+- if the file is unreadable or invalid JSON, preserve it by renaming to a timestamped `.corrupt` sibling and start with empty history
+- failure to load undo history must not block loading the main app state
 
 ## Likely Code Touch Points
 
