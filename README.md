@@ -35,6 +35,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
 - `docs/specs/ui-scaling-spec.md`: current implemented UI scaling behavior and constraints.
 - `docs/specs/ui-density-presets-spec.md`: density preset behavior for default, compact, touch, and tiny layout modes.
+- `docs/specs/feature-spec-clip-align.md`: proposed post-recording clip-to-loop alignment and tempo-fitting workflow.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.

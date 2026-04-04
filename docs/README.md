@@ -3,6 +3,7 @@
 This folder is organized by audience and intent:
 
 - `docs/specs/` — product and feature specifications. Use these when defining behavior, UX, and acceptance criteria.
+  - Includes feature specs such as `docs/specs/feature-spec-clip-align.md` for proposed post-recording loop/tempo alignment behavior.
 - `docs/dev/` — implementation-facing technical references (architecture notes, mapping references, etc.).
 - `docs/planning/` — plans, handoffs, and roadmap/work breakdown documents.
 - `docs/user/` — end-user guides, tutorials, and operator-facing docs.
