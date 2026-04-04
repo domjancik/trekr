@@ -155,6 +155,8 @@ Current controls:
 - `Alt+1`..`Alt+8`: laptop fallback for recalling stored loop slots `1`..`8` on the active track
 - `Shift+Numpad1`..`Shift+Numpad8`: store the current active-track loop to stored loop slots `1`..`8`
 - `Shift+Alt+1`..`Shift+Alt+8`: laptop fallback for storing the current active-track loop to slots `1`..`8`
+- `Ctrl+Numpad1`..`Ctrl+Numpad8`: clear stored loop slots `1`..`8` on the active track
+- `Ctrl+Alt+1`..`Ctrl+Alt+8`: laptop fallback for clearing stored loop slots `1`..`8`
 - `Shift+L`: toggle global quantized stored-loop recall
 - `Shift+Q`: cycle global stored-loop launch quantize (`Off`, `1/16`, `1/8`, `1/4`, `Bar`, `LoopEnd`)
 - `Shift+[` / `Shift+]`: set global loop start/end at playhead

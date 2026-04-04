@@ -889,14 +889,14 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::StoreCurrentLoopToSlot6 => &["Shift+Numpad6", "Shift+Alt+6"],
         AppAction::StoreCurrentLoopToSlot7 => &["Shift+Numpad7", "Shift+Alt+7"],
         AppAction::StoreCurrentLoopToSlot8 => &["Shift+Numpad8", "Shift+Alt+8"],
-        AppAction::ClearStoredLoopSlot1 => &[],
-        AppAction::ClearStoredLoopSlot2 => &[],
-        AppAction::ClearStoredLoopSlot3 => &[],
-        AppAction::ClearStoredLoopSlot4 => &[],
-        AppAction::ClearStoredLoopSlot5 => &[],
-        AppAction::ClearStoredLoopSlot6 => &[],
-        AppAction::ClearStoredLoopSlot7 => &[],
-        AppAction::ClearStoredLoopSlot8 => &[],
+        AppAction::ClearStoredLoopSlot1 => &["Ctrl+Numpad1", "Ctrl+Alt+1"],
+        AppAction::ClearStoredLoopSlot2 => &["Ctrl+Numpad2", "Ctrl+Alt+2"],
+        AppAction::ClearStoredLoopSlot3 => &["Ctrl+Numpad3", "Ctrl+Alt+3"],
+        AppAction::ClearStoredLoopSlot4 => &["Ctrl+Numpad4", "Ctrl+Alt+4"],
+        AppAction::ClearStoredLoopSlot5 => &["Ctrl+Numpad5", "Ctrl+Alt+5"],
+        AppAction::ClearStoredLoopSlot6 => &["Ctrl+Numpad6", "Ctrl+Alt+6"],
+        AppAction::ClearStoredLoopSlot7 => &["Ctrl+Numpad7", "Ctrl+Alt+7"],
+        AppAction::ClearStoredLoopSlot8 => &["Ctrl+Numpad8", "Ctrl+Alt+8"],
         AppAction::ShortenGlobalLoop => &["Shift+-"],
         AppAction::ExtendGlobalLoop => &["Shift+="],
         AppAction::HalfGlobalLoop => &["Shift+/"],
@@ -955,31 +955,38 @@ fn digit_track_index(keycode: Keycode) -> Option<usize> {
 }
 
 fn stored_loop_slot_shortcut(keycode: Keycode, keymod: Mod) -> Option<AppAction> {
-    if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) {
-        return None;
-    }
-
+    let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
     let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
 
-    if !alt && !shift {
+    if !ctrl && !alt && !shift {
         return stored_loop_shortcut_slot_from_numpad(keycode)
             .and_then(recall_stored_loop_slot_action);
     }
 
-    if alt && !shift {
+    if !ctrl && alt && !shift {
         return stored_loop_shortcut_slot_from_digit(keycode)
             .and_then(recall_stored_loop_slot_action);
     }
 
-    if !alt && shift {
+    if !ctrl && !alt && shift {
         return stored_loop_shortcut_slot_from_numpad(keycode)
             .and_then(store_stored_loop_slot_action);
     }
 
-    if alt && shift {
+    if !ctrl && alt && shift {
         return stored_loop_shortcut_slot_from_digit(keycode)
             .and_then(store_stored_loop_slot_action);
+    }
+
+    if ctrl && !alt && !shift {
+        return stored_loop_shortcut_slot_from_numpad(keycode)
+            .and_then(clear_stored_loop_slot_action);
+    }
+
+    if ctrl && alt && !shift {
+        return stored_loop_shortcut_slot_from_digit(keycode)
+            .and_then(clear_stored_loop_slot_action);
     }
 
     None
@@ -1037,6 +1044,20 @@ fn store_stored_loop_slot_action(slot: usize) -> Option<AppAction> {
         5 => Some(AppAction::StoreCurrentLoopToSlot6),
         6 => Some(AppAction::StoreCurrentLoopToSlot7),
         7 => Some(AppAction::StoreCurrentLoopToSlot8),
+        _ => None,
+    }
+}
+
+fn clear_stored_loop_slot_action(slot: usize) -> Option<AppAction> {
+    match slot {
+        0 => Some(AppAction::ClearStoredLoopSlot1),
+        1 => Some(AppAction::ClearStoredLoopSlot2),
+        2 => Some(AppAction::ClearStoredLoopSlot3),
+        3 => Some(AppAction::ClearStoredLoopSlot4),
+        4 => Some(AppAction::ClearStoredLoopSlot5),
+        5 => Some(AppAction::ClearStoredLoopSlot6),
+        6 => Some(AppAction::ClearStoredLoopSlot7),
+        7 => Some(AppAction::ClearStoredLoopSlot8),
         _ => None,
     }
 }
@@ -1141,6 +1162,26 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let clear_numpad = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Kp4),
+            scancode: None,
+            keymod: Mod::LCTRLMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let clear_fallback = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::_5),
+            scancode: None,
+            keymod: Mod::LCTRLMOD | Mod::LALTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
 
         assert_eq!(
             KeyboardBindings.resolve(&numpad).unwrap().action,
@@ -1157,6 +1198,14 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&store_fallback).unwrap().action,
             AppAction::StoreCurrentLoopToSlot6
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&clear_numpad).unwrap().action,
+            AppAction::ClearStoredLoopSlot4
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&clear_fallback).unwrap().action,
+            AppAction::ClearStoredLoopSlot5
         );
     }
 
