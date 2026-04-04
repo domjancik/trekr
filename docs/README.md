@@ -6,6 +6,7 @@ This folder is organized by audience and intent:
   - Includes feature specs such as `docs/specs/feature-spec-clip-align.md` for proposed post-recording loop/tempo alignment behavior.
 - `docs/dev/` — implementation-facing technical references (architecture notes, mapping references, etc.).
 - `docs/planning/` — plans, handoffs, and roadmap/work breakdown documents.
+  - Includes implementation-focused planning docs such as `docs/planning/implementation-spec-clip-align.md`.
 - `docs/user/` — end-user guides, tutorials, and operator-facing docs.
 
 Recent/additional specs:
