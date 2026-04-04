@@ -30,6 +30,8 @@ Keyboard mappings currently implemented:
 - `Alt+1`..`Alt+8`: fallback recall for stored loop slots `1`..`8` on the active track
 - `Shift+Numpad1`..`Shift+Numpad8`: store current active-track loop into stored loop slots `1`..`8`
 - `Shift+Alt+1`..`Shift+Alt+8`: fallback store for current active-track loop into slots `1`..`8`
+- `Ctrl+Numpad1`..`Ctrl+Numpad8`: clear stored loop slots `1`..`8` on the active track
+- `Ctrl+Alt+1`..`Ctrl+Alt+8`: fallback clear for stored loop slots `1`..`8` on the active track
 - `A`: toggle arm on active track
 - `M`: toggle mute on active track
 - `S`: toggle solo on active track
