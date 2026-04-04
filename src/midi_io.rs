@@ -172,6 +172,7 @@ pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
     #[cfg(test)]
     sent_commands: Arc<Mutex<Vec<MidiOutputCommand>>>,
+    #[cfg(test)]
     sent_messages: Arc<Mutex<Vec<(String, u8, u8, Option<u8>)>>>,
 }
 
@@ -213,6 +214,7 @@ impl Default for MidiOutputRuntime {
         let (sender, receiver) = mpsc::channel();
         #[cfg(test)]
         let sent_commands = Arc::new(Mutex::new(Vec::new()));
+        #[cfg(test)]
         let sent_messages = Arc::new(Mutex::new(Vec::new()));
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
@@ -228,6 +230,7 @@ impl Default for MidiOutputRuntime {
             sender,
             #[cfg(test)]
             sent_commands,
+            #[cfg(test)]
             sent_messages,
         }
     }
