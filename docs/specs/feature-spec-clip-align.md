@@ -118,7 +118,8 @@ Recommended fields:
    - `First Note` (recommended default)
 2. `Source End`
    - `Clip End`
-   - `Last Note End` (recommended default)
+   - `Start Of Last Note` (recommended default)
+   - `Last Note End`
 3. `Target Length`
    - `1 bar`
    - `2 bars`
@@ -141,6 +142,11 @@ The panel should show a preview summary:
 - resulting BPM when `Fit + Tempo` is selected
 - warning when tempo authority prevents auto-commit
 
+Recommended interpretation:
+
+- `Start Of Last Note` is the default because it better matches loop creation for repeating phrases such as drum patterns
+- `Last Note End` remains available as an explicit option for clips where the note tail should be included in the aligned phrase length
+
 ## Core Behavior
 
 ### What “Align” Means
@@ -159,13 +165,13 @@ On apply, the app performs these steps atomically on the target clip:
 The default should optimize for “I recorded a phrase and now I want it to become the loop”:
 
 - start at `First Note`
-- end at `Last Note End`
+- end at `Start Of Last Note`
 - target `4 bars`
 - destination `Track Loop`
 - apply mode `Fit + Tempo`
 - enable the chosen loop if it was off
 
-This trims dead air before the first played note while still using an explicit, understandable model.
+This trims dead air before the first played note and treats the final onset as the loop boundary, which is usually a better fit for repeating rhythmic material than using the final note release.
 
 ## Tempo Model
 
