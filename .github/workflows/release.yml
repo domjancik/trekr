@@ -190,3 +190,31 @@ jobs:
             dist/trekr-linux-aarch64-${{ github.sha }}/trekr-linux-aarch64.tar.gz
             dist/trekr-macos-${{ github.sha }}/trekr-macos.tar.gz
             dist/trekr-windows-x86_64-${{ github.sha }}/trekr-windows-x86_64.zip
+
+  publish-pr-preview:
+    name: Publish PR preview release
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create or update PR preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pr-${{ github.event.pull_request.number }}-latest
+          name: PR #${{ github.event.pull_request.number }} preview (latest)
+          prerelease: true
+          generate_release_notes: false
+          target_commitish: ${{ github.event.pull_request.head.sha }}
+          overwrite_files: true
+          files: |
+            dist/trekr-linux-x86_64-pr-${{ github.event.pull_request.number }}/trekr-linux-x86_64.tar.gz
+            dist/trekr-linux-aarch64-pr-${{ github.event.pull_request.number }}/trekr-linux-aarch64.tar.gz
+            dist/trekr-macos-pr-${{ github.event.pull_request.number }}/trekr-macos.tar.gz
+            dist/trekr-windows-x86_64-pr-${{ github.event.pull_request.number }}/trekr-windows-x86_64.zip
