@@ -1,0 +1,60 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+source: artifacts/launcher/sources\main
+target: C:\Users\magne\AppData\Local\trekr-launcher-target\main
+
+## git fetch
+$ "git" "-C" "artifacts/launcher/sources\\main" "fetch" "--depth" "1" "origin" "main"
+status: exit code: 0
+stdout:
+
+stderr:
+From https://github.com/domjancik/trekr
+ * branch            main       -> FETCH_HEAD
+
+
+## git checkout
+$ "git" "-C" "artifacts/launcher/sources\\main" "checkout" "main"
+status: exit code: 0
+stdout:
+Your branch is up to date with 'origin/main'.
+
+stderr:
+Already on 'main'
+
+
+## git reset
+$ "git" "-C" "artifacts/launcher/sources\\main" "reset" "--hard" "FETCH_HEAD"
+status: exit code: 0
+stdout:
+HEAD is now at f0ea7ef fix: align loop recording capture phase for offset track loops
+
+stderr:
+
+
+## git submodule update
+$ "git" "-C" "artifacts/launcher/sources\\main" "submodule" "update" "--init" "--recursive" "vendor/ableton-link"
+status: exit code: 0
+stdout:
+Submodule path 'vendor/ableton-link': checked out 'addb7dae39532420a304f5171d7ace9d3e8b1978'
+Submodule path 'vendor/ableton-link/modules/asio-standalone': checked out '231cb29bab30f82712fcd54faaea42424cc6e710'
+
+stderr:
+Submodule 'vendor/ableton-link' (https://github.com/Ableton/link) registered for path 'vendor/ableton-link'
+Cloning into 'C:/Users/magne/AppData/Local/Temp/vibe-kanban/worktrees/b319-feature-spec-bui/trekr/artifacts/launcher/sources/main/vendor/ableton-link'...
+Submodule 'modules/asio-standalone' (https://github.com/chriskohlhoff/asio.git) registered for path 'vendor/ableton-link/modules/asio-standalone'
+Cloning into 'C:/Users/magne/AppData/Local/Temp/vibe-kanban/worktrees/b319-feature-spec-bui/trekr/artifacts/launcher/sources/main/vendor/ableton-link/modules/asio-standalone'...
+
+
+## cargo build
+$ "cargo" "build" "--release" "--bin" "trekr" "--target-dir" "C:\\Users\\magne\\AppData\\Local\\trekr-launcher-target\\main"
+status: exit code: 0
+stdout:
+
+stderr:
+   Compiling trekr v0.1.0 (C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\artifacts\launcher\sources\main)
+   Compiling sdl3 v0.17.3
+   Compiling midir v0.10.3
+    Finished `release` profile [optimized] target(s) in 13.37s
+
