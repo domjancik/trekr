@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LauncherCommand {
+    Ui,
     Help,
     ListBranches {
         repo_url: Option<String>,
@@ -32,10 +33,11 @@ where
 {
     let args = args.into_iter().collect::<Vec<_>>();
     let Some(command) = args.first() else {
-        return Ok(LauncherCommand::Help);
+        return Ok(LauncherCommand::Ui);
     };
 
     match command.as_str() {
+        "ui" => Ok(LauncherCommand::Ui),
         "help" | "--help" | "-h" => Ok(LauncherCommand::Help),
         "list-branches" => {
             let mut repo_url = None;
@@ -162,6 +164,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(writer)?;
     writeln!(writer, "commands:")?;
+    writeln!(writer, "  ui   (default when no command is given)")?;
     writeln!(writer, "  list-branches [--repo-url <url>]")?;
     writeln!(
         writer,

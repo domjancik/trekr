@@ -4,6 +4,7 @@ pub mod installs;
 pub mod models;
 pub mod process;
 pub mod state;
+pub mod ui;
 
 use crate::launcher::cli::{LauncherCommand, RunLauncherOptions};
 use crate::launcher::models::InstalledBuild;
@@ -21,6 +22,9 @@ pub fn execute(command: LauncherCommand) -> Result<(), Box<dyn std::error::Error
     let mut launcher_state = state::load(&state_path).unwrap_or_default();
 
     match command {
+        LauncherCommand::Ui => {
+            return ui::app::run_ui(state_path);
+        }
         LauncherCommand::Help => {
             cli::print_help(&mut std::io::stdout())?;
         }
@@ -84,14 +88,14 @@ pub fn execute(command: LauncherCommand) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-fn resolve_repo_url(explicit: Option<String>, state: &models::LauncherState) -> String {
+pub(crate) fn resolve_repo_url(explicit: Option<String>, state: &models::LauncherState) -> String {
     explicit
         .or_else(detect_repo_url_from_cwd)
         .or_else(|| state.repo_url.clone())
         .unwrap_or_else(|| DEFAULT_REPO_URL.to_string())
 }
 
-fn detect_repo_url_from_cwd() -> Option<String> {
+pub(crate) fn detect_repo_url_from_cwd() -> Option<String> {
     let output = std::process::Command::new("git")
         .args(["config", "--get", "remote.origin.url"])
         .output()
@@ -103,7 +107,7 @@ fn detect_repo_url_from_cwd() -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-fn upsert_install(installs: &mut Vec<InstalledBuild>, install: InstalledBuild) {
+pub(crate) fn upsert_install(installs: &mut Vec<InstalledBuild>, install: InstalledBuild) {
     if let Some(index) = installs
         .iter()
         .position(|candidate| candidate.branch == install.branch)
