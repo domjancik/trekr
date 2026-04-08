@@ -12,6 +12,7 @@ use sdl3::pixels::Color;
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
 pub fn run_ui(state_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
@@ -33,6 +34,17 @@ struct LauncherUiApp {
     ui_state: LauncherUiState,
     remote_branches: Vec<String>,
     status_line: String,
+    install_job: Option<InstallJob>,
+}
+
+struct InstallJob {
+    branch: String,
+    receiver: Receiver<InstallJobMessage>,
+}
+
+enum InstallJobMessage {
+    Progress(String),
+    Finished(Result<crate::launcher::models::InstalledBuild, String>),
 }
 
 impl LauncherUiApp {
@@ -43,6 +55,7 @@ impl LauncherUiApp {
             ui_state: LauncherUiState::default(),
             remote_branches: Vec::new(),
             status_line: "Ready".to_string(),
+            install_job: None,
         }
     }
 
@@ -74,6 +87,7 @@ impl LauncherUiApp {
                 }
             }
 
+            self.poll_install_job()?;
             self.draw(&mut canvas)?;
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -642,6 +656,10 @@ impl LauncherUiApp {
     }
 
     fn activate_installs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.install_job.is_some() {
+            self.status_line = "Install already running".to_string();
+            return Ok(());
+        }
         let Some(branch) = self
             .state
             .tracked_branches
@@ -652,11 +670,26 @@ impl LauncherUiApp {
             return Ok(());
         };
         let repo_url = resolve_repo_url(None, &self.state);
-        let install = installs::install_branch(&repo_url, &branch, false)?;
-        upsert_install(&mut self.state.installs, install);
-        self.state.last_selected_branch = Some(branch.clone());
-        self.status_line = format!("Installed/updated '{branch}'");
-        self.persist_state()
+        let (tx, rx) = mpsc::channel::<InstallJobMessage>();
+        let worker_branch = branch.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(InstallJobMessage::Progress(format!(
+                "Starting install for '{worker_branch}'"
+            )));
+            let result =
+                installs::install_branch_with_progress(&repo_url, &worker_branch, false, |step| {
+                    let _ = tx.send(InstallJobMessage::Progress(step.to_string()));
+                })
+                .map_err(|error| error.to_string());
+            let _ = tx.send(InstallJobMessage::Finished(result));
+        });
+
+        self.install_job = Some(InstallJob {
+            branch: branch.clone(),
+            receiver: rx,
+        });
+        self.status_line = format!("Installing '{branch}'...");
+        Ok(())
     }
 
     fn activate_settings(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -700,6 +733,40 @@ impl LauncherUiApp {
 
     fn persist_state(&self) -> Result<(), Box<dyn std::error::Error>> {
         state::save(Path::new(&self.state_path), &self.state)
+    }
+
+    fn poll_install_job(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(job) = self.install_job.take() else {
+            return Ok(());
+        };
+        let mut keep_job = true;
+        while let Ok(message) = job.receiver.try_recv() {
+            match message {
+                InstallJobMessage::Progress(message) => {
+                    self.status_line = format!("{}: {message}", job.branch);
+                }
+                InstallJobMessage::Finished(result) => {
+                    match result {
+                        Ok(install) => {
+                            upsert_install(&mut self.state.installs, install);
+                            self.state.last_selected_branch = Some(job.branch.clone());
+                            self.status_line = format!("Installed/updated '{}'", job.branch);
+                            self.persist_state()?;
+                        }
+                        Err(error) => {
+                            self.status_line =
+                                format!("Install failed for '{}': {error}", job.branch);
+                        }
+                    }
+                    keep_job = false;
+                }
+            }
+        }
+
+        if keep_job {
+            self.install_job = Some(job);
+        }
+        Ok(())
     }
 }
 

@@ -42,7 +42,10 @@ pub fn execute(command: LauncherCommand) -> Result<(), Box<dyn std::error::Error
             rebuild,
         } => {
             let repo_url = resolve_repo_url(repo_url, &launcher_state);
-            let install = installs::install_branch(&repo_url, &branch, rebuild)?;
+            let install =
+                installs::install_branch_with_progress(&repo_url, &branch, rebuild, |step| {
+                    println!("[install:{branch}] {step}")
+                })?;
             upsert_install(&mut launcher_state.installs, install.clone());
             launcher_state.repo_url = Some(repo_url);
             launcher_state.last_selected_branch = Some(branch);

@@ -10,6 +10,18 @@ pub fn install_branch(
     branch: &str,
     rebuild: bool,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>> {
+    install_branch_with_progress(repo_url, branch, rebuild, |_| {})
+}
+
+pub fn install_branch_with_progress<F>(
+    repo_url: &str,
+    branch: &str,
+    rebuild: bool,
+    mut progress: F,
+) -> Result<InstalledBuild, Box<dyn std::error::Error>>
+where
+    F: FnMut(&str),
+{
     let source_root = PathBuf::from("artifacts/launcher/sources");
     fs::create_dir_all(&source_root)?;
 
@@ -20,14 +32,18 @@ pub fn install_branch(
     let log_path = install_log_path(branch)?;
     write_log_header(&log_path, repo_url, branch, &source_dir, &target_dir)?;
 
+    progress("Preparing branch checkout");
     if source_dir.exists() {
         update_existing_checkout(&source_dir, branch, &log_path)?;
     } else {
         clone_branch(repo_url, branch, &source_dir, &log_path)?;
     }
+    progress("Syncing git submodules");
+    sync_submodules(&source_dir, &log_path)?;
 
     let binary_path = release_binary_path(&target_dir);
     if rebuild || !binary_path.exists() {
+        progress("Building release binary");
         build_checkout(&source_dir, &target_dir, &log_path)?;
     }
     if !binary_path.exists() {
@@ -44,6 +60,7 @@ pub fn install_branch(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    progress("Install completed");
 
     Ok(InstalledBuild {
         branch: branch.to_string(),
@@ -52,6 +69,20 @@ pub fn install_branch(
         binary_path,
         installed_at_unix_secs,
     })
+}
+
+fn sync_submodules(source_dir: &Path, log_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    run_checked(
+        Command::new("git").arg("-C").arg(source_dir).args([
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+            "vendor/ableton-link",
+        ]),
+        "git submodule update",
+        log_path,
+    )
 }
 
 fn source_dir_for_branch(root: &Path, branch: &str) -> PathBuf {
