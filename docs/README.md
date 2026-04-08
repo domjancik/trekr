@@ -11,6 +11,7 @@ Recent/additional specs:
 
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
 - `docs/specs/feature-spec-build-launcher.md` — separate launcher app for branch build discovery, install/update, and run flows.
+- `docs/specs/feature-spec-build-launcher-ui.md` — Trekr-style SDL UI specification on top of the launcher backend.
 
 ## Contribution rules
 
