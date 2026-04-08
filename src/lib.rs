@@ -3,6 +3,7 @@ pub mod app;
 pub mod app_ui;
 pub mod cli;
 pub mod engine;
+pub mod launcher;
 pub mod link;
 pub mod mapping;
 pub mod midi_io;

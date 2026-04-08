@@ -89,6 +89,10 @@ Launch state:
 - `cargo run -- capture-ui --state-mode demo --capture-dir artifacts/screenshots` renders deterministic screenshots without opening the interactive app
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - `cargo run --bin trekr-tui` opens a terminal menu for selecting launch mode, state, video mode, scale, and capture path
+- `cargo run --bin trekr-launcher -- help` prints the separate branch-build launcher CLI
+- `cargo run --bin trekr-launcher -- list-branches` lists remote git branches from the configured repo URL
+- `cargo run --bin trekr-launcher -- install --branch main` clones/pulls the branch into `artifacts/launcher/sources/`, builds `--release`, and records the installed binary
+- `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 CLI notes:
