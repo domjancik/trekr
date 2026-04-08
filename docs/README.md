@@ -10,6 +10,7 @@ This folder is organized by audience and intent:
 Recent/additional specs:
 
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
+- `docs/specs/feature-spec-build-launcher.md` — separate launcher app for branch build discovery, install/update, and run flows.
 
 ## Contribution rules
 
