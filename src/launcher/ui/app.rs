@@ -68,7 +68,9 @@ impl LauncherUiApp {
                     if matches!(action, LauncherUiAction::Quit) {
                         break 'running;
                     }
-                    self.apply_action(action)?;
+                    if let Err(error) = self.apply_action(action) {
+                        self.status_line = format!("{error}");
+                    }
                 }
             }
 

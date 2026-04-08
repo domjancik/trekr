@@ -95,6 +95,7 @@ Launch state:
 - `cargo run --bin trekr-launcher -- list-branches` lists remote git branches from the configured repo URL
 - `cargo run --bin trekr-launcher -- install --branch main` clones/pulls the branch into `artifacts/launcher/sources/`, builds `--release`, and records the installed binary
 - `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
+- launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Launcher UI controls:
