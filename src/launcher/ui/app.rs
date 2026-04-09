@@ -36,6 +36,7 @@ struct LauncherUiApp {
     remote_branches: Vec<String>,
     status_line: String,
     install_job: Option<InstallJob>,
+    state_file_input: Option<String>,
 }
 
 struct InstallJob {
@@ -57,6 +58,7 @@ impl LauncherUiApp {
             remote_branches: Vec::new(),
             status_line: "Ready".to_string(),
             install_job: None,
+            state_file_input: None,
         }
     }
 
@@ -75,6 +77,9 @@ impl LauncherUiApp {
 
         'running: loop {
             for event in event_pump.poll_iter() {
+                if self.handle_state_file_text_event(&event)? {
+                    continue;
+                }
                 if self.handle_pointer_event(&event, &canvas)? {
                     continue;
                 }
@@ -345,10 +350,15 @@ impl LauncherUiApp {
             .clone()
             .unwrap_or_else(|| "(none)".to_string());
         let project_value = self
-            .state
-            .default_project_path
+            .state_file_input
             .as_ref()
-            .map(|path| path.display().to_string())
+            .map(|input| format!("{}\\{}", default_user_state_dir().display(), input))
+            .or_else(|| {
+                self.state
+                    .default_project_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+            })
             .unwrap_or_else(|| "(none)".to_string());
         let install_dir_value = self
             .state
@@ -465,6 +475,103 @@ impl LauncherUiApp {
             1,
             Color::RGB(172, 188, 210),
         )?;
+        Ok(())
+    }
+
+    fn handle_state_file_text_event(
+        &mut self,
+        event: &Event,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        if self.state_file_input.is_none() {
+            return Ok(false);
+        }
+
+        match event {
+            Event::TextInput { text, .. } => {
+                if let Some(input) = &mut self.state_file_input {
+                    input.push_str(text);
+                    self.status_line =
+                        format!("State filename: {}  (Enter save, Esc cancel)", input);
+                }
+                Ok(true)
+            }
+            Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Backspace),
+                repeat: false,
+                ..
+            } => {
+                if let Some(input) = &mut self.state_file_input {
+                    input.pop();
+                    self.status_line =
+                        format!("State filename: {}  (Enter save, Esc cancel)", input);
+                }
+                Ok(true)
+            }
+            Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Return),
+                repeat: false,
+                ..
+            } => {
+                self.commit_state_file_input()?;
+                Ok(true)
+            }
+            Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Escape),
+                repeat: false,
+                ..
+            } => {
+                self.state_file_input = None;
+                self.status_line = "State filename edit canceled".to_string();
+                Ok(true)
+            }
+            _ => Ok(true),
+        }
+    }
+
+    fn start_state_file_input(&mut self) {
+        let initial = self
+            .state
+            .default_project_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| "project.json".to_string());
+        self.state_file_input = Some(initial.clone());
+        self.status_line = format!(
+            "State filename: {}  (base: {})",
+            initial,
+            default_user_state_dir().display()
+        );
+    }
+
+    fn commit_state_file_input(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(raw_input) = self.state_file_input.clone() else {
+            return Ok(());
+        };
+        let trimmed = raw_input.trim();
+        if trimmed.is_empty() {
+            self.status_line =
+                "State filename cannot be empty (Enter save, Esc cancel)".to_string();
+            return Ok(());
+        }
+
+        let mut filename = std::path::Path::new(trimmed)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .ok_or_else(|| "Invalid state filename".to_string())?;
+        if !filename.to_ascii_lowercase().ends_with(".json") {
+            filename.push_str(".json");
+        }
+
+        let base_dir = default_user_state_dir();
+        fs::create_dir_all(&base_dir)?;
+        let final_path = base_dir.join(&filename);
+        self.state.default_project_path = Some(final_path.clone());
+        self.state_file_input = None;
+        self.persist_state()?;
+        self.status_line = format!("State file set to {}", final_path.display());
         Ok(())
     }
 
@@ -757,10 +864,12 @@ impl LauncherUiApp {
             .unwrap_or(SettingsRow::RepoUrl)
         {
             SettingsRow::RepoUrl => self.refresh_branches(),
+            SettingsRow::StateFile => {
+                self.start_state_file_input();
+            }
             SettingsRow::WindowMode
             | SettingsRow::StateMode
             | SettingsRow::UiScale
-            | SettingsRow::StateFile
             | SettingsRow::InstallDirectory
             | SettingsRow::SourceFallback => {
                 self.persist_state()?;

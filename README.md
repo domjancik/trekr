@@ -112,7 +112,7 @@ Launcher UI controls:
 Launcher settings now include:
 
 - default launched app UI scale (`Auto`, `1.0`, `1.25`, `1.5`, `2.0`)
-- state file selection from `Documents/trekr/artifacts/state` (and creating/selecting a new path)
+- state file selection from `Documents/trekr/artifacts/state` and quick create via filename entry (base dir auto-applied)
 - installation directory selection (default user folder or custom directory)
 
 CLI notes:
