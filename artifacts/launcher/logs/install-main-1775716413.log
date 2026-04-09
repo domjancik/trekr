@@ -1,0 +1,9 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+started_at: 1775716413
+
+release api: https://api.github.com/repos/domjancik/trekr/releases?per_page=50
+
+artifact install failed: HTTP status client error (403 Forbidden) for url (https://api.github.com/repos/domjancik/trekr/releases?per_page=50)
+allow_source_build_fallback=false
