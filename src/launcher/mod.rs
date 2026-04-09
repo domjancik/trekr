@@ -48,6 +48,7 @@ pub fn execute(command: LauncherCommand) -> Result<(), Box<dyn std::error::Error
                 &branch,
                 rebuild,
                 allow_source_build || launcher_state.allow_source_build_fallback,
+                launcher_state.install_directory.as_deref(),
                 |step| println!("[install:{branch}] {step}"),
             )?;
             upsert_install(&mut launcher_state.installs, install.clone());

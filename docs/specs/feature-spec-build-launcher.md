@@ -53,6 +53,7 @@ Keep Trekr-style full UI path (tab/page navigation, footer status, compact chips
 2. **Channels**: branch/channel selection and pinning.
 3. **Downloads**: remote builds, install/update actions, progress/errors.
 4. **Settings**: storage path, cleanup rules, source endpoint config.
+   - includes launcher install directory, default state file, and default launched app UI scale.
 
 Navigation behavior mirrors current Trekr conventions:
 

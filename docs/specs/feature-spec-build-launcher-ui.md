@@ -52,6 +52,7 @@ Launcher has four pages, with Trekr-style tab/header/footer flow:
    - Job progress and last result (success/error).
 4. **Settings** (`F4`)
    - Repo URL, install root, cleanup policy, and default run arguments.
+   - Includes default UI scale, state-file path selection, and source-fallback toggle.
 
 ### Navigation & Interaction
 
@@ -146,12 +147,14 @@ UI must expose existing backend behavior clearly:
 3. User can select a branch and trigger install/update from UI.
 4. User can run installed `main` directly from Launch page.
 5. User can run selected feature branch from Launch page.
-6. User can set run args (`project/state file`, `window mode`, `state mode`) in UI and those args are used when launching.
+6. User can set run args (`project/state file`, `window mode`, `state mode`, `ui scale`) in UI and those args are used when launching.
 7. Artifact install is default; source build fallback requires explicit opt-in in settings/CLI.
-8. Conflict/replacement prompts are shown for concurrent install/run edge cases.
-9. Job progress and errors are visible without opening terminal logs.
-10. Launcher UI state persists across restarts.
-11. Existing Trekr app runtime/UI remains unchanged when launched directly.
+8. User can choose state files from `Documents/trekr/artifacts/state` and set a new state file path.
+9. User can configure installation directory from settings.
+10. Conflict/replacement prompts are shown for concurrent install/run edge cases.
+11. Job progress and errors are visible without opening terminal logs.
+12. Launcher UI state persists across restarts.
+13. Existing Trekr app runtime/UI remains unchanged when launched directly.
 
 ## Likely Code Touch Points
 

@@ -109,6 +109,12 @@ Launcher UI controls:
 - `R`: refresh remote branches
 - `Escape`: quit launcher
 
+Launcher settings now include:
+
+- default launched app UI scale (`Auto`, `1.0`, `1.25`, `1.5`, `2.0`)
+- state file selection from `Documents/trekr/artifacts/state` (and creating/selecting a new path)
+- installation directory selection (default user folder or custom directory)
+
 CLI notes:
 
 - `run`, `capture-ui`, `commands`, and `help` are the first-class app commands

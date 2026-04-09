@@ -11,6 +11,7 @@ use sdl3::event::Event;
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
@@ -349,6 +350,17 @@ impl LauncherUiApp {
             .as_ref()
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "(none)".to_string());
+        let install_dir_value = self
+            .state
+            .install_directory
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "(default user folder)".to_string());
+        let ui_scale_value = self
+            .state
+            .default_ui_scale
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "Auto".to_string());
         let rows = vec![
             format!("{}: {}", SettingsRow::RepoUrl.label(), repo_value),
             format!(
@@ -361,7 +373,13 @@ impl LauncherUiApp {
                 SettingsRow::StateMode.label(),
                 self.state.default_state_mode
             ),
-            format!("{}: {}", SettingsRow::ProjectPath.label(), project_value),
+            format!("{}: {}", SettingsRow::UiScale.label(), ui_scale_value),
+            format!("{}: {}", SettingsRow::StateFile.label(), project_value),
+            format!(
+                "{}: {}",
+                SettingsRow::InstallDirectory.label(),
+                install_dir_value
+            ),
             format!(
                 "{}: {}",
                 SettingsRow::SourceFallback.label(),
@@ -582,19 +600,39 @@ impl LauncherUiApp {
                 self.state.default_state_mode =
                     cycle_label(&values, &self.state.default_state_mode, delta).to_string();
             }
-            SettingsRow::ProjectPath => {
-                let value = self
-                    .state
-                    .default_project_path
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default();
-                self.state.default_project_path =
-                    if value.eq_ignore_ascii_case("state-fixtures/ui-looped.json") || delta < 0 {
-                        None
-                    } else {
-                        Some(PathBuf::from("state-fixtures/ui-looped.json"))
-                    };
+            SettingsRow::UiScale => {
+                let values = [None, Some(1.0_f32), Some(1.25), Some(1.5), Some(2.0)];
+                let current_index = values
+                    .iter()
+                    .position(|candidate| *candidate == self.state.default_ui_scale)
+                    .unwrap_or(0) as i32;
+                self.state.default_ui_scale =
+                    values[(current_index + delta).rem_euclid(values.len() as i32) as usize];
+            }
+            SettingsRow::StateFile => {
+                let choices = collect_state_file_choices(self.state.default_project_path.clone());
+                if !choices.is_empty() {
+                    let current_index = choices
+                        .iter()
+                        .position(|candidate| {
+                            Some(candidate.clone()) == self.state.default_project_path
+                        })
+                        .unwrap_or(0) as i32;
+                    let next = (current_index + delta).rem_euclid(choices.len() as i32) as usize;
+                    self.state.default_project_path = Some(choices[next].clone());
+                }
+            }
+            SettingsRow::InstallDirectory => {
+                let choices =
+                    collect_install_directory_choices(self.state.install_directory.clone());
+                if !choices.is_empty() {
+                    let current_index = choices
+                        .iter()
+                        .position(|candidate| *candidate == self.state.install_directory)
+                        .unwrap_or(0) as i32;
+                    let next = (current_index + delta).rem_euclid(choices.len() as i32) as usize;
+                    self.state.install_directory = choices[next].clone();
+                }
             }
             SettingsRow::SourceFallback => {
                 self.state.allow_source_build_fallback = delta > 0;
@@ -633,7 +671,7 @@ impl LauncherUiApp {
             self.state.default_project_path.clone(),
             Some(self.state.default_state_mode.clone()),
             Some(self.state.default_window_mode.clone()),
-            None,
+            self.state.default_ui_scale,
             Vec::new(),
         );
         let exit_code = process::run_installed(&install, &options)?;
@@ -685,6 +723,7 @@ impl LauncherUiApp {
         let (tx, rx) = mpsc::channel::<InstallJobMessage>();
         let worker_branch = branch.clone();
         let allow_source_fallback = self.state.allow_source_build_fallback;
+        let install_directory = self.state.install_directory.clone();
         std::thread::spawn(move || {
             let _ = tx.send(InstallJobMessage::Progress(format!(
                 "Starting install for '{worker_branch}'"
@@ -694,6 +733,7 @@ impl LauncherUiApp {
                 &worker_branch,
                 false,
                 allow_source_fallback,
+                install_directory.as_deref(),
                 |step| {
                     let _ = tx.send(InstallJobMessage::Progress(step.to_string()));
                 },
@@ -719,7 +759,9 @@ impl LauncherUiApp {
             SettingsRow::RepoUrl => self.refresh_branches(),
             SettingsRow::WindowMode
             | SettingsRow::StateMode
-            | SettingsRow::ProjectPath
+            | SettingsRow::UiScale
+            | SettingsRow::StateFile
+            | SettingsRow::InstallDirectory
             | SettingsRow::SourceFallback => {
                 self.persist_state()?;
                 self.status_line = "Settings saved".to_string();
@@ -804,4 +846,87 @@ fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str
         .position(|candidate| *candidate == current)
         .unwrap_or(0) as i32;
     options[(current_index + delta).rem_euclid(options.len() as i32) as usize]
+}
+
+fn collect_state_file_choices(current: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut choices = Vec::new();
+    let state_dir = default_user_state_dir();
+    if state_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&state_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+                {
+                    choices.push(path);
+                }
+            }
+        }
+    }
+
+    if let Some(current_path) = current {
+        if !choices.iter().any(|candidate| candidate == &current_path) {
+            choices.push(current_path);
+        }
+    }
+
+    if choices.is_empty() {
+        choices.push(state_dir.join("launcher-default.json"));
+    } else {
+        choices.sort();
+    }
+    choices
+}
+
+fn collect_install_directory_choices(current: Option<PathBuf>) -> Vec<Option<PathBuf>> {
+    let mut choices = vec![None, Some(default_user_install_dir())];
+    if let Some(path) = current {
+        if !choices
+            .iter()
+            .any(|candidate| candidate.as_ref() == Some(&path))
+        {
+            choices.push(Some(path));
+        }
+    }
+    choices
+}
+
+fn default_user_state_dir() -> PathBuf {
+    if cfg!(windows) {
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            return PathBuf::from(profile)
+                .join("Documents")
+                .join("trekr")
+                .join("artifacts")
+                .join("state");
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home)
+            .join("Documents")
+            .join("trekr")
+            .join("artifacts")
+            .join("state");
+    }
+    PathBuf::from("artifacts/state")
+}
+
+fn default_user_install_dir() -> PathBuf {
+    if cfg!(windows) {
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            return PathBuf::from(profile)
+                .join("Documents")
+                .join("trekr")
+                .join("launcher-installs");
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home)
+            .join("Documents")
+            .join("trekr")
+            .join("launcher-installs");
+    }
+    PathBuf::from("artifacts/launcher")
 }

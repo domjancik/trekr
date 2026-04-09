@@ -13,12 +13,14 @@ pub fn install_branch(
     branch: &str,
     rebuild: bool,
     allow_source_build_fallback: bool,
+    install_root: Option<&Path>,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>> {
     install_branch_with_progress(
         repo_url,
         branch,
         rebuild,
         allow_source_build_fallback,
+        install_root,
         |_| {},
     )
 }
@@ -28,6 +30,7 @@ pub fn install_branch_with_progress<F>(
     branch: &str,
     rebuild: bool,
     allow_source_build_fallback: bool,
+    install_root: Option<&Path>,
     mut progress: F,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>>
 where
@@ -37,7 +40,7 @@ where
     write_log_header(&log_path, repo_url, branch)?;
 
     progress("Resolving GitHub release artifact");
-    match install_from_release_artifact(repo_url, branch, &log_path, &mut progress) {
+    match install_from_release_artifact(repo_url, branch, install_root, &log_path, &mut progress) {
         Ok(install) => return Ok(install),
         Err(error) => {
             append_log(
@@ -57,12 +60,20 @@ where
     }
 
     progress("Artifact install failed, falling back to source build");
-    install_from_source(repo_url, branch, rebuild, &log_path, &mut progress)
+    install_from_source(
+        repo_url,
+        branch,
+        rebuild,
+        install_root,
+        &log_path,
+        &mut progress,
+    )
 }
 
 fn install_from_release_artifact<F>(
     repo_url: &str,
     branch: &str,
+    install_root: Option<&Path>,
     log_path: &Path,
     progress: &mut F,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>>
@@ -118,7 +129,7 @@ where
     let zip_path = download_asset(&client, asset, log_path)?;
 
     progress("Extracting artifact");
-    let install_dir = artifact_install_dir(branch, &release.tag_name);
+    let install_dir = artifact_install_dir(branch, &release.tag_name, install_root);
     if install_dir.exists() {
         fs::remove_dir_all(&install_dir)?;
     }
@@ -147,17 +158,18 @@ fn install_from_source<F>(
     repo_url: &str,
     branch: &str,
     rebuild: bool,
+    install_root: Option<&Path>,
     log_path: &Path,
     progress: &mut F,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>>
 where
     F: FnMut(&str),
 {
-    let source_root = PathBuf::from("artifacts/launcher/sources");
+    let source_root = source_checkout_root(install_root);
     fs::create_dir_all(&source_root)?;
 
     let source_dir = source_dir_for_branch(&source_root, branch);
-    let target_dir = source_build_target_dir(branch);
+    let target_dir = source_build_target_dir(branch, install_root);
     fs::create_dir_all(&target_dir)?;
 
     progress("Preparing source checkout");
@@ -200,8 +212,18 @@ fn source_dir_for_branch(root: &Path, branch: &str) -> PathBuf {
     root.join(sanitize_segment(branch))
 }
 
-fn source_build_target_dir(branch: &str) -> PathBuf {
+fn source_checkout_root(install_root: Option<&Path>) -> PathBuf {
+    if let Some(root) = install_root {
+        return root.join("sources");
+    }
+    PathBuf::from("artifacts/launcher/sources")
+}
+
+fn source_build_target_dir(branch: &str, install_root: Option<&Path>) -> PathBuf {
     let safe = sanitize_segment(branch);
+    if let Some(root) = install_root {
+        return root.join("source-target").join(safe);
+    }
     if cfg!(windows) {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
             return PathBuf::from(local_app_data)
@@ -213,9 +235,12 @@ fn source_build_target_dir(branch: &str) -> PathBuf {
     PathBuf::from("artifacts/launcher/target").join(safe)
 }
 
-fn artifact_install_dir(branch: &str, release_tag: &str) -> PathBuf {
+fn artifact_install_dir(branch: &str, release_tag: &str, install_root: Option<&Path>) -> PathBuf {
     let branch_safe = sanitize_segment(branch);
     let tag_safe = sanitize_segment(release_tag);
+    if let Some(root) = install_root {
+        return root.join("builds").join(branch_safe).join(tag_safe);
+    }
     if cfg!(windows) {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
             return PathBuf::from(local_app_data)

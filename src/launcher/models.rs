@@ -10,7 +10,9 @@ pub struct LauncherState {
     pub last_selected_branch: Option<String>,
     pub default_window_mode: String,
     pub default_state_mode: String,
+    pub default_ui_scale: Option<f32>,
     pub default_project_path: Option<PathBuf>,
+    pub install_directory: Option<PathBuf>,
     pub allow_source_build_fallback: bool,
 }
 
@@ -32,7 +34,9 @@ impl Default for LauncherState {
             last_selected_branch: Some("main".to_string()),
             default_window_mode: "windowed".to_string(),
             default_state_mode: "persisted".to_string(),
+            default_ui_scale: None,
             default_project_path: None,
+            install_directory: None,
             allow_source_build_fallback: false,
         }
     }

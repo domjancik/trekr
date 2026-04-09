@@ -42,16 +42,20 @@ pub enum SettingsRow {
     RepoUrl,
     WindowMode,
     StateMode,
-    ProjectPath,
+    UiScale,
+    StateFile,
+    InstallDirectory,
     SourceFallback,
 }
 
 impl SettingsRow {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::RepoUrl,
         Self::WindowMode,
         Self::StateMode,
-        Self::ProjectPath,
+        Self::UiScale,
+        Self::StateFile,
+        Self::InstallDirectory,
         Self::SourceFallback,
     ];
 
@@ -60,7 +64,9 @@ impl SettingsRow {
             Self::RepoUrl => "Repo URL",
             Self::WindowMode => "Window Mode",
             Self::StateMode => "State Mode",
-            Self::ProjectPath => "Project/State File",
+            Self::UiScale => "UI Scale",
+            Self::StateFile => "State File",
+            Self::InstallDirectory => "Install Directory",
             Self::SourceFallback => "Source Build Fallback",
         }
     }
