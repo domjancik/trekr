@@ -11,6 +11,7 @@ pub struct LauncherState {
     pub default_window_mode: String,
     pub default_state_mode: String,
     pub default_project_path: Option<PathBuf>,
+    pub allow_source_build_fallback: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ impl Default for LauncherState {
             default_window_mode: "windowed".to_string(),
             default_state_mode: "persisted".to_string(),
             default_project_path: None,
+            allow_source_build_fallback: false,
         }
     }
 }

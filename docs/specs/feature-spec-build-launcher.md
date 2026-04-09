@@ -25,13 +25,13 @@ Implication: the launcher should reuse this architecture pattern instead of intr
 ## Goals
 
 - Provide a clean launcher to run **latest stable** and selected **feature branch** builds.
-- Support download/update/install with explicit status and recovery.
+- Support download/update/install from finalized GitHub release artifacts with explicit status and recovery.
 - Reuse Trekr’s interaction model (actions, pages, keyboard + pointer/touch parity).
 - Keep install/replace behavior deterministic and safe.
 
 ## Non-Goals (V1)
 
-- In-app git source build/compile.
+- Requiring local source build toolchains for normal end-user installs.
 - Full package manager features (delta patching, rollback graphs, dependency solving).
 - Automatic branch discovery from arbitrary remotes without configured source.
 
@@ -116,6 +116,7 @@ Rule: actions triggered from a channel card/list row must resolve to that channe
 
 - Failed checksum or incomplete extract marks install as `Invalid`.
 - Invalid install cannot be launched; user gets `Retry` or `Remove`.
+- Source-build fallback is opt-in only (`--allow-source-build` or settings toggle), not default.
 
 ## Desktop vs Touch Interaction
 

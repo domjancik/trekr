@@ -16,7 +16,7 @@ This spec is grounded in current repo docs/code:
 ## Current Baseline
 
 - Trekr’s main app already has a page-shell UI with keyboard + pointer/touch parity and a shared action model (`AppAction` + `ActionSource`).
-- A separate launcher backend now exists (`src/launcher/*`) with branch listing, install/build, run, and persisted launcher state.
+- A separate launcher backend now exists (`src/launcher/*`) with branch listing, release-artifact-first install, optional source fallback, run, and persisted launcher state.
 - Missing piece: a native SDL launcher UI that matches Trekr’s style and interaction path.
 
 Implication: UI work should reuse Trekr’s page, widget, and action architecture, while calling into the existing launcher backend modules.
@@ -25,6 +25,7 @@ Implication: UI work should reuse Trekr’s page, widget, and action architectur
 
 - Deliver a native launcher UI in Trekr visual style and navigation pattern.
 - Reuse backend modules (`catalog`, `installs`, `process`, `state`) instead of rewriting install/run logic.
+- Keep artifact installs as the default user path; source build remains explicitly optional.
 - Keep action-first behavior across keyboard, pointer, and touch.
 - Make “run latest main” and “switch to feature branch” first-class one/two-tap flows.
 
@@ -116,6 +117,8 @@ UI must expose existing backend behavior clearly:
    - Prompt: `Focus running` (default) or `Relaunch`.
 6. **Install error**
    - Show actionable state with `Retry` and `Details`.
+7. **Artifact missing**
+   - Show `No matching release artifact` with optional `Enable source fallback` path.
 
 ## Desktop vs Touch
 
@@ -144,10 +147,11 @@ UI must expose existing backend behavior clearly:
 4. User can run installed `main` directly from Launch page.
 5. User can run selected feature branch from Launch page.
 6. User can set run args (`project/state file`, `window mode`, `state mode`) in UI and those args are used when launching.
-7. Conflict/replacement prompts are shown for concurrent install/run edge cases.
-8. Job progress and errors are visible without opening terminal logs.
-9. Launcher UI state persists across restarts.
-10. Existing Trekr app runtime/UI remains unchanged when launched directly.
+7. Artifact install is default; source build fallback requires explicit opt-in in settings/CLI.
+8. Conflict/replacement prompts are shown for concurrent install/run edge cases.
+9. Job progress and errors are visible without opening terminal logs.
+10. Launcher UI state persists across restarts.
+11. Existing Trekr app runtime/UI remains unchanged when launched directly.
 
 ## Likely Code Touch Points
 

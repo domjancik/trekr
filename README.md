@@ -93,7 +93,8 @@ Launch state:
 - `cargo run --bin trekr-launcher -- ui` explicitly opens the launcher UI
 - `cargo run --bin trekr-launcher -- help` prints the launcher CLI commands
 - `cargo run --bin trekr-launcher -- list-branches` lists remote git branches from the configured repo URL
-- `cargo run --bin trekr-launcher -- install --branch main` clones/pulls the branch into `artifacts/launcher/sources/`, prints step progress, and builds to a user-local target folder (Windows: `%LOCALAPPDATA%\\trekr-launcher-target\\<branch>\\release\\trekr.exe`)
+- `cargo run --bin trekr-launcher -- install --branch main` installs from GitHub release artifacts (no local toolchain required) into a user-local folder (Windows: `%LOCALAPPDATA%\\trekr-launcher-builds\\<branch>\\<release-tag>\\...`)
+- `cargo run --bin trekr-launcher -- install --branch main --allow-source-build` enables source-build fallback if no matching release artifact is found
 - `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
 - launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
 - committed fixture state lives in `state-fixtures/ui-looped.json`

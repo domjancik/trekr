@@ -43,14 +43,16 @@ pub enum SettingsRow {
     WindowMode,
     StateMode,
     ProjectPath,
+    SourceFallback,
 }
 
 impl SettingsRow {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::RepoUrl,
         Self::WindowMode,
         Self::StateMode,
         Self::ProjectPath,
+        Self::SourceFallback,
     ];
 
     pub fn label(self) -> &'static str {
@@ -59,6 +61,7 @@ impl SettingsRow {
             Self::WindowMode => "Window Mode",
             Self::StateMode => "State Mode",
             Self::ProjectPath => "Project/State File",
+            Self::SourceFallback => "Source Build Fallback",
         }
     }
 }

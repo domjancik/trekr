@@ -40,12 +40,16 @@ pub fn execute(command: LauncherCommand) -> Result<(), Box<dyn std::error::Error
             branch,
             repo_url,
             rebuild,
+            allow_source_build,
         } => {
             let repo_url = resolve_repo_url(repo_url, &launcher_state);
-            let install =
-                installs::install_branch_with_progress(&repo_url, &branch, rebuild, |step| {
-                    println!("[install:{branch}] {step}")
-                })?;
+            let install = installs::install_branch_with_progress(
+                &repo_url,
+                &branch,
+                rebuild,
+                allow_source_build || launcher_state.allow_source_build_fallback,
+                |step| println!("[install:{branch}] {step}"),
+            )?;
             upsert_install(&mut launcher_state.installs, install.clone());
             launcher_state.repo_url = Some(repo_url);
             launcher_state.last_selected_branch = Some(branch);

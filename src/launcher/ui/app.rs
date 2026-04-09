@@ -362,6 +362,15 @@ impl LauncherUiApp {
                 self.state.default_state_mode
             ),
             format!("{}: {}", SettingsRow::ProjectPath.label(), project_value),
+            format!(
+                "{}: {}",
+                SettingsRow::SourceFallback.label(),
+                if self.state.allow_source_build_fallback {
+                    "On"
+                } else {
+                    "Off"
+                }
+            ),
         ];
         self.draw_rows(
             canvas,
@@ -587,6 +596,9 @@ impl LauncherUiApp {
                         Some(PathBuf::from("state-fixtures/ui-looped.json"))
                     };
             }
+            SettingsRow::SourceFallback => {
+                self.state.allow_source_build_fallback = delta > 0;
+            }
         }
         self.persist_state()
     }
@@ -672,15 +684,21 @@ impl LauncherUiApp {
         let repo_url = resolve_repo_url(None, &self.state);
         let (tx, rx) = mpsc::channel::<InstallJobMessage>();
         let worker_branch = branch.clone();
+        let allow_source_fallback = self.state.allow_source_build_fallback;
         std::thread::spawn(move || {
             let _ = tx.send(InstallJobMessage::Progress(format!(
                 "Starting install for '{worker_branch}'"
             )));
-            let result =
-                installs::install_branch_with_progress(&repo_url, &worker_branch, false, |step| {
+            let result = installs::install_branch_with_progress(
+                &repo_url,
+                &worker_branch,
+                false,
+                allow_source_fallback,
+                |step| {
                     let _ = tx.send(InstallJobMessage::Progress(step.to_string()));
-                })
-                .map_err(|error| error.to_string());
+                },
+            )
+            .map_err(|error| error.to_string());
             let _ = tx.send(InstallJobMessage::Finished(result));
         });
 
@@ -699,7 +717,10 @@ impl LauncherUiApp {
             .unwrap_or(SettingsRow::RepoUrl)
         {
             SettingsRow::RepoUrl => self.refresh_branches(),
-            SettingsRow::WindowMode | SettingsRow::StateMode | SettingsRow::ProjectPath => {
+            SettingsRow::WindowMode
+            | SettingsRow::StateMode
+            | SettingsRow::ProjectPath
+            | SettingsRow::SourceFallback => {
                 self.persist_state()?;
                 self.status_line = "Settings saved".to_string();
             }

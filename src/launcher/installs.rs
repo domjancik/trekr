@@ -1,6 +1,9 @@
 use crate::launcher::models::InstalledBuild;
+use reqwest::blocking::Client;
+use reqwest::header::{ACCEPT, USER_AGENT};
+use serde::Deserialize;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,15 +12,143 @@ pub fn install_branch(
     repo_url: &str,
     branch: &str,
     rebuild: bool,
+    allow_source_build_fallback: bool,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>> {
-    install_branch_with_progress(repo_url, branch, rebuild, |_| {})
+    install_branch_with_progress(
+        repo_url,
+        branch,
+        rebuild,
+        allow_source_build_fallback,
+        |_| {},
+    )
 }
 
 pub fn install_branch_with_progress<F>(
     repo_url: &str,
     branch: &str,
     rebuild: bool,
+    allow_source_build_fallback: bool,
     mut progress: F,
+) -> Result<InstalledBuild, Box<dyn std::error::Error>>
+where
+    F: FnMut(&str),
+{
+    let log_path = install_log_path(branch)?;
+    write_log_header(&log_path, repo_url, branch)?;
+
+    progress("Resolving GitHub release artifact");
+    match install_from_release_artifact(repo_url, branch, &log_path, &mut progress) {
+        Ok(install) => return Ok(install),
+        Err(error) => {
+            append_log(
+                &log_path,
+                &format!(
+                    "\nartifact install failed: {error}\nallow_source_build_fallback={allow_source_build_fallback}\n"
+                ),
+            )?;
+            if !allow_source_build_fallback {
+                return Err(format!(
+                    "artifact install failed: {error}\nsource-build fallback is disabled\nlog: {}",
+                    log_path.display()
+                )
+                .into());
+            }
+        }
+    }
+
+    progress("Artifact install failed, falling back to source build");
+    install_from_source(repo_url, branch, rebuild, &log_path, &mut progress)
+}
+
+fn install_from_release_artifact<F>(
+    repo_url: &str,
+    branch: &str,
+    log_path: &Path,
+    progress: &mut F,
+) -> Result<InstalledBuild, Box<dyn std::error::Error>>
+where
+    F: FnMut(&str),
+{
+    let (owner, repo) = parse_github_repo(repo_url).ok_or_else(|| {
+        format!(
+            "unsupported repo url for release artifact install: {repo_url} (expected github url)"
+        )
+    })?;
+    let api_url = format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=50");
+    append_log(log_path, &format!("\nrelease api: {api_url}\n"))?;
+
+    progress("Fetching release metadata");
+    let client = github_client()?;
+    let mut request = client
+        .get(&api_url)
+        .header(USER_AGENT, "trekr-launcher")
+        .header(ACCEPT, "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.trim().is_empty() {
+            request = request.bearer_auth(token);
+        }
+    }
+    let response = request.send()?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("release metadata request failed: {status} {}", body.trim()).into());
+    }
+    let releases = response.json::<Vec<GithubRelease>>()?;
+    if releases.is_empty() {
+        return Err("no GitHub releases found".into());
+    }
+
+    let release = select_release_for_branch(&releases, branch)
+        .ok_or("no matching GitHub release for branch")?;
+    progress(&format!("Selected release {}", release.tag_name));
+
+    let asset = select_asset_for_platform(&release.assets)
+        .ok_or("no matching artifact asset for platform")?;
+    append_log(
+        log_path,
+        &format!(
+            "selected release: {} ({})\nselected asset: {} ({})\n",
+            release.tag_name, release.name, asset.name, asset.browser_download_url
+        ),
+    )?;
+
+    progress("Downloading artifact");
+    let zip_path = download_asset(&client, asset, log_path)?;
+
+    progress("Extracting artifact");
+    let install_dir = artifact_install_dir(branch, &release.tag_name);
+    if install_dir.exists() {
+        fs::remove_dir_all(&install_dir)?;
+    }
+    fs::create_dir_all(&install_dir)?;
+    extract_zip_archive(&zip_path, &install_dir)?;
+
+    let binary_path = find_binary_recursive(&install_dir).ok_or_else(|| {
+        format!(
+            "artifact extracted but {} not found",
+            expected_binary_name()
+        )
+    })?;
+
+    let installed_at_unix_secs = unix_now();
+    progress("Install completed from release artifact");
+    Ok(InstalledBuild {
+        branch: branch.to_string(),
+        commit: release.tag_name.clone(),
+        source_dir: install_dir,
+        binary_path,
+        installed_at_unix_secs,
+    })
+}
+
+fn install_from_source<F>(
+    repo_url: &str,
+    branch: &str,
+    rebuild: bool,
+    log_path: &Path,
+    progress: &mut F,
 ) -> Result<InstalledBuild, Box<dyn std::error::Error>>
 where
     F: FnMut(&str),
@@ -26,29 +157,27 @@ where
     fs::create_dir_all(&source_root)?;
 
     let source_dir = source_dir_for_branch(&source_root, branch);
-    let target_dir = launcher_target_dir(branch);
+    let target_dir = source_build_target_dir(branch);
     fs::create_dir_all(&target_dir)?;
 
-    let log_path = install_log_path(branch)?;
-    write_log_header(&log_path, repo_url, branch, &source_dir, &target_dir)?;
-
-    progress("Preparing branch checkout");
+    progress("Preparing source checkout");
     if source_dir.exists() {
-        update_existing_checkout(&source_dir, branch, &log_path)?;
+        update_existing_checkout(&source_dir, branch, log_path)?;
     } else {
-        clone_branch(repo_url, branch, &source_dir, &log_path)?;
+        clone_branch(repo_url, branch, &source_dir, log_path)?;
     }
-    progress("Syncing git submodules");
-    sync_submodules(&source_dir, &log_path)?;
 
-    let binary_path = release_binary_path(&target_dir);
+    progress("Syncing git submodules");
+    sync_submodules(&source_dir, log_path)?;
+
+    let binary_path = source_release_binary_path(&target_dir);
     if rebuild || !binary_path.exists() {
-        progress("Building release binary");
-        build_checkout(&source_dir, &target_dir, &log_path)?;
+        progress("Building source release binary");
+        build_checkout(&source_dir, &target_dir, log_path)?;
     }
     if !binary_path.exists() {
         return Err(format!(
-            "build completed but binary was not found at {}\nlog: {}",
+            "source build completed but binary was not found at {}\nlog: {}",
             binary_path.display(),
             log_path.display()
         )
@@ -56,12 +185,8 @@ where
     }
 
     let commit = current_commit(&source_dir)?;
-    let installed_at_unix_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    progress("Install completed");
-
+    let installed_at_unix_secs = unix_now();
+    progress("Install completed from source build");
     Ok(InstalledBuild {
         branch: branch.to_string(),
         commit,
@@ -71,22 +196,37 @@ where
     })
 }
 
-fn sync_submodules(source_dir: &Path, log_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    run_checked(
-        Command::new("git").arg("-C").arg(source_dir).args([
-            "submodule",
-            "update",
-            "--init",
-            "--recursive",
-            "vendor/ableton-link",
-        ]),
-        "git submodule update",
-        log_path,
-    )
-}
-
 fn source_dir_for_branch(root: &Path, branch: &str) -> PathBuf {
     root.join(sanitize_segment(branch))
+}
+
+fn source_build_target_dir(branch: &str) -> PathBuf {
+    let safe = sanitize_segment(branch);
+    if cfg!(windows) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            return PathBuf::from(local_app_data)
+                .join("trekr-launcher-target")
+                .join(safe)
+                .join("source");
+        }
+    }
+    PathBuf::from("artifacts/launcher/target").join(safe)
+}
+
+fn artifact_install_dir(branch: &str, release_tag: &str) -> PathBuf {
+    let branch_safe = sanitize_segment(branch);
+    let tag_safe = sanitize_segment(release_tag);
+    if cfg!(windows) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            return PathBuf::from(local_app_data)
+                .join("trekr-launcher-builds")
+                .join(branch_safe)
+                .join(tag_safe);
+        }
+    }
+    PathBuf::from("artifacts/launcher/builds")
+        .join(branch_safe)
+        .join(tag_safe)
 }
 
 fn clone_branch(
@@ -135,6 +275,20 @@ fn update_existing_checkout(
     )
 }
 
+fn sync_submodules(source_dir: &Path, log_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    run_checked(
+        Command::new("git").arg("-C").arg(source_dir).args([
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+            "vendor/ableton-link",
+        ]),
+        "git submodule update",
+        log_path,
+    )
+}
+
 fn build_checkout(
     source_dir: &Path,
     target_dir: &Path,
@@ -154,9 +308,8 @@ fn build_checkout(
     )
 }
 
-fn release_binary_path(target_dir: &Path) -> PathBuf {
-    let binary_name = if cfg!(windows) { "trekr.exe" } else { "trekr" };
-    target_dir.join("release").join(binary_name)
+fn source_release_binary_path(target_dir: &Path) -> PathBuf {
+    target_dir.join("release").join(expected_binary_name())
 }
 
 fn current_commit(source_dir: &Path) -> Result<String, Box<dyn std::error::Error>> {
@@ -202,41 +355,213 @@ fn run_checked(
     .into())
 }
 
-fn launcher_target_dir(branch: &str) -> PathBuf {
-    let safe = sanitize_segment(branch);
-    if cfg!(windows) {
+fn github_client() -> Result<Client, Box<dyn std::error::Error>> {
+    Ok(Client::builder().build()?)
+}
+
+fn download_asset(
+    client: &Client,
+    asset: &GithubAsset,
+    log_path: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let cache_dir = artifact_cache_dir()?;
+    let zip_path = cache_dir.join(format!(
+        "{}-{}.zip",
+        sanitize_segment(&asset.name),
+        unix_now()
+    ));
+    let mut response = client
+        .get(&asset.browser_download_url)
+        .header(USER_AGENT, "trekr-launcher")
+        .header(ACCEPT, "application/octet-stream")
+        .send()?
+        .error_for_status()?;
+    let mut file = fs::File::create(&zip_path)?;
+    let mut bytes = Vec::new();
+    response.read_to_end(&mut bytes)?;
+    file.write_all(&bytes)?;
+    append_log(
+        log_path,
+        &format!("downloaded asset to {}\n", zip_path.display()),
+    )?;
+    Ok(zip_path)
+}
+
+fn artifact_cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = if cfg!(windows) {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            return PathBuf::from(local_app_data)
-                .join("trekr-launcher-target")
-                .join(safe);
+            PathBuf::from(local_app_data).join("trekr-launcher-cache")
+        } else {
+            PathBuf::from("artifacts/launcher/cache")
+        }
+    } else {
+        PathBuf::from("artifacts/launcher/cache")
+    };
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+fn extract_zip_archive(
+    zip_path: &Path,
+    destination: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let Some(rel_path) = entry.enclosed_name().map(|path| path.to_owned()) else {
+            continue;
+        };
+        let out_path = destination.join(rel_path);
+        if entry.is_dir() {
+            fs::create_dir_all(&out_path)?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut out_file = fs::File::create(&out_path)?;
+            std::io::copy(&mut entry, &mut out_file)?;
         }
     }
-    PathBuf::from("artifacts/launcher/target").join(safe)
+    Ok(())
+}
+
+fn find_binary_recursive(root: &Path) -> Option<PathBuf> {
+    let target = expected_binary_name();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        let entries = fs::read_dir(&path).ok()?;
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                stack.push(entry_path);
+            } else if entry_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case(target))
+            {
+                return Some(entry_path);
+            }
+        }
+    }
+    None
+}
+
+fn expected_binary_name() -> &'static str {
+    if cfg!(windows) { "trekr.exe" } else { "trekr" }
+}
+
+fn parse_github_repo(repo_url: &str) -> Option<(String, String)> {
+    if let Some(trimmed) = repo_url.strip_prefix("https://github.com/") {
+        return parse_owner_repo(trimmed);
+    }
+    if let Some(trimmed) = repo_url.strip_prefix("http://github.com/") {
+        return parse_owner_repo(trimmed);
+    }
+    if let Some(trimmed) = repo_url.strip_prefix("git@github.com:") {
+        return parse_owner_repo(trimmed);
+    }
+    None
+}
+
+fn parse_owner_repo(value: &str) -> Option<(String, String)> {
+    let trimmed = value.trim_end_matches(".git").trim_matches('/');
+    let mut parts = trimmed.split('/');
+    let owner = parts.next()?.to_string();
+    let repo = parts.next()?.to_string();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((owner, repo))
+}
+
+fn select_release_for_branch<'a>(
+    releases: &'a [GithubRelease],
+    branch: &str,
+) -> Option<&'a GithubRelease> {
+    let branch_token = normalize_branch_token(branch);
+    let mut best: Option<(&GithubRelease, i32)> = None;
+    for release in releases {
+        if release.draft {
+            continue;
+        }
+        let haystack = format!(
+            "{} {}",
+            release.tag_name.to_lowercase(),
+            release.name.to_lowercase()
+        );
+        let mut score = 0;
+        if haystack.contains(&branch_token) {
+            score += 3;
+        }
+        if branch.eq_ignore_ascii_case("main")
+            && (haystack.contains("main") || haystack.contains("stable"))
+        {
+            score += 2;
+        }
+        if score == 0 && branch.eq_ignore_ascii_case("main") {
+            score = 1;
+        }
+        match best {
+            Some((_, best_score)) if score <= best_score => {}
+            _ => best = Some((release, score)),
+        }
+    }
+    best.map(|(release, _)| release)
+        .or_else(|| releases.first())
+}
+
+fn select_asset_for_platform<'a>(assets: &'a [GithubAsset]) -> Option<&'a GithubAsset> {
+    let platform_tokens: &[&str] = if cfg!(windows) {
+        &["windows", "win64", "x86_64-pc-windows-msvc"]
+    } else if cfg!(target_os = "macos") {
+        &["macos", "darwin", "apple"]
+    } else {
+        &["linux", "x86_64-unknown-linux-gnu"]
+    };
+
+    assets
+        .iter()
+        .filter(|asset| asset.name.to_lowercase().ends_with(".zip"))
+        .find(|asset| {
+            let name = asset.name.to_lowercase();
+            platform_tokens.iter().any(|token| name.contains(token))
+        })
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|asset| asset.name.to_lowercase().ends_with(".zip"))
+        })
+}
+
+fn normalize_branch_token(branch: &str) -> String {
+    branch
+        .to_lowercase()
+        .replace('/', "-")
+        .replace('_', "-")
+        .replace(' ', "-")
 }
 
 fn install_log_path(branch: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let log_dir = PathBuf::from("artifacts/launcher/logs");
     fs::create_dir_all(&log_dir)?;
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    Ok(log_dir.join(format!("install-{}-{ts}.log", sanitize_segment(branch))))
+    Ok(log_dir.join(format!(
+        "install-{}-{}.log",
+        sanitize_segment(branch),
+        unix_now()
+    )))
 }
 
 fn write_log_header(
     log_path: &Path,
     repo_url: &str,
     branch: &str,
-    source_dir: &Path,
-    target_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     append_log(
         log_path,
         &format!(
-            "# trekr launcher install log\nrepo: {repo_url}\nbranch: {branch}\nsource: {}\ntarget: {}\n",
-            source_dir.display(),
-            target_dir.display()
+            "# trekr launcher install log\nrepo: {repo_url}\nbranch: {branch}\nstarted_at: {}\n",
+            unix_now()
         ),
     )
 }
@@ -252,4 +577,28 @@ fn append_log(path: &Path, content: &str) -> Result<(), Box<dyn std::error::Erro
 
 fn sanitize_segment(value: &str) -> String {
     value.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    assets: Vec<GithubAsset>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GithubAsset {
+    name: String,
+    browser_download_url: String,
 }

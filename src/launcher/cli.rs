@@ -12,6 +12,7 @@ pub enum LauncherCommand {
         branch: String,
         repo_url: Option<String>,
         rebuild: bool,
+        allow_source_build: bool,
     },
     Run(RunLauncherOptions),
     ListInstalled,
@@ -63,6 +64,7 @@ where
             let mut branch = None;
             let mut repo_url = None;
             let mut rebuild = false;
+            let mut allow_source_build = false;
             let mut iter = args.into_iter().skip(1);
             while let Some(arg) = iter.next() {
                 match arg.as_str() {
@@ -83,6 +85,7 @@ where
                         );
                     }
                     "--rebuild" => rebuild = true,
+                    "--allow-source-build" => allow_source_build = true,
                     other => return Err(format!("unknown argument for install: {other}").into()),
                 }
             }
@@ -91,6 +94,7 @@ where
                 branch,
                 repo_url,
                 rebuild,
+                allow_source_build,
             })
         }
         "run" => Ok(LauncherCommand::Run(parse_run_options(
@@ -168,7 +172,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "  list-branches [--repo-url <url>]")?;
     writeln!(
         writer,
-        "  install --branch <name> [--repo-url <url>] [--rebuild]"
+        "  install --branch <name> [--repo-url <url>] [--rebuild] [--allow-source-build]"
     )?;
     writeln!(
         writer,
@@ -197,7 +201,8 @@ mod tests {
             LauncherCommand::Install {
                 branch: "feature/x".to_string(),
                 repo_url: None,
-                rebuild: true
+                rebuild: true,
+                allow_source_build: false
             }
         );
     }
