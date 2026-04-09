@@ -1,0 +1,9 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: vk/7e8b-feature-spec-mid
+started_at: 1775760482
+
+release api: https://api.github.com/repos/domjancik/trekr/releases?per_page=50
+selected release: pr-28-latest (PR)
+selected asset: trekr-windows-x86_64.zip (https://github.com/domjancik/trekr/releases/download/pr-28-latest/trekr-windows-x86_64.zip)
+downloaded asset to C:\Users\magne\AppData\Local\trekr-launcher-cache\trekr-windows-x86_64.zip-1775760482.zip
