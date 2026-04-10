@@ -289,13 +289,12 @@ impl LauncherUiApp {
             .iter()
             .map(|branch| {
                 let branch_label = self.branch_label(branch);
-                let ahead = self.branch_ahead_counts.get(branch).copied().unwrap_or(1);
                 let tracked = self
                     .state
                     .tracked_branches
                     .iter()
                     .any(|entry| entry == branch);
-                let stale_suffix = if ahead == 0 && !branch.eq_ignore_ascii_case("main") {
+                let stale_suffix = if self.is_branch_deprioritized(branch) {
                     "  |  no commits ahead of main"
                 } else {
                     ""
@@ -1010,7 +1009,10 @@ impl LauncherUiApp {
 
     fn is_branch_deprioritized(&self, branch: &str) -> bool {
         !branch.eq_ignore_ascii_case("main")
-            && self.branch_ahead_counts.get(branch).copied().unwrap_or(0) == 0
+            && self
+                .branch_ahead_counts
+                .get(branch)
+                .is_some_and(|ahead| *ahead == 0)
     }
 
     fn deprioritized_branch_start_index(&self) -> Option<usize> {

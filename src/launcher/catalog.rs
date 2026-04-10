@@ -41,7 +41,6 @@ pub fn fetch_branch_ahead_counts_vs_main(
             result.insert(branch.clone(), 1);
             continue;
         }
-        result.insert(branch.clone(), 0);
         let compare_url = format!(
             "https://api.github.com/repos/{owner}/{repo}/compare/main...{}",
             encode_compare_ref(branch)
