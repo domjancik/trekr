@@ -129,7 +129,8 @@ pub enum MidiFxKind {
     Duration,
     ScaleQuantize,
     ChordQuantize,
-    TimeShift,
+    #[serde(alias = "TimeShift")]
+    Delay,
     TrackClone,
 }
 
@@ -142,7 +143,7 @@ impl MidiFxKind {
         Self::Duration,
         Self::ScaleQuantize,
         Self::ChordQuantize,
-        Self::TimeShift,
+        Self::Delay,
         Self::TrackClone,
     ];
 
@@ -155,7 +156,7 @@ impl MidiFxKind {
         Some(Self::Duration),
         Some(Self::ScaleQuantize),
         Some(Self::ChordQuantize),
-        Some(Self::TimeShift),
+        Some(Self::Delay),
         Some(Self::TrackClone),
     ];
 
@@ -168,7 +169,7 @@ impl MidiFxKind {
             Self::Duration => "Duration",
             Self::ScaleQuantize => "Scale",
             Self::ChordQuantize => "Chord",
-            Self::TimeShift => "Shift",
+            Self::Delay => "Delay",
             Self::TrackClone => "Clone",
         }
     }
@@ -182,7 +183,7 @@ impl MidiFxKind {
             Self::Duration => "DUR",
             Self::ScaleQuantize => "SCL",
             Self::ChordQuantize => "CHD",
-            Self::TimeShift => "TSH",
+            Self::Delay => "DLY",
             Self::TrackClone => "CLN",
         }
     }
@@ -196,7 +197,7 @@ impl MidiFxKind {
             Self::Duration => "DU",
             Self::ScaleQuantize => "SC",
             Self::ChordQuantize => "CH",
-            Self::TimeShift => "SH",
+            Self::Delay => "DL",
             Self::TrackClone => "CL",
         }
     }
@@ -229,8 +230,9 @@ pub enum MidiFx {
     ChordQuantize {
         root: u8,
     },
-    TimeShift {
-        ticks: i32,
+    #[serde(alias = "TimeShift")]
+    Delay {
+        ticks: u64,
     },
     TrackClone {
         source_track: usize,
@@ -295,7 +297,7 @@ impl MidiFx {
             MidiFxKind::Duration => Self::Duration { percent: 100 },
             MidiFxKind::ScaleQuantize => Self::ScaleQuantize { root: 0 },
             MidiFxKind::ChordQuantize => Self::ChordQuantize { root: 0 },
-            MidiFxKind::TimeShift => Self::TimeShift { ticks: 0 },
+            MidiFxKind::Delay => Self::Delay { ticks: 0 },
             MidiFxKind::TrackClone => Self::TrackClone { source_track: 0 },
         }
     }
@@ -309,7 +311,7 @@ impl MidiFx {
             Self::Duration { .. } => MidiFxKind::Duration,
             Self::ScaleQuantize { .. } => MidiFxKind::ScaleQuantize,
             Self::ChordQuantize { .. } => MidiFxKind::ChordQuantize,
-            Self::TimeShift { .. } => MidiFxKind::TimeShift,
+            Self::Delay { .. } => MidiFxKind::Delay,
             Self::TrackClone { .. } => MidiFxKind::TrackClone,
         }
     }
@@ -335,7 +337,7 @@ impl MidiFx {
             Self::Duration { percent } => format!("{percent}%"),
             Self::ScaleQuantize { root } => note_name(*root).to_string(),
             Self::ChordQuantize { root } => note_name(*root).to_string(),
-            Self::TimeShift { ticks } => format!("{:+}t", ticks),
+            Self::Delay { ticks } => delay_rate_label(*ticks).to_string(),
             Self::TrackClone { source_track } => format!("T{}", source_track + 1),
         }
     }
@@ -406,9 +408,9 @@ impl MidiFx {
                 label: "Root",
                 value: note_name(*root).to_string(),
             }],
-            Self::TimeShift { ticks } => vec![MidiFxInlineParam {
-                label: "Time",
-                value: format!("{:+}t", ticks),
+            Self::Delay { ticks } => vec![MidiFxInlineParam {
+                label: "Dly",
+                value: delay_rate_label(*ticks).to_string(),
             }],
             Self::TrackClone { source_track } => vec![MidiFxInlineParam {
                 label: "Src",
@@ -430,7 +432,7 @@ impl MidiFx {
             | Self::Duration { .. }
             | Self::ScaleQuantize { .. }
             | Self::ChordQuantize { .. }
-            | Self::TimeShift { .. }
+            | Self::Delay { .. }
             | Self::TrackClone { .. } => self.adjust_value(delta, track_count, ppqn),
             Self::Arp {
                 step_ticks,
@@ -489,9 +491,9 @@ impl MidiFx {
             Self::ScaleQuantize { root } | Self::ChordQuantize { root } => {
                 *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
             }
-            Self::TimeShift { ticks } => {
-                let step = (i32::from(ppqn) / 8).max(1);
-                *ticks = (*ticks + delta * step).clamp(-(i32::from(ppqn) * 4), i32::from(ppqn) * 4);
+            Self::Delay { ticks } => {
+                let steps = delay_step_choices(ppqn);
+                *ticks = step_u64_choice(*ticks, &steps, delta);
             }
             Self::TrackClone { source_track } => {
                 let count = track_count.max(1) as i32;
@@ -537,6 +539,16 @@ fn cycle_u64_choice(current: u64, options: &[u64], delta: i32) -> u64 {
     options[next_index]
 }
 
+fn step_u64_choice(current: u64, options: &[u64], delta: i32) -> u64 {
+    let current_index = options
+        .iter()
+        .position(|candidate| *candidate == current)
+        .unwrap_or(0);
+    let next_index =
+        (current_index as i32 + delta).clamp(0, options.len().saturating_sub(1) as i32) as usize;
+    options[next_index]
+}
+
 fn note_name(root: u8) -> &'static str {
     match root % 12 {
         0 => "C",
@@ -567,6 +579,12 @@ fn arp_step_choices(ppqn: u16) -> Vec<u64> {
     ]
 }
 
+fn delay_step_choices(ppqn: u16) -> Vec<u64> {
+    let mut steps = vec![0];
+    steps.extend(arp_step_choices(ppqn));
+    steps
+}
+
 pub fn arp_rate_label(step_ticks: u64) -> &'static str {
     match step_ticks {
         60 => "1/64",
@@ -580,6 +598,14 @@ pub fn arp_rate_label(step_ticks: u64) -> &'static str {
     }
 }
 
+pub fn delay_rate_label(step_ticks: u64) -> &'static str {
+    if step_ticks == 0 {
+        "Off"
+    } else {
+        arp_rate_label(step_ticks)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveMidiFxEvent {
     NoteOn { pitch: u8, velocity: u8 },
@@ -589,6 +615,7 @@ pub enum LiveMidiFxEvent {
 #[derive(Debug, Clone, Default)]
 pub struct LiveMidiFxState {
     note_pitch_map: HashMap<u8, Vec<u8>>,
+    scheduled_events: Vec<ScheduledLiveMidiFxEvent>,
     arp_held_notes: Vec<ArpHeldNote>,
     arp_sequence_counter: u64,
     arp_next_step_tick: Option<u64>,
@@ -603,6 +630,13 @@ struct ArpHeldNote {
     pitch: u8,
     velocity: u8,
     sequence: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ScheduledLiveMidiFxEvent {
+    tick: u64,
+    event: LiveMidiFxEvent,
+    next_slot_index: usize,
 }
 
 pub fn cycle_fx_kind(current: Option<&MidiFxSlot>, delta: i32) -> Option<MidiFxSlot> {
@@ -661,40 +695,7 @@ pub fn process_live_chain_event(
     event: LiveMidiFxEvent,
     current_ticks: u64,
 ) -> Vec<LiveMidiFxEvent> {
-    let Some(arp_index) = first_live_arp_index(chain) else {
-        return process_live_event(chain, state, event);
-    };
-
-    let mut events = vec![event];
-    for slot in chain
-        .iter()
-        .take(arp_index)
-        .flatten()
-        .filter(|slot| slot.enabled)
-    {
-        events = apply_live_fx(slot, state, events);
-        if events.is_empty() {
-            return Vec::new();
-        }
-    }
-    let mut immediate = Vec::new();
-    for event in events {
-        if let Some(return_event) = update_live_arp_held_notes(state, event, current_ticks) {
-            immediate.push(return_event);
-        }
-    }
-    for slot in chain
-        .iter()
-        .skip(arp_index + 1)
-        .flatten()
-        .filter(|slot| slot.enabled)
-    {
-        immediate = apply_live_fx(slot, state, immediate);
-        if immediate.is_empty() {
-            break;
-        }
-    }
-    immediate
+    process_live_events_from_index(chain, state, vec![event], 0, current_ticks)
 }
 
 pub fn process_live_chain_tick(
@@ -703,6 +704,144 @@ pub fn process_live_chain_tick(
     _previous_ticks: u64,
     current_ticks: u64,
 ) -> Vec<(u64, LiveMidiFxEvent)> {
+    let mut output = Vec::new();
+    loop {
+        let next_tick = match (
+            next_scheduled_event_tick(state),
+            next_live_arp_tick(chain, state),
+        ) {
+            (Some(delay_tick), Some(arp_tick)) => Some(delay_tick.min(arp_tick)),
+            (Some(delay_tick), None) => Some(delay_tick),
+            (None, Some(arp_tick)) => Some(arp_tick),
+            (None, None) => None,
+        };
+        let Some(next_tick) = next_tick else {
+            break;
+        };
+        if next_tick >= current_ticks {
+            break;
+        }
+        for scheduled in take_scheduled_events_at_tick(state, next_tick) {
+            let immediate = process_live_events_from_index(
+                chain,
+                state,
+                vec![scheduled.event],
+                scheduled.next_slot_index,
+                next_tick,
+            );
+            output.extend(immediate.into_iter().map(|event| (next_tick, event)));
+        }
+
+        if next_live_arp_tick(chain, state) == Some(next_tick) {
+            let arp_index = first_live_arp_index(chain).unwrap_or(0);
+            let generated = collect_live_arp_events_at_tick(chain, state, next_tick);
+            let processed =
+                process_live_events_from_index(chain, state, generated, arp_index + 1, next_tick);
+            output.extend(processed.into_iter().map(|event| (next_tick, event)));
+        }
+    }
+    output
+}
+
+pub fn reset_live_fx_timing(state: &mut LiveMidiFxState, current_ticks: u64) {
+    state.scheduled_events.clear();
+    state.arp_pending_note_off_tick = None;
+    state.arp_active_note = None;
+    state.arp_cycle_index = 0;
+    state.arp_direction_forward = true;
+    state.arp_next_step_tick = (!state.arp_held_notes.is_empty()).then_some(current_ticks);
+}
+
+fn first_live_arp_index(chain: &[Option<MidiFxSlot>]) -> Option<usize> {
+    chain.iter().position(|slot| {
+        slot.as_ref()
+            .is_some_and(|slot| slot.enabled && matches!(slot.effect, MidiFx::Arp { .. }))
+    })
+}
+
+fn process_live_events_from_index(
+    chain: &[Option<MidiFxSlot>],
+    state: &mut LiveMidiFxState,
+    mut events: Vec<LiveMidiFxEvent>,
+    start_index: usize,
+    current_ticks: u64,
+) -> Vec<LiveMidiFxEvent> {
+    for (slot_index, slot) in chain.iter().enumerate().skip(start_index) {
+        let Some(slot) = slot.as_ref().filter(|slot| slot.enabled) else {
+            continue;
+        };
+        if events.is_empty() {
+            break;
+        }
+        match &slot.effect {
+            MidiFx::Delay { ticks } if *ticks > 0 => {
+                for event in events.drain(..) {
+                    state.scheduled_events.push(ScheduledLiveMidiFxEvent {
+                        tick: current_ticks.saturating_add(*ticks),
+                        event,
+                        next_slot_index: slot_index + 1,
+                    });
+                }
+            }
+            MidiFx::Arp { .. } => {
+                let mut immediate = Vec::new();
+                for event in events.drain(..) {
+                    if let Some(return_event) =
+                        update_live_arp_held_notes(state, event, current_ticks)
+                    {
+                        immediate.push(return_event);
+                    }
+                }
+                events = immediate;
+            }
+            _ => events = apply_live_fx(slot, state, events),
+        }
+    }
+    events
+}
+
+fn next_scheduled_event_tick(state: &LiveMidiFxState) -> Option<u64> {
+    state.scheduled_events.iter().map(|event| event.tick).min()
+}
+
+fn take_scheduled_events_at_tick(
+    state: &mut LiveMidiFxState,
+    tick: u64,
+) -> Vec<ScheduledLiveMidiFxEvent> {
+    let mut ready = Vec::new();
+    let mut pending = Vec::with_capacity(state.scheduled_events.len());
+    for event in state.scheduled_events.drain(..) {
+        if event.tick == tick {
+            ready.push(event);
+        } else {
+            pending.push(event);
+        }
+    }
+    state.scheduled_events = pending;
+    ready
+}
+
+fn next_live_arp_tick(chain: &[Option<MidiFxSlot>], state: &LiveMidiFxState) -> Option<u64> {
+    let Some(_arp_index) = first_live_arp_index(chain) else {
+        return None;
+    };
+    let next_off = state.arp_pending_note_off_tick;
+    let next_on = state
+        .arp_next_step_tick
+        .filter(|_| !state.arp_held_notes.is_empty());
+    match (next_off, next_on) {
+        (Some(off), Some(on)) => Some(off.min(on)),
+        (Some(off), None) => Some(off),
+        (None, Some(on)) => Some(on),
+        (None, None) => None,
+    }
+}
+
+fn collect_live_arp_events_at_tick(
+    chain: &[Option<MidiFxSlot>],
+    state: &mut LiveMidiFxState,
+    tick: u64,
+) -> Vec<LiveMidiFxEvent> {
     let Some(arp_index) = first_live_arp_index(chain) else {
         return Vec::new();
     };
@@ -718,91 +857,38 @@ pub fn process_live_chain_tick(
     else {
         return Vec::new();
     };
-    let step_ticks = *step_ticks;
-    if step_ticks == 0 {
+    if *step_ticks == 0 {
         return Vec::new();
     }
     let gate_ticks =
-        ((u128::from(step_ticks) * u128::from(*gate_percent)) / 100).max(1_u128) as u64;
+        ((u128::from(*step_ticks) * u128::from(*gate_percent)) / 100).max(1_u128) as u64;
     let mut scheduled = Vec::new();
     loop {
-        let next_off = state.arp_pending_note_off_tick;
-        let next_on = state
-            .arp_next_step_tick
-            .filter(|_| !state.arp_held_notes.is_empty());
-        let next_tick = match (next_off, next_on) {
-            (Some(off), Some(on)) => Some(off.min(on)),
-            (Some(off), None) => Some(off),
-            (None, Some(on)) => Some(on),
-            (None, None) => None,
-        };
-        let Some(next_tick) = next_tick else {
-            break;
-        };
-        if next_tick >= current_ticks {
-            break;
-        }
-        if state.arp_pending_note_off_tick == Some(next_tick) {
+        if state.arp_pending_note_off_tick == Some(tick) {
             if let Some(pitch) = state.arp_active_note.take() {
-                scheduled.push((next_tick, LiveMidiFxEvent::NoteOff { pitch }));
+                scheduled.push(LiveMidiFxEvent::NoteOff { pitch });
             }
             state.arp_pending_note_off_tick = None;
             continue;
         }
-        if state.arp_next_step_tick == Some(next_tick) {
+        if state.arp_next_step_tick == Some(tick) {
             if let Some(pitch) = state.arp_active_note.take() {
-                scheduled.push((next_tick, LiveMidiFxEvent::NoteOff { pitch }));
+                scheduled.push(LiveMidiFxEvent::NoteOff { pitch });
                 state.arp_pending_note_off_tick = None;
             }
             if let Some((pitch, velocity)) = next_live_arp_note(state, *order) {
-                scheduled.push((next_tick, LiveMidiFxEvent::NoteOn { pitch, velocity }));
+                scheduled.push(LiveMidiFxEvent::NoteOn { pitch, velocity });
                 state.arp_active_note = Some(pitch);
-                state.arp_pending_note_off_tick = Some(next_tick.saturating_add(gate_ticks));
-                state.arp_next_step_tick = Some(next_tick.saturating_add(step_ticks));
+                state.arp_pending_note_off_tick = Some(tick.saturating_add(gate_ticks));
+                state.arp_next_step_tick = Some(tick.saturating_add(*step_ticks));
             } else {
                 state.arp_next_step_tick = None;
             }
+            continue;
         }
+        break;
     }
-    let raw_events: Vec<LiveMidiFxEvent> =
-        scheduled.iter().map(|(_, event)| event.clone()).collect();
-    let mut events = raw_events;
-    for slot in chain
-        .iter()
-        .skip(arp_index + 1)
-        .flatten()
-        .filter(|slot| slot.enabled)
-    {
-        events = apply_live_fx(slot, state, events);
-        if events.is_empty() {
-            break;
-        }
-    }
-
-    let mut output = Vec::new();
-    let mut post_index = 0;
-    for (tick, _) in scheduled {
-        if let Some(event) = events.get(post_index).cloned() {
-            output.push((tick, event));
-            post_index += 1;
-        }
-    }
-    output
-}
-
-pub fn reset_live_fx_timing(state: &mut LiveMidiFxState, current_ticks: u64) {
-    state.arp_pending_note_off_tick = None;
-    state.arp_active_note = None;
-    state.arp_cycle_index = 0;
-    state.arp_direction_forward = true;
-    state.arp_next_step_tick = (!state.arp_held_notes.is_empty()).then_some(current_ticks);
-}
-
-fn first_live_arp_index(chain: &[Option<MidiFxSlot>]) -> Option<usize> {
-    chain.iter().position(|slot| {
-        slot.as_ref()
-            .is_some_and(|slot| slot.enabled && matches!(slot.effect, MidiFx::Arp { .. }))
-    })
+    scheduled
 }
 
 fn update_live_arp_held_notes(
@@ -901,7 +987,7 @@ fn apply_live_fx(
             (MidiFx::TrackClone { .. }, event)
             | (MidiFx::Arp { .. }, event)
             | (MidiFx::Duration { .. }, event)
-            | (MidiFx::TimeShift { .. }, event) => transformed.push(event),
+            | (MidiFx::Delay { .. }, event) => transformed.push(event),
             (
                 MidiFx::NoteFilter {
                     low,
@@ -1088,11 +1174,11 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
                 note
             })
             .collect(),
-        MidiFx::TimeShift { ticks } => notes
+        MidiFx::Delay { ticks } => notes
             .iter()
             .copied()
             .map(|mut note| {
-                note.start_ticks = note.start_ticks.saturating_add_signed(i64::from(*ticks));
+                note.start_ticks = note.start_ticks.saturating_add(*ticks);
                 note
             })
             .collect(),
@@ -1206,8 +1292,8 @@ fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
 mod tests {
     use super::{
         ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, arp_rate_label,
-        cycle_existing_fx_kind, cycle_fx_kind, process_live_chain_event, process_live_chain_tick,
-        process_live_event, transform_notes,
+        cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label, process_live_chain_event,
+        process_live_chain_tick, process_live_event, transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -1257,7 +1343,7 @@ mod tests {
     }
 
     #[test]
-    fn transform_notes_applies_duration_and_shift() {
+    fn transform_notes_applies_duration_and_delay() {
         let notes = [MidiNote::new(60, 100, 120, 100)];
         let chain = [
             Some(MidiFxSlot {
@@ -1266,12 +1352,12 @@ mod tests {
             }),
             Some(MidiFxSlot {
                 enabled: true,
-                effect: MidiFx::TimeShift { ticks: 24 },
+                effect: MidiFx::Delay { ticks: 60 },
             }),
         ];
 
         let transformed = transform_notes(&notes, &chain);
-        assert_eq!(transformed[0].start_ticks, 124);
+        assert_eq!(transformed[0].start_ticks, 160);
         assert_eq!(transformed[0].length_ticks, 60);
     }
 
@@ -1288,6 +1374,17 @@ mod tests {
                 .value,
             "1/8"
         );
+        assert_eq!(delay_rate_label(0), "Off");
+        assert_eq!(delay_rate_label(240), "1/16");
+    }
+
+    #[test]
+    fn delay_parameter_never_wraps_negative() {
+        let mut effect = MidiFx::Delay { ticks: 0 };
+        effect.adjust_value(-1, 0, 960);
+        assert_eq!(effect.value_label(), "Off");
+        effect.adjust_value(1, 0, 960);
+        assert_eq!(effect.value_label(), "1/64");
     }
 
     #[test]
@@ -1394,5 +1491,37 @@ mod tests {
 
         effect.adjust_inline_parameter(2, -1, 0, 960);
         assert_eq!(effect.inline_parameters()[2].value, "2");
+    }
+
+    #[test]
+    fn live_chain_delay_schedules_note_later() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 240 },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        let immediate = process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            0,
+        );
+        assert!(immediate.is_empty());
+
+        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 300);
+        assert_eq!(
+            scheduled,
+            vec![(
+                240,
+                LiveMidiFxEvent::NoteOn {
+                    pitch: 60,
+                    velocity: 100
+                }
+            )]
+        );
     }
 }

@@ -203,7 +203,7 @@ Initial target set:
 - duration control
 - scale quantize
 - chord progression quantize
-- time shift
+- delay
 
 ## Initial Effect Definitions
 
@@ -271,10 +271,12 @@ Recommended tap semantics:
 - remaps notes against a progression-aware harmonic target
 - expected to need richer editing than the simple inline controls
 
-### Time Shift
+### Delay
 
-- note start offset
-- optional speed/density scaling
+- delays note start and note end later in time
+- uses musical duration notation like arp (`Off`, `1/16`, `1/8`, `1/4`, `1/2`, `1 Bar`)
+- does not support negative "look-ahead" shifting
+- live-signal semantics are delay-only: the effect may schedule notes later, but it must not require future note knowledge
 
 ## Ordering Rules
 
