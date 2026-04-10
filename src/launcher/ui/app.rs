@@ -40,6 +40,7 @@ struct LauncherUiApp {
     state_file_input: Option<String>,
     latest_release_tags: HashMap<String, String>,
     pr_titles: HashMap<String, String>,
+    branch_ahead_counts: HashMap<String, u64>,
 }
 
 struct InstallJob {
@@ -64,6 +65,7 @@ impl LauncherUiApp {
             state_file_input: None,
             latest_release_tags: HashMap::new(),
             pr_titles: HashMap::new(),
+            branch_ahead_counts: HashMap::new(),
         }
     }
 
@@ -287,15 +289,21 @@ impl LauncherUiApp {
             .iter()
             .map(|branch| {
                 let branch_label = self.branch_label(branch);
+                let ahead = self.branch_ahead_counts.get(branch).copied().unwrap_or(1);
                 let tracked = self
                     .state
                     .tracked_branches
                     .iter()
                     .any(|entry| entry == branch);
-                if tracked {
-                    format!("* {branch_label}")
+                let stale_suffix = if ahead == 0 && !branch.eq_ignore_ascii_case("main") {
+                    "  |  no commits ahead of main"
                 } else {
-                    format!("  {branch_label}")
+                    ""
+                };
+                if tracked {
+                    format!("* {branch_label}{stale_suffix}")
+                } else {
+                    format!("  {branch_label}{stale_suffix}")
                 }
             })
             .collect::<Vec<_>>();
@@ -953,7 +961,16 @@ impl LauncherUiApp {
         let repo_url = resolve_repo_url(None, &self.state);
         match catalog::list_remote_branches(&repo_url) {
             Ok(branches) => {
-                self.remote_branches = branches;
+                self.branch_ahead_counts =
+                    catalog::fetch_branch_ahead_counts_vs_main(&repo_url, &branches)
+                        .unwrap_or_default();
+                let mut prioritized = branches;
+                prioritized.sort_by(|a, b| {
+                    let a_ahead = self.branch_ahead_counts.get(a).copied().unwrap_or(1);
+                    let b_ahead = self.branch_ahead_counts.get(b).copied().unwrap_or(1);
+                    (a_ahead == 0, a).cmp(&(b_ahead == 0, b))
+                });
+                self.remote_branches = prioritized;
                 self.refresh_pr_titles(&repo_url);
                 self.refresh_latest_release_tags();
                 self.status_line = format!("Loaded {} branches", self.remote_branches.len());

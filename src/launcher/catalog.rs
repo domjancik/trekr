@@ -27,6 +27,44 @@ pub fn list_remote_branches(repo_url: &str) -> Result<Vec<String>, Box<dyn std::
     Ok(branches)
 }
 
+pub fn fetch_branch_ahead_counts_vs_main(
+    repo_url: &str,
+    branches: &[String],
+) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
+    let Some((owner, repo)) = parse_github_repo(repo_url) else {
+        return Ok(HashMap::new());
+    };
+    let client = Client::builder().build()?;
+    let mut result = HashMap::new();
+    for branch in branches {
+        if branch.eq_ignore_ascii_case("main") {
+            result.insert(branch.clone(), 0);
+            continue;
+        }
+        let compare_url = format!(
+            "https://api.github.com/repos/{owner}/{repo}/compare/main...{}",
+            encode_compare_ref(branch)
+        );
+        let mut request = client
+            .get(&compare_url)
+            .header(USER_AGENT, "trekr-launcher")
+            .header(ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            if !token.trim().is_empty() {
+                request = request.bearer_auth(token);
+            }
+        }
+        let response = request.send()?;
+        if response.status().is_success() {
+            if let Ok(compare) = response.json::<GithubCompareResponse>() {
+                result.insert(branch.clone(), compare.ahead_by);
+            }
+        }
+    }
+    Ok(result)
+}
+
 pub fn list_open_pr_titles(
     repo_url: &str,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
@@ -81,6 +119,15 @@ fn parse_owner_repo(value: &str) -> Option<(String, String)> {
     Some((owner, repo))
 }
 
+fn encode_compare_ref(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('/', "%2F")
+        .replace('#', "%23")
+        .replace('?', "%3F")
+        .replace(' ', "%20")
+}
+
 #[derive(Debug, Deserialize)]
 struct GithubPullRequest {
     title: String,
@@ -91,4 +138,9 @@ struct GithubPullRequest {
 struct GithubPullRequestHead {
     #[serde(rename = "ref")]
     reference: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubCompareResponse {
+    ahead_by: u64,
 }

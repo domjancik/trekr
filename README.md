@@ -121,6 +121,7 @@ Launcher settings now include:
 - installation directory selection (default user folder or custom directory)
 - launch/install rows indicate when a newer release tag is available for a tracked branch
 - launcher branch rows include open PR titles when available, to make feature branches easier to identify
+- branch selection deprioritizes branches with no commits ahead of `main` and labels them in the list
 
 CLI notes:
 
