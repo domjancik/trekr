@@ -1,5 +1,6 @@
 /target
 /artifacts/archive
+/artifacts/launcher
 /artifacts/camera-debug
 /artifacts/state
 /docs/artifacts
