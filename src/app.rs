@@ -2205,10 +2205,6 @@ impl App {
             Color::RGB(36, 42, 58)
         });
         canvas.fill_rect(layout.row)?;
-        if selected {
-            canvas.set_draw_color(Color::RGB(244, 232, 146));
-            canvas.draw_rect(layout.row)?;
-        }
         canvas.set_draw_color(enabled_fill);
         canvas.fill_rect(layout.enabled)?;
         canvas.set_draw_color(if enabled_selected {
@@ -2306,6 +2302,10 @@ impl App {
         self.draw_timeline_fx_move_zone(canvas, layout.move_up, "↑", move_selected, text_color)?;
         self.draw_timeline_fx_move_zone(canvas, layout.move_down, "↓", move_selected, text_color)?;
         self.draw_timeline_fx_delete_zone(canvas, layout.delete, text_color)?;
+        if selected {
+            canvas.set_draw_color(Color::RGB(244, 232, 146));
+            canvas.draw_rect(layout.row)?;
+        }
         Ok(())
     }
 
@@ -2541,16 +2541,20 @@ impl App {
                 let available = row.width() as i32;
                 let enabled_width = available.clamp(10, 14);
                 let delete_width = available.clamp(5, 6);
-                let primary_min_width = if available >= 72 { 26 } else { 18 };
-                let secondary_target_width = if available >= 112 { 28 } else { 20 };
-                let overflow_target_width = if available >= 72 { 10 } else { 8 };
+                let param_min_width = if available >= 72 { 18 } else { 12 };
                 let move_width = if available >= 132 { 6 } else { 0 };
-                let kind_width = displayed_rows
+                let (kind_width, visible_param_count, total_param_count) = displayed_rows
                     .get(row_index)
                     .and_then(|slot_index| slot_index.and_then(|index| chain.get(index)))
                     .and_then(|slot| slot.as_ref())
-                    .map(|slot| timeline_fx_kind_target_width(slot, available as u32))
-                    .unwrap_or(12) as i32;
+                    .map(|slot| {
+                        (
+                            timeline_fx_kind_target_width(slot, available as u32) as i32,
+                            slot.effect.inline_parameters().len().min(2),
+                            slot.effect.inline_parameters().len(),
+                        )
+                    })
+                    .unwrap_or((12, 0, 0));
 
                 let enabled = Rect::new(row.x, row.y, enabled_width as u32, row.height());
                 let kind_x = enabled.x + enabled.width() as i32 + gap;
@@ -2559,8 +2563,12 @@ impl App {
                 let delete = take_right(row, &mut right, delete_width, gap);
                 let mut move_down_width = move_width;
                 let mut move_up_width = move_width;
-                let mut overflow_width = overflow_target_width;
-                let mut secondary_width = secondary_target_width;
+                let mut overflow_width = if total_param_count > 2 {
+                    if available >= 72 { 10 } else { 8 }
+                } else {
+                    0
+                };
+                let mut show_secondary = visible_param_count >= 2;
                 let mut gaps_after_kind = 1; // before delete
                 if move_down_width > 0 {
                     gaps_after_kind += 1;
@@ -2571,10 +2579,10 @@ impl App {
                 if overflow_width > 0 {
                     gaps_after_kind += 1;
                 }
-                if secondary_width > 0 {
+                if show_secondary {
                     gaps_after_kind += 1;
                 }
-                let mut primary_width = available
+                let mut params_total_width = available
                     - enabled_width
                     - kind_width
                     - delete_width
@@ -2582,17 +2590,28 @@ impl App {
                     - gaps_after_kind * gap
                     - move_down_width
                     - move_up_width
-                    - overflow_width
-                    - secondary_width;
-                while primary_width < primary_min_width {
+                    - overflow_width;
+                let mut primary_width = if show_secondary {
+                    params_total_width / 2
+                } else {
+                    params_total_width
+                };
+                let mut secondary_width = if show_secondary {
+                    params_total_width - primary_width
+                } else {
+                    0
+                };
+                while primary_width < param_min_width
+                    || (show_secondary && secondary_width < param_min_width)
+                {
                     if move_down_width > 0 {
                         move_down_width = 0;
                     } else if move_up_width > 0 {
                         move_up_width = 0;
                     } else if overflow_width > 0 {
                         overflow_width = 0;
-                    } else if secondary_width > 0 {
-                        secondary_width = 0;
+                    } else if show_secondary {
+                        show_secondary = false;
                     } else {
                         break;
                     }
@@ -2600,8 +2619,8 @@ impl App {
                         + i32::from(move_down_width > 0)
                         + i32::from(move_up_width > 0)
                         + i32::from(overflow_width > 0)
-                        + i32::from(secondary_width > 0);
-                    primary_width = available
+                        + i32::from(show_secondary);
+                    params_total_width = available
                         - enabled_width
                         - kind_width
                         - delete_width
@@ -2609,8 +2628,17 @@ impl App {
                         - gaps_after_kind * gap
                         - move_down_width
                         - move_up_width
-                        - overflow_width
-                        - secondary_width;
+                        - overflow_width;
+                    primary_width = if show_secondary {
+                        params_total_width / 2
+                    } else {
+                        params_total_width
+                    };
+                    secondary_width = if show_secondary {
+                        params_total_width - primary_width
+                    } else {
+                        0
+                    };
                 }
                 primary_width = primary_width.max(0);
                 let move_down = take_right(row, &mut right, move_down_width, gap);
@@ -13121,7 +13149,15 @@ mod tests {
 
     #[test]
     fn timeline_unselected_fx_row_prioritizes_kind_and_primary_value_width() {
-        let app = App::new();
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
@@ -13148,7 +13184,15 @@ mod tests {
 
     #[test]
     fn timeline_fx_row_layout_drops_low_priority_controls_when_narrow() {
-        let app = App::new();
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
         let displayed = vec![Some(0)];
         let layout = app.timeline_fx_row_layouts(
             Rect::new(10, 10, 56, 14),
@@ -13181,7 +13225,15 @@ mod tests {
 
     #[test]
     fn timeline_selected_fx_row_uses_same_compact_layout() {
-        let app = App::new();
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
         let content_bounds = Rect::new(40, 40, 1200, 620);
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
@@ -13220,7 +13272,15 @@ mod tests {
 
     #[test]
     fn timeline_fx_row_places_secondary_parameter_before_overflow() {
-        let app = App::new();
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
         let displayed = vec![Some(0)];
         let layout = app.timeline_fx_row_layouts(
             Rect::new(10, 10, 120, 14),
@@ -13239,6 +13299,33 @@ mod tests {
         assert_eq!(timeline_fx_overflow_label(2, 0), "--");
         assert_eq!(timeline_fx_overflow_label(3, 0), "1/2");
         assert_eq!(timeline_fx_overflow_label(3, 1), "2/2");
+    }
+
+    #[test]
+    fn timeline_fx_row_splits_width_evenly_between_two_visible_params() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let displayed = vec![Some(0)];
+        let layout = app.timeline_fx_row_layouts(
+            Rect::new(10, 10, 120, 14),
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.param_secondary.width() > 0);
+        assert!(
+            (layout.param_primary.width() as i32 - layout.param_secondary.width() as i32).abs()
+                <= 1
+        );
     }
 
     #[test]
