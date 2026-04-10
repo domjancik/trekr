@@ -1044,22 +1044,29 @@ impl App {
         if !is_active {
             return Ok(());
         }
-        if let Some(rect) = self.timeline_context_highlight_rect_for_layout(layout) {
+        if let Some(rect) = self.timeline_context_indicator_rect_for_layout(layout) {
             canvas.set_draw_color(Color::RGB(244, 232, 146));
-            canvas.draw_rect(rect)?;
+            canvas.fill_rect(rect)?;
         }
         Ok(())
     }
 
-    fn timeline_context_highlight_rect_for_layout(
+    fn timeline_context_indicator_rect_for_layout(
         &self,
         layout: TimelineTrackLayout,
     ) -> Option<Rect> {
-        Some(layout.fx_rect(self.page_state.selected_timeline_context))
+        let context_rect = layout.fx_rect(self.page_state.selected_timeline_context);
+        let indicator_x = context_rect.x.checked_sub(2)?;
+        Some(Rect::new(
+            indicator_x,
+            context_rect.y,
+            1,
+            context_rect.height(),
+        ))
     }
 
     #[cfg(test)]
-    fn timeline_context_highlight_rect(
+    fn timeline_context_indicator_rect(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
@@ -1071,7 +1078,7 @@ impl App {
             .iter()
             .position(|candidate| std::ptr::eq(candidate, track))?;
         let layout = self.timeline_track_layout(track_index, full_bounds, detail_bounds);
-        self.timeline_context_highlight_rect_for_layout(layout)
+        self.timeline_context_indicator_rect_for_layout(layout)
     }
 
     fn draw_track_status_strip<T: RenderTarget>(
@@ -13708,7 +13715,7 @@ mod tests {
     }
 
     #[test]
-    fn timeline_context_highlight_excludes_fx_bands() {
+    fn timeline_context_indicator_sits_left_of_selected_context_with_gap() {
         let mut app = App::new();
         app.page_state.selected_timeline_context = TimelineContext::TrackTimeline;
         let content_bounds = Rect::new(40, 40, 1200, 620);
@@ -13720,19 +13727,16 @@ mod tests {
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[0];
         let track = &app.project.tracks[0];
-        let (input_rect, output_rect) = app.track_fx_band_rects(full_bounds, detail_bounds, track);
-        let highlight = app
-            .timeline_context_highlight_rect(full_bounds, detail_bounds, track)
-            .expect("highlight rect");
+        let layout = app.timeline_track_layout(0, full_bounds, detail_bounds);
+        let context_rect = layout.fx_rect(app.page_state.selected_timeline_context);
+        let indicator = app
+            .timeline_context_indicator_rect(full_bounds, detail_bounds, track)
+            .expect("indicator rect");
 
-        let intersects = |a: Rect, b: Rect| {
-            a.x < b.x + b.width() as i32
-                && a.x + a.width() as i32 > b.x
-                && a.y < b.y + b.height() as i32
-                && a.y + a.height() as i32 > b.y
-        };
-        assert!(!intersects(highlight, input_rect));
-        assert!(!intersects(highlight, output_rect));
+        assert_eq!(indicator.width(), 1);
+        assert_eq!(indicator.height(), context_rect.height());
+        assert_eq!(indicator.y, context_rect.y);
+        assert_eq!(indicator.x + indicator.width() as i32 + 1, context_rect.x);
     }
 
     #[test]
