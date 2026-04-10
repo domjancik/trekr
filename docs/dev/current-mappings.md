@@ -67,6 +67,7 @@ Keyboard mappings currently implemented:
 - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current mappings-editor field in write mode
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
+- `Shift+Enter`: reverse the timeline FX field cycle when timeline FX is focused
 - `Escape`: quit
 
 Prototype demo MIDI/OSC mappings shown on the mappings page:

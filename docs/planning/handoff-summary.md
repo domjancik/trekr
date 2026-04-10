@@ -109,6 +109,7 @@
   - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down` field/context select
   - `Q` / `E` adjust
   - `Enter` activate / learn
+  - `Shift+Enter` reverse timeline FX field cycle
 - Transport/record:
   - `Space`
   - `R`
