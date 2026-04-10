@@ -27,6 +27,14 @@ pub fn install_branch(
     )
 }
 
+pub fn latest_release_tag_for_branch(
+    repo_url: &str,
+    branch: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let releases = fetch_github_releases(repo_url)?;
+    Ok(select_release_for_branch(&releases, branch).map(|release| release.tag_name.clone()))
+}
+
 pub fn install_branch_with_progress<F>(
     repo_url: &str,
     branch: &str,
@@ -82,36 +90,17 @@ fn install_from_release_artifact<F>(
 where
     F: FnMut(&str),
 {
-    let (owner, repo) = parse_github_repo(repo_url).ok_or_else(|| {
-        format!(
-            "unsupported repo url for release artifact install: {repo_url} (expected github url)"
-        )
-    })?;
-    let api_url = format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=50");
-    append_log(log_path, &format!("\nrelease api: {api_url}\n"))?;
-
     progress("Fetching release metadata");
-    let client = github_client()?;
-    let mut request = client
-        .get(&api_url)
-        .header(USER_AGENT, "trekr-launcher")
-        .header(ACCEPT, "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.trim().is_empty() {
-            request = request.bearer_auth(token);
-        }
-    }
-    let response = request.send()?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().unwrap_or_default();
-        return Err(format!("release metadata request failed: {status} {}", body.trim()).into());
-    }
-    let releases = response.json::<Vec<GithubRelease>>()?;
+    let releases = fetch_github_releases(repo_url)?;
     if releases.is_empty() {
         return Err("no GitHub releases found".into());
     }
+    let (owner, repo) =
+        parse_github_repo(repo_url).ok_or("repo url parsing failed while logging release api")?;
+    let api_url = format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=50");
+    append_log(log_path, &format!("\nrelease api: {api_url}\n"))?;
+
+    let client = github_client()?;
 
     let release = select_release_for_branch(&releases, branch)
         .ok_or("no matching GitHub release for branch")?;
@@ -384,6 +373,33 @@ fn run_checked(
 
 fn github_client() -> Result<Client, Box<dyn std::error::Error>> {
     Ok(Client::builder().build()?)
+}
+
+fn fetch_github_releases(repo_url: &str) -> Result<Vec<GithubRelease>, Box<dyn std::error::Error>> {
+    let (owner, repo) = parse_github_repo(repo_url).ok_or_else(|| {
+        format!(
+            "unsupported repo url for release artifact install: {repo_url} (expected github url)"
+        )
+    })?;
+    let api_url = format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=50");
+    let client = github_client()?;
+    let mut request = client
+        .get(&api_url)
+        .header(USER_AGENT, "trekr-launcher")
+        .header(ACCEPT, "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.trim().is_empty() {
+            request = request.bearer_auth(token);
+        }
+    }
+    let response = request.send()?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!("release metadata request failed: {status} {}", body.trim()).into());
+    }
+    Ok(response.json::<Vec<GithubRelease>>()?)
 }
 
 fn download_asset(

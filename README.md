@@ -108,6 +108,8 @@ Launcher UI controls:
 - `Up` / `Down`: select page row
 - `Q` / `E`: adjust setting value on settings page
 - `Enter`: activate selected action (`run`, `track/untrack`, `install/update`, or `apply`)
+- on `Launch`, `Enter` installs/updates when missing or outdated; otherwise it runs the selected branch
+- `Delete`: on `Installs`, remove the selected branch install record (and local install folder when present)
 - `R`: refresh remote branches
 - `Escape`: quit launcher
 
@@ -116,6 +118,7 @@ Launcher settings now include:
 - default launched app UI scale (`Auto`, `1.0`, `1.25`, `1.5`, `2.0`)
 - state file selection from `Documents/trekr/artifacts/state` and quick create via filename entry (base dir auto-applied)
 - installation directory selection (default user folder or custom directory)
+- launch/install rows indicate when a newer release tag is available for a tracked branch
 
 CLI notes:
 

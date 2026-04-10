@@ -11,6 +11,7 @@ use sdl3::event::Event;
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -37,6 +38,7 @@ struct LauncherUiApp {
     status_line: String,
     install_job: Option<InstallJob>,
     state_file_input: Option<String>,
+    latest_release_tags: HashMap<String, String>,
 }
 
 struct InstallJob {
@@ -59,6 +61,7 @@ impl LauncherUiApp {
             status_line: "Ready".to_string(),
             install_job: None,
             state_file_input: None,
+            latest_release_tags: HashMap::new(),
         }
     }
 
@@ -189,7 +192,7 @@ impl LauncherUiApp {
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::ui::draw_text(
             canvas,
-            "LAUNCH INSTALLED BRANCH",
+            "LAUNCH  (ENTER: RUN OR INSTALL/UPDATE)",
             bounds.x + 8,
             bounds.y + 8,
             1,
@@ -212,10 +215,28 @@ impl LauncherUiApp {
                         .installs
                         .iter()
                         .find(|entry| entry.branch == *branch);
+                    let latest_tag = self.latest_release_tags.get(branch);
                     if let Some(build) = installed {
-                        format!("{branch}  |  {}  |  ready", build.commit)
+                        if latest_tag
+                            .as_ref()
+                            .is_some_and(|latest| *latest != &build.commit)
+                        {
+                            format!(
+                                "{branch}  |  {}  |  update available ({})",
+                                build.commit,
+                                latest_tag.cloned().unwrap_or_default()
+                            )
+                        } else {
+                            format!("{branch}  |  {}  |  ready", build.commit)
+                        }
                     } else {
-                        format!("{branch}  |  not installed")
+                        format!(
+                            "{branch}  |  not installed{}",
+                            latest_tag
+                                .as_ref()
+                                .map(|tag| format!("  |  latest {tag}"))
+                                .unwrap_or_default()
+                        )
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -294,7 +315,7 @@ impl LauncherUiApp {
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::ui::draw_text(
             canvas,
-            "TRACKED BRANCH INSTALLS  (ENTER: INSTALL/UPDATE)",
+            "TRACKED BRANCH INSTALLS  (ENTER: INSTALL/UPDATE, DELETE: REMOVE INSTALL)",
             bounds.x + 8,
             bounds.y + 8,
             1,
@@ -311,9 +332,27 @@ impl LauncherUiApp {
                     .iter()
                     .find(|item| item.branch == *branch)
                 {
-                    format!("{branch}  |  {}", entry.commit)
+                    let latest_tag = self.latest_release_tags.get(branch);
+                    if latest_tag
+                        .as_ref()
+                        .is_some_and(|latest| *latest != &entry.commit)
+                    {
+                        format!(
+                            "{branch}  |  {}  |  update available ({})",
+                            entry.commit,
+                            latest_tag.cloned().unwrap_or_default()
+                        )
+                    } else {
+                        format!("{branch}  |  {}", entry.commit)
+                    }
                 } else {
-                    format!("{branch}  |  not installed")
+                    format!(
+                        "{branch}  |  not installed{}",
+                        self.latest_release_tags
+                            .get(branch)
+                            .map(|tag| format!("  |  latest {tag}"))
+                            .unwrap_or_default()
+                    )
                 }
             })
             .collect::<Vec<_>>();
@@ -654,6 +693,7 @@ impl LauncherUiApp {
             LauncherUiAction::AdjustBackward => self.adjust_setting(-1)?,
             LauncherUiAction::AdjustForward => self.adjust_setting(1)?,
             LauncherUiAction::ActivateItem => self.activate_current_item()?,
+            LauncherUiAction::DeleteInstall => self.delete_selected_install()?,
             LauncherUiAction::RefreshBranches => self.refresh_branches(),
         }
         Ok(())
@@ -763,16 +803,22 @@ impl LauncherUiApp {
             self.status_line = "No branch selected".to_string();
             return Ok(());
         };
-        let Some(install) = self
+        let installed = self
             .state
             .installs
             .iter()
             .find(|entry| entry.branch == branch)
-            .cloned()
-        else {
-            self.status_line = format!("Branch '{branch}' is not installed");
+            .cloned();
+        let update_available = installed.as_ref().is_some_and(|install| {
+            self.latest_release_tags
+                .get(&branch)
+                .is_some_and(|latest| latest != &install.commit)
+        });
+        if installed.is_none() || update_available {
+            self.start_install_for_branch(branch);
             return Ok(());
-        };
+        }
+        let install = installed.ok_or("branch install disappeared before launch")?;
         let options = build_run_options(
             branch.clone(),
             self.state.default_project_path.clone(),
@@ -813,10 +859,6 @@ impl LauncherUiApp {
     }
 
     fn activate_installs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.install_job.is_some() {
-            self.status_line = "Install already running".to_string();
-            return Ok(());
-        }
         let Some(branch) = self
             .state
             .tracked_branches
@@ -826,6 +868,15 @@ impl LauncherUiApp {
             self.status_line = "No tracked branch selected".to_string();
             return Ok(());
         };
+        self.start_install_for_branch(branch);
+        Ok(())
+    }
+
+    fn start_install_for_branch(&mut self, branch: String) {
+        if self.install_job.is_some() {
+            self.status_line = "Install already running".to_string();
+            return;
+        }
         let repo_url = resolve_repo_url(None, &self.state);
         let (tx, rx) = mpsc::channel::<InstallJobMessage>();
         let worker_branch = branch.clone();
@@ -854,7 +905,6 @@ impl LauncherUiApp {
             receiver: rx,
         });
         self.status_line = format!("Installing '{branch}'...");
-        Ok(())
     }
 
     fn activate_settings(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -884,6 +934,7 @@ impl LauncherUiApp {
         match catalog::list_remote_branches(&repo_url) {
             Ok(branches) => {
                 self.remote_branches = branches;
+                self.refresh_latest_release_tags();
                 self.status_line = format!("Loaded {} branches", self.remote_branches.len());
                 if self.ui_state.selected_branch_index >= self.remote_branches.len() {
                     self.ui_state.selected_branch_index = 0;
@@ -901,6 +952,17 @@ impl LauncherUiApp {
         } else {
             self.state.tracked_branches.clone()
         }
+    }
+
+    fn refresh_latest_release_tags(&mut self) {
+        let repo_url = resolve_repo_url(None, &self.state);
+        let mut tags = HashMap::new();
+        for branch in self.launch_branches() {
+            if let Ok(Some(tag)) = installs::latest_release_tag_for_branch(&repo_url, &branch) {
+                tags.insert(branch, tag);
+            }
+        }
+        self.latest_release_tags = tags;
     }
 
     fn persist_state(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -923,6 +985,7 @@ impl LauncherUiApp {
                             upsert_install(&mut self.state.installs, install);
                             self.state.last_selected_branch = Some(job.branch.clone());
                             self.status_line = format!("Installed/updated '{}'", job.branch);
+                            self.refresh_latest_release_tags();
                             self.persist_state()?;
                         }
                         Err(error) => {
@@ -938,6 +1001,38 @@ impl LauncherUiApp {
         if keep_job {
             self.install_job = Some(job);
         }
+        Ok(())
+    }
+
+    fn delete_selected_install(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.ui_state.page != LauncherPage::Installs {
+            return Ok(());
+        }
+        let Some(branch) = self
+            .state
+            .tracked_branches
+            .get(self.ui_state.selected_install_index)
+            .cloned()
+        else {
+            self.status_line = "No tracked branch selected".to_string();
+            return Ok(());
+        };
+        let Some(index) = self
+            .state
+            .installs
+            .iter()
+            .position(|entry| entry.branch == branch)
+        else {
+            self.status_line = format!("No install found for '{branch}'");
+            return Ok(());
+        };
+
+        let install = self.state.installs.remove(index);
+        if install.source_dir.exists() {
+            let _ = fs::remove_dir_all(&install.source_dir);
+        }
+        self.persist_state()?;
+        self.status_line = format!("Removed install for '{}'", branch);
         Ok(())
     }
 }
