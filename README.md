@@ -32,6 +32,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/specs/feature-spec-launcher-release-tracks.md`: app vs launcher release-track policy and artifact compatibility contract.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
@@ -97,6 +98,7 @@ Launch state:
 - `cargo run --bin trekr-launcher -- install --branch main --allow-source-build` enables source-build fallback if no matching release artifact is found
 - `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
 - launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
+- release publishing uses separate tracks: app artifacts are tagged `app-*`, launcher artifacts are tagged `launcher-*`
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Launcher UI controls:

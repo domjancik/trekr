@@ -60,6 +60,9 @@ jobs:
       - name: Build check
         run: cargo xtask check
 
+      - name: Build launcher binary
+        run: cargo build --bin trekr-launcher
+
       - name: Run tests
         env:
           RUST_TEST_THREADS: 1

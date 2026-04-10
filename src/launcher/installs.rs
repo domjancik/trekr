@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const APP_RELEASE_TAG_PREFIX: &str = "app-";
+
 pub fn install_branch(
     repo_url: &str,
     branch: &str,
@@ -134,7 +136,7 @@ where
         fs::remove_dir_all(&install_dir)?;
     }
     fs::create_dir_all(&install_dir)?;
-    extract_zip_archive(&zip_path, &install_dir)?;
+    extract_archive(&zip_path, &install_dir)?;
 
     let binary_path = find_binary_recursive(&install_dir).ok_or_else(|| {
         format!(
@@ -390,26 +392,22 @@ fn download_asset(
     log_path: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let cache_dir = artifact_cache_dir()?;
-    let zip_path = cache_dir.join(format!(
-        "{}-{}.zip",
-        sanitize_segment(&asset.name),
-        unix_now()
-    ));
+    let file_path = cache_dir.join(format!("{}-{}", unix_now(), sanitize_segment(&asset.name)));
     let mut response = client
         .get(&asset.browser_download_url)
         .header(USER_AGENT, "trekr-launcher")
         .header(ACCEPT, "application/octet-stream")
         .send()?
         .error_for_status()?;
-    let mut file = fs::File::create(&zip_path)?;
+    let mut file = fs::File::create(&file_path)?;
     let mut bytes = Vec::new();
     response.read_to_end(&mut bytes)?;
     file.write_all(&bytes)?;
     append_log(
         log_path,
-        &format!("downloaded asset to {}\n", zip_path.display()),
+        &format!("downloaded asset to {}\n", file_path.display()),
     )?;
-    Ok(zip_path)
+    Ok(file_path)
 }
 
 fn artifact_cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -448,6 +446,41 @@ fn extract_zip_archive(
             std::io::copy(&mut entry, &mut out_file)?;
         }
     }
+    Ok(())
+}
+
+fn extract_archive(
+    archive_path: &Path,
+    destination: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let lowercase = archive_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_lowercase())
+        .unwrap_or_default();
+    if lowercase.ends_with(".zip") {
+        return extract_zip_archive(archive_path, destination);
+    }
+    if lowercase.ends_with(".tar.gz") || lowercase.ends_with(".tgz") {
+        return extract_tar_gz_archive(archive_path, destination);
+    }
+    if lowercase.ends_with(".tar") {
+        let file = fs::File::open(archive_path)?;
+        let mut archive = tar::Archive::new(file);
+        archive.unpack(destination)?;
+        return Ok(());
+    }
+    Err(format!("unsupported archive format: {}", archive_path.display()).into())
+}
+
+fn extract_tar_gz_archive(
+    archive_path: &Path,
+    destination: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = fs::File::open(archive_path)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(destination)?;
     Ok(())
 }
 
@@ -505,16 +538,27 @@ fn select_release_for_branch<'a>(
     branch: &str,
 ) -> Option<&'a GithubRelease> {
     let branch_token = normalize_branch_token(branch);
+    let tagged_releases: Vec<&GithubRelease> = releases
+        .iter()
+        .filter(|release| {
+            !release.draft
+                && release
+                    .tag_name
+                    .to_lowercase()
+                    .starts_with(APP_RELEASE_TAG_PREFIX)
+        })
+        .collect();
+    let candidates = if tagged_releases.is_empty() {
+        releases.iter().filter(|release| !release.draft).collect()
+    } else {
+        tagged_releases
+    };
+
     let mut best: Option<(&GithubRelease, i32)> = None;
-    for release in releases {
-        if release.draft {
-            continue;
-        }
-        let haystack = format!(
-            "{} {}",
-            release.tag_name.to_lowercase(),
-            release.name.to_lowercase()
-        );
+    for release in candidates.iter().copied() {
+        let normalized_tag = normalize_branch_token(&release.tag_name);
+        let normalized_name = normalize_branch_token(&release.name);
+        let haystack = format!("{} {}", normalized_tag, normalized_name);
         let mut score = 0;
         if haystack.contains(&branch_token) {
             score += 3;
@@ -533,7 +577,7 @@ fn select_release_for_branch<'a>(
         }
     }
     best.map(|(release, _)| release)
-        .or_else(|| releases.first())
+        .or_else(|| candidates.first().copied())
 }
 
 fn select_asset_for_platform<'a>(assets: &'a [GithubAsset]) -> Option<&'a GithubAsset> {
@@ -545,17 +589,23 @@ fn select_asset_for_platform<'a>(assets: &'a [GithubAsset]) -> Option<&'a Github
         &["linux", "x86_64-unknown-linux-gnu"]
     };
 
+    let is_supported_archive = |name: &str| {
+        name.ends_with(".zip")
+            || name.ends_with(".tar.gz")
+            || name.ends_with(".tgz")
+            || name.ends_with(".tar")
+    };
     assets
         .iter()
-        .filter(|asset| asset.name.to_lowercase().ends_with(".zip"))
         .find(|asset| {
             let name = asset.name.to_lowercase();
-            platform_tokens.iter().any(|token| name.contains(token))
+            is_supported_archive(&name) && platform_tokens.iter().any(|token| name.contains(token))
         })
         .or_else(|| {
-            assets
-                .iter()
-                .find(|asset| asset.name.to_lowercase().ends_with(".zip"))
+            assets.iter().find(|asset| {
+                let name = asset.name.to_lowercase();
+                is_supported_archive(&name)
+            })
         })
 }
 
