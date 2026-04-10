@@ -142,7 +142,7 @@ Current controls:
 - `F6`: toggle Ableton Link participation
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `Up` / `Down`: select current page item
-- `Shift+Left` / `Shift+Right`: select current editable field on the mappings page in write mode, or switch timeline control context on the timeline page
+- `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current editable field on the mappings page in write mode, or switch timeline control context on the timeline page
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item, or advance the selected timeline FX edit field
 - `W`: toggle mappings page mode between read-only overview and write mode
@@ -191,7 +191,7 @@ Current controls:
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view, or toggle the selected timeline FX on/off when an `Input FX` / `Output FX` context is active
 - when `Input FX` or `Output FX` timeline context is selected:
   - `Up` / `Down`: select FX row
-  - `Shift+Left` / `Shift+Right`: switch between `Input FX`, `Timeline`, and `Output FX`
+  - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: switch between `Input FX`, `Timeline`, and `Output FX`
   - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
   - `Q` / `E`: apply the selected FX field action (toggle, kind switch, primary/secondary parameter adjust, parameter-window scroll, reorder)
   - `Delete`: remove the selected timeline FX row

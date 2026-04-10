@@ -8145,12 +8145,13 @@ impl App {
                 let channel = track.routing.output_channel.unwrap_or(1).clamp(1, 16);
                 let port = track.routing.output_port.clone();
                 let mut visited = vec![false; self.project.tracks.len()];
-                let mut pre_output_notes = self.effective_track_pre_output_playback_notes_recursive(
-                    track_index,
-                    previous_ticks,
-                    advanced_ticks,
-                    &mut visited,
-                );
+                let mut pre_output_notes = self
+                    .effective_track_pre_output_playback_notes_recursive(
+                        track_index,
+                        previous_ticks,
+                        advanced_ticks,
+                        &mut visited,
+                    );
                 let preview_notes = track.playback_preview_notes(
                     self.project.transport,
                     self.transport_ticks,
@@ -12709,13 +12710,7 @@ mod tests {
                 extend_clip_on_wrap: true,
             }),
         );
-        let events = super::scheduled_note_events(
-            &track,
-            preview_notes.as_slice(),
-            2_650,
-            20,
-            Some(track.loop_region),
-        );
+        let events = super::occurrence_note_events(&track, preview_notes.as_slice(), 2_650, 20);
 
         assert!(events.iter().any(|event| *event == (1_700, true, 64, 100)));
     }
@@ -12741,13 +12736,7 @@ mod tests {
                 extend_clip_on_wrap: true,
             }),
         );
-        let events = super::scheduled_note_events(
-            &track,
-            preview_notes.as_slice(),
-            2_650,
-            20,
-            Some(track.loop_region),
-        );
+        let events = super::occurrence_note_events(&track, preview_notes.as_slice(), 2_650, 20);
 
         assert!(events.is_empty());
     }
