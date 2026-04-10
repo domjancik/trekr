@@ -145,6 +145,7 @@ Current controls:
 - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current editable field on the mappings page in write mode, or switch timeline control context on the timeline page
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item, or advance the selected timeline FX edit field
+- `Shift+Enter`: move backward through the selected timeline FX edit field
 - `W`: toggle mappings page mode between read-only overview and write mode
 - `N`: add a mapping row on the mappings page in write mode
 - `Delete`: remove the selected mapping row on the mappings page in write mode
@@ -192,7 +193,7 @@ Current controls:
 - when `Input FX` or `Output FX` timeline context is selected:
   - `Up` / `Down`: select FX row
   - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: switch between `Input FX`, `Timeline`, and `Output FX`
-  - `Enter`: cycle the active FX edit field (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
+  - `Enter` / `Shift+Enter`: cycle the active FX edit field forward/backward (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
   - `Q` / `E`: apply the selected FX field action (toggle, kind switch, primary/secondary parameter adjust, parameter-window scroll, reorder)
   - `Delete`: remove the selected timeline FX row
   - kind switching on an existing row cycles between effect kinds without removing the row; `None` is only reached through an empty `ADD ... FX` row

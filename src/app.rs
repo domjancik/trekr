@@ -5506,6 +5506,10 @@ impl App {
                 self.activate_page_item();
                 AppControl::Continue
             }
+            AppAction::ReverseActivatePageItem => {
+                self.reverse_activate_page_item();
+                AppControl::Continue
+            }
             AppAction::ToggleMappingsOverlay => {
                 self.overlay_state.active =
                     if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
@@ -6737,6 +6741,18 @@ impl App {
             self.page_state.selected_timeline_fx_field.next();
     }
 
+    fn reverse_activate_timeline_context_item(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.activate_timeline_context_item();
+            return;
+        }
+        self.page_state.selected_timeline_fx_field =
+            self.page_state.selected_timeline_fx_field.previous();
+    }
+
     fn toggle_selected_timeline_fx_enabled(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
@@ -7000,6 +7016,13 @@ impl App {
             MappingField::Enabled => {
                 entry.enabled = delta > 0;
             }
+        }
+    }
+
+    fn reverse_activate_page_item(&mut self) {
+        match self.page_state.current_page {
+            AppPage::Timeline => self.reverse_activate_timeline_context_item(),
+            _ => self.activate_page_item(),
         }
     }
 
@@ -13173,6 +13196,21 @@ mod tests {
         app.adjust_page_item(1);
         let after_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
         assert!(after_row >= before_row);
+    }
+
+    #[test]
+    fn reverse_activate_page_item_moves_timeline_fx_field_backward() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.page_state.selected_timeline_fx_field = TimelineFxField::ParamSecondary;
+
+        app.reverse_activate_page_item();
+
+        assert_eq!(
+            app.page_state.selected_timeline_fx_field,
+            TimelineFxField::ParamPrimary
+        );
     }
 
     #[test]
