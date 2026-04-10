@@ -2304,7 +2304,11 @@ impl App {
         self.draw_timeline_fx_delete_zone(canvas, layout.delete, text_color)?;
         if selected {
             canvas.set_draw_color(Color::RGB(244, 232, 146));
-            canvas.draw_rect(layout.row)?;
+            let underline_y = layout.row.y + layout.row.height() as i32 - 1;
+            canvas.draw_line(
+                sdl3::rect::Point::new(layout.row.x, underline_y),
+                sdl3::rect::Point::new(layout.row.x + layout.row.width() as i32 - 1, underline_y),
+            )?;
         }
         Ok(())
     }
@@ -2328,7 +2332,15 @@ impl App {
         } else {
             Color::RGB(90, 98, 116)
         });
-        canvas.draw_rect(layout.row)?;
+        if selected {
+            let underline_y = layout.row.y + layout.row.height() as i32 - 1;
+            canvas.draw_line(
+                sdl3::rect::Point::new(layout.row.x, underline_y),
+                sdl3::rect::Point::new(layout.row.x + layout.row.width() as i32 - 1, underline_y),
+            )?;
+        } else {
+            canvas.draw_rect(layout.row)?;
+        }
         canvas.set_draw_color(Color::RGB(52, 58, 80));
         canvas.fill_rect(layout.enabled)?;
         crate::ui::draw_text_fitted(
