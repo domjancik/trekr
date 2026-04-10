@@ -10158,7 +10158,7 @@ fn timeline_fx_enabled_chip_label(slot: &MidiFxSlot, show_kind_title: bool) -> &
 }
 
 fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
-    if width >= 24 {
+    if width >= 16 {
         slot.effect.kind().short_label()
     } else {
         slot.effect.kind().compact_label()
@@ -10166,14 +10166,14 @@ fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
 }
 
 fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -> u32 {
-    let label = if available >= 96 {
+    let label = if available >= 72 {
         slot.effect.kind().short_label()
     } else {
         slot.effect.kind().compact_label()
     };
     let glyph_width = 4_u32;
     let padding = 4_u32;
-    (label.len() as u32 * glyph_width + padding).clamp(10, 18)
+    (label.len() as u32 * glyph_width + padding).clamp(12, 20)
 }
 
 fn timeline_param_compact_label(label: &str) -> &str {
@@ -13359,6 +13359,21 @@ mod tests {
         assert_eq!(timeline_fx_overflow_label(2, 0), "--");
         assert_eq!(timeline_fx_overflow_label(3, 0), "1/2");
         assert_eq!(timeline_fx_overflow_label(3, 1), "2/2");
+    }
+
+    #[test]
+    fn timeline_fx_kind_display_uses_short_labels_at_compact_widths() {
+        let slot = MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        };
+
+        assert_eq!(super::timeline_fx_kind_display(&slot, 15), "AR");
+        assert_eq!(super::timeline_fx_kind_display(&slot, 16), "ARP");
     }
 
     #[test]
