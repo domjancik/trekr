@@ -108,7 +108,8 @@ Launcher UI controls:
 - `Up` / `Down`: select page row
 - `Q` / `E`: adjust setting value on settings page
 - `Enter`: activate selected action (`run`, `track/untrack`, `install/update`, or `apply`)
-- on `Launch`, `Enter` installs/updates when missing or outdated; otherwise it runs the selected branch
+- on `Launch`, `Enter` always runs the selected installed branch (if not installed yet, it starts install)
+- `U`: install/update selected branch directly from `Launch` or `Installs`
 - `Delete`: on `Installs`, remove the selected branch install record (and local install folder when present)
 - `R`: refresh remote branches
 - `Escape`: quit launcher

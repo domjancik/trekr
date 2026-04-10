@@ -13,6 +13,7 @@ pub enum LauncherUiAction {
     AdjustBackward,
     AdjustForward,
     ActivateItem,
+    InstallOrUpdate,
     DeleteInstall,
     RefreshBranches,
 }
@@ -84,6 +85,11 @@ pub fn resolve_keyboard(event: &Event) -> Option<LauncherUiAction> {
             repeat: false,
             ..
         } => Some(LauncherUiAction::ActivateItem),
+        Event::KeyDown {
+            keycode: Some(Keycode::U),
+            repeat: false,
+            ..
+        } => Some(LauncherUiAction::InstallOrUpdate),
         Event::KeyDown {
             keycode: Some(Keycode::Delete),
             repeat: false,

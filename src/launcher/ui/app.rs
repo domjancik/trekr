@@ -192,7 +192,7 @@ impl LauncherUiApp {
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::ui::draw_text(
             canvas,
-            "LAUNCH  (ENTER: RUN OR INSTALL/UPDATE)",
+            "LAUNCH  (ENTER: RUN, U: INSTALL/UPDATE)",
             bounds.x + 8,
             bounds.y + 8,
             1,
@@ -315,7 +315,7 @@ impl LauncherUiApp {
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::ui::draw_text(
             canvas,
-            "TRACKED BRANCH INSTALLS  (ENTER: INSTALL/UPDATE, DELETE: REMOVE INSTALL)",
+            "TRACKED BRANCH INSTALLS  (ENTER/U: INSTALL/UPDATE, DELETE: REMOVE INSTALL)",
             bounds.x + 8,
             bounds.y + 8,
             1,
@@ -693,6 +693,7 @@ impl LauncherUiApp {
             LauncherUiAction::AdjustBackward => self.adjust_setting(-1)?,
             LauncherUiAction::AdjustForward => self.adjust_setting(1)?,
             LauncherUiAction::ActivateItem => self.activate_current_item()?,
+            LauncherUiAction::InstallOrUpdate => self.install_from_current_page()?,
             LauncherUiAction::DeleteInstall => self.delete_selected_install()?,
             LauncherUiAction::RefreshBranches => self.refresh_branches(),
         }
@@ -809,12 +810,7 @@ impl LauncherUiApp {
             .iter()
             .find(|entry| entry.branch == branch)
             .cloned();
-        let update_available = installed.as_ref().is_some_and(|install| {
-            self.latest_release_tags
-                .get(&branch)
-                .is_some_and(|latest| latest != &install.commit)
-        });
-        if installed.is_none() || update_available {
+        if installed.is_none() {
             self.start_install_for_branch(branch);
             return Ok(());
         }
@@ -869,6 +865,25 @@ impl LauncherUiApp {
             return Ok(());
         };
         self.start_install_for_branch(branch);
+        Ok(())
+    }
+
+    fn install_from_current_page(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.ui_state.page {
+            LauncherPage::Launch => {
+                let branches = self.launch_branches();
+                let Some(branch) = branches.get(self.ui_state.selected_launch_index).cloned()
+                else {
+                    self.status_line = "No branch selected".to_string();
+                    return Ok(());
+                };
+                self.start_install_for_branch(branch);
+            }
+            LauncherPage::Installs => {
+                self.activate_installs()?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 
