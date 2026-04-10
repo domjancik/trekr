@@ -6393,7 +6393,7 @@ impl App {
             } else if index == 2 {
                 track.midi_fx.output_fx[0] = Some(MidiFxSlot {
                     enabled: true,
-                    effect: MidiFx::TimeShift { ticks: 120 },
+                    effect: MidiFx::Delay { ticks: 240 },
                 });
             }
         }
@@ -10226,7 +10226,7 @@ fn timeline_param_compact_label(label: &str) -> &str {
         "Vel" => "Vl",
         "Len" => "Ln",
         "Root" => "Rt",
-        "Time" => "Tm",
+        "Dly" => "Dl",
         "Src" => "Sc",
         other => other,
     }
