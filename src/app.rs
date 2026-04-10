@@ -2521,8 +2521,14 @@ impl App {
             Rect::new(-10_000, row.y, 1, 1)
         }
 
-        fn take_right(row: Rect, right: &mut i32, width: i32, gap: i32) -> Rect {
-            if width <= 0 || *right - width < row.x {
+        fn take_right_from_bound(
+            row: Rect,
+            min_x: i32,
+            right: &mut i32,
+            width: i32,
+            gap: i32,
+        ) -> Rect {
+            if width <= 0 || *right - width < min_x {
                 return empty_row_rect(row);
             }
             let rect = Rect::new(*right - width, row.y, width as u32, row.height());
@@ -2571,8 +2577,9 @@ impl App {
                 let enabled = Rect::new(row.x, row.y, enabled_width as u32, row.height());
                 let kind_x = enabled.x + enabled.width() as i32 + gap;
                 let kind = Rect::new(kind_x, row.y, kind_width.max(0) as u32, row.height());
+                let params_left = kind.x + kind.width() as i32 + gap;
                 let mut right = row.x + row.width() as i32;
-                let delete = take_right(row, &mut right, delete_width, gap);
+                let delete = take_right_from_bound(row, params_left, &mut right, delete_width, gap);
                 let mut move_down_width = move_width;
                 let mut move_up_width = move_width;
                 let mut overflow_width = if total_param_count > 2 {
@@ -2653,11 +2660,16 @@ impl App {
                     };
                 }
                 primary_width = primary_width.max(0);
-                let move_down = take_right(row, &mut right, move_down_width, gap);
-                let move_up = take_right(row, &mut right, move_up_width, gap);
-                let overflow = take_right(row, &mut right, overflow_width, gap);
-                let param_secondary = take_right(row, &mut right, secondary_width, gap);
-                let param_primary = take_right(row, &mut right, primary_width, gap);
+                let move_down =
+                    take_right_from_bound(row, params_left, &mut right, move_down_width, gap);
+                let move_up =
+                    take_right_from_bound(row, params_left, &mut right, move_up_width, gap);
+                let overflow =
+                    take_right_from_bound(row, params_left, &mut right, overflow_width, gap);
+                let param_secondary =
+                    take_right_from_bound(row, params_left, &mut right, secondary_width, gap);
+                let param_primary =
+                    take_right_from_bound(row, params_left, &mut right, primary_width, gap);
                 TimelineFxRowLayout {
                     row,
                     enabled,
@@ -10158,7 +10170,7 @@ fn timeline_fx_enabled_chip_label(slot: &MidiFxSlot, show_kind_title: bool) -> &
 }
 
 fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
-    if width >= 16 {
+    if width >= 20 {
         slot.effect.kind().short_label()
     } else {
         slot.effect.kind().compact_label()
@@ -10171,9 +10183,9 @@ fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -> u32 {
     } else {
         slot.effect.kind().compact_label()
     };
-    let glyph_width = 4_u32;
-    let padding = 4_u32;
-    (label.len() as u32 * glyph_width + padding).clamp(12, 20)
+    let glyph_width = 5_u32;
+    let padding = 8_u32;
+    (label.len() as u32 * glyph_width + padding).clamp(20, 28)
 }
 
 fn timeline_param_compact_label(label: &str) -> &str {
@@ -13324,8 +13336,8 @@ mod tests {
             },
         };
 
-        assert_eq!(super::timeline_fx_kind_display(&slot, 15), "AR");
-        assert_eq!(super::timeline_fx_kind_display(&slot, 16), "ARP");
+        assert_eq!(super::timeline_fx_kind_display(&slot, 19), "AR");
+        assert_eq!(super::timeline_fx_kind_display(&slot, 20), "ARP");
     }
 
     #[test]
