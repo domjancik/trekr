@@ -120,6 +120,7 @@ Launcher settings now include:
 - state file selection from `Documents/trekr/artifacts/state` and quick create via filename entry (base dir auto-applied)
 - installation directory selection (default user folder or custom directory)
 - launch/install rows indicate when a newer release tag is available for a tracked branch
+- launcher branch rows include open PR titles when available, to make feature branches easier to identify
 
 CLI notes:
 

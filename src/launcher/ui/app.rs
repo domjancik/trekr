@@ -39,6 +39,7 @@ struct LauncherUiApp {
     install_job: Option<InstallJob>,
     state_file_input: Option<String>,
     latest_release_tags: HashMap<String, String>,
+    pr_titles: HashMap<String, String>,
 }
 
 struct InstallJob {
@@ -62,6 +63,7 @@ impl LauncherUiApp {
             install_job: None,
             state_file_input: None,
             latest_release_tags: HashMap::new(),
+            pr_titles: HashMap::new(),
         }
     }
 
@@ -210,6 +212,7 @@ impl LauncherUiApp {
             &branches
                 .iter()
                 .map(|branch| {
+                    let branch_label = self.branch_label(branch);
                     let installed = self
                         .state
                         .installs
@@ -222,16 +225,16 @@ impl LauncherUiApp {
                             .is_some_and(|latest| *latest != &build.commit)
                         {
                             format!(
-                                "{branch}  |  {}  |  update available ({})",
+                                "{branch_label}  |  {}  |  update available ({})",
                                 build.commit,
                                 latest_tag.cloned().unwrap_or_default()
                             )
                         } else {
-                            format!("{branch}  |  {}  |  ready", build.commit)
+                            format!("{branch_label}  |  {}  |  ready", build.commit)
                         }
                     } else {
                         format!(
-                            "{branch}  |  not installed{}",
+                            "{branch_label}  |  not installed{}",
                             latest_tag
                                 .as_ref()
                                 .map(|tag| format!("  |  latest {tag}"))
@@ -283,15 +286,16 @@ impl LauncherUiApp {
             .remote_branches
             .iter()
             .map(|branch| {
+                let branch_label = self.branch_label(branch);
                 let tracked = self
                     .state
                     .tracked_branches
                     .iter()
                     .any(|entry| entry == branch);
                 if tracked {
-                    format!("* {branch}")
+                    format!("* {branch_label}")
                 } else {
-                    format!("  {branch}")
+                    format!("  {branch_label}")
                 }
             })
             .collect::<Vec<_>>();
@@ -326,6 +330,7 @@ impl LauncherUiApp {
             .tracked_branches
             .iter()
             .map(|branch| {
+                let branch_label = self.branch_label(branch);
                 if let Some(entry) = self
                     .state
                     .installs
@@ -338,16 +343,16 @@ impl LauncherUiApp {
                         .is_some_and(|latest| *latest != &entry.commit)
                     {
                         format!(
-                            "{branch}  |  {}  |  update available ({})",
+                            "{branch_label}  |  {}  |  update available ({})",
                             entry.commit,
                             latest_tag.cloned().unwrap_or_default()
                         )
                     } else {
-                        format!("{branch}  |  {}", entry.commit)
+                        format!("{branch_label}  |  {}", entry.commit)
                     }
                 } else {
                     format!(
-                        "{branch}  |  not installed{}",
+                        "{branch_label}  |  not installed{}",
                         self.latest_release_tags
                             .get(branch)
                             .map(|tag| format!("  |  latest {tag}"))
@@ -949,6 +954,7 @@ impl LauncherUiApp {
         match catalog::list_remote_branches(&repo_url) {
             Ok(branches) => {
                 self.remote_branches = branches;
+                self.refresh_pr_titles(&repo_url);
                 self.refresh_latest_release_tags();
                 self.status_line = format!("Loaded {} branches", self.remote_branches.len());
                 if self.ui_state.selected_branch_index >= self.remote_branches.len() {
@@ -969,6 +975,13 @@ impl LauncherUiApp {
         }
     }
 
+    fn branch_label(&self, branch: &str) -> String {
+        self.pr_titles
+            .get(branch)
+            .map(|title| format!("{branch}  |  PR: {title}"))
+            .unwrap_or_else(|| branch.to_string())
+    }
+
     fn refresh_latest_release_tags(&mut self) {
         let repo_url = resolve_repo_url(None, &self.state);
         let mut tags = HashMap::new();
@@ -978,6 +991,12 @@ impl LauncherUiApp {
             }
         }
         self.latest_release_tags = tags;
+    }
+
+    fn refresh_pr_titles(&mut self, repo_url: &str) {
+        if let Ok(titles) = catalog::list_open_pr_titles(repo_url) {
+            self.pr_titles = titles;
+        }
     }
 
     fn persist_state(&self) -> Result<(), Box<dyn std::error::Error>> {
