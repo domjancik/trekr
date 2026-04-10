@@ -18,6 +18,7 @@ pub enum AppAction {
     AdjustPageItemBackward,
     AdjustPageItemForward,
     ActivatePageItem,
+    ReverseActivatePageItem,
     ToggleMappingsOverlay,
     ToggleDiscoverabilityOverlay,
     ToggleDirectMappingMode,
@@ -671,10 +672,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Return),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ActivatePageItem,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::ReverseActivatePageItem
+                } else {
+                    AppAction::ActivatePageItem
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -749,6 +755,7 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::AdjustPageItemBackward => "Adjust Page Item Backward",
         AppAction::AdjustPageItemForward => "Adjust Page Item Forward",
         AppAction::ActivatePageItem => "Activate Page Item",
+        AppAction::ReverseActivatePageItem => "Reverse Activate Page Item",
         AppAction::ToggleMappingsOverlay => "Mappings Overlay",
         AppAction::ToggleDiscoverabilityOverlay => "Mapping Discoverability",
         AppAction::ToggleDirectMappingMode => "Direct Mapping Mode",
@@ -870,6 +877,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::AdjustPageItemBackward => &["Q"],
         AppAction::AdjustPageItemForward => &["E"],
         AppAction::ActivatePageItem => &["Enter"],
+        AppAction::ReverseActivatePageItem => &["Shift+Enter"],
         AppAction::ToggleMappingsOverlay => &["F5"],
         AppAction::ToggleDiscoverabilityOverlay => &["F7"],
         AppAction::ToggleDirectMappingMode => &["F8"],
@@ -1448,6 +1456,25 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&shift_down).unwrap().action,
             AppAction::SelectNextPageField
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_shift_enter_to_reverse_activate_page_item() {
+        let shift_enter = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Return),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&shift_enter).unwrap().action,
+            AppAction::ReverseActivatePageItem
         );
     }
 
