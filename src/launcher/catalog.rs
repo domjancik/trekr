@@ -31,34 +31,41 @@ pub fn fetch_branch_ahead_counts_vs_main(
     repo_url: &str,
     branches: &[String],
 ) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
-    let Some((owner, repo)) = parse_github_repo(repo_url) else {
-        return Ok(HashMap::new());
-    };
-    let client = Client::builder().build()?;
+    let metadata_repo = prepare_launcher_git_metadata_repo(repo_url)?;
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(&metadata_repo)
+        .args([
+            "fetch",
+            "--prune",
+            "--quiet",
+            "origin",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ])
+        .output();
+
     let mut result = HashMap::new();
     for branch in branches {
         if branch.eq_ignore_ascii_case("main") {
             result.insert(branch.clone(), 1);
             continue;
         }
-        let compare_url = format!(
-            "https://api.github.com/repos/{owner}/{repo}/compare/main...{}",
-            encode_compare_ref(branch)
-        );
-        let mut request = client
-            .get(&compare_url)
-            .header(USER_AGENT, "trekr-launcher")
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            if !token.trim().is_empty() {
-                request = request.bearer_auth(token);
-            }
-        }
-        let response = request.send()?;
-        if response.status().is_success() {
-            if let Ok(compare) = response.json::<GithubCompareResponse>() {
-                result.insert(branch.clone(), compare.ahead_by);
+        let branch_ref = format!("origin/{branch}");
+        let rev_range = format!("origin/main...{branch_ref}");
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&metadata_repo)
+            .args(["rev-list", "--left-right", "--count"])
+            .arg(&rev_range)
+            .output();
+        if let Ok(output) = output {
+            if output.status.success() {
+                let counts = String::from_utf8_lossy(&output.stdout);
+                let mut parts = counts.split_whitespace();
+                let _behind = parts.next();
+                if let Some(ahead) = parts.next().and_then(|value| value.parse::<u64>().ok()) {
+                    result.insert(branch.clone(), ahead);
+                }
             }
         }
     }
@@ -119,13 +126,58 @@ fn parse_owner_repo(value: &str) -> Option<(String, String)> {
     Some((owner, repo))
 }
 
-fn encode_compare_ref(value: &str) -> String {
-    value
-        .replace('%', "%25")
-        .replace('/', "%2F")
-        .replace('#', "%23")
-        .replace('?', "%3F")
-        .replace(' ', "%20")
+fn prepare_launcher_git_metadata_repo(
+    repo_url: &str,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    let repo_dir = launcher_metadata_repo_dir();
+    std::fs::create_dir_all(&repo_dir)?;
+    let git_dir = repo_dir.join(".git");
+    if !git_dir.exists() {
+        let status = Command::new("git").arg("init").arg(&repo_dir).status()?;
+        if !status.success() {
+            return Err("failed to initialize launcher metadata git repo".into());
+        }
+    }
+
+    let remote_url = Command::new("git")
+        .arg("-C")
+        .arg(&repo_dir)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
+
+    match remote_url {
+        Some(existing) if existing == repo_url => {}
+        Some(_) => {
+            let _ = Command::new("git")
+                .arg("-C")
+                .arg(&repo_dir)
+                .args(["remote", "set-url", "origin", repo_url])
+                .status();
+        }
+        None => {
+            let _ = Command::new("git")
+                .arg("-C")
+                .arg(&repo_dir)
+                .args(["remote", "add", "origin", repo_url])
+                .status();
+        }
+    }
+
+    Ok(repo_dir)
+}
+
+fn launcher_metadata_repo_dir() -> std::path::PathBuf {
+    if cfg!(windows) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            return std::path::PathBuf::from(local_app_data)
+                .join("trekr-launcher-cache")
+                .join("branch-metadata");
+        }
+    }
+    std::path::PathBuf::from("artifacts/launcher/cache/branch-metadata")
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,9 +190,4 @@ struct GithubPullRequest {
 struct GithubPullRequestHead {
     #[serde(rename = "ref")]
     reference: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GithubCompareResponse {
-    ahead_by: u64,
 }
