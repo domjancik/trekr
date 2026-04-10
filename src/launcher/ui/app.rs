@@ -317,7 +317,16 @@ impl LauncherUiApp {
             ),
             &rows,
             self.ui_state.selected_branch_index,
-        )
+        )?;
+        if let Some(index) = self.deprioritized_branch_start_index() {
+            if index > 0 {
+                let line_y = bounds.y + 24 + index as i32 * 18 - 2;
+                let line = Rect::new(bounds.x + 8, line_y, bounds.width().saturating_sub(16), 1);
+                canvas.set_draw_color(Color::RGB(82, 92, 106));
+                canvas.fill_rect(line)?;
+            }
+        }
+        Ok(())
     }
 
     fn draw_installs_page<T: RenderTarget>(
@@ -966,9 +975,9 @@ impl LauncherUiApp {
                         .unwrap_or_default();
                 let mut prioritized = branches;
                 prioritized.sort_by(|a, b| {
-                    let a_ahead = self.branch_ahead_counts.get(a).copied().unwrap_or(1);
-                    let b_ahead = self.branch_ahead_counts.get(b).copied().unwrap_or(1);
-                    (a_ahead == 0, a).cmp(&(b_ahead == 0, b))
+                    let a_stale = self.is_branch_deprioritized(a);
+                    let b_stale = self.is_branch_deprioritized(b);
+                    (a_stale, a).cmp(&(b_stale, b))
                 });
                 self.remote_branches = prioritized;
                 self.refresh_pr_titles(&repo_url);
@@ -997,6 +1006,17 @@ impl LauncherUiApp {
             .get(branch)
             .map(|title| format!("{branch}  |  PR: {title}"))
             .unwrap_or_else(|| branch.to_string())
+    }
+
+    fn is_branch_deprioritized(&self, branch: &str) -> bool {
+        !branch.eq_ignore_ascii_case("main")
+            && self.branch_ahead_counts.get(branch).copied().unwrap_or(0) == 0
+    }
+
+    fn deprioritized_branch_start_index(&self) -> Option<usize> {
+        self.remote_branches
+            .iter()
+            .position(|branch| self.is_branch_deprioritized(branch))
     }
 
     fn refresh_latest_release_tags(&mut self) {

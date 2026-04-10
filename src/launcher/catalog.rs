@@ -38,9 +38,10 @@ pub fn fetch_branch_ahead_counts_vs_main(
     let mut result = HashMap::new();
     for branch in branches {
         if branch.eq_ignore_ascii_case("main") {
-            result.insert(branch.clone(), 0);
+            result.insert(branch.clone(), 1);
             continue;
         }
+        result.insert(branch.clone(), 0);
         let compare_url = format!(
             "https://api.github.com/repos/{owner}/{repo}/compare/main...{}",
             encode_compare_ref(branch)
