@@ -2521,14 +2521,8 @@ impl App {
             Rect::new(-10_000, row.y, 1, 1)
         }
 
-        fn take_right_from_bound(
-            row: Rect,
-            min_x: i32,
-            right: &mut i32,
-            width: i32,
-            gap: i32,
-        ) -> Rect {
-            if width <= 0 || *right - width < min_x {
+        fn take_right(row: Rect, right: &mut i32, width: i32, gap: i32) -> Rect {
+            if width <= 0 || *right - width < row.x {
                 return empty_row_rect(row);
             }
             let rect = Rect::new(*right - width, row.y, width as u32, row.height());
@@ -2577,9 +2571,7 @@ impl App {
                 let enabled = Rect::new(row.x, row.y, enabled_width as u32, row.height());
                 let kind_x = enabled.x + enabled.width() as i32 + gap;
                 let kind = Rect::new(kind_x, row.y, kind_width.max(0) as u32, row.height());
-                let params_left = kind.x + kind.width() as i32 + gap;
-                let mut right = row.x + row.width() as i32;
-                let delete = take_right_from_bound(row, params_left, &mut right, delete_width, gap);
+                let params_x = kind.x + kind.width() as i32 + gap;
                 let mut move_down_width = move_width;
                 let mut move_up_width = move_width;
                 let mut overflow_width = if total_param_count > 2 {
@@ -2588,41 +2580,76 @@ impl App {
                     0
                 };
                 let mut show_secondary = visible_param_count >= 2;
-                let mut gaps_after_kind = 1; // before delete
-                if move_down_width > 0 {
-                    gaps_after_kind += 1;
-                }
-                if move_up_width > 0 {
-                    gaps_after_kind += 1;
-                }
-                if overflow_width > 0 {
-                    gaps_after_kind += 1;
-                }
-                if show_secondary {
-                    gaps_after_kind += 1;
-                }
-                let mut params_total_width = available
-                    - enabled_width
-                    - kind_width
-                    - delete_width
-                    - gap // enabled-kind
-                    - gaps_after_kind * gap
-                    - move_down_width
-                    - move_up_width
-                    - overflow_width;
-                let mut primary_width = if show_secondary {
-                    params_total_width / 2
-                } else {
-                    params_total_width
-                };
-                let mut secondary_width = if show_secondary {
-                    params_total_width - primary_width
-                } else {
-                    0
-                };
-                while primary_width < param_min_width
-                    || (show_secondary && secondary_width < param_min_width)
-                {
+                loop {
+                    let right_fixed_width = delete_width
+                        + move_down_width
+                        + move_up_width
+                        + overflow_width
+                        + gap // kind -> params
+                        + gap; // params -> delete
+                    let right_fixed_gaps = i32::from(move_down_width > 0)
+                        + i32::from(move_up_width > 0)
+                        + i32::from(overflow_width > 0);
+                    let params_total_width = available
+                        - enabled_width
+                        - kind_width
+                        - right_fixed_width
+                        - right_fixed_gaps * gap
+                        - gap; // enabled -> kind
+                    let required_param_width = if show_secondary {
+                        param_min_width * 2 + gap
+                    } else {
+                        param_min_width
+                    };
+                    if params_total_width >= required_param_width {
+                        let mut right = row.x + row.width() as i32;
+                        let delete = take_right(row, &mut right, delete_width, gap);
+                        let move_down = take_right(row, &mut right, move_down_width, gap);
+                        let move_up = take_right(row, &mut right, move_up_width, gap);
+                        let overflow = take_right(row, &mut right, overflow_width, gap);
+                        let param_right = delete.x - gap;
+                        let available_param_width = (param_right - params_x).max(0);
+                        let (param_primary, param_secondary) = if show_secondary {
+                            let primary_width = (available_param_width - gap) / 2;
+                            let secondary_width = available_param_width - gap - primary_width;
+                            let primary = Rect::new(
+                                params_x,
+                                row.y,
+                                primary_width.max(0) as u32,
+                                row.height(),
+                            );
+                            let secondary_x = primary.x + primary.width() as i32 + gap;
+                            let secondary = Rect::new(
+                                secondary_x,
+                                row.y,
+                                secondary_width.max(0) as u32,
+                                row.height(),
+                            );
+                            (primary, secondary)
+                        } else {
+                            (
+                                Rect::new(
+                                    params_x,
+                                    row.y,
+                                    available_param_width.max(0) as u32,
+                                    row.height(),
+                                ),
+                                empty_row_rect(row),
+                            )
+                        };
+                        return TimelineFxRowLayout {
+                            row,
+                            enabled,
+                            kind,
+                            param_primary,
+                            param_secondary,
+                            overflow,
+                            move_up,
+                            move_down,
+                            delete,
+                        };
+                    }
+
                     if move_down_width > 0 {
                         move_down_width = 0;
                     } else if move_up_width > 0 {
@@ -2632,54 +2659,31 @@ impl App {
                     } else if show_secondary {
                         show_secondary = false;
                     } else {
-                        break;
+                        let mut right = row.x + row.width() as i32;
+                        let delete = take_right(row, &mut right, delete_width, gap);
+                        let move_down = empty_row_rect(row);
+                        let move_up = empty_row_rect(row);
+                        let overflow = empty_row_rect(row);
+                        let param_right = delete.x - gap;
+                        let available_param_width = (param_right - params_x).max(0);
+                        let param_primary = Rect::new(
+                            params_x,
+                            row.y,
+                            available_param_width.max(0) as u32,
+                            row.height(),
+                        );
+                        return TimelineFxRowLayout {
+                            row,
+                            enabled,
+                            kind,
+                            param_primary,
+                            param_secondary: empty_row_rect(row),
+                            overflow,
+                            move_up,
+                            move_down,
+                            delete,
+                        };
                     }
-                    gaps_after_kind = 1
-                        + i32::from(move_down_width > 0)
-                        + i32::from(move_up_width > 0)
-                        + i32::from(overflow_width > 0)
-                        + i32::from(show_secondary);
-                    params_total_width = available
-                        - enabled_width
-                        - kind_width
-                        - delete_width
-                        - gap
-                        - gaps_after_kind * gap
-                        - move_down_width
-                        - move_up_width
-                        - overflow_width;
-                    primary_width = if show_secondary {
-                        params_total_width / 2
-                    } else {
-                        params_total_width
-                    };
-                    secondary_width = if show_secondary {
-                        params_total_width - primary_width
-                    } else {
-                        0
-                    };
-                }
-                primary_width = primary_width.max(0);
-                let move_down =
-                    take_right_from_bound(row, params_left, &mut right, move_down_width, gap);
-                let move_up =
-                    take_right_from_bound(row, params_left, &mut right, move_up_width, gap);
-                let overflow =
-                    take_right_from_bound(row, params_left, &mut right, overflow_width, gap);
-                let param_secondary =
-                    take_right_from_bound(row, params_left, &mut right, secondary_width, gap);
-                let param_primary =
-                    take_right_from_bound(row, params_left, &mut right, primary_width, gap);
-                TimelineFxRowLayout {
-                    row,
-                    enabled,
-                    kind,
-                    param_primary,
-                    param_secondary,
-                    overflow,
-                    move_up,
-                    move_down,
-                    delete,
                 }
             })
             .collect()
