@@ -99,6 +99,7 @@ Launch state:
 - `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
 - launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
 - release publishing uses separate tracks: app artifacts are tagged `app-*`, launcher artifacts are tagged `launcher-*`
+- branch/PR/ahead metadata is also published as a GitHub-native cached catalog asset (`launcher-catalog-latest/launcher-catalog.json`) so logged-out launcher sessions can avoid GitHub API rate-limit spikes
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Launcher UI controls:

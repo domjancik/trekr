@@ -1231,28 +1231,40 @@ impl LauncherUiApp {
 
     fn refresh_branches(&mut self) {
         let repo_url = resolve_repo_url(None, &self.state);
-        match catalog::list_remote_branches(&repo_url) {
-            Ok(branches) => {
-                self.branch_ahead_counts =
-                    catalog::fetch_branch_ahead_counts_vs_main(&repo_url, &branches)
-                        .unwrap_or_default();
-                let mut prioritized = branches;
-                prioritized.sort_by(|a, b| {
-                    let a_stale = self.is_branch_deprioritized(a);
-                    let b_stale = self.is_branch_deprioritized(b);
-                    (a_stale, a).cmp(&(b_stale, b))
-                });
-                self.remote_branches = prioritized;
-                self.refresh_pr_titles(&repo_url);
-                self.refresh_latest_release_tags();
-                self.status_line = format!("Loaded {} branches", self.remote_branches.len());
-                if self.ui_state.selected_branch_index >= self.remote_branches.len() {
-                    self.ui_state.selected_branch_index = 0;
-                }
-            }
-            Err(error) => {
-                self.status_line = format!("Branch refresh failed: {error}");
-            }
+        if let Ok(Some(snapshot)) = catalog::fetch_public_catalog_snapshot(&repo_url) {
+            self.branch_ahead_counts = snapshot.branch_ahead_counts;
+            self.pr_titles = snapshot.pr_titles;
+            self.latest_release_tags = snapshot.latest_release_tags;
+            let mut prioritized = snapshot.branches;
+            prioritized.sort_by(|a, b| {
+                let a_stale = self.is_branch_deprioritized(a);
+                let b_stale = self.is_branch_deprioritized(b);
+                (a_stale, a).cmp(&(b_stale, b))
+            });
+            self.remote_branches = prioritized;
+            self.status_line = format!(
+                "Loaded {} branches (cached catalog)",
+                self.remote_branches.len()
+            );
+        } else if let Ok(branches) = catalog::list_remote_branches(&repo_url) {
+            self.branch_ahead_counts =
+                catalog::fetch_branch_ahead_counts_vs_main(&repo_url, &branches)
+                    .unwrap_or_default();
+            let mut prioritized = branches;
+            prioritized.sort_by(|a, b| {
+                let a_stale = self.is_branch_deprioritized(a);
+                let b_stale = self.is_branch_deprioritized(b);
+                (a_stale, a).cmp(&(b_stale, b))
+            });
+            self.remote_branches = prioritized;
+            self.refresh_pr_titles(&repo_url);
+            self.refresh_latest_release_tags();
+            self.status_line = format!("Loaded {} branches", self.remote_branches.len());
+        } else {
+            self.status_line = "Branch refresh failed".to_string();
+        }
+        if self.ui_state.selected_branch_index >= self.remote_branches.len() {
+            self.ui_state.selected_branch_index = 0;
         }
     }
 

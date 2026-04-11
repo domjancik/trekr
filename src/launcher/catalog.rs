@@ -4,6 +4,45 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::process::Command;
 
+const CATALOG_RELEASE_TAG: &str = "launcher-catalog-latest";
+
+#[derive(Debug, Clone)]
+pub struct PublicCatalogSnapshot {
+    pub branches: Vec<String>,
+    pub branch_ahead_counts: HashMap<String, u64>,
+    pub pr_titles: HashMap<String, String>,
+    pub latest_release_tags: HashMap<String, String>,
+}
+
+pub fn fetch_public_catalog_snapshot(
+    repo_url: &str,
+) -> Result<Option<PublicCatalogSnapshot>, Box<dyn std::error::Error>> {
+    let Some((owner, repo)) = parse_github_repo(repo_url) else {
+        return Ok(None);
+    };
+    let url = format!(
+        "https://github.com/{owner}/{repo}/releases/download/{CATALOG_RELEASE_TAG}/launcher-catalog.json"
+    );
+    let client = Client::builder().build()?;
+    let response = client
+        .get(url)
+        .header(USER_AGENT, "trekr-launcher")
+        .send()?;
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+    let payload = response.json::<LauncherCatalogPayload>()?;
+    let mut branches = payload.branches;
+    branches.sort();
+    branches.dedup();
+    Ok(Some(PublicCatalogSnapshot {
+        branches,
+        branch_ahead_counts: payload.ahead_by_main,
+        pr_titles: payload.pr_titles,
+        latest_release_tags: payload.latest_release_tags,
+    }))
+}
+
 pub fn list_remote_branches(repo_url: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     if let Some((owner, repo)) = parse_github_repo(repo_url) {
         let api_url = format!("https://api.github.com/repos/{owner}/{repo}/branches?per_page=100");
@@ -174,4 +213,16 @@ struct GithubCompareResponse {
 #[derive(Debug, Deserialize)]
 struct GithubBranch {
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LauncherCatalogPayload {
+    #[serde(default)]
+    branches: Vec<String>,
+    #[serde(default)]
+    ahead_by_main: HashMap<String, u64>,
+    #[serde(default)]
+    pr_titles: HashMap<String, String>,
+    #[serde(default)]
+    latest_release_tags: HashMap<String, String>,
 }
