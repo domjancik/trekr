@@ -1,9 +1,12 @@
 name: Launcher Catalog
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - App Release
+      - Launcher Release
+    types:
+      - completed
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   publish-catalog:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - name: Build launcher catalog JSON
