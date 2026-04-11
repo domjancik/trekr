@@ -18,8 +18,22 @@ pub struct Project {
     pub name: String,
     pub transport: Transport,
     pub loop_region: LoopRegion,
+    #[serde(default)]
+    pub global_harmony: GlobalHarmony,
     pub active_track_index: usize,
     pub tracks: Vec<Track>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlobalHarmony {
+    #[serde(default)]
+    pub root: u8,
+}
+
+impl Default for GlobalHarmony {
+    fn default() -> Self {
+        Self { root: 0 }
+    }
 }
 
 impl Project {
@@ -28,6 +42,7 @@ impl Project {
             name: "Untitled".to_string(),
             transport: Transport::default(),
             loop_region: LoopRegion::new(0, 16 * 960),
+            global_harmony: GlobalHarmony::default(),
             active_track_index: 0,
             tracks: (1..=6)
                 .map(|index| Track::new(&format!("Track {}", index), TrackKind::Midi))
@@ -40,6 +55,7 @@ impl Project {
             name: "Untitled".to_string(),
             transport: Transport::default(),
             loop_region: LoopRegion::new(0, 16 * 960),
+            global_harmony: GlobalHarmony::default(),
             active_track_index: 0,
             tracks: (1..=6)
                 .map(|index| Track::new_empty(&format!("Track {}", index), TrackKind::Midi))

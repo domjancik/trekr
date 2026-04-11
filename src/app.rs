@@ -12,7 +12,7 @@ use crate::mapping::{
 };
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
-    MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label,
+    MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
     process_live_chain_event, process_live_chain_tick, process_live_event, reset_live_fx_timing,
     transform_notes,
 };
@@ -5631,6 +5631,10 @@ impl App {
                 self.silence_tracks_for_loop_change();
                 AppControl::Continue
             }
+            AppAction::CycleGlobalHarmonyRoot => {
+                self.project.global_harmony.root = (self.project.global_harmony.root + 1) % 12;
+                AppControl::Continue
+            }
             AppAction::ResetGlobalLoop => {
                 self.project.loop_region = self.project.full_song_range();
                 self.project.transport.loop_enabled = true;
@@ -7586,6 +7590,7 @@ impl App {
         source_track_index: usize,
         source_events: &[LiveMidiFxEvent],
         state: &mut LiveMidiFxState,
+        global_quantize_root: u8,
     ) -> Vec<LiveMidiFxEvent> {
         let mut events = Vec::new();
         for slot in track
@@ -7603,7 +7608,12 @@ impl App {
                 _ => {
                     let mut transformed = Vec::new();
                     for event in events {
-                        transformed.extend(process_live_event(&[Some(slot.clone())], state, event));
+                        transformed.extend(process_live_event(
+                            &[Some(slot.clone())],
+                            state,
+                            event,
+                            global_quantize_root,
+                        ));
                     }
                     events = transformed;
                     if events.is_empty() {
@@ -7674,6 +7684,7 @@ impl App {
                     source_track_index,
                     source_events,
                     state,
+                    self.project.global_harmony.root,
                 )
             } else {
                 Vec::new()
@@ -7729,7 +7740,13 @@ impl App {
     ) -> (Vec<LiveMidiFxEvent>, Vec<LiveMidiFxEvent>) {
         self.ensure_fx_live_state_len();
         let processed = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
-            process_live_chain_event(input_chain, state, event.clone(), current_ticks)
+            process_live_chain_event(
+                input_chain,
+                state,
+                event.clone(),
+                current_ticks,
+                self.project.global_harmony.root,
+            )
         } else {
             vec![event.clone()]
         };
@@ -7757,7 +7774,13 @@ impl App {
         for event in events {
             let processed_events =
                 if let Some(state) = self.output_fx_live_states.get_mut(track_index) {
-                    process_live_chain_event(output_chain, state, event, current_ticks)
+                    process_live_chain_event(
+                        output_chain,
+                        state,
+                        event,
+                        current_ticks,
+                        self.project.global_harmony.root,
+                    )
                 } else {
                     Vec::new()
                 };
@@ -7810,7 +7833,13 @@ impl App {
             let output_channel = track_view.routing.output_channel;
 
             let input_events = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
-                process_live_chain_tick(&input_chain, state, previous_ticks, current_ticks)
+                process_live_chain_tick(
+                    &input_chain,
+                    state,
+                    previous_ticks,
+                    current_ticks,
+                    self.project.global_harmony.root,
+                )
             } else {
                 Vec::new()
             };
@@ -7845,7 +7874,13 @@ impl App {
 
             let output_events = if let Some(state) = self.output_fx_live_states.get_mut(track_index)
             {
-                process_live_chain_tick(&output_chain, state, previous_ticks, current_ticks)
+                process_live_chain_tick(
+                    &output_chain,
+                    state,
+                    previous_ticks,
+                    current_ticks,
+                    self.project.global_harmony.root,
+                )
             } else {
                 Vec::new()
             };
@@ -7904,7 +7939,11 @@ impl App {
             .filter(|slot| slot.enabled)
         {
             let MidiFx::TrackClone { source_track } = slot.effect else {
-                notes = transform_notes(&notes, &[Some(slot.clone())]);
+                notes = transform_notes(
+                    &notes,
+                    &[Some(slot.clone())],
+                    self.project.global_harmony.root,
+                );
                 continue;
             };
             if source_track == track_index || !self.track_emits_clone_source(source_track) {
@@ -7966,7 +8005,11 @@ impl App {
             self.project.transport.ppqn as u64,
             &mut visited,
         );
-        transform_notes(&notes, &track.midi_fx.output_fx)
+        transform_notes(
+            &notes,
+            &track.midi_fx.output_fx,
+            self.project.global_harmony.root,
+        )
     }
 
     fn poll_midi_input(&mut self) {
@@ -8279,8 +8322,11 @@ impl App {
                     advanced_ticks,
                     &mut visited,
                 );
-                let transformed_notes =
-                    transform_notes(&pre_output_notes, &track.midi_fx.output_fx);
+                let transformed_notes = transform_notes(
+                    &pre_output_notes,
+                    &track.midi_fx.output_fx,
+                    self.project.global_harmony.root,
+                );
                 let events = occurrence_note_events(
                     track,
                     &transformed_notes,
@@ -9585,6 +9631,11 @@ impl App {
                 fill: Color::RGB(70, 100, 120),
             },
             TransportChipSpec {
+                label: format!("Harmony {}", note_name(self.project.global_harmony.root)),
+                action: Some(AppAction::CycleGlobalHarmonyRoot),
+                fill: Color::RGB(88, 82, 124),
+            },
+            TransportChipSpec {
                 label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
                 action: None,
                 fill: if self.note_additive_select_held {
@@ -10226,6 +10277,7 @@ fn timeline_param_compact_label(label: &str) -> &str {
         "Vel" => "Vl",
         "Len" => "Ln",
         "Root" => "Rt",
+        "Tgt" => "Tg",
         "Dly" => "Dl",
         "Src" => "Sc",
         other => other,
@@ -10400,6 +10452,7 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
         AppAction::CycleRecordMode => Some("Record Mode"),
         AppAction::ToggleLoopRecordingExtension => Some("Loop Recording Wrap"),
         AppAction::ToggleGlobalLoop => Some("Song Loop"),
+        AppAction::CycleGlobalHarmonyRoot => Some("Global Harmony Root"),
         AppAction::ResetGlobalLoop => Some("Reset Song Loop"),
         AppAction::ToggleCurrentTrackLoop => Some("Track Loop"),
         AppAction::ToggleStoredLoopRecallQuantize => Some("Stored Loop Recall Quantize"),
@@ -11148,6 +11201,7 @@ mod tests {
             .map(|chip| chip.label)
             .collect::<Vec<_>>();
         assert!(labels.iter().any(|label| label == "Wrap Extend"));
+        assert!(labels.iter().any(|label| label == "Harmony C"));
 
         app.apply_action(AppAction::ToggleLoopRecordingExtension);
         let labels = app
@@ -11156,6 +11210,18 @@ mod tests {
             .map(|chip| chip.label)
             .collect::<Vec<_>>();
         assert!(labels.iter().any(|label| label == "Wrap Clamp"));
+    }
+
+    #[test]
+    fn cycle_global_harmony_root_updates_transport_chip_label() {
+        let mut app = App::new();
+        app.apply_action(AppAction::CycleGlobalHarmonyRoot);
+        let labels = app
+            .transport_bottom_chip_specs()
+            .into_iter()
+            .map(|chip| chip.label)
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "Harmony C#"));
     }
 
     #[test]

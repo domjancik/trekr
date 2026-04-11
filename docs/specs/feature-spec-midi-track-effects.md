@@ -265,11 +265,23 @@ Recommended tap semantics:
 ### Scale Quantize
 
 - remaps notes to a selected scale/root
+- exposes `Target: Local | Global`
+  - `Local`: uses the effect instance `Root`
+  - `Global`: uses the project-level global harmony root
 
 ### Chord Progression Quantize
 
 - remaps notes against a progression-aware harmonic target
 - expected to need richer editing than the simple inline controls
+- exposes `Target: Local | Global`
+  - `Local`: uses the effect instance `Root`
+  - `Global`: uses the project-level global harmony root
+
+### Global Harmony Root
+
+- the timeline transport strip provides a global harmony root control (`Harmony C`, `Harmony D#`, etc.)
+- keyboard shortcut: `Shift+G`
+- this value is a shared harmonic reference used by quantizers with `Target = Global`
 
 ### Delay
 

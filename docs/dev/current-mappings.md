@@ -15,6 +15,7 @@ Keyboard mappings currently implemented:
 - `Shift+C`: clear all tracks
 - `Home`: reset song loop to full song range
 - `G`: toggle global loop
+- `Shift+G`: cycle global harmony root
 - `L`: toggle current track loop
 - `Shift+L`: toggle global quantized stored-loop recall
 - `Shift+Q`: cycle global stored-loop launch quantize (`Off`, `1/16`, `1/8`, `1/4`, `Bar`, `LoopEnd`)

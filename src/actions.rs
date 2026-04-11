@@ -36,6 +36,7 @@ pub enum AppAction {
     ToggleLinkStartStopSync,
     ToggleGlobalLoop,
     ResetGlobalLoop,
+    CycleGlobalHarmonyRoot,
     ClearCurrentTrackContent,
     ClearAllTrackContent,
     ToggleCurrentTrackLoop,
@@ -400,10 +401,15 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::G),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::ToggleGlobalLoop,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::CycleGlobalHarmonyRoot
+                } else {
+                    AppAction::ToggleGlobalLoop
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -773,6 +779,7 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::ToggleLinkStartStopSync => "Link Start/Stop",
         AppAction::ToggleGlobalLoop => "Song Loop",
         AppAction::ResetGlobalLoop => "Reset Song Loop",
+        AppAction::CycleGlobalHarmonyRoot => "Cycle Global Harmony Root",
         AppAction::ClearCurrentTrackContent => "Clear Track",
         AppAction::ClearAllTrackContent => "Clear All",
         AppAction::ToggleCurrentTrackLoop => "Track Loop",
@@ -895,6 +902,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ToggleLinkStartStopSync => &["Shift+F6"],
         AppAction::ToggleGlobalLoop => &["G"],
         AppAction::ResetGlobalLoop => &["Home"],
+        AppAction::CycleGlobalHarmonyRoot => &["Shift+G"],
         AppAction::ClearCurrentTrackContent => &["C"],
         AppAction::ClearAllTrackContent => &["Shift+C"],
         AppAction::ToggleCurrentTrackLoop => &["L"],
@@ -1672,6 +1680,25 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&event).unwrap().action,
             AppAction::ResetGlobalLoop
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_shift_g_to_global_harmony_cycle() {
+        let event = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::G),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&event).unwrap().action,
+            AppAction::CycleGlobalHarmonyRoot
         );
     }
 
