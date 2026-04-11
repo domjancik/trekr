@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub fn run_ui(state_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let mut state = state::load(&state_path).unwrap_or_default();
@@ -41,6 +41,7 @@ struct LauncherUiApp {
     latest_release_tags: HashMap<String, String>,
     pr_titles: HashMap<String, String>,
     branch_ahead_counts: HashMap<String, u64>,
+    last_pointer_activation: Option<(i32, i32, Instant)>,
 }
 
 struct InstallJob {
@@ -86,6 +87,7 @@ impl LauncherUiApp {
             latest_release_tags: HashMap::new(),
             pr_titles: HashMap::new(),
             branch_ahead_counts: HashMap::new(),
+            last_pointer_activation: None,
         }
     }
 
@@ -772,23 +774,45 @@ impl LauncherUiApp {
     ) -> Result<bool, Box<dyn std::error::Error>> {
         match event {
             Event::MouseButtonDown { x, y, .. } => {
+                if self.is_duplicate_pointer_activation(*x as i32, *y as i32) {
+                    return Ok(true);
+                }
                 self.handle_pointer_position(
                     *x as i32,
                     *y as i32,
                     canvas.output_size()?.0,
                     canvas.output_size()?.1,
                 )?;
+                self.record_pointer_activation(*x as i32, *y as i32);
                 Ok(true)
             }
             Event::FingerDown { x, y, .. } => {
                 let size = canvas.output_size()?;
                 let px = (*x * size.0 as f32) as i32;
                 let py = (*y * size.1 as f32) as i32;
+                if self.is_duplicate_pointer_activation(px, py) {
+                    return Ok(true);
+                }
                 self.handle_pointer_position(px, py, size.0, size.1)?;
+                self.record_pointer_activation(px, py);
                 Ok(true)
             }
             _ => Ok(false),
         }
+    }
+
+    fn is_duplicate_pointer_activation(&self, x: i32, y: i32) -> bool {
+        self.last_pointer_activation
+            .as_ref()
+            .is_some_and(|(last_x, last_y, at)| {
+                (x - *last_x).abs() <= 2
+                    && (y - *last_y).abs() <= 2
+                    && at.elapsed() < Duration::from_millis(250)
+            })
+    }
+
+    fn record_pointer_activation(&mut self, x: i32, y: i32) {
+        self.last_pointer_activation = Some((x, y, Instant::now()));
     }
 
     fn handle_pointer_position(
