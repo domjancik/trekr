@@ -100,7 +100,7 @@ Launch state:
 - launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
 - release publishing uses separate tracks: app artifacts are tagged `app-*`, launcher artifacts are tagged `launcher-*`
 - branch/PR/ahead metadata and per-platform direct app artifact links are published as a GitHub-native cached catalog asset (`launcher-catalog-latest/launcher-catalog.json`) so logged-out launcher sessions can avoid GitHub API rate-limit spikes
-  - catalog refresh is triggered after successful completion of app/launcher release workflows (plus scheduled/manual refresh)
+  - catalog refresh is triggered on branch pushes (`main`, `vk/**`), after successful completion of app/launcher release workflows, and via scheduled/manual refresh
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 Launcher UI controls:

@@ -1,6 +1,10 @@
 name: Launcher Catalog
 
 on:
+  push:
+    branches:
+      - main
+      - vk/**
   workflow_run:
     workflows:
       - App Release
