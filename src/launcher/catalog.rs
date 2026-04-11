@@ -12,6 +12,7 @@ pub struct PublicCatalogSnapshot {
     pub branch_ahead_counts: HashMap<String, u64>,
     pub pr_titles: HashMap<String, String>,
     pub latest_release_tags: HashMap<String, String>,
+    pub download_urls: HashMap<String, HashMap<String, String>>,
 }
 
 pub fn fetch_public_catalog_snapshot(
@@ -40,6 +41,7 @@ pub fn fetch_public_catalog_snapshot(
         branch_ahead_counts: payload.ahead_by_main,
         pr_titles: payload.pr_titles,
         latest_release_tags: payload.latest_release_tags,
+        download_urls: payload.download_urls,
     }))
 }
 
@@ -225,4 +227,6 @@ struct LauncherCatalogPayload {
     pr_titles: HashMap<String, String>,
     #[serde(default)]
     latest_release_tags: HashMap<String, String>,
+    #[serde(default)]
+    download_urls: HashMap<String, HashMap<String, String>>,
 }

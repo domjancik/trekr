@@ -75,6 +75,7 @@ jobs:
 
           releases = api_get(f"{base}/releases?per_page=100")
           latest_release_tags = {}
+          download_urls = {}
 
           def release_tag_branch(tag):
               if not tag.startswith("app-"):
@@ -95,6 +96,21 @@ jobs:
               branch = release_tag_branch(tag)
               if branch and branch not in latest_release_tags:
                   latest_release_tags[branch] = tag
+                  urls = {}
+                  for asset in release.get("assets", []):
+                      name = (asset.get("name") or "").lower()
+                      url = asset.get("browser_download_url")
+                      if not url:
+                          continue
+                      if "windows" in name:
+                          urls["windows-x86_64"] = url
+                      elif "linux-aarch64" in name or "aarch64" in name or "arm64" in name:
+                          urls["linux-aarch64"] = url
+                      elif "macos" in name or "darwin" in name:
+                          urls["macos"] = url
+                      elif "linux" in name:
+                          urls["linux-x86_64"] = url
+                  download_urls[branch] = urls
 
           payload = {
               "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -103,6 +119,7 @@ jobs:
               "ahead_by_main": ahead_by_main,
               "pr_titles": pr_titles,
               "latest_release_tags": latest_release_tags,
+              "download_urls": download_urls,
           }
           with open("launcher-catalog.json", "w", encoding="utf-8") as f:
               json.dump(payload, f, indent=2, sort_keys=True)

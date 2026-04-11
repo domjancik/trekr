@@ -1,3 +1,4 @@
+use crate::launcher::catalog;
 use crate::launcher::models::InstalledBuild;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, USER_AGENT};
@@ -31,6 +32,11 @@ pub fn latest_release_tag_for_branch(
     repo_url: &str,
     branch: &str,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    if let Ok(Some(snapshot)) = catalog::fetch_public_catalog_snapshot(repo_url) {
+        if let Some(tag) = snapshot.latest_release_tags.get(branch) {
+            return Ok(Some(tag.clone()));
+        }
+    }
     let releases = fetch_github_releases(repo_url)?;
     Ok(select_release_for_branch(&releases, branch).map(|release| release.tag_name.clone()))
 }
@@ -91,16 +97,58 @@ where
     F: FnMut(&str),
 {
     progress("Fetching release metadata");
-    let releases = fetch_github_releases(repo_url)?;
-    if releases.is_empty() {
-        return Err("no GitHub releases found".into());
-    }
     let (owner, repo) =
         parse_github_repo(repo_url).ok_or("repo url parsing failed while logging release api")?;
     let api_url = format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=50");
     append_log(log_path, &format!("\nrelease api: {api_url}\n"))?;
 
     let client = github_client()?;
+
+    if let Ok(Some(snapshot)) = catalog::fetch_public_catalog_snapshot(repo_url) {
+        if let Some(release_tag) = snapshot.latest_release_tags.get(branch) {
+            if let Some(download_url) = snapshot
+                .download_urls
+                .get(branch)
+                .and_then(|by_platform| by_platform.get(current_platform_catalog_key()))
+            {
+                append_log(
+                    log_path,
+                    &format!(
+                        "selected catalog release: {release_tag}\nselected catalog asset: {}\n",
+                        download_url
+                    ),
+                )?;
+                progress("Downloading artifact (catalog link)");
+                let archive_path =
+                    download_asset_url(&client, download_url, release_tag, log_path)?;
+                progress("Extracting artifact");
+                let install_dir = artifact_install_dir(branch, release_tag, install_root);
+                if install_dir.exists() {
+                    fs::remove_dir_all(&install_dir)?;
+                }
+                fs::create_dir_all(&install_dir)?;
+                extract_archive(&archive_path, &install_dir)?;
+                let binary_path = find_binary_recursive(&install_dir).ok_or_else(|| {
+                    format!(
+                        "artifact extracted but {} not found",
+                        expected_binary_name()
+                    )
+                })?;
+                return Ok(InstalledBuild {
+                    branch: branch.to_string(),
+                    commit: release_tag.clone(),
+                    source_dir: install_dir,
+                    binary_path,
+                    installed_at_unix_secs: unix_now(),
+                });
+            }
+        }
+    }
+
+    let releases = fetch_github_releases(repo_url)?;
+    if releases.is_empty() {
+        return Err("no GitHub releases found".into());
+    }
 
     let release = select_release_for_branch(&releases, branch)
         .ok_or("no matching GitHub release for branch")?;
@@ -426,6 +474,47 @@ fn download_asset(
     Ok(file_path)
 }
 
+fn download_asset_url(
+    client: &Client,
+    url: &str,
+    label: &str,
+    log_path: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let cache_dir = artifact_cache_dir()?;
+    let extension = if url.to_ascii_lowercase().ends_with(".zip") {
+        "zip"
+    } else if url.to_ascii_lowercase().ends_with(".tar.gz") {
+        "tar.gz"
+    } else if url.to_ascii_lowercase().ends_with(".tgz") {
+        "tgz"
+    } else if url.to_ascii_lowercase().ends_with(".tar") {
+        "tar"
+    } else {
+        "bin"
+    };
+    let file_path = cache_dir.join(format!(
+        "{}-{}.{}",
+        unix_now(),
+        sanitize_segment(label),
+        extension
+    ));
+    let mut response = client
+        .get(url)
+        .header(USER_AGENT, "trekr-launcher")
+        .header(ACCEPT, "application/octet-stream")
+        .send()?
+        .error_for_status()?;
+    let mut file = fs::File::create(&file_path)?;
+    let mut bytes = Vec::new();
+    response.read_to_end(&mut bytes)?;
+    file.write_all(&bytes)?;
+    append_log(
+        log_path,
+        &format!("downloaded catalog asset to {}\n", file_path.display()),
+    )?;
+    Ok(file_path)
+}
+
 fn artifact_cache_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let dir = if cfg!(windows) {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
@@ -523,6 +612,18 @@ fn find_binary_recursive(root: &Path) -> Option<PathBuf> {
 
 fn expected_binary_name() -> &'static str {
     if cfg!(windows) { "trekr.exe" } else { "trekr" }
+}
+
+fn current_platform_catalog_key() -> &'static str {
+    if cfg!(windows) {
+        "windows-x86_64"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_arch = "aarch64") {
+        "linux-aarch64"
+    } else {
+        "linux-x86_64"
+    }
 }
 
 fn parse_github_repo(repo_url: &str) -> Option<(String, String)> {
