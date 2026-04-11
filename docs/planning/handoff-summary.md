@@ -116,6 +116,7 @@
   - `Shift+R`
   - `Home`
   - `G`
+  - `Shift+G`
   - `L`
 - Loop editing:
   - `[` / `]`

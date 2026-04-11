@@ -226,9 +226,13 @@ pub enum MidiFx {
     },
     ScaleQuantize {
         root: u8,
+        #[serde(default)]
+        target: QuantizeTarget,
     },
     ChordQuantize {
         root: u8,
+        #[serde(default)]
+        target: QuantizeTarget,
     },
     #[serde(alias = "TimeShift")]
     Delay {
@@ -246,6 +250,31 @@ pub enum ArpOrder {
     Down,
     UpDown,
     AsPlayed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum QuantizeTarget {
+    #[default]
+    Local,
+    Global,
+}
+
+impl QuantizeTarget {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Local => "Loc",
+            Self::Global => "Gbl",
+        }
+    }
+
+    pub fn cycle(self, delta: i32) -> Self {
+        const ALL: [QuantizeTarget; 2] = [QuantizeTarget::Local, QuantizeTarget::Global];
+        let index = ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or(0);
+        ALL[(index as i32 + delta).rem_euclid(ALL.len() as i32) as usize]
+    }
 }
 
 impl ArpOrder {
@@ -295,8 +324,14 @@ impl MidiFx {
             MidiFxKind::Transpose => Self::Transpose { semitones: 0 },
             MidiFxKind::Velocity => Self::Velocity { percent: 100 },
             MidiFxKind::Duration => Self::Duration { percent: 100 },
-            MidiFxKind::ScaleQuantize => Self::ScaleQuantize { root: 0 },
-            MidiFxKind::ChordQuantize => Self::ChordQuantize { root: 0 },
+            MidiFxKind::ScaleQuantize => Self::ScaleQuantize {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
+            MidiFxKind::ChordQuantize => Self::ChordQuantize {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
             MidiFxKind::Delay => Self::Delay { ticks: 0 },
             MidiFxKind::TrackClone => Self::TrackClone { source_track: 0 },
         }
@@ -335,8 +370,12 @@ impl MidiFx {
             Self::Transpose { semitones } => format!("{:+}", semitones),
             Self::Velocity { percent } => format!("{percent}%"),
             Self::Duration { percent } => format!("{percent}%"),
-            Self::ScaleQuantize { root } => note_name(*root).to_string(),
-            Self::ChordQuantize { root } => note_name(*root).to_string(),
+            Self::ScaleQuantize { root, target } => {
+                format!("{} {}", note_name(*root), target.label())
+            }
+            Self::ChordQuantize { root, target } => {
+                format!("{} {}", note_name(*root), target.label())
+            }
             Self::Delay { ticks } => delay_rate_label(*ticks).to_string(),
             Self::TrackClone { source_track } => format!("T{}", source_track + 1),
         }
@@ -400,14 +439,26 @@ impl MidiFx {
                 label: "Len",
                 value: format!("{percent}%"),
             }],
-            Self::ScaleQuantize { root } => vec![MidiFxInlineParam {
-                label: "Root",
-                value: note_name(*root).to_string(),
-            }],
-            Self::ChordQuantize { root } => vec![MidiFxInlineParam {
-                label: "Root",
-                value: note_name(*root).to_string(),
-            }],
+            Self::ScaleQuantize { root, target } => vec![
+                MidiFxInlineParam {
+                    label: "Root",
+                    value: note_name(*root).to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "Tgt",
+                    value: target.label().to_string(),
+                },
+            ],
+            Self::ChordQuantize { root, target } => vec![
+                MidiFxInlineParam {
+                    label: "Root",
+                    value: note_name(*root).to_string(),
+                },
+                MidiFxInlineParam {
+                    label: "Tgt",
+                    value: target.label().to_string(),
+                },
+            ],
             Self::Delay { ticks } => vec![MidiFxInlineParam {
                 label: "Dly",
                 value: delay_rate_label(*ticks).to_string(),
@@ -430,10 +481,15 @@ impl MidiFx {
             Self::Transpose { .. }
             | Self::Velocity { .. }
             | Self::Duration { .. }
-            | Self::ScaleQuantize { .. }
-            | Self::ChordQuantize { .. }
             | Self::Delay { .. }
             | Self::TrackClone { .. } => self.adjust_value(delta, track_count, ppqn),
+            Self::ScaleQuantize { root, target } | Self::ChordQuantize { root, target } => {
+                if param_index == 0 {
+                    *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
+                } else {
+                    *target = target.cycle(delta);
+                }
+            }
             Self::Arp {
                 step_ticks,
                 order,
@@ -488,7 +544,7 @@ impl MidiFx {
             Self::Velocity { percent } | Self::Duration { percent } => {
                 *percent = (*percent as i32 + delta * 10).clamp(0, 300) as u16;
             }
-            Self::ScaleQuantize { root } | Self::ChordQuantize { root } => {
+            Self::ScaleQuantize { root, .. } | Self::ChordQuantize { root, .. } => {
                 *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
             }
             Self::Delay { ticks } => {
@@ -549,7 +605,7 @@ fn step_u64_choice(current: u64, options: &[u64], delta: i32) -> u64 {
     options[next_index]
 }
 
-fn note_name(root: u8) -> &'static str {
+pub fn note_name(root: u8) -> &'static str {
     match root % 12 {
         0 => "C",
         1 => "C#",
@@ -678,10 +734,11 @@ pub fn process_live_event(
     chain: &[Option<MidiFxSlot>],
     state: &mut LiveMidiFxState,
     event: LiveMidiFxEvent,
+    global_quantize_root: u8,
 ) -> Vec<LiveMidiFxEvent> {
     let mut events = vec![event];
     for slot in chain.iter().flatten().filter(|slot| slot.enabled) {
-        events = apply_live_fx(slot, state, events);
+        events = apply_live_fx(slot, state, events, global_quantize_root);
         if events.is_empty() {
             break;
         }
@@ -694,8 +751,16 @@ pub fn process_live_chain_event(
     state: &mut LiveMidiFxState,
     event: LiveMidiFxEvent,
     current_ticks: u64,
+    global_quantize_root: u8,
 ) -> Vec<LiveMidiFxEvent> {
-    process_live_events_from_index(chain, state, vec![event], 0, current_ticks)
+    process_live_events_from_index(
+        chain,
+        state,
+        vec![event],
+        0,
+        current_ticks,
+        global_quantize_root,
+    )
 }
 
 pub fn process_live_chain_tick(
@@ -703,6 +768,7 @@ pub fn process_live_chain_tick(
     state: &mut LiveMidiFxState,
     _previous_ticks: u64,
     current_ticks: u64,
+    global_quantize_root: u8,
 ) -> Vec<(u64, LiveMidiFxEvent)> {
     let mut output = Vec::new();
     loop {
@@ -728,6 +794,7 @@ pub fn process_live_chain_tick(
                 vec![scheduled.event],
                 scheduled.next_slot_index,
                 next_tick,
+                global_quantize_root,
             );
             output.extend(immediate.into_iter().map(|event| (next_tick, event)));
         }
@@ -735,8 +802,14 @@ pub fn process_live_chain_tick(
         if next_live_arp_tick(chain, state) == Some(next_tick) {
             let arp_index = first_live_arp_index(chain).unwrap_or(0);
             let generated = collect_live_arp_events_at_tick(chain, state, next_tick);
-            let processed =
-                process_live_events_from_index(chain, state, generated, arp_index + 1, next_tick);
+            let processed = process_live_events_from_index(
+                chain,
+                state,
+                generated,
+                arp_index + 1,
+                next_tick,
+                global_quantize_root,
+            );
             output.extend(processed.into_iter().map(|event| (next_tick, event)));
         }
     }
@@ -765,6 +838,7 @@ fn process_live_events_from_index(
     mut events: Vec<LiveMidiFxEvent>,
     start_index: usize,
     current_ticks: u64,
+    global_quantize_root: u8,
 ) -> Vec<LiveMidiFxEvent> {
     for (slot_index, slot) in chain.iter().enumerate().skip(start_index) {
         let Some(slot) = slot.as_ref().filter(|slot| slot.enabled) else {
@@ -794,7 +868,7 @@ fn process_live_events_from_index(
                 }
                 events = immediate;
             }
-            _ => events = apply_live_fx(slot, state, events),
+            _ => events = apply_live_fx(slot, state, events, global_quantize_root),
         }
     }
     events
@@ -980,6 +1054,7 @@ fn apply_live_fx(
     slot: &MidiFxSlot,
     state: &mut LiveMidiFxState,
     events: Vec<LiveMidiFxEvent>,
+    global_quantize_root: u8,
 ) -> Vec<LiveMidiFxEvent> {
     let mut transformed = Vec::new();
     for event in events {
@@ -1052,8 +1127,12 @@ fn apply_live_fx(
             (MidiFx::Velocity { .. }, LiveMidiFxEvent::NoteOff { pitch }) => {
                 transformed.push(LiveMidiFxEvent::NoteOff { pitch });
             }
-            (MidiFx::ScaleQuantize { root }, LiveMidiFxEvent::NoteOn { pitch, velocity }) => {
-                let quantized = quantize_to_scale(pitch, *root);
+            (
+                MidiFx::ScaleQuantize { root, target },
+                LiveMidiFxEvent::NoteOn { pitch, velocity },
+            ) => {
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                let quantized = quantize_to_scale(pitch, active_root);
                 state
                     .note_pitch_map
                     .entry(pitch)
@@ -1075,8 +1154,12 @@ fn apply_live_fx(
                     transformed.push(LiveMidiFxEvent::NoteOff { pitch });
                 }
             }
-            (MidiFx::ChordQuantize { root }, LiveMidiFxEvent::NoteOn { pitch, velocity }) => {
-                let quantized = quantize_to_chord(pitch, *root);
+            (
+                MidiFx::ChordQuantize { root, target },
+                LiveMidiFxEvent::NoteOn { pitch, velocity },
+            ) => {
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                let quantized = quantize_to_chord(pitch, active_root);
                 state
                     .note_pitch_map
                     .entry(pitch)
@@ -1103,15 +1186,19 @@ fn apply_live_fx(
     transformed
 }
 
-pub fn transform_notes(notes: &[MidiNote], chain: &[Option<MidiFxSlot>]) -> Vec<MidiNote> {
+pub fn transform_notes(
+    notes: &[MidiNote],
+    chain: &[Option<MidiFxSlot>],
+    global_quantize_root: u8,
+) -> Vec<MidiNote> {
     let mut transformed = notes.to_vec();
     for slot in chain.iter().flatten().filter(|slot| slot.enabled) {
-        transformed = apply_note_fx(slot, &transformed);
+        transformed = apply_note_fx(slot, &transformed, global_quantize_root);
     }
     transformed
 }
 
-fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
+fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote], global_quantize_root: u8) -> Vec<MidiNote> {
     match &slot.effect {
         MidiFx::TrackClone { .. } => notes.to_vec(),
         MidiFx::Arp {
@@ -1158,19 +1245,21 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote]) -> Vec<MidiNote> {
                 note
             })
             .collect(),
-        MidiFx::ScaleQuantize { root } => notes
+        MidiFx::ScaleQuantize { root, target } => notes
             .iter()
             .copied()
             .map(|mut note| {
-                note.pitch = quantize_to_scale(note.pitch, *root);
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                note.pitch = quantize_to_scale(note.pitch, active_root);
                 note
             })
             .collect(),
-        MidiFx::ChordQuantize { root } => notes
+        MidiFx::ChordQuantize { root, target } => notes
             .iter()
             .copied()
             .map(|mut note| {
-                note.pitch = quantize_to_chord(note.pitch, *root);
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                note.pitch = quantize_to_chord(note.pitch, active_root);
                 note
             })
             .collect(),
@@ -1274,6 +1363,13 @@ fn quantize_to_chord(pitch: u8, root: u8) -> u8 {
     quantize_to_allowed_steps(pitch, root, &[0, 4, 7, 11])
 }
 
+fn quantize_root(local_root: u8, target: QuantizeTarget, global_root: u8) -> u8 {
+    match target {
+        QuantizeTarget::Local => local_root,
+        QuantizeTarget::Global => global_root,
+    }
+}
+
 fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
     let octave = pitch / 12;
     let pitch_class = pitch % 12;
@@ -1291,9 +1387,9 @@ fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, arp_rate_label,
-        cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label, process_live_chain_event,
-        process_live_chain_tick, process_live_event, transform_notes,
+        ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, QuantizeTarget,
+        arp_rate_label, cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label,
+        process_live_chain_event, process_live_chain_tick, process_live_event, transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -1329,8 +1425,14 @@ mod tests {
                 pitch: 60,
                 velocity: 100,
             },
+            0,
         );
-        let off = process_live_event(&chain, &mut state, LiveMidiFxEvent::NoteOff { pitch: 60 });
+        let off = process_live_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOff { pitch: 60 },
+            0,
+        );
 
         assert_eq!(
             on,
@@ -1356,7 +1458,7 @@ mod tests {
             }),
         ];
 
-        let transformed = transform_notes(&notes, &chain);
+        let transformed = transform_notes(&notes, &chain, 0);
         assert_eq!(transformed[0].start_ticks, 160);
         assert_eq!(transformed[0].length_ticks, 60);
     }
@@ -1401,7 +1503,7 @@ mod tests {
                 gate_percent: 100,
             },
         })];
-        let transformed = transform_notes(&notes, &chain);
+        let transformed = transform_notes(&notes, &chain, 0);
         assert!(
             transformed
                 .iter()
@@ -1444,6 +1546,7 @@ mod tests {
                 velocity: 100,
             },
             0,
+            0,
         );
         assert!(immediate.is_empty());
         let immediate = process_live_chain_event(
@@ -1454,10 +1557,11 @@ mod tests {
                 velocity: 100,
             },
             0,
+            0,
         );
         assert!(immediate.is_empty());
 
-        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 500);
+        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 500, 0);
         assert!(scheduled.contains(&(
             0,
             LiveMidiFxEvent::NoteOn {
@@ -1509,10 +1613,11 @@ mod tests {
                 velocity: 100,
             },
             0,
+            0,
         );
         assert!(immediate.is_empty());
 
-        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 300);
+        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 300, 0);
         assert_eq!(
             scheduled,
             vec![(
@@ -1523,5 +1628,19 @@ mod tests {
                 }
             )]
         );
+    }
+
+    #[test]
+    fn quantize_target_global_uses_global_root_in_note_transform() {
+        let notes = [MidiNote::new(60, 0, 120, 100)];
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleQuantize {
+                root: 0,
+                target: QuantizeTarget::Global,
+            },
+        })];
+        let transformed = transform_notes(&notes, &chain, 2);
+        assert_eq!(transformed[0].pitch, 71);
     }
 }
