@@ -572,12 +572,17 @@ fn select_release_for_branch<'a>(
 
     let mut best: Option<(&GithubRelease, i32)> = None;
     for release in candidates.iter().copied() {
+        let exact_branch_match = release_tag_branch(&release.tag_name)
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(branch));
         let normalized_tag = normalize_branch_token(&release.tag_name);
         let normalized_name = normalize_branch_token(&release.name);
         let haystack = format!("{} {}", normalized_tag, normalized_name);
-        let mut score = 0;
+        let mut score = 0_i32;
+        if exact_branch_match {
+            score += 100;
+        }
         if haystack.contains(&branch_token) {
-            score += 3;
+            score += 10;
         }
         if branch.eq_ignore_ascii_case("main")
             && (haystack.contains("main") || haystack.contains("stable"))
@@ -592,8 +597,20 @@ fn select_release_for_branch<'a>(
             _ => best = Some((release, score)),
         }
     }
-    best.map(|(release, _)| release)
-        .or_else(|| candidates.first().copied())
+    let best = best.and_then(|(release, score)| {
+        if score > 0 || branch.eq_ignore_ascii_case("main") {
+            Some(release)
+        } else {
+            None
+        }
+    });
+    if best.is_some() {
+        return best;
+    }
+    if branch.eq_ignore_ascii_case("main") {
+        return candidates.first().copied();
+    }
+    None
 }
 
 fn select_asset_for_platform<'a>(assets: &'a [GithubAsset]) -> Option<&'a GithubAsset> {
@@ -631,6 +648,19 @@ fn normalize_branch_token(branch: &str) -> String {
         .replace('/', "-")
         .replace('_', "-")
         .replace(' ', "-")
+}
+
+fn release_tag_branch(tag: &str) -> Option<&str> {
+    let rest = tag.strip_prefix("app-")?;
+    let (branch_and_run, sha) = rest.rsplit_once('-')?;
+    if sha.len() != 40 || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let (branch, run_number) = branch_and_run.rsplit_once('-')?;
+    if run_number.is_empty() || !run_number.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some(branch)
 }
 
 fn install_log_path(branch: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -692,4 +722,41 @@ struct GithubRelease {
 struct GithubAsset {
     name: String,
     browser_download_url: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GithubRelease, select_release_for_branch};
+
+    fn release(tag_name: &str) -> GithubRelease {
+        GithubRelease {
+            tag_name: tag_name.to_string(),
+            name: tag_name.to_string(),
+            draft: false,
+            assets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn select_release_for_branch_prefers_exact_branch_tag() {
+        let releases = vec![
+            release("app-vk/b319-feature-spec-bui-24-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            release("app-vk/9b67-feature-spec-mid-11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+        ];
+        let selected = select_release_for_branch(&releases, "vk/9b67-feature-spec-mid")
+            .expect("expected matching release");
+        assert_eq!(
+            selected.tag_name,
+            "app-vk/9b67-feature-spec-mid-11-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+    }
+
+    #[test]
+    fn select_release_for_branch_does_not_fall_back_to_unrelated_branch() {
+        let releases = vec![release(
+            "app-vk/b319-feature-spec-bui-24-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )];
+        let selected = select_release_for_branch(&releases, "vk/9b67-feature-spec-mid");
+        assert!(selected.is_none());
+    }
 }
