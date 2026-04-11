@@ -8315,7 +8315,14 @@ impl App {
                     self.transport_ticks,
                     self.record_context(track),
                 );
-                pre_output_notes.extend(preview_notes);
+                let preview_occurrences = scheduled_note_occurrences(
+                    track,
+                    &preview_notes,
+                    previous_ticks,
+                    advanced_ticks,
+                    self.playback_loop_range_for_track(track),
+                );
+                pre_output_notes.extend(preview_occurrences);
                 let clone_notes = self.effective_track_clone_playback_notes_recursive(
                     track_index,
                     previous_ticks,
@@ -12951,9 +12958,17 @@ mod tests {
                 extend_clip_on_wrap: true,
             }),
         );
-        let events = super::occurrence_note_events(&track, preview_notes.as_slice(), 2_650, 20);
+        let preview_occurrences = super::scheduled_note_occurrences(
+            &track,
+            preview_notes.as_slice(),
+            2_650,
+            20,
+            Some(track.loop_region),
+        );
+        let events =
+            super::occurrence_note_events(&track, preview_occurrences.as_slice(), 2_650, 20);
 
-        assert!(events.iter().any(|event| *event == (1_700, true, 64, 100)));
+        assert!(events.iter().any(|event| *event == (2_660, true, 64, 100)));
     }
 
     #[test]
@@ -12977,7 +12992,15 @@ mod tests {
                 extend_clip_on_wrap: true,
             }),
         );
-        let events = super::occurrence_note_events(&track, preview_notes.as_slice(), 2_650, 20);
+        let preview_occurrences = super::scheduled_note_occurrences(
+            &track,
+            preview_notes.as_slice(),
+            2_650,
+            20,
+            Some(track.loop_region),
+        );
+        let events =
+            super::occurrence_note_events(&track, preview_occurrences.as_slice(), 2_650, 20);
 
         assert!(events.is_empty());
     }
@@ -13108,7 +13131,8 @@ mod tests {
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[1];
         let (_, body_detail_bounds) = app.track_column_body_bounds(full_bounds, detail_bounds);
-        let detail_label_rect = crate::ui::track_label_rect(body_detail_bounds, app.timeline_flow);
+        let detail_label_rect =
+            super::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
         let (_, slot_rect) = app.stored_loop_slot_rects(detail_label_rect)[0];
 
         let control = app.handle_timeline_pointer(
