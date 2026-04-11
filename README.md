@@ -113,6 +113,10 @@ Launcher UI controls:
 - `Delete`: on `Installs`, remove the selected branch install record (and local install folder when present)
 - `R`: refresh remote branches
 - `Escape`: quit launcher
+- touch/mouse: each row now has action buttons for direct taps/clicks
+  - `Branches`: `Track/Untrack`, `Install`, `Update`
+  - `Launch`: `Run`, `Install`, `Update`
+  - `Installs`: `Run`, `Update`, `Delete`
 
 Launcher settings now include:
 

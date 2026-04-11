@@ -53,6 +53,26 @@ enum InstallJobMessage {
     Finished(Result<crate::launcher::models::InstalledBuild, String>),
 }
 
+const ROW_HEIGHT: i32 = 18;
+const ACTION_BUTTON_WIDTH: u32 = 58;
+const ACTION_BUTTON_GAP: i32 = 4;
+
+#[derive(Clone, Copy)]
+enum RowActionKind {
+    Run,
+    TrackToggle,
+    Install,
+    Update,
+    Delete,
+}
+
+#[derive(Clone, Copy)]
+struct ActionButton {
+    kind: RowActionKind,
+    label: &'static str,
+    enabled: bool,
+}
+
 impl LauncherUiApp {
     fn new(state_path: PathBuf, state: LauncherState) -> Self {
         Self {
@@ -203,50 +223,13 @@ impl LauncherUiApp {
             Color::RGB(206, 222, 244),
         )?;
         let branches = self.launch_branches();
-        self.draw_rows(
-            canvas,
-            Rect::new(
-                bounds.x + 8,
-                bounds.y + 24,
-                bounds.width().saturating_sub(16),
-                bounds.height().saturating_sub(74),
-            ),
-            &branches
-                .iter()
-                .map(|branch| {
-                    let branch_label = self.branch_label(branch);
-                    let installed = self
-                        .state
-                        .installs
-                        .iter()
-                        .find(|entry| entry.branch == *branch);
-                    let latest_tag = self.latest_release_tags.get(branch);
-                    if let Some(build) = installed {
-                        if latest_tag
-                            .as_ref()
-                            .is_some_and(|latest| *latest != &build.commit)
-                        {
-                            format!(
-                                "{branch_label}  |  {}  |  update available ({})",
-                                build.commit,
-                                latest_tag.cloned().unwrap_or_default()
-                            )
-                        } else {
-                            format!("{branch_label}  |  {}  |  ready", build.commit)
-                        }
-                    } else {
-                        format!(
-                            "{branch_label}  |  not installed{}",
-                            latest_tag
-                                .as_ref()
-                                .map(|tag| format!("  |  latest {tag}"))
-                                .unwrap_or_default()
-                        )
-                    }
-                })
-                .collect::<Vec<_>>(),
-            self.ui_state.selected_launch_index,
-        )?;
+        let rows_area = Rect::new(
+            bounds.x + 8,
+            bounds.y + 24,
+            bounds.width().saturating_sub(16),
+            bounds.height().saturating_sub(74),
+        );
+        self.draw_launch_rows(canvas, rows_area, &branches)?;
         crate::ui::draw_text_fitted(
             canvas,
             &format!(
@@ -284,42 +267,16 @@ impl LauncherUiApp {
             1,
             Color::RGB(206, 222, 244),
         )?;
-        let rows = self
-            .remote_branches
-            .iter()
-            .map(|branch| {
-                let branch_label = self.branch_label(branch);
-                let tracked = self
-                    .state
-                    .tracked_branches
-                    .iter()
-                    .any(|entry| entry == branch);
-                let stale_suffix = if self.is_branch_deprioritized(branch) {
-                    "  |  no commits ahead of main"
-                } else {
-                    ""
-                };
-                if tracked {
-                    format!("* {branch_label}{stale_suffix}")
-                } else {
-                    format!("  {branch_label}{stale_suffix}")
-                }
-            })
-            .collect::<Vec<_>>();
-        self.draw_rows(
-            canvas,
-            Rect::new(
-                bounds.x + 8,
-                bounds.y + 24,
-                bounds.width().saturating_sub(16),
-                bounds.height().saturating_sub(34),
-            ),
-            &rows,
-            self.ui_state.selected_branch_index,
-        )?;
+        let rows_area = Rect::new(
+            bounds.x + 8,
+            bounds.y + 24,
+            bounds.width().saturating_sub(16),
+            bounds.height().saturating_sub(34),
+        );
+        self.draw_branch_rows(canvas, rows_area)?;
         if let Some(index) = self.deprioritized_branch_start_index() {
             if index > 0 {
-                let line_y = bounds.y + 24 + index as i32 * 18 - 2;
+                let line_y = bounds.y + 24 + index as i32 * ROW_HEIGHT - 2;
                 let line = Rect::new(bounds.x + 8, line_y, bounds.width().saturating_sub(16), 1);
                 canvas.set_draw_color(Color::RGB(82, 92, 106));
                 canvas.fill_rect(line)?;
@@ -341,53 +298,13 @@ impl LauncherUiApp {
             1,
             Color::RGB(206, 222, 244),
         )?;
-        let rows = self
-            .state
-            .tracked_branches
-            .iter()
-            .map(|branch| {
-                let branch_label = self.branch_label(branch);
-                if let Some(entry) = self
-                    .state
-                    .installs
-                    .iter()
-                    .find(|item| item.branch == *branch)
-                {
-                    let latest_tag = self.latest_release_tags.get(branch);
-                    if latest_tag
-                        .as_ref()
-                        .is_some_and(|latest| *latest != &entry.commit)
-                    {
-                        format!(
-                            "{branch_label}  |  {}  |  update available ({})",
-                            entry.commit,
-                            latest_tag.cloned().unwrap_or_default()
-                        )
-                    } else {
-                        format!("{branch_label}  |  {}", entry.commit)
-                    }
-                } else {
-                    format!(
-                        "{branch_label}  |  not installed{}",
-                        self.latest_release_tags
-                            .get(branch)
-                            .map(|tag| format!("  |  latest {tag}"))
-                            .unwrap_or_default()
-                    )
-                }
-            })
-            .collect::<Vec<_>>();
-        self.draw_rows(
-            canvas,
-            Rect::new(
-                bounds.x + 8,
-                bounds.y + 24,
-                bounds.width().saturating_sub(16),
-                bounds.height().saturating_sub(34),
-            ),
-            &rows,
-            self.ui_state.selected_install_index,
-        )
+        let rows_area = Rect::new(
+            bounds.x + 8,
+            bounds.y + 24,
+            bounds.width().saturating_sub(16),
+            bounds.height().saturating_sub(34),
+        );
+        self.draw_install_rows(canvas, rows_area)
     }
 
     fn draw_settings_page<T: RenderTarget>(
@@ -473,6 +390,128 @@ impl LauncherUiApp {
         )
     }
 
+    fn draw_launch_rows<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+        branches: &[String],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let max_rows = (bounds.height() as i32 / ROW_HEIGHT).max(0) as usize;
+        for (index, branch) in branches.iter().take(max_rows).enumerate() {
+            let row_rect = Rect::new(
+                bounds.x,
+                bounds.y + index as i32 * ROW_HEIGHT,
+                bounds.width(),
+                ROW_HEIGHT as u32,
+            );
+            let is_selected = index == self.ui_state.selected_launch_index;
+            self.draw_row_background(canvas, row_rect, is_selected)?;
+            let mut summary = self.launch_summary_text(branch);
+            summary.insert_str(0, &format!("{}  |  ", self.branch_label(branch)));
+            self.draw_row_text_with_actions(
+                canvas,
+                row_rect,
+                &summary,
+                &[
+                    self.build_action_button(RowActionKind::Run, true),
+                    self.build_action_button(RowActionKind::Install, true),
+                    self.build_action_button(RowActionKind::Update, self.branch_has_update(branch)),
+                ],
+                is_selected,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_branch_rows<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let max_rows = (bounds.height() as i32 / ROW_HEIGHT).max(0) as usize;
+        for (index, branch) in self.remote_branches.iter().take(max_rows).enumerate() {
+            let row_rect = Rect::new(
+                bounds.x,
+                bounds.y + index as i32 * ROW_HEIGHT,
+                bounds.width(),
+                ROW_HEIGHT as u32,
+            );
+            let is_selected = index == self.ui_state.selected_branch_index;
+            self.draw_row_background(canvas, row_rect, is_selected)?;
+            let tracked = self.is_branch_tracked(branch);
+            let stale_suffix = if self.is_branch_deprioritized(branch) {
+                "  |  no commits ahead of main"
+            } else {
+                ""
+            };
+            let row_text = if tracked {
+                format!("* {}{stale_suffix}", self.branch_label(branch))
+            } else {
+                format!("  {}{stale_suffix}", self.branch_label(branch))
+            };
+            self.draw_row_text_with_actions(
+                canvas,
+                row_rect,
+                &row_text,
+                &[
+                    ActionButton {
+                        kind: RowActionKind::TrackToggle,
+                        label: if tracked { "Untrack" } else { "Track" },
+                        enabled: true,
+                    },
+                    self.build_action_button(RowActionKind::Install, true),
+                    self.build_action_button(RowActionKind::Update, self.branch_has_update(branch)),
+                ],
+                is_selected,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn draw_install_rows<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let max_rows = (bounds.height() as i32 / ROW_HEIGHT).max(0) as usize;
+        for (index, branch) in self
+            .state
+            .tracked_branches
+            .iter()
+            .take(max_rows)
+            .enumerate()
+        {
+            let row_rect = Rect::new(
+                bounds.x,
+                bounds.y + index as i32 * ROW_HEIGHT,
+                bounds.width(),
+                ROW_HEIGHT as u32,
+            );
+            let is_selected = index == self.ui_state.selected_install_index;
+            self.draw_row_background(canvas, row_rect, is_selected)?;
+            let text = format!(
+                "{}  |  {}",
+                self.branch_label(branch),
+                self.install_status_text(branch)
+            );
+            self.draw_row_text_with_actions(
+                canvas,
+                row_rect,
+                &text,
+                &[
+                    self.build_action_button(RowActionKind::Run, true),
+                    self.build_action_button(RowActionKind::Update, true),
+                    self.build_action_button(
+                        RowActionKind::Delete,
+                        self.install_for_branch(branch).is_some(),
+                    ),
+                ],
+                is_selected,
+            )?;
+        }
+        Ok(())
+    }
+
     fn draw_rows<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -480,22 +519,16 @@ impl LauncherUiApp {
         rows: &[String],
         selected: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let row_height = 18_i32;
-        let max_rows = (bounds.height() as i32 / row_height).max(0) as usize;
+        let max_rows = (bounds.height() as i32 / ROW_HEIGHT).max(0) as usize;
         for (index, row) in rows.iter().take(max_rows).enumerate() {
             let row_rect = Rect::new(
                 bounds.x,
-                bounds.y + index as i32 * row_height,
+                bounds.y + index as i32 * ROW_HEIGHT,
                 bounds.width(),
-                row_height as u32,
+                ROW_HEIGHT as u32,
             );
             let is_selected = index == selected;
-            canvas.set_draw_color(if is_selected {
-                Color::RGB(56, 78, 108)
-            } else {
-                Color::RGB(26, 34, 46)
-            });
-            canvas.fill_rect(row_rect)?;
+            self.draw_row_background(canvas, row_rect, is_selected)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 row,
@@ -514,6 +547,103 @@ impl LauncherUiApp {
             )?;
         }
         Ok(())
+    }
+
+    fn draw_row_background<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        row_rect: Rect,
+        selected: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        canvas.set_draw_color(if selected {
+            Color::RGB(56, 78, 108)
+        } else {
+            Color::RGB(26, 34, 46)
+        });
+        canvas.fill_rect(row_rect)?;
+        Ok(())
+    }
+
+    fn draw_row_text_with_actions<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        row_rect: Rect,
+        text: &str,
+        buttons: &[ActionButton],
+        selected: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let button_rects = self.action_button_rects(row_rect, buttons.len());
+        let text_width = button_rects
+            .first()
+            .map(|rect| (rect.x - row_rect.x - 12).max(48) as u32)
+            .unwrap_or_else(|| row_rect.width().saturating_sub(12));
+        crate::ui::draw_text_fitted(
+            canvas,
+            text,
+            Rect::new(row_rect.x + 6, row_rect.y + 5, text_width, 8),
+            1,
+            if selected {
+                Color::RGB(238, 244, 255)
+            } else {
+                Color::RGB(178, 190, 210)
+            },
+        )?;
+        for (button, rect) in buttons.iter().zip(button_rects.iter()) {
+            canvas.set_draw_color(if button.enabled {
+                Color::RGB(64, 96, 132)
+            } else {
+                Color::RGB(44, 52, 64)
+            });
+            canvas.fill_rect(*rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                button.label,
+                Rect::new(rect.x + 4, rect.y + 5, rect.width().saturating_sub(8), 8),
+                1,
+                if button.enabled {
+                    Color::RGB(232, 240, 252)
+                } else {
+                    Color::RGB(132, 142, 156)
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn action_button_rects(&self, row_rect: Rect, count: usize) -> Vec<Rect> {
+        if count == 0 {
+            return Vec::new();
+        }
+        let gap_total = ACTION_BUTTON_GAP * (count.saturating_sub(1) as i32);
+        let total_width = count as i32 * ACTION_BUTTON_WIDTH as i32 + gap_total;
+        let mut left = row_rect.x + row_rect.width() as i32 - total_width - 6;
+        if left < row_rect.x + 120 {
+            left = row_rect.x + 120;
+        }
+        (0..count)
+            .map(|index| {
+                Rect::new(
+                    left + index as i32 * (ACTION_BUTTON_WIDTH as i32 + ACTION_BUTTON_GAP),
+                    row_rect.y + 1,
+                    ACTION_BUTTON_WIDTH,
+                    row_rect.height().saturating_sub(2),
+                )
+            })
+            .collect()
+    }
+
+    fn build_action_button(&self, kind: RowActionKind, enabled: bool) -> ActionButton {
+        ActionButton {
+            kind,
+            label: match kind {
+                RowActionKind::Run => "Run",
+                RowActionKind::TrackToggle => "Track",
+                RowActionKind::Install => "Install",
+                RowActionKind::Update => "Update",
+                RowActionKind::Delete => "Delete",
+            },
+            enabled,
+        }
     }
 
     fn draw_footer<T: RenderTarget>(
@@ -647,21 +777,27 @@ impl LauncherUiApp {
                     *y as i32,
                     canvas.output_size()?.0,
                     canvas.output_size()?.1,
-                );
+                )?;
                 Ok(true)
             }
             Event::FingerDown { x, y, .. } => {
                 let size = canvas.output_size()?;
                 let px = (*x * size.0 as f32) as i32;
                 let py = (*y * size.1 as f32) as i32;
-                self.handle_pointer_position(px, py, size.0, size.1);
+                self.handle_pointer_position(px, py, size.0, size.1)?;
                 Ok(true)
             }
             _ => Ok(false),
         }
     }
 
-    fn handle_pointer_position(&mut self, x: i32, y: i32, width: u32, height: u32) {
+    fn handle_pointer_position(
+        &mut self,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let surface = crate::ui::surface_rect(width, height);
         let tabs_height = 24_i32;
         let footer_height = 24_i32;
@@ -684,21 +820,115 @@ impl LauncherUiApp {
             {
                 self.ui_state.page = LauncherPage::ALL[index];
             }
-            return;
+            return Ok(());
         }
 
         if !point_in_rect(x, y, content_rect) {
-            return;
+            return Ok(());
         }
 
-        let row_height = 18_i32;
-        let row_index = ((y - (content_rect.y + 24)) / row_height).max(0) as usize;
+        let rows_rect = Rect::new(
+            content_rect.x + 8,
+            content_rect.y + 24,
+            content_rect.width().saturating_sub(16),
+            content_rect.height().saturating_sub(34),
+        );
+        if y < rows_rect.y {
+            return Ok(());
+        }
+        let row_index = ((y - rows_rect.y) / ROW_HEIGHT).max(0) as usize;
         match self.ui_state.page {
-            LauncherPage::Launch => self.ui_state.selected_launch_index = row_index,
-            LauncherPage::Branches => self.ui_state.selected_branch_index = row_index,
-            LauncherPage::Installs => self.ui_state.selected_install_index = row_index,
+            LauncherPage::Launch => {
+                self.ui_state.selected_launch_index = row_index;
+                if let Some(branch) = self.launch_branches().get(row_index).cloned() {
+                    if let Some(action) = self.handle_row_action_click(
+                        x,
+                        y,
+                        rows_rect,
+                        row_index,
+                        &[
+                            self.build_action_button(RowActionKind::Run, true),
+                            self.build_action_button(RowActionKind::Install, true),
+                            self.build_action_button(
+                                RowActionKind::Update,
+                                self.branch_has_update(&branch),
+                            ),
+                        ],
+                    ) {
+                        self.apply_branch_row_action(&branch, action)?;
+                    }
+                }
+            }
+            LauncherPage::Branches => {
+                self.ui_state.selected_branch_index = row_index;
+                if let Some(branch) = self.remote_branches.get(row_index).cloned() {
+                    if let Some(action) = self.handle_row_action_click(
+                        x,
+                        y,
+                        rows_rect,
+                        row_index,
+                        &[
+                            self.build_action_button(RowActionKind::TrackToggle, true),
+                            self.build_action_button(RowActionKind::Install, true),
+                            self.build_action_button(
+                                RowActionKind::Update,
+                                self.branch_has_update(&branch),
+                            ),
+                        ],
+                    ) {
+                        self.apply_branch_row_action(&branch, action)?;
+                    }
+                }
+            }
+            LauncherPage::Installs => {
+                self.ui_state.selected_install_index = row_index;
+                if let Some(branch) = self.state.tracked_branches.get(row_index).cloned() {
+                    if let Some(action) = self.handle_row_action_click(
+                        x,
+                        y,
+                        rows_rect,
+                        row_index,
+                        &[
+                            self.build_action_button(RowActionKind::Run, true),
+                            self.build_action_button(RowActionKind::Update, true),
+                            self.build_action_button(
+                                RowActionKind::Delete,
+                                self.install_for_branch(&branch).is_some(),
+                            ),
+                        ],
+                    ) {
+                        self.apply_branch_row_action(&branch, action)?;
+                    }
+                }
+            }
             LauncherPage::Settings => self.ui_state.selected_settings_row = row_index,
         }
+        Ok(())
+    }
+
+    fn handle_row_action_click(
+        &self,
+        x: i32,
+        y: i32,
+        rows_rect: Rect,
+        row_index: usize,
+        buttons: &[ActionButton],
+    ) -> Option<RowActionKind> {
+        let row_rect = Rect::new(
+            rows_rect.x,
+            rows_rect.y + row_index as i32 * ROW_HEIGHT,
+            rows_rect.width(),
+            ROW_HEIGHT as u32,
+        );
+        for (button, rect) in buttons
+            .iter()
+            .zip(self.action_button_rects(row_rect, buttons.len()))
+        {
+            if button.enabled && point_in_rect(x, y, rect) {
+                return Some(button.kind);
+            }
+        }
+        None
     }
 
     fn apply_action(&mut self, action: LauncherUiAction) -> Result<(), Box<dyn std::error::Error>> {
@@ -825,29 +1055,11 @@ impl LauncherUiApp {
             self.status_line = "No branch selected".to_string();
             return Ok(());
         };
-        let installed = self
-            .state
-            .installs
-            .iter()
-            .find(|entry| entry.branch == branch)
-            .cloned();
-        if installed.is_none() {
+        if self.install_for_branch(&branch).is_none() {
             self.start_install_for_branch(branch);
             return Ok(());
         }
-        let install = installed.ok_or("branch install disappeared before launch")?;
-        let options = build_run_options(
-            branch.clone(),
-            self.state.default_project_path.clone(),
-            Some(self.state.default_state_mode.clone()),
-            Some(self.state.default_window_mode.clone()),
-            self.state.default_ui_scale,
-            Vec::new(),
-        );
-        let exit_code = process::run_installed(&install, &options)?;
-        self.status_line = format!("Launched '{branch}' (exit code {exit_code})");
-        self.state.last_selected_branch = Some(branch);
-        self.persist_state()
+        self.run_branch(&branch)
     }
 
     fn activate_branches(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -859,20 +1071,7 @@ impl LauncherUiApp {
             self.status_line = "No branch selected".to_string();
             return Ok(());
         };
-        if self
-            .state
-            .tracked_branches
-            .iter()
-            .any(|entry| entry == &branch)
-        {
-            self.state.tracked_branches.retain(|entry| entry != &branch);
-            self.status_line = format!("Untracked '{branch}'");
-        } else {
-            self.state.tracked_branches.push(branch.clone());
-            self.state.tracked_branches.sort();
-            self.status_line = format!("Tracked '{branch}'");
-        }
-        self.persist_state()
+        self.toggle_tracking_for_branch(&branch)
     }
 
     fn activate_installs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -904,6 +1103,47 @@ impl LauncherUiApp {
                 self.activate_installs()?;
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn apply_branch_row_action(
+        &mut self,
+        branch: &str,
+        action: RowActionKind,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match action {
+            RowActionKind::Run => {
+                if self.install_for_branch(branch).is_some() {
+                    self.run_branch(branch)?;
+                } else {
+                    self.start_install_for_branch(branch.to_string());
+                }
+            }
+            RowActionKind::TrackToggle => {
+                self.toggle_tracking_for_branch(branch)?;
+            }
+            RowActionKind::Install => {
+                self.start_install_for_branch(branch.to_string());
+            }
+            RowActionKind::Update => {
+                if self.branch_has_update(branch) || self.install_for_branch(branch).is_none() {
+                    self.start_install_for_branch(branch.to_string());
+                } else {
+                    self.status_line = format!("'{branch}' is already up to date");
+                }
+            }
+            RowActionKind::Delete => {
+                if let Some(index) = self
+                    .state
+                    .tracked_branches
+                    .iter()
+                    .position(|entry| entry == branch)
+                {
+                    self.ui_state.selected_install_index = index;
+                }
+                self.delete_selected_install()?;
+            }
         }
         Ok(())
     }
@@ -997,6 +1237,114 @@ impl LauncherUiApp {
             vec!["main".to_string()]
         } else {
             self.state.tracked_branches.clone()
+        }
+    }
+
+    fn run_branch(&mut self, branch: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let install = self
+            .install_for_branch(branch)
+            .cloned()
+            .ok_or_else(|| format!("No install found for '{branch}'"))?;
+        let options = build_run_options(
+            branch.to_string(),
+            self.state.default_project_path.clone(),
+            Some(self.state.default_state_mode.clone()),
+            Some(self.state.default_window_mode.clone()),
+            self.state.default_ui_scale,
+            Vec::new(),
+        );
+        let exit_code = process::run_installed(&install, &options)?;
+        self.status_line = format!("Launched '{branch}' (exit code {exit_code})");
+        self.state.last_selected_branch = Some(branch.to_string());
+        self.persist_state()
+    }
+
+    fn toggle_tracking_for_branch(
+        &mut self,
+        branch: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.is_branch_tracked(branch) {
+            self.state.tracked_branches.retain(|entry| entry != branch);
+            self.status_line = format!("Untracked '{branch}'");
+        } else {
+            self.state.tracked_branches.push(branch.to_string());
+            self.state.tracked_branches.sort();
+            self.status_line = format!("Tracked '{branch}'");
+        }
+        self.persist_state()
+    }
+
+    fn is_branch_tracked(&self, branch: &str) -> bool {
+        self.state
+            .tracked_branches
+            .iter()
+            .any(|entry| entry == branch)
+    }
+
+    fn install_for_branch(&self, branch: &str) -> Option<&crate::launcher::models::InstalledBuild> {
+        self.state
+            .installs
+            .iter()
+            .find(|entry| entry.branch == branch)
+    }
+
+    fn branch_has_update(&self, branch: &str) -> bool {
+        self.install_for_branch(branch)
+            .and_then(|install| {
+                self.latest_release_tags
+                    .get(branch)
+                    .map(|latest| latest != &install.commit)
+            })
+            .unwrap_or(false)
+    }
+
+    fn launch_summary_text(&self, branch: &str) -> String {
+        if let Some(build) = self.install_for_branch(branch) {
+            if self.branch_has_update(branch) {
+                format!(
+                    "{}  |  update available ({})",
+                    build.commit,
+                    self.latest_release_tags
+                        .get(branch)
+                        .cloned()
+                        .unwrap_or_default()
+                )
+            } else {
+                format!("{}  |  ready", build.commit)
+            }
+        } else {
+            format!(
+                "not installed{}",
+                self.latest_release_tags
+                    .get(branch)
+                    .map(|tag| format!("  |  latest {tag}"))
+                    .unwrap_or_default()
+            )
+        }
+    }
+
+    fn install_status_text(&self, branch: &str) -> String {
+        if let Some(entry) = self.install_for_branch(branch) {
+            if self.branch_has_update(branch) {
+                format!(
+                    "{}  |  update available ({})",
+                    entry.commit,
+                    self.latest_release_tags
+                        .get(branch)
+                        .cloned()
+                        .unwrap_or_default()
+                )
+            } else {
+                entry.commit.clone()
+            }
+        } else {
+            format!(
+                "not installed{}",
+                self.latest_release_tags
+                    .get(branch)
+                    .map(|tag| format!("  |  latest {tag}"))
+                    .unwrap_or_default()
+            )
         }
     }
 
