@@ -7671,6 +7671,7 @@ fn keycode_mapping_label(keycode: sdl3::keyboard::Keycode) -> Option<&'static st
         sdl3::keyboard::Keycode::Tab => Some("Tab"),
         sdl3::keyboard::Keycode::Return => Some("Enter"),
         sdl3::keyboard::Keycode::Delete => Some("Delete"),
+        sdl3::keyboard::Keycode::Backspace => Some("Backspace"),
         sdl3::keyboard::Keycode::Home => Some("Home"),
         sdl3::keyboard::Keycode::Left => Some("Left"),
         sdl3::keyboard::Keycode::Right => Some("Right"),

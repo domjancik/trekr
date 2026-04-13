@@ -658,7 +658,7 @@ impl KeyboardBindings {
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
-                keycode: Some(Keycode::Delete),
+                keycode: Some(Keycode::Delete | Keycode::Backspace),
                 keymod,
                 repeat: false,
                 ..
@@ -845,7 +845,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ToggleDirectMappingMode => &["F8"],
         AppAction::ToggleMappingsWriteMode => &["W"],
         AppAction::AddMappingRow => &["N"],
-        AppAction::RemoveSelectedMapping => &["Delete"],
+        AppAction::RemoveSelectedMapping => &["Delete", "Backspace"],
         AppAction::SelectPreviousPageField => &["Shift+Left"],
         AppAction::SelectNextPageField => &["Shift+Right"],
         AppAction::TogglePlayback => &["Space"],
@@ -910,7 +910,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::SelectPreviousRecordingClip => &["Shift+J"],
         AppAction::SelectNextRecordingClip => &["Shift+K"],
         AppAction::ToggleSelectedRecordingClipMute => &["Shift+M"],
-        AppAction::DeleteSelectedRecordingClip => &["Shift+Delete"],
+        AppAction::DeleteSelectedRecordingClip => &["Shift+Delete", "Shift+Backspace"],
         AppAction::ToggleFocusedTrackView => &["Shift+F8"],
         AppAction::SelectNextTrack => &["Right"],
         AppAction::SelectPreviousTrack => &["Left"],
@@ -1304,6 +1304,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let backspace_mapping = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Backspace),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
 
         assert_eq!(
             KeyboardBindings.resolve(&overlay).unwrap().action,
@@ -1327,6 +1337,10 @@ mod tests {
         );
         assert_eq!(
             KeyboardBindings.resolve(&delete_mapping).unwrap().action,
+            AppAction::RemoveSelectedMapping
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&backspace_mapping).unwrap().action,
             AppAction::RemoveSelectedMapping
         );
     }
@@ -1446,6 +1460,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let backspace_clip = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Backspace),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
         let focus_track = Event::KeyDown {
             timestamp: 0,
             window_id: 0,
@@ -1487,6 +1511,10 @@ mod tests {
         );
         assert_eq!(
             KeyboardBindings.resolve(&delete_clip).unwrap().action,
+            AppAction::DeleteSelectedRecordingClip
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&backspace_clip).unwrap().action,
             AppAction::DeleteSelectedRecordingClip
         );
         assert_eq!(

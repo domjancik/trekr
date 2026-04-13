@@ -140,7 +140,7 @@ Current controls:
 - `Enter`: activate/toggle current page item
 - `W`: toggle mappings page mode between read-only overview and write mode
 - `N`: add a mapping row on the mappings page in write mode
-- `Delete`: remove the selected mapping row on the mappings page in write mode
+- `Delete` / `Backspace`: remove the selected mapping row on the mappings page in write mode
 - `Space`: play/stop
 - `R`: start/stop recording on armed tracks, or the active track if none are armed
 - `Shift+R`: cycle recording mode between `Overdub` and `Replace`
@@ -184,7 +184,7 @@ Current controls:
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
-- `Shift+Delete`: delete the selected committed recording clip in stacked view
+- `Shift+Delete` / `Shift+Backspace`: delete the selected committed recording clip in stacked view
 - `Shift+F8`: toggle focused-track timeline view for the active track
 - `Left` / `Right`: select previous/next track directly
 - `1`-`9`: select track by absolute index

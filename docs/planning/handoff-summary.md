@@ -105,7 +105,7 @@
 - Mappings:
   - `W` write mode
   - `N` add mapping row
-  - `Delete` remove mapping row
+  - `Delete` / `Backspace` remove mapping row
   - `Shift+Left` / `Shift+Right` field select
   - `Q` / `E` adjust
   - `Enter` activate / learn

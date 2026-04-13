@@ -49,7 +49,7 @@ Keyboard mappings currently implemented:
 - `Z` / `X`: nudge selected notes earlier/later
 - `D` / `F`: nudge selected notes down/up
 - `Shift+M`: toggle mute on the selected committed recording clip
-- `Shift+Delete`: delete the selected committed recording clip
+- `Shift+Delete` / `Shift+Backspace`: delete the selected committed recording clip
 - `Left` / `Right`: select previous/next track
 - `1`-`9`: select track by absolute index
 - `Tab` / `Shift+Tab`: next/previous page
@@ -62,7 +62,7 @@ Keyboard mappings currently implemented:
 - `Shift+F6`: toggle Ableton Link start/stop sync participation
 - `W`: toggle mappings page mode
 - `N`: add a mapping row in mappings write mode
-- `Delete`: remove the selected mapping row in mappings write mode
+- `Delete` / `Backspace`: remove the selected mapping row in mappings write mode
 - `Up` / `Down`: select current page item
 - `Shift+Left` / `Shift+Right`: select current mappings-editor field in write mode
 - `Q` / `E`: adjust current page item
