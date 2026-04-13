@@ -159,6 +159,7 @@ Bootstrap and run:
 - prefer `cargo xtask run` as the single setup-and-run command
 - `cargo xtask setup` also initializes the `vendor/ableton-link` git submodule and its bundled `asio` dependency
 - `cargo xtask run-demo` and `cargo xtask run-empty` do the same for the demo and empty launch modes
+- `cargo xtask launcher` is a convenience alias for `cargo run --bin trekr-launcher`
 - `cargo xtask run -- --ui-scale 2.0` forwards extra app flags after `--`
 - `cargo xtask check` initializes the submodule if needed, then runs `cargo check`
 - the Cargo alias lives in `.cargo/config.toml`, so no extra task runner install is required
