@@ -408,6 +408,8 @@ impl LauncherUiApp {
             );
             let is_selected = index == self.ui_state.selected_launch_index;
             self.draw_row_background(canvas, row_rect, is_selected)?;
+            let installed = self.install_for_branch(branch).is_some();
+            let has_update = self.branch_has_update(branch);
             let mut summary = self.launch_summary_text(branch);
             summary.insert_str(0, &format!("{}  |  ", self.branch_label(branch)));
             self.draw_row_text_with_actions(
@@ -415,9 +417,9 @@ impl LauncherUiApp {
                 row_rect,
                 &summary,
                 &[
-                    self.build_action_button(RowActionKind::Run, true),
-                    self.build_action_button(RowActionKind::Install, true),
-                    self.build_action_button(RowActionKind::Update, self.branch_has_update(branch)),
+                    self.build_action_button(RowActionKind::Run, installed),
+                    self.build_action_button(RowActionKind::Install, !installed),
+                    self.build_action_button(RowActionKind::Update, has_update),
                 ],
                 is_selected,
             )?;
@@ -865,14 +867,15 @@ impl LauncherUiApp {
             LauncherPage::Launch => {
                 self.ui_state.selected_launch_index = row_index;
                 if let Some(branch) = self.launch_branches().get(row_index).cloned() {
+                    let installed = self.install_for_branch(&branch).is_some();
                     if let Some(action) = self.handle_row_action_click(
                         x,
                         y,
                         rows_rect,
                         row_index,
                         &[
-                            self.build_action_button(RowActionKind::Run, true),
-                            self.build_action_button(RowActionKind::Install, true),
+                            self.build_action_button(RowActionKind::Run, installed),
+                            self.build_action_button(RowActionKind::Install, !installed),
                             self.build_action_button(
                                 RowActionKind::Update,
                                 self.branch_has_update(&branch),
