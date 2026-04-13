@@ -1,0 +1,40 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+source: artifacts/launcher/sources\main
+target: C:\Users\magne\AppData\Local\trekr-launcher-target\main
+
+## git fetch
+$ "git" "-C" "artifacts/launcher/sources\\main" "fetch" "--depth" "1" "origin" "main"
+status: exit code: 0
+stdout:
+
+stderr:
+From https://github.com/domjancik/trekr
+ * branch            main       -> FETCH_HEAD
+ + 2c4bd8e...f0ea7ef main       -> origin/main  (forced update)
+
+
+## git checkout
+$ "git" "-C" "artifacts/launcher/sources\\main" "checkout" "main"
+status: exit code: 0
+stdout:
+Your branch and 'origin/main' have diverged,
+and have 1 and 1 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+stderr:
+Already on 'main'
+
+
+## git reset
+$ "git" "-C" "artifacts/launcher/sources\\main" "reset" "--hard" "FETCH_HEAD"
+status: exit code: 0
+stdout:
+HEAD is now at f0ea7ef fix: align loop recording capture phase for offset track loops
+
+stderr:
+
+
+## cargo build
+$ "cargo" "build" "--release" "--bin" "trekr" "--target-dir" "C:\\Users\\magne\\AppData\\Local\\trekr-launcher-target\\main"

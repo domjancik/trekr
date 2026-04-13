@@ -1,0 +1,9 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+started_at: 1775716467
+
+release api: https://api.github.com/repos/domjancik/trekr/releases?per_page=50
+
+artifact install failed: no matching GitHub release for branch
+allow_source_build_fallback=false

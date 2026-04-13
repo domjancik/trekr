@@ -1,0 +1,9 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+started_at: 1775716488
+
+release api: https://api.github.com/repos/domjancik/trekr/releases?per_page=50
+selected release: main-17-f0ea7efe30d44f807173a53e554be6f54f91d331 (Main build 17)
+selected asset: trekr-windows-x86_64.zip (https://github.com/domjancik/trekr/releases/download/main-17-f0ea7efe30d44f807173a53e554be6f54f91d331/trekr-windows-x86_64.zip)
+downloaded asset to C:\Users\magne\AppData\Local\trekr-launcher-cache\trekr-windows-x86_64.zip-1775716488.zip

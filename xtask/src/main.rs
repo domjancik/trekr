@@ -39,6 +39,7 @@ fn run() -> Result<ExitCode, String> {
             ensure_submodule()?;
             spawn_cargo(["run", "--", "--state-mode", "empty"], args)
         }
+        "launcher" => spawn_cargo(["run", "--bin", "trekr-launcher"], args),
         "check" => {
             ensure_submodule()?;
             spawn_cargo(["check"], args)
@@ -143,7 +144,7 @@ fn run_command(mut command: Command) -> Result<ExitCode, String> {
 }
 
 fn print_usage() {
-    let lines: [OsString; 10] = [
+    let lines: [OsString; 11] = [
         "usage: cargo xtask <command> [extra args]".into(),
         "".into(),
         "commands:".into(),
@@ -151,6 +152,7 @@ fn print_usage() {
         "  run         initialize submodule if needed, then cargo run".into(),
         "  run-demo    initialize submodule if needed, then cargo run -- --state-mode demo".into(),
         "  run-empty   initialize submodule if needed, then cargo run -- --state-mode empty".into(),
+        "  launcher    run cargo run --bin trekr-launcher".into(),
         "  check       initialize submodule if needed, then cargo check".into(),
         "  capture-ui  initialize submodule if needed, then run screenshot capture".into(),
         "  ui-review   initialize submodule if needed, then run screenshot capture + review".into(),

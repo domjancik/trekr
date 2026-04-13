@@ -32,6 +32,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/specs/feature-spec-launcher-release-tracks.md`: app vs launcher release-track policy and artifact compatibility contract.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
@@ -89,7 +90,48 @@ Launch state:
 - `cargo run -- capture-ui --state-mode demo --capture-dir artifacts/screenshots` renders deterministic screenshots without opening the interactive app
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - `cargo run --bin trekr-tui` opens a terminal menu for selecting launch mode, state, video mode, scale, and capture path
+- `cargo run --bin trekr-launcher` opens the separate native launcher UI (Trekr-style SDL pages)
+- `cargo run --bin trekr-launcher -- ui` explicitly opens the launcher UI
+- `cargo run --bin trekr-launcher -- help` prints the launcher CLI commands
+- `cargo run --bin trekr-launcher -- list-branches` lists remote git branches from the configured repo URL
+- `cargo run --bin trekr-launcher -- install --branch main` installs from GitHub release artifacts (no local toolchain required) into a user-local folder (Windows: `%LOCALAPPDATA%\\trekr-launcher-builds\\<branch>\\<release-tag>\\...`)
+- `cargo run --bin trekr-launcher -- install --branch main --allow-source-build` enables source-build fallback if no matching release artifact is found
+- `cargo run --bin trekr-launcher -- run --branch main --window-mode fullscreen --project state-fixtures/ui-looped.json` launches that installed build with forwarded app run arguments
+- launcher install/build logs are written to `artifacts/launcher/logs/install-<branch>-<timestamp>.log`
+- release publishing uses separate tracks: app artifacts are tagged `app-*`, launcher artifacts are tagged `launcher-*`
+- Actions intermediate artifacts are retained for a short window (3 days) to reduce storage pressure; GitHub Releases remain the durable distribution channel
+- branch/PR/ahead metadata and per-platform direct app artifact links are published as a GitHub-native cached catalog asset (`launcher-catalog-latest/launcher-catalog.json`) so logged-out launcher sessions can avoid GitHub API rate-limit spikes
+  - catalog refresh is triggered on `main` pushes, after successful completion of app/launcher release workflows, and via scheduled/manual refresh
+  - catalog branch mapping prefers `app-*` artifacts and also resolves `pr-<number>-latest` preview artifacts for open PR branches
 - committed fixture state lives in `state-fixtures/ui-looped.json`
+
+Launcher UI controls:
+
+- `Tab` / `Shift+Tab`: next/previous launcher page
+- `F1` / `F2` / `F3` / `F4`: launch / branches / installs / settings
+- `Up` / `Down`: select page row
+- `Q` / `E`: adjust setting value on settings page
+- `Enter`: activate selected action (`run`, `track/untrack`, `install/update`, or `apply`)
+- on `Launch`, `Enter` always runs the selected installed branch (if not installed yet, it starts install)
+- `U`: install/update selected branch directly from `Launch` or `Installs`
+- `Delete`: on `Installs`, remove the selected branch install record (and local install folder when present)
+- `R`: refresh remote branches
+- `Escape`: quit launcher
+- touch/mouse: each row now has action buttons for direct taps/clicks
+  - `Branches`: `Track/Untrack`, `Install`, `Update`
+  - `Launch`: `Run`, `Install`, `Update`
+  - `Installs`: `Run`, `Update`, `Delete`
+
+Launcher settings now include:
+
+- default launched app UI scale (`Auto`, `1.0`, `1.25`, `1.5`, `2.0`)
+- state file selection from `Documents/trekr/artifacts/state` and quick create via filename entry (base dir auto-applied)
+- installation directory selection (default user folder or custom directory)
+- launch/install rows indicate when a newer release tag is available for a tracked branch
+- launcher branch rows include open PR titles when available, to make feature branches easier to identify
+- launcher branch rows indicate whether a prebuilt app artifact is available for that branch
+  - branch rows use a compact aligned `[A]` marker (`A` = prebuilt artifact available)
+- branch selection deprioritizes branches with no commits ahead of `main`, labels them, and draws a separator before that group
 
 CLI notes:
 
@@ -121,6 +163,7 @@ Bootstrap and run:
 - prefer `cargo xtask run` as the single setup-and-run command
 - `cargo xtask setup` also initializes the `vendor/ableton-link` git submodule and its bundled `asio` dependency
 - `cargo xtask run-demo` and `cargo xtask run-empty` do the same for the demo and empty launch modes
+- `cargo xtask launcher` is a convenience alias for `cargo run --bin trekr-launcher`
 - `cargo xtask run -- --ui-scale 2.0` forwards extra app flags after `--`
 - `cargo xtask check` initializes the submodule if needed, then runs `cargo check`
 - the Cargo alias lives in `.cargo/config.toml`, so no extra task runner install is required

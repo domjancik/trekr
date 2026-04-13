@@ -1,4 +1,4 @@
-name: Release
+name: App Release
 
 on:
   push:
@@ -9,12 +9,13 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: app-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -148,10 +149,10 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
           path: ${{ matrix.archive_name }}
-          retention-days: 14
+          retention-days: 3
 
   publish:
-    name: Publish GitHub release
+    name: Publish app GitHub release
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push'
@@ -168,8 +169,8 @@ jobs:
             echo "release_name=Release ${TAG}" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           else
-            echo "tag_name=main-${GITHUB_RUN_NUMBER}-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-            echo "release_name=Main build ${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=app-${GITHUB_REF_NAME}-${GITHUB_RUN_NUMBER}-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            echo "release_name=App build ${GITHUB_REF_NAME} #${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 

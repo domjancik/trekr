@@ -1,0 +1,117 @@
+# trekr launcher install log
+repo: https://github.com/domjancik/trekr.git
+branch: main
+source: artifacts/launcher/sources\main
+target: C:\Users\magne\AppData\Local\trekr-launcher-target\main
+
+## git fetch
+$ "git" "-C" "artifacts/launcher/sources\\main" "fetch" "--depth" "1" "origin" "main"
+status: exit code: 0
+stdout:
+
+stderr:
+From https://github.com/domjancik/trekr
+ * branch            main       -> FETCH_HEAD
+
+
+## git checkout
+$ "git" "-C" "artifacts/launcher/sources\\main" "checkout" "main"
+status: exit code: 0
+stdout:
+Your branch is up to date with 'origin/main'.
+
+stderr:
+Already on 'main'
+
+
+## git reset
+$ "git" "-C" "artifacts/launcher/sources\\main" "reset" "--hard" "FETCH_HEAD"
+status: exit code: 0
+stdout:
+HEAD is now at f0ea7ef fix: align loop recording capture phase for offset track loops
+
+stderr:
+
+
+## cargo build
+$ "cargo" "build" "--release" "--bin" "trekr" "--target-dir" "C:\\Users\\magne\\AppData\\Local\\trekr-launcher-target\\main"
+status: exit code: 101
+stdout:
+
+stderr:
+   Compiling trekr v0.1.0 (C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\artifacts\launcher\sources\main)
+   Compiling sdl3-sys v0.6.1+SDL-3.4.2
+   Compiling sdl3 v0.17.3
+   Compiling image v0.25.9
+   Compiling serde v1.0.228
+   Compiling windows v0.56.0
+error: failed to run custom build command for `trekr v0.1.0 (C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\artifacts\launcher\sources\main)`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\magne\AppData\Local\trekr-launcher-target\main\release\build\trekr-a37d1653c842831e\build-script-build` (exit code: 1)
+  --- stdout
+  cargo:rerun-if-changed=native/link_bridge.cpp
+  cargo:rerun-if-changed=native/link_bridge.hpp
+  cargo:rerun-if-changed=vendor/ableton-link/include/ableton/Link.hpp
+  cargo:rerun-if-changed=vendor/ableton-link/modules/asio-standalone/asio/include
+  cargo:rerun-if-env-changed=TREKR_BUILD_HASH
+  cargo:rustc-env=TREKR_BUILD_HASH=c0efa607
+  cargo:rerun-if-env-changed=TREKR_BUILD_DATE
+  cargo:rustc-env=TREKR_BUILD_DATE=2026-04-08T22:42:43+03:00
+  cargo:rustc-link-lib=avrt
+  cargo:rustc-link-lib=iphlpapi
+  cargo:rustc-link-lib=ws2_32
+  OUT_DIR = Some(C:\Users\magne\AppData\Local\trekr-launcher-target\main\release\build\trekr-ed59e1d462b47410\out)
+  OPT_LEVEL = Some(3)
+  TARGET = Some(x86_64-pc-windows-msvc)
+  CARGO_ENCODED_RUSTFLAGS = Some()
+  cargo:rerun-if-env-changed=VCINSTALLDIR
+  VCINSTALLDIR = None
+  cargo:rerun-if-env-changed=VSTEL_MSBuildProjectFullPath
+  VSTEL_MSBuildProjectFullPath = None
+  cargo:rerun-if-env-changed=VCToolsVersion
+  VCToolsVersion = None
+  cargo:rerun-if-env-changed=VSCMD_ARG_VCVARS_SPECTRE
+  VSCMD_ARG_VCVARS_SPECTRE = None
+  cargo:rerun-if-env-changed=WindowsSdkDir
+  WindowsSdkDir = None
+  cargo:rerun-if-env-changed=WindowsSDKVersion
+  WindowsSDKVersion = None
+  cargo:rerun-if-env-changed=LIB
+  LIB = None
+  PATH = Some(C:\Users\magne\AppData\Local\trekr-launcher-target\main\release\deps;C:\Users\magne\AppData\Local\trekr-launcher-target\main\release;C:\Users\magne\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\lib;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\target\debug\build\sdl3-sys-682419248a96d827\out\lib/pkgconfig/../../lib;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\target\debug\build\trekr-468499187dba109a\out;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\target\debug\deps;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\target\debug;C:\Users\magne\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\lib;C:\Users\magne\.local\bin;C:\Users\magne\.npm\bin;C:\Users\magne\go\bin;;C:\Users\magne\.x-cmd.root\local\data\pkg\sphere\X\l\j\h\bin;C:\Users\magne\.x-cmd.root\bin;C:\Program Files\PowerShell\7;C:\Users\magne\.codex\tmp\arg0\codex-arg0YQM0wS;C:\Users\magne\scoop\persist\nodejs\cache\_npx\61c9d1c79ac2cba2\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\path;C:\Users\magne\scoop\persist\nodejs\cache\_npx\61c9d1c79ac2cba2\node_modules\.bin;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\trekr\node_modules\.bin;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\b319-feature-spec-bui\node_modules\.bin;C:\Users\magne\AppData\Local\Temp\vibe-kanban\worktrees\node_modules\.bin;C:\Users\magne\AppData\Local\Temp\vibe-kanban\node_modules\.bin;C:\Users\magne\AppData\Local\Temp\node_modules\.bin;C:\Users\magne\AppData\Local\node_modules\.bin;C:\Users\magne\AppData\node_modules\.bin;C:\Users\magne\node_modules\.bin;C:\Users\node_modules\.bin;C:\node_modules\.bin;C:\Users\magne\scoop\apps\nodejs\23.6.1\node_modules\npm\node_modules\@npmcli\run-script\lib\node-gyp-bin;C:\Users\magne\scoop\persist\nodejs\cache\_npx\71d7ad79ef727dee\node_modules\.bin;C:\Users\magne\dev\ds-session-viewer\node_modules\.bin;C:\Users\magne\dev\node_modules\.bin;C:\Users\magne\node_modules\.bin;C:\Users\node_modules\.bin;C:\node_modules\.bin;C:\Users\magne\scoop\apps\nodejs\23.6.1\node_modules\npm\node_modules\@npmcli\run-script\lib\node-gyp-bin;C:\Users\magne\.local\bin;C:\Users\magne\.npm\bin;C:\Users\magne\go\bin;C:\Users\magne\.x-cmd.root\local\data\pkg\sphere\X\l\j\h\bin;C:\Users\magne\.x-cmd.root\bin;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\Library\mingw-w64\bin;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\Library\usr\bin;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\Library\bin;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\Scripts;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\bin;C:\Users\magne\gen\VLPythonNET\VL.StreamDiffusion\miniconda\condabin;C:\Program Files\PowerShell\7;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin\x64;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\libnvvp;C:\Program Files\Oculus\Support\oculus-runtime;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0;C:\WINDOWS\System32\OpenSSH;C:\Program Files\NVIDIA Corporation\NVIDIA app\NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\dotnet;C:\Program Files\eSpeak NG;C:\Program Files\CMake\bin;C:\Program Files\Docker\Docker\resources\bin;C:\Program Files\usbipd-win;C:\ProgramData\chocolatey\bin;C:\Program Files\NVIDIA Corporation\Nsight Compute 2025.4.0;C:\Program Files\Go\bin;C:\Program Files (x86)\Microsoft SQL Server\170\Tools\Binn;C:\Program Files\Microsoft SQL Server\170\Tools\Binn;C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\180\Tools\Binn;C:\Program Files\Microsoft SQL Server\170\DTS\Binn;C:\Program Files\PowerShell\7;C:\Program Files\Tailscale;C:\Users\magne\scoop\apps\volta\current\appdata\bin;C:\Users\magne\scoop\apps\vscode\current\bin;C:\Users\magne\.local\bin;C:\Users\magne\.cargo\bin;C:\Users\magne\scoop\apps\python312\current\Scripts;C:\Users\magne\scoop\apps\python312\current;C:\Users\magne\scoop\apps\nodejs\current\bin;C:\Users\magne\scoop\apps\nodejs\current;C:\Users\magne\scoop\apps\imagemagick\current;C:\Users\magne\scoop\shims;C:\Users\magne\AppData\Local\Microsoft\WindowsApps;C:\Users\magne\.dotnet\tools;C:\Users\magne\AppData\Local\Programs\Ollama;C:\Users\magne\AppData\Local\Programs\cursor;C:\Users\magne\AppData\Local\Programs\cursor\resources\app\bin;C:\Program Files\AutoTrace;C:\Users\magne\AppData\Local\Programs\Warp\bin;C:\Users\magne\.cache\lm-studio\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin;C:\Users\magne\go\bin;C:\Users\magne\AppData\Local\Programs\Zed\bin;C:\Users\magne\.dotnet\tools;C:\Users\magne\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin)
+  cargo:rerun-if-env-changed=INCLUDE
+  INCLUDE = None
+  HOST = Some(x86_64-pc-windows-msvc)
+  cargo:rerun-if-env-changed=CXX_x86_64-pc-windows-msvc
+  CXX_x86_64-pc-windows-msvc = None
+  cargo:rerun-if-env-changed=CXX_x86_64_pc_windows_msvc
+  CXX_x86_64_pc_windows_msvc = None
+  cargo:rerun-if-env-changed=HOST_CXX
+  HOST_CXX = None
+  cargo:rerun-if-env-changed=CXX
+  CXX = None
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  CARGO_CFG_TARGET_FEATURE = Some(cmpxchg16b,fxsr,sse,sse2,sse3)
+  DEBUG = Some(false)
+  cargo:rerun-if-env-changed=CXXFLAGS
+  CXXFLAGS = None
+  cargo:rerun-if-env-changed=HOST_CXXFLAGS
+  HOST_CXXFLAGS = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64_pc_windows_msvc
+  CXXFLAGS_x86_64_pc_windows_msvc = None
+  cargo:rerun-if-env-changed=CXXFLAGS_x86_64-pc-windows-msvc
+  CXXFLAGS_x86_64-pc-windows-msvc = None
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  link_bridge.cpp
+  native/link_bridge.cpp(3): fatal error C1083: Cannot open include file: 'ableton/Link.hpp': No such file or directory
+
+  --- stderr
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit code: 2): "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.42.34433\\bin\\HostX64\\x64\\cl.exe" "-nologo" "-MD" "-O2" "-Brepro" "-std:c++17" "-I" "vendor/ableton-link/include" "-I" "vendor/ableton-link/modules/asio-standalone/asio/include" "-W4" "/EHsc" "-DLINK_PLATFORM_WINDOWS=1" "-D_SCL_SECURE_NO_WARNINGS" "-DNOMINMAX=1" "-FoC:\\Users\\magne\\AppData\\Local\\trekr-launcher-target\\main\\release\\build\\trekr-ed59e1d462b47410\\out\\44f7d3c4c0a9780b-link_bridge.o" "-c" "native/link_bridge.cpp"
+
+
+warning: build failed, waiting for other jobs to finish...
+
