@@ -3456,7 +3456,7 @@ impl App {
             ("W Write", Color::RGB(96, 82, 52)),
             ("F8 Direct", Color::RGB(128, 78, 78)),
             ("N New", Color::RGB(66, 96, 84)),
-            ("Del Remove", Color::RGB(110, 74, 74)),
+            ("Del/Bsp Remove", Color::RGB(110, 74, 74)),
         ];
         let mut footer_x = footer_bounds.x + 6;
         for (label, fill) in footer_tokens {
@@ -4220,7 +4220,7 @@ impl App {
             AppPage::Mappings => {
                 let selected = &self.mappings[self.page_state.selected_mapping_index];
                 format!(
-                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | F7 Discover:{} | F8 Direct:{} | W Toggle Mode | N New | Del Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
+                    "trekr | Page:{} (Tab/F1-F4) | Mode:{} | F5 Overlay:{} | F7 Discover:{} | F8 Direct:{} | W Toggle Mode | N New | Del/Bsp Remove | Shift+Left/Right Field:{} | Learn:{} | Up/Down Select | Source:{} {} | Device:{} | Target:{} | Scope:{} | Enabled:{}",
                     self.page_state.current_page.label(),
                     self.page_state.mapping_mode.label(),
                     on_off(self.overlay_state.active == Some(AppOverlay::MappingsQuickView)),
