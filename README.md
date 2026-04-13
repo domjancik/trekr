@@ -33,6 +33,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/specs/feature-spec-auto-save-versioning.md`: planned auto-save/versioning behavior for the persisted state flow.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.

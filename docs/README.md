@@ -11,6 +11,7 @@ Recent/additional specs:
 
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
 - `docs/specs/feature-spec-quick-mapping-lookup.md` — target-field fuzzy lookup/edit flow for the mappings page.
+- `docs/specs/feature-spec-auto-save-versioning.md` — planned auto-save and timestamped version-file behavior grounded in the current persisted-state flow.
 
 ## Contribution rules
 
