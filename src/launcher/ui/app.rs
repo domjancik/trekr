@@ -263,7 +263,7 @@ impl LauncherUiApp {
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::ui::draw_text(
             canvas,
-            "REMOTE BRANCHES  (ENTER: TRACK/UNTRACK, R: REFRESH)",
+            "REMOTE BRANCHES  (A=PREBUILT, ENTER: TRACK/UNTRACK, R: REFRESH)",
             bounds.x + 8,
             bounds.y + 8,
             1,
@@ -448,19 +448,19 @@ impl LauncherUiApp {
             } else {
                 ""
             };
-            let artifact_suffix = self
-                .latest_release_tags
-                .get(branch)
-                .map(|tag| format!("  |  artifact {tag}"))
-                .unwrap_or_else(|| "  |  no prebuilt artifact".to_string());
+            let artifact_marker = if self.latest_release_tags.contains_key(branch) {
+                "A"
+            } else {
+                " "
+            };
             let row_text = if tracked {
                 format!(
-                    "* {}{stale_suffix}{artifact_suffix}",
+                    "[{artifact_marker}] * {}{stale_suffix}",
                     self.branch_label(branch)
                 )
             } else {
                 format!(
-                    "  {}{stale_suffix}{artifact_suffix}",
+                    "[{artifact_marker}]   {}{stale_suffix}",
                     self.branch_label(branch)
                 )
             };

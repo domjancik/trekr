@@ -128,6 +128,7 @@ Launcher settings now include:
 - launch/install rows indicate when a newer release tag is available for a tracked branch
 - launcher branch rows include open PR titles when available, to make feature branches easier to identify
 - launcher branch rows indicate whether a prebuilt app artifact is available for that branch
+  - branch rows use a compact aligned `[A]` marker (`A` = prebuilt artifact available)
 - branch selection deprioritizes branches with no commits ahead of `main`, labels them, and draws a separator before that group
 
 CLI notes:
