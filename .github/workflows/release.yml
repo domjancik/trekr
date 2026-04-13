@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - vk/**
     tags:
       - "v*"
   pull_request:
@@ -150,7 +149,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
           path: ${{ matrix.archive_name }}
-          retention-days: 14
+          retention-days: 3
 
   publish:
     name: Publish app GitHub release

@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - vk/**
   workflow_run:
     workflows:
       - App Release
@@ -24,7 +23,7 @@ concurrency:
 
 jobs:
   publish-catalog:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Build launcher catalog JSON
@@ -74,28 +73,38 @@ jobs:
 
           pulls = api_get(f"{base}/pulls?state=open&per_page=100")
           pr_titles = {}
+          pr_branch_by_number = {}
           for pull in pulls:
               head = pull.get("head") or {}
               ref = head.get("ref")
               title = pull.get("title")
+              number = pull.get("number")
               if ref and title:
                   pr_titles[ref] = title
+              if ref and number is not None:
+                  pr_branch_by_number[str(number)] = ref
 
           releases = api_get(f"{base}/releases?per_page=100")
           latest_release_tags = {}
           download_urls = {}
 
           def release_tag_branch(tag):
-              if not tag.startswith("app-"):
-                  return None
-              rest = tag[len("app-"):]
-              left, _, sha = rest.rpartition("-")
-              if len(sha) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in sha):
-                  return None
-              branch, _, run = left.rpartition("-")
-              if not run.isdigit() or not branch:
-                  return None
-              return branch
+              if tag.startswith("app-"):
+                  rest = tag[len("app-"):]
+                  left, _, sha = rest.rpartition("-")
+                  if len(sha) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in sha):
+                      return None
+                  branch, _, run = left.rpartition("-")
+                  if not run.isdigit() or not branch:
+                      return None
+                  return branch
+
+              if tag.startswith("pr-") and tag.endswith("-latest"):
+                  number = tag[len("pr-"):-len("-latest")]
+                  if number.isdigit():
+                      return pr_branch_by_number.get(number)
+
+              return None
 
           for release in releases:
               if release.get("draft"):

@@ -166,3 +166,4 @@ jobs:
         with:
           name: trekr-macos-smoke
           path: trekr-macos.tar.gz
+          retention-days: 3

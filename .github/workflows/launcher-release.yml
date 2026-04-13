@@ -154,6 +154,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.archive_name }}
+          retention-days: 3
 
   publish:
     name: Publish launcher GitHub release
