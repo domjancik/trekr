@@ -448,10 +448,21 @@ impl LauncherUiApp {
             } else {
                 ""
             };
+            let artifact_suffix = self
+                .latest_release_tags
+                .get(branch)
+                .map(|tag| format!("  |  artifact {tag}"))
+                .unwrap_or_else(|| "  |  no prebuilt artifact".to_string());
             let row_text = if tracked {
-                format!("* {}{stale_suffix}", self.branch_label(branch))
+                format!(
+                    "* {}{stale_suffix}{artifact_suffix}",
+                    self.branch_label(branch)
+                )
             } else {
-                format!("  {}{stale_suffix}", self.branch_label(branch))
+                format!(
+                    "  {}{stale_suffix}{artifact_suffix}",
+                    self.branch_label(branch)
+                )
             };
             self.draw_row_text_with_actions(
                 canvas,
@@ -1261,7 +1272,7 @@ impl LauncherUiApp {
             });
             self.remote_branches = prioritized;
             self.refresh_pr_titles(&repo_url);
-            self.refresh_latest_release_tags();
+            self.refresh_latest_release_tags_for(&self.remote_branches.clone());
             self.status_line = format!("Loaded {} branches", self.remote_branches.len());
         } else {
             self.status_line = "Branch refresh failed".to_string();
@@ -1408,15 +1419,11 @@ impl LauncherUiApp {
             .position(|branch| self.is_branch_deprioritized(branch))
     }
 
-    fn refresh_latest_release_tags(&mut self) {
+    fn refresh_latest_release_tags_for(&mut self, branches: &[String]) {
         let repo_url = resolve_repo_url(None, &self.state);
-        let mut tags = HashMap::new();
-        for branch in self.launch_branches() {
-            if let Ok(Some(tag)) = installs::latest_release_tag_for_branch(&repo_url, &branch) {
-                tags.insert(branch, tag);
-            }
+        if let Ok(tags) = installs::latest_release_tags_for_branches(&repo_url, branches) {
+            self.latest_release_tags = tags;
         }
-        self.latest_release_tags = tags;
     }
 
     fn refresh_pr_titles(&mut self, repo_url: &str) {
@@ -1445,7 +1452,8 @@ impl LauncherUiApp {
                             upsert_install(&mut self.state.installs, install);
                             self.state.last_selected_branch = Some(job.branch.clone());
                             self.status_line = format!("Installed/updated '{}'", job.branch);
-                            self.refresh_latest_release_tags();
+                            let branches = self.remote_branches.clone();
+                            self.refresh_latest_release_tags_for(&branches);
                             self.persist_state()?;
                         }
                         Err(error) => {

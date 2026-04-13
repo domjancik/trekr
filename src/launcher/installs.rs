@@ -41,6 +41,30 @@ pub fn latest_release_tag_for_branch(
     Ok(select_release_for_branch(&releases, branch).map(|release| release.tag_name.clone()))
 }
 
+pub fn latest_release_tags_for_branches(
+    repo_url: &str,
+    branches: &[String],
+) -> Result<std::collections::HashMap<String, String>, Box<dyn std::error::Error>> {
+    if let Ok(Some(snapshot)) = catalog::fetch_public_catalog_snapshot(repo_url) {
+        let mut tags = std::collections::HashMap::new();
+        for branch in branches {
+            if let Some(tag) = snapshot.latest_release_tags.get(branch) {
+                tags.insert(branch.clone(), tag.clone());
+            }
+        }
+        return Ok(tags);
+    }
+
+    let releases = fetch_github_releases(repo_url)?;
+    let mut tags = std::collections::HashMap::new();
+    for branch in branches {
+        if let Some(release) = select_release_for_branch(&releases, branch) {
+            tags.insert(branch.clone(), release.tag_name.clone());
+        }
+    }
+    Ok(tags)
+}
+
 pub fn install_branch_with_progress<F>(
     repo_url: &str,
     branch: &str,
