@@ -205,6 +205,10 @@ pub fn cycle_mapping_target_label(current: &str, delta: i32) -> &'static str {
     cycle_label(TARGET_OPTIONS, current, delta)
 }
 
+pub fn mapping_target_labels() -> &'static [&'static str] {
+    TARGET_OPTIONS
+}
+
 pub fn cycle_mapping_scope_label(current: &str, delta: i32) -> &'static str {
     cycle_label(SCOPE_OPTIONS, current, delta)
 }
@@ -214,6 +218,16 @@ pub fn default_scope_label(target_label: &str, track_count: usize) -> String {
         .first()
         .cloned()
         .unwrap_or_else(|| "Global".to_string())
+}
+
+pub fn mapping_scope_valid_for_target(
+    target_label: &str,
+    scope_label: &str,
+    track_count: usize,
+) -> bool {
+    scope_options_for_target(target_label, track_count)
+        .iter()
+        .any(|candidate| candidate == scope_label)
 }
 
 pub fn cycle_mapping_scope_value(
@@ -259,6 +273,63 @@ fn cycle_label<'a>(options: &'a [&'a str], current: &str, delta: i32) -> &'a str
         .position(|candidate| *candidate == current)
         .unwrap_or(0) as i32;
     options[(current_index + delta).rem_euclid(options.len() as i32) as usize]
+}
+
+pub fn search_mapping_targets(query: &str) -> Vec<&'static str> {
+    let trimmed = query.trim();
+    let mut scored = TARGET_OPTIONS
+        .iter()
+        .filter_map(|label| target_query_score(label, trimmed).map(|score| (*label, score)))
+        .collect::<Vec<_>>();
+
+    scored.sort_by(|(left_label, left_score), (right_label, right_score)| {
+        left_score
+            .cmp(right_score)
+            .then_with(|| left_label.len().cmp(&right_label.len()))
+            .then_with(|| left_label.cmp(right_label))
+    });
+    scored.into_iter().map(|(label, _)| label).collect()
+}
+
+fn target_query_score(label: &str, query: &str) -> Option<(u8, usize)> {
+    if query.is_empty() {
+        return Some((4, label.len()));
+    }
+
+    let label_lower = label.to_ascii_lowercase();
+    let query_lower = query.to_ascii_lowercase();
+
+    if label_lower == query_lower {
+        return Some((0, 0));
+    }
+    if let Some(index) = label_lower.find(&query_lower) {
+        let boundary = index == 0
+            || label_lower
+                .as_bytes()
+                .get(index.saturating_sub(1))
+                .is_some_and(|byte| *byte == b' ' || *byte == b'/' || *byte == b'(');
+        return Some((if boundary { 1 } else { 2 }, index));
+    }
+
+    fuzzy_match_distance(&label_lower, &query_lower).map(|distance| (3, distance))
+}
+
+fn fuzzy_match_distance(label: &str, query: &str) -> Option<usize> {
+    let mut search_start = 0_usize;
+    let mut first_index = None;
+    let mut last_index = 0_usize;
+
+    for query_char in query.chars() {
+        let next = label[search_start..]
+            .char_indices()
+            .find(|(_, label_char)| *label_char == query_char)?;
+        let absolute_index = search_start + next.0;
+        first_index.get_or_insert(absolute_index);
+        last_index = absolute_index;
+        search_start = absolute_index + next.1.len_utf8();
+    }
+
+    Some(last_index.saturating_sub(first_index.unwrap_or(0)))
 }
 
 fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<String> {
@@ -910,7 +981,8 @@ mod tests {
         MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_scope_value,
         cycle_mapping_source_device_label, cycle_mapping_source_kind, cycle_mapping_target_label,
         default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
-        mapping_entry_targets_action, mapping_entry_to_actions, parse_absolute_track_scope,
+        mapping_entry_targets_action, mapping_entry_to_actions, mapping_scope_valid_for_target,
+        parse_absolute_track_scope, search_mapping_targets,
     };
     use crate::actions::AppAction;
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
@@ -972,6 +1044,32 @@ mod tests {
         assert_eq!(entry.target_label, "Play/Stop");
         assert_eq!(entry.scope_label, "Global");
         assert!(!entry.enabled);
+    }
+
+    #[test]
+    fn target_lookup_search_matches_slot_queries_and_fuzzy_terms() {
+        let slot_results = search_mapping_targets("slot 4");
+        assert_eq!(
+            slot_results.first().copied(),
+            Some("Clear Stored Loop Slot 4")
+        );
+        assert!(slot_results.contains(&"Recall Stored Loop Slot 4"));
+        assert!(slot_results.contains(&"Store Current Loop To Slot 4"));
+
+        let arm_results = search_mapping_targets("arm");
+        assert_eq!(arm_results.first().copied(), Some("Track Arm"));
+    }
+
+    #[test]
+    fn target_scope_validation_matches_catalog_rules() {
+        assert!(mapping_scope_valid_for_target("Track Arm", "Track 3", 4));
+        assert!(mapping_scope_valid_for_target(
+            "Track Arm",
+            "Active Track",
+            4
+        ));
+        assert!(!mapping_scope_valid_for_target("Play/Stop", "Track 3", 4));
+        assert!(mapping_scope_valid_for_target("Play/Stop", "Global", 4));
     }
 
     #[test]

@@ -83,6 +83,15 @@ Prototype demo MIDI/OSC mappings shown on the mappings page:
 Notes:
 - the mappings page now has a basic write mode with field selection and MIDI learn
 - the mappings page can now add/remove rows in write mode
+- selecting the `Target` field in mappings write mode and pressing `Enter` now opens inline target lookup
+- target lookup accepts lowercase keyboard filtering, `Up` / `Down` result navigation, `Enter` commit, `Backspace` delete, and `Escape` cancel
+- target lookup writes canonical existing target labels only; it does not persist fuzzy aliases
+- target lookup preserves the current scope when that scope is still valid for the chosen target, otherwise it resets to the target's default scope
+- target lookup recommendations now implemented:
+  - aliases are deferred for V1; canonical-label fuzzy search is the shipped behavior
+  - `Tab` is suppressed while lookup is open so the temporary editor keeps focus
+  - clicking/tapping outside the lookup cancels it immediately without mutating the row
+  - reopening lookup starts from an empty query rather than preserving the previous session query
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
