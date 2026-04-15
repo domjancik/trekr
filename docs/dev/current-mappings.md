@@ -64,7 +64,7 @@ Keyboard mappings currently implemented:
 - `N`: add a mapping row in mappings write mode
 - `Delete` / `Backspace`: remove the selected mapping row in mappings write mode
 - `Up` / `Down`: select current page item
-- `Shift+Left` / `Shift+Right`: select current mappings-editor field in write mode
+- `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current mappings-editor field in write mode
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
 - `Escape`: quit

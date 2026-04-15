@@ -106,7 +106,7 @@
   - `W` write mode
   - `N` add mapping row
   - `Delete` / `Backspace` remove mapping row
-  - `Shift+Left` / `Shift+Right` field select
+  - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down` field/context select
   - `Q` / `E` adjust
   - `Enter` activate / learn
 - Transport/record:
