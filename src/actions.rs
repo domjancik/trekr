@@ -624,18 +624,28 @@ impl KeyboardBindings {
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Up),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::SelectPreviousPageItem,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SelectPreviousPageField
+                } else {
+                    AppAction::SelectPreviousPageItem
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
                 keycode: Some(Keycode::Down),
+                keymod,
                 repeat: false,
                 ..
             } => Some(ActionEvent::new(
-                AppAction::SelectNextPageItem,
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                    AppAction::SelectNextPageField
+                } else {
+                    AppAction::SelectNextPageItem
+                },
                 ActionSource::Keyboard,
             )),
             Event::KeyDown {
@@ -867,8 +877,8 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::AddMappingRow => &["N"],
         AppAction::RemoveSelectedMapping => &["Delete", "Backspace"],
         AppAction::DeletePageItem => &["Delete"],
-        AppAction::SelectPreviousPageField => &["Shift+Left"],
-        AppAction::SelectNextPageField => &["Shift+Right"],
+        AppAction::SelectPreviousPageField => &["Shift+Left", "Shift+Up"],
+        AppAction::SelectNextPageField => &["Shift+Right", "Shift+Down"],
         AppAction::TogglePlayback => &["Space"],
         AppAction::ToggleRecording => &["R"],
         AppAction::CycleRecordMode => &["Shift+R"],
@@ -1405,6 +1415,39 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&adjust).unwrap().action,
             AppAction::AdjustPageItemForward
+        );
+    }
+
+    #[test]
+    fn keyboard_bindings_map_shift_up_down_to_page_field_navigation() {
+        let shift_up = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Up),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let shift_down = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Down),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            KeyboardBindings.resolve(&shift_up).unwrap().action,
+            AppAction::SelectPreviousPageField
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&shift_down).unwrap().action,
+            AppAction::SelectNextPageField
         );
     }
 
