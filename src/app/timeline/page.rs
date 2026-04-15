@@ -94,6 +94,10 @@ impl App {
             self.draw_track_column(canvas, layout, track, is_active)?;
         }
 
+        if self.clip_align_session.is_some() {
+            self.draw_clip_align_panel(canvas, content_bounds)?;
+        }
+
         if self.overlay_state.active == Some(AppOverlay::Discoverability) {
             self.draw_timeline_discoverability_overlay(canvas, content_bounds)?;
         }

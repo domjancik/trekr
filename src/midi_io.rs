@@ -51,19 +51,24 @@ pub struct MidiDeviceCatalog {
 }
 
 impl MidiDeviceCatalog {
+    #[cfg(test)]
+    pub fn scan() -> Self {
+        Self::demo()
+    }
+
+    #[cfg(not(test))]
     pub fn scan() -> Self {
         Self::scan_internal(true)
     }
 
+    #[cfg(test)]
     pub fn scan_live() -> Self {
-        Self::scan_internal(false)
+        Self::demo()
     }
 
-    #[cfg(test)]
-    fn scan_internal(_allow_demo_fallback: bool) -> Self {
-        // Unit tests should never touch live WinMM/WinRT device discovery because
-        // opening real MIDI backends on Windows can crash inside `midir`.
-        Self::demo()
+    #[cfg(not(test))]
+    pub fn scan_live() -> Self {
+        Self::scan_internal(false)
     }
 
     #[cfg(not(test))]

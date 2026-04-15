@@ -1,6 +1,7 @@
 use crate::actions::{ActionSource, AppAction};
 use crate::mapping::MappingSourceKind;
 use crate::pages::AppPage;
+use crate::project::{ClipAlignPreview, ClipAlignSettings};
 use crate::timeline_fx::TimelineContext;
 use sdl3::rect::Rect;
 use std::path::PathBuf;
@@ -172,6 +173,52 @@ pub(crate) struct RecordingLaneWindow {
     pub show_preview: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClipAlignField {
+    SourceStart,
+    SourceEnd,
+    TargetLength,
+    Destination,
+    ApplyMode,
+    LoopEnable,
+}
+
+impl ClipAlignField {
+    pub const ALL: [Self; 6] = [
+        Self::SourceStart,
+        Self::SourceEnd,
+        Self::TargetLength,
+        Self::Destination,
+        Self::ApplyMode,
+        Self::LoopEnable,
+    ];
+
+    pub fn next(self) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
+    }
+
+    pub fn previous(self) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or(0);
+        Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClipAlignSession {
+    pub track_index: usize,
+    pub clip_id: u64,
+    pub selected_field: ClipAlignField,
+    pub settings: ClipAlignSettings,
+    pub preview: ClipAlignPreview,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiCaptureOptions {
     pub output_dir: PathBuf,
@@ -203,5 +250,6 @@ pub(crate) struct CaptureSpec {
     pub page: AppPage,
     pub overlay: Option<AppOverlay>,
     pub focused_track_view: bool,
+    pub open_clip_align: bool,
     pub filename: &'static str,
 }

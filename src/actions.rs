@@ -106,6 +106,13 @@ pub enum AppAction {
     SelectNextRecordingClip,
     ToggleSelectedRecordingClipMute,
     DeleteSelectedRecordingClip,
+    OpenSelectedRecordingClipAlign,
+    CloseRecordingClipAlign,
+    ApplyRecordingClipAlign,
+    SelectPreviousClipAlignField,
+    SelectNextClipAlignField,
+    AdjustClipAlignFieldBackward,
+    AdjustClipAlignFieldForward,
     ToggleSelectedTimelineFx,
     CycleSelectedTimelineFxKind,
     AdjustSelectedTimelineFxPrimary,
@@ -951,6 +958,13 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::SelectNextRecordingClip => "Next Recording Clip",
         AppAction::ToggleSelectedRecordingClipMute => "Recording Clip Mute",
         AppAction::DeleteSelectedRecordingClip => "Delete Recording Clip",
+        AppAction::OpenSelectedRecordingClipAlign => "Clip Align",
+        AppAction::CloseRecordingClipAlign => "Close Clip Align",
+        AppAction::ApplyRecordingClipAlign => "Apply Clip Align",
+        AppAction::SelectPreviousClipAlignField => "Previous Clip Align Field",
+        AppAction::SelectNextClipAlignField => "Next Clip Align Field",
+        AppAction::AdjustClipAlignFieldBackward => "Adjust Clip Align Field Backward",
+        AppAction::AdjustClipAlignFieldForward => "Adjust Clip Align Field Forward",
         AppAction::ToggleSelectedTimelineFx => "Toggle Timeline FX",
         AppAction::CycleSelectedTimelineFxKind => "Cycle Timeline FX Kind",
         AppAction::AdjustSelectedTimelineFxPrimary => "Adjust Timeline FX Param 1",
@@ -1088,6 +1102,13 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::SelectNextRecordingClip => &["Shift+K"],
         AppAction::ToggleSelectedRecordingClipMute => &["Shift+M"],
         AppAction::DeleteSelectedRecordingClip => &["Shift+Delete", "Shift+Backspace"],
+        AppAction::OpenSelectedRecordingClipAlign => &["Shift+Enter"],
+        AppAction::CloseRecordingClipAlign => &["Escape"],
+        AppAction::ApplyRecordingClipAlign => &["Enter"],
+        AppAction::SelectPreviousClipAlignField => &["Shift+Left"],
+        AppAction::SelectNextClipAlignField => &["Shift+Right"],
+        AppAction::AdjustClipAlignFieldBackward => &["Q"],
+        AppAction::AdjustClipAlignFieldForward => &["E"],
         AppAction::ToggleSelectedTimelineFx => &["Shift+M"],
         AppAction::CycleSelectedTimelineFxKind => &["Q/E"],
         AppAction::AdjustSelectedTimelineFxPrimary => &["Q/E"],
@@ -1718,6 +1739,16 @@ mod tests {
             which: 0,
             raw: 0,
         };
+        let clip_align = Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(Keycode::Return),
+            scancode: None,
+            keymod: Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
 
         assert_eq!(
             KeyboardBindings.resolve(&select).unwrap().action,
@@ -1758,6 +1789,10 @@ mod tests {
         assert_eq!(
             KeyboardBindings.resolve(&focus_track).unwrap().action,
             AppAction::ToggleFocusedTrackView
+        );
+        assert_eq!(
+            KeyboardBindings.resolve(&clip_align).unwrap().action,
+            AppAction::ReverseActivatePageItem
         );
     }
 

@@ -147,7 +147,7 @@ impl App {
         label_rect: Rect,
         _content_rect: Rect,
         track: &Track,
-        clip_controls: Option<(Rect, Rect)>,
+        clip_controls: Option<(Rect, Rect, Rect)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
         let high_contrast = is_high_contrast_light(theme);
@@ -332,9 +332,36 @@ impl App {
             contrasting_text_color(view_fill, theme),
         )?;
 
-        if let (Some(selected_clip), Some((mute_rect, delete_rect))) =
+        if let (Some(selected_clip), Some((align_rect, mute_rect, delete_rect))) =
             (track.selected_recording_clip(), clip_controls)
         {
+            let align_fill = if high_contrast {
+                theme.transport.song_loop
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(88, 110, 74)
+            };
+            canvas.set_draw_color(align_fill);
+            canvas.fill_rect(align_rect)?;
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(228, 236, 214)
+            });
+            canvas.draw_rect(align_rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                "A",
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    "A",
+                    crate::app::support::ui_helpers::compact_label_rect(align_rect),
+                    1,
+                ),
+                1,
+                contrasting_text_color(align_fill, theme),
+            )?;
+
             let mute_fill = if selected_clip.muted {
                 if high_contrast {
                     Color::RGB(232, 232, 232)
@@ -1029,10 +1056,11 @@ impl App {
         None
     }
 
-    pub(crate) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
+    pub(crate) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect, Rect) {
         let top_y = label_rect.y + 1;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         (
+            Rect::new(right - 44, top_y, 12, 11),
             Rect::new(right - 28, top_y, 12, 11),
             Rect::new(right - 12, top_y, 12, 11),
         )

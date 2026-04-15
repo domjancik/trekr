@@ -496,7 +496,29 @@ impl App {
             right_edge = chip.x - 6;
         }
 
-        if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
+        if let Some((title, detail)) = self.clip_align_footer_content() {
+            let label_width = crate::ui::text_width(&title, 1) + 4;
+            let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
+            crate::ui::draw_text_fitted(
+                canvas,
+                &title,
+                label_rect,
+                1,
+                theme.app_chrome.footer_title_direct,
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &detail,
+                Rect::new(
+                    label_rect.x + label_rect.width() as i32 + 8,
+                    bounds.y + 7,
+                    (right_edge - label_rect.x - label_rect.width() as i32 - 12).max(0) as u32,
+                    8,
+                ),
+                1,
+                theme.app_chrome.footer_detail_direct,
+            )?;
+        } else if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
             let label_width = crate::ui::text_width(&title, 1) + 4;
             let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
             crate::ui::draw_text_fitted(

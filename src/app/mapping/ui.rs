@@ -52,6 +52,8 @@ pub(crate) fn mapping_target_label_for_action(action: AppAction) -> Option<&'sta
         AppAction::SelectNextRecordingClip => Some("Select Next Recording Clip"),
         AppAction::ToggleSelectedRecordingClipMute => Some("Recording Clip Mute"),
         AppAction::DeleteSelectedRecordingClip => Some("Delete Recording Clip"),
+        AppAction::OpenSelectedRecordingClipAlign => Some("Clip Align"),
+        AppAction::ApplyRecordingClipAlign => Some("Apply Clip Align"),
         AppAction::ToggleFocusedTrackView => Some("Focused Track View"),
         AppAction::ToggleLinkEnabled => Some("Link Enable"),
         AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
