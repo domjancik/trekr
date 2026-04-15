@@ -143,7 +143,7 @@ Examples from the current action model that should dirty state when successful:
 - mapping add/remove/edit
 - routing changes
 - note/clip edits
-- page-state changes that are already persisted, such as current page or selection fields
+- page-state changes that are already persisted, including page navigation, current page, and selection fields
 
 Non-mutating/runtime-only actions should not create version files by themselves.
 
@@ -241,15 +241,18 @@ If the working file exists and loads successfully:
 
 If the working file is unreadable but version files exist:
 
-- this slice may continue current fallback-to-demo behavior by default
-- implementation should log or surface that recovery candidates exist
-- explicit recovery UI is a later enhancement, not required for this spec
+- the app should automatically try the newest valid version file before falling back to demo state
+- if recovery succeeds, launch from that recovered version and surface a clear notification that recovery occurred
+- if no valid version file can be loaded, fall back to the current demo-state behavior and surface that recovery failed
+- explicit recovery browsing or restore UI is still a later enhancement, not required for this spec
 
 ### On Exit
 
 If dirty:
 
 - perform an immediate save flush before shutdown finishes
+- if the flush fails, retry within the same exit flow using the same save pipeline
+- if retry still fails, allow exit to continue but surface a clear warning that the last changes may not have been versioned successfully
 
 If clean:
 
@@ -349,29 +352,35 @@ Not required in this slice:
 
 Retention should be bounded so auto-save does not grow forever.
 
-Recommended initial policy:
+Initial policy:
 
-- keep recent versions per working file
-- prune oldest versions beyond a configured cap
+- keep a fixed number of recent versions per working file
+- prune oldest versions beyond that fixed cap
+
+V1 rule:
+
+- use a fixed in-code retention cap rather than user-configurable retention
+- prune only after a new save succeeds
 
 Recommended starter cap:
 
-- `50` to `200` version files per working file
-
-Pruning should happen only after a new save succeeds.
+- `100` version files per working file
 
 ## Acceptance Criteria
 
 - persisted interactive sessions auto-save after successful persisted-state mutations and a debounce quiet period
+- persisted page navigation and other persisted page-state changes are included in dirty tracking and version creation
 - each successful auto-save updates the working file configured by `--state-file`
 - each successful auto-save also creates one timestamped version file tied to that working file
 - identical serialized state does not create duplicate version files
 - auto-save never silently enables itself for `demo` or `empty` mode sessions
 - clean exit flushes pending dirty state in persisted mode
+- if the exit flush fails, the app retries once and then allows exit with a visible warning if saving still fails
 - footer/status feedback communicates pending, success, and failure states without requiring hover
 - pointer, touch, keyboard, MIDI mapping, and internal action paths all feed the same dirty/save pipeline when they mutate persisted state
 - a failed save does not mark the session clean
 - version filenames sort chronologically and do not overwrite prior versions
+- when the working file is unreadable, the app automatically attempts recovery from the newest valid version file and notifies the user if recovery succeeds
 
 ## Likely Code Touch Points
 
@@ -399,9 +408,9 @@ Primary implementation files, based on the current repo shape:
 - `docs/specs/product-spec.md`
   - update the broader save/load product language after implementation lands
 
-## Open Questions
+## Resolved Decisions
 
-- should page-navigation-only changes remain persisted and therefore trigger version creation, or should versioning focus more narrowly on project/mapping edits
-- should save failures block quit on desktop, or only warn and continue exit
-- should retention be fixed in code first or exposed later as config
-- should recovery from a broken working file automatically try the newest valid version file, or remain manual in a later slice
+- persisted page navigation remains part of saved state and does trigger dirty tracking and version creation
+- on exit save failure, the app retries and then allows exit with a warning if saving still fails
+- retention is fixed in V1 rather than user-configurable
+- recovery from an unreadable working file should automatically try the newest valid version file and notify the user when recovery succeeds
