@@ -358,9 +358,17 @@ Not part of this spec-only commit, but likely follow-up implementation updates:
 
 ## Open questions
 
-These do not block the spec, but implementation should make an explicit choice:
+These now have implementation recommendations for the current shipped behavior:
 
-- Should aliases be shipped in V1, or should fuzzy matching against canonical labels alone be sufficient?
-- Should `Tab` while lookup is open move focus out of the field, or behave like normal text-entry suppression and do nothing?
-- Should clicking outside the lookup cancel immediately, or just keep focus until explicit cancel/commit?
-- Should the query be preserved when reopening lookup on the same row during a single session, or always start from the current target label/empty query?
+- Aliases in V1:
+  - recommendation: defer aliases
+  - implemented behavior: fuzzy matching runs against canonical target labels only
+- `Tab` while lookup is open:
+  - recommendation: suppress it so the temporary editor keeps focus
+  - implemented behavior: `Tab` does nothing until explicit commit/cancel
+- Clicking outside the lookup:
+  - recommendation: cancel immediately without mutation
+  - implemented behavior: outside click/tap cancels lookup and restores the original row target/scope
+- Query persistence:
+  - recommendation: start fresh each time
+  - implemented behavior: reopening lookup starts from an empty query rather than preserving the previous query

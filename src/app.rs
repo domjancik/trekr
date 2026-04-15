@@ -9,6 +9,7 @@ use crate::mapping::{
     cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
     default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
     mapping_entry_key_actions, mapping_entry_targets_action, mapping_entry_to_actions,
+    mapping_scope_valid_for_target, search_mapping_targets,
 };
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
@@ -57,6 +58,7 @@ pub struct App {
     overlay_state: OverlayState,
     status_state: StatusState,
     direct_mapping_state: DirectMappingState,
+    target_lookup_state: MappingTargetLookupState,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     ui_scaling_mode: UiScalingMode,
@@ -146,6 +148,26 @@ struct DirectMappingState {
     mode: DirectMappingMode,
     origin: DirectMappingOrigin,
     status_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct MappingTargetLookupState {
+    active: Option<ActiveMappingTargetLookup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActiveMappingTargetLookup {
+    original_target_label: String,
+    original_scope_label: String,
+    query: String,
+    highlighted_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MappingTargetLookupLayout {
+    target_cell: Rect,
+    results_panel: Rect,
+    visible_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -319,6 +341,7 @@ impl App {
             overlay_state: OverlayState::default(),
             status_state: StatusState::default(),
             direct_mapping_state: DirectMappingState::default(),
+            target_lookup_state: MappingTargetLookupState::default(),
             viewport_size: (1280, 720),
             ui_scale_override: None,
             ui_scaling_mode: UiScalingMode::Auto,
@@ -3950,6 +3973,282 @@ impl App {
         Ok(())
     }
 
+    fn mapping_target_lookup_results(&self) -> Vec<&'static str> {
+        let Some(lookup) = self.target_lookup_state.active.as_ref() else {
+            return Vec::new();
+        };
+        search_mapping_targets(&lookup.query)
+    }
+
+    fn mapping_target_lookup_highlighted_label(&self) -> Option<&'static str> {
+        let results = self.mapping_target_lookup_results();
+        let lookup = self.target_lookup_state.active.as_ref()?;
+        if results.is_empty() {
+            None
+        } else {
+            Some(
+                results[lookup
+                    .highlighted_index
+                    .min(results.len().saturating_sub(1))],
+            )
+        }
+    }
+
+    fn clear_mapping_target_lookup(&mut self) {
+        self.target_lookup_state.active = None;
+    }
+
+    fn open_mapping_target_lookup(&mut self) {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+            || self.page_state.selected_mapping_field != MappingField::Target
+        {
+            return;
+        }
+
+        let Some(entry) = self.mappings.get(self.page_state.selected_mapping_index) else {
+            return;
+        };
+
+        self.page_state.mapping_midi_learn_armed = false;
+        self.target_lookup_state.active = Some(ActiveMappingTargetLookup {
+            original_target_label: entry.target_label.clone(),
+            original_scope_label: entry.scope_label.clone(),
+            query: String::new(),
+            highlighted_index: 0,
+        });
+    }
+
+    fn cancel_mapping_target_lookup(&mut self) {
+        let Some(lookup) = self.target_lookup_state.active.take() else {
+            return;
+        };
+        let Some(entry) = self
+            .mappings
+            .get_mut(self.page_state.selected_mapping_index)
+        else {
+            return;
+        };
+        entry.target_label = lookup.original_target_label;
+        entry.scope_label = lookup.original_scope_label;
+    }
+
+    fn move_mapping_target_lookup_highlight(&mut self, delta: i32) {
+        let results = self.mapping_target_lookup_results();
+        let Some(lookup) = self.target_lookup_state.active.as_mut() else {
+            return;
+        };
+        if results.is_empty() {
+            lookup.highlighted_index = 0;
+            return;
+        }
+        let len = results.len() as i32;
+        let current = lookup
+            .highlighted_index
+            .min(results.len().saturating_sub(1)) as i32;
+        lookup.highlighted_index = (current + delta).rem_euclid(len) as usize;
+    }
+
+    fn append_mapping_target_lookup_text(&mut self, text: &str) {
+        let Some(lookup) = self.target_lookup_state.active.as_mut() else {
+            return;
+        };
+        if text.is_empty() {
+            return;
+        }
+        lookup.query.push_str(text);
+        lookup.highlighted_index = 0;
+    }
+
+    fn backspace_mapping_target_lookup(&mut self) {
+        let Some(lookup) = self.target_lookup_state.active.as_mut() else {
+            return;
+        };
+        lookup.query.pop();
+        lookup.highlighted_index = 0;
+    }
+
+    fn commit_mapping_target_lookup_label(&mut self, target_label: &'static str) {
+        let Some(entry) = self
+            .mappings
+            .get_mut(self.page_state.selected_mapping_index)
+        else {
+            self.clear_mapping_target_lookup();
+            return;
+        };
+        let track_count = self.project.tracks.len();
+        let preserved_scope =
+            mapping_scope_valid_for_target(target_label, &entry.scope_label, track_count);
+        let previous_scope = entry.scope_label.clone();
+        entry.target_label = target_label.to_string();
+        if !preserved_scope {
+            entry.scope_label = default_scope_label(target_label, track_count);
+        }
+        self.target_lookup_state.active = None;
+        self.direct_mapping_state.status_message = Some(if preserved_scope {
+            format!(
+                "Selected target {target_label}. Scope preserved: {}.",
+                entry.scope_label
+            )
+        } else {
+            format!(
+                "Selected target {target_label}. Scope changed: {previous_scope} -> {}.",
+                entry.scope_label
+            )
+        });
+    }
+
+    fn commit_mapping_target_lookup(&mut self) {
+        if let Some(target_label) = self.mapping_target_lookup_highlighted_label() {
+            self.commit_mapping_target_lookup_label(target_label);
+        }
+    }
+
+    fn mapping_target_lookup_layout(
+        &self,
+        content_bounds: Rect,
+    ) -> Option<MappingTargetLookupLayout> {
+        self.target_lookup_state.active.as_ref()?;
+        let list_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + 44,
+            content_bounds.width().saturating_sub(16),
+            content_bounds.height().saturating_sub(68),
+        );
+        let row_gap = 3_i32;
+        let row_height = 18_i32;
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+        if selected_index < start_index || selected_index >= start_index + visible_rows {
+            return None;
+        }
+
+        let visible_index = selected_index - start_index;
+        let row = Rect::new(
+            list_bounds.x,
+            list_bounds.y + visible_index as i32 * stride,
+            list_bounds.width(),
+            row_height as u32,
+        );
+        let target_cell = self.mapping_row_cells(row)[mapping_field_index(MappingField::Target)];
+        let result_count = self.mapping_target_lookup_results().len().max(1).min(6);
+        let panel_width = target_cell.width().max(180);
+        let panel_height = 12 + result_count as u32 * 12;
+        let panel_x = target_cell.x;
+        let preferred_y = target_cell.y + target_cell.height() as i32 + 2;
+        let max_y = content_bounds.y + content_bounds.height() as i32 - panel_height as i32 - 24;
+        let panel_y = preferred_y.min(max_y.max(content_bounds.y + 28));
+
+        Some(MappingTargetLookupLayout {
+            target_cell,
+            results_panel: Rect::new(panel_x, panel_y, panel_width, panel_height),
+            visible_count: result_count,
+        })
+    }
+
+    fn draw_mapping_target_lookup<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        content_bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(lookup) = self.target_lookup_state.active.as_ref() else {
+            return Ok(());
+        };
+        let Some(layout) = self.mapping_target_lookup_layout(content_bounds) else {
+            return Ok(());
+        };
+        let results = self.mapping_target_lookup_results();
+
+        canvas.set_draw_color(Color::RGB(108, 84, 52));
+        canvas.draw_rect(Rect::new(
+            layout.target_cell.x - 1,
+            layout.target_cell.y - 1,
+            layout.target_cell.width().saturating_add(2),
+            layout.target_cell.height().saturating_add(2),
+        ))?;
+
+        canvas.set_draw_color(Color::RGB(28, 32, 44));
+        canvas.fill_rect(layout.results_panel)?;
+        canvas.set_draw_color(Color::RGB(164, 142, 96));
+        canvas.draw_rect(layout.results_panel)?;
+
+        let query_text = if lookup.query.is_empty() {
+            "Type to search targets".to_string()
+        } else {
+            format!("Find: {}", lookup.query)
+        };
+        crate::ui::draw_text_fitted(
+            canvas,
+            &query_text,
+            Rect::new(
+                layout.results_panel.x + 6,
+                layout.results_panel.y + 4,
+                layout.results_panel.width().saturating_sub(12),
+                8,
+            ),
+            1,
+            if lookup.query.is_empty() {
+                Color::RGB(152, 162, 176)
+            } else {
+                Color::RGB(242, 238, 228)
+            },
+        )?;
+
+        for row_index in 0..layout.visible_count {
+            let item_rect = Rect::new(
+                layout.results_panel.x + 4,
+                layout.results_panel.y + 14 + row_index as i32 * 12,
+                layout.results_panel.width().saturating_sub(8),
+                10,
+            );
+            let highlighted = row_index
+                == lookup
+                    .highlighted_index
+                    .min(layout.visible_count.saturating_sub(1))
+                && !results.is_empty();
+            canvas.set_draw_color(if highlighted {
+                Color::RGB(88, 98, 132)
+            } else {
+                Color::RGB(40, 46, 62)
+            });
+            canvas.fill_rect(item_rect)?;
+
+            let label = results
+                .get(row_index)
+                .copied()
+                .unwrap_or("No matching targets");
+            crate::ui::draw_text_fitted(
+                canvas,
+                label,
+                Rect::new(
+                    item_rect.x + 4,
+                    item_rect.y + 1,
+                    item_rect.width().saturating_sub(8),
+                    8,
+                ),
+                1,
+                if highlighted {
+                    Color::RGB(248, 244, 232)
+                } else {
+                    Color::RGB(210, 216, 224)
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+
     fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
         let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
         let source_rect = Rect::new(
@@ -4286,7 +4585,25 @@ impl App {
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
-                &entry.target_label,
+                &if selected
+                    && self.page_state.mapping_mode == MappingPageMode::Write
+                    && self.page_state.selected_mapping_field == MappingField::Target
+                    && self.target_lookup_state.active.is_some()
+                {
+                    self.target_lookup_state
+                        .active
+                        .as_ref()
+                        .map(|lookup| {
+                            if lookup.query.is_empty() {
+                                "Search target…".to_string()
+                            } else {
+                                format!("Search: {}", lookup.query)
+                            }
+                        })
+                        .unwrap_or_else(|| entry.target_label.clone())
+                } else {
+                    entry.target_label.clone()
+                },
                 Rect::new(
                     target_rect.x + 4,
                     row.y + 5,
@@ -4351,6 +4668,8 @@ impl App {
             }
         }
 
+        self.draw_mapping_target_lookup(canvas, content_bounds)?;
+
         canvas.set_draw_color(Color::RGB(26, 32, 46));
         canvas.fill_rect(footer_bounds)?;
         let footer_tokens = [
@@ -4388,7 +4707,11 @@ impl App {
         }
         crate::ui::draw_text_fitted(
             canvas,
-            "Shift+Left/Right Field  Q/E Adjust  Enter Learn/Toggle",
+            if self.target_lookup_state.active.is_some() {
+                "Type filter  Up/Down Select  Enter Commit  Esc Cancel  Tab stays in lookup"
+            } else {
+                "Shift+Left/Right Field  Q/E Adjust  Enter Learn/Toggle"
+            },
             Rect::new(
                 footer_x + 6,
                 footer_bounds.y + 2,
@@ -5442,6 +5765,7 @@ impl App {
     }
 
     fn toggle_direct_mapping_mode(&mut self) {
+        self.clear_mapping_target_lookup();
         if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
             self.direct_mapping_state.mode = DirectMappingMode::Targeting;
             self.direct_mapping_state.origin = if self.page_state.current_page == AppPage::Mappings
@@ -5462,6 +5786,7 @@ impl App {
     }
 
     fn cancel_direct_mapping(&mut self, message: &str) {
+        self.clear_mapping_target_lookup();
         self.direct_mapping_state.mode = DirectMappingMode::Inactive;
         self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
         self.direct_mapping_state.status_message = Some(message.to_string());
@@ -5472,16 +5797,19 @@ impl App {
         match action {
             AppAction::Quit => AppControl::Quit,
             AppAction::ShowPage(page) => {
+                self.clear_mapping_target_lookup();
                 self.page_state.current_page = page;
                 self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowNextPage => {
+                self.clear_mapping_target_lookup();
                 self.page_state.current_page = self.page_state.current_page.next();
                 self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowPreviousPage => {
+                self.clear_mapping_target_lookup();
                 self.page_state.current_page = self.page_state.current_page.previous();
                 self.sync_midi_inputs();
                 AppControl::Continue
@@ -5534,6 +5862,7 @@ impl App {
                 AppControl::Continue
             }
             AppAction::ToggleMappingsWriteMode => {
+                self.clear_mapping_target_lookup();
                 self.page_state.mapping_mode = self.page_state.mapping_mode.toggle();
                 self.page_state.mapping_midi_learn_armed = false;
                 if self.page_state.mapping_mode == MappingPageMode::Overview {
@@ -6413,6 +6742,7 @@ impl App {
     }
 
     fn select_previous_page_item(&mut self) {
+        self.clear_mapping_target_lookup();
         match self.page_state.current_page {
             AppPage::Timeline => {
                 if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
@@ -6450,6 +6780,7 @@ impl App {
     }
 
     fn select_next_page_item(&mut self) {
+        self.clear_mapping_target_lookup();
         match self.page_state.current_page {
             AppPage::Timeline => {
                 if self.page_state.selected_timeline_context == TimelineContext::TrackTimeline {
@@ -6489,6 +6820,7 @@ impl App {
         match self.page_state.current_page {
             AppPage::Timeline => self.select_previous_timeline_context(),
             AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
+                self.clear_mapping_target_lookup();
                 self.page_state.selected_mapping_field =
                     self.previous_enabled_mapping_field(self.page_state.selected_mapping_field);
                 self.page_state.mapping_midi_learn_armed = false;
@@ -6947,6 +7279,19 @@ impl App {
         }
     }
 
+    fn select_next_page_field(&mut self) {
+        match self.page_state.current_page {
+            AppPage::Timeline => self.select_next_timeline_context(),
+            AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
+                self.clear_mapping_target_lookup();
+                self.page_state.selected_mapping_field =
+                    self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            _ => {}
+        }
+    }
+
     fn adjust_page_item(&mut self, delta: i32) {
         match self.page_state.current_page {
             AppPage::Timeline => self.adjust_timeline_context(delta),
@@ -6954,6 +7299,7 @@ impl App {
                 if self.page_state.mapping_mode == MappingPageMode::Write
                     && !self.mappings.is_empty()
                 {
+                    self.clear_mapping_target_lookup();
                     self.adjust_mapping_field(delta);
                 }
             }
@@ -7036,7 +7382,13 @@ impl App {
             MappingField::Target => {
                 entry.target_label =
                     cycle_mapping_target_label(&entry.target_label, delta).to_string();
-                entry.scope_label = default_scope_label(&entry.target_label, track_count);
+                if !mapping_scope_valid_for_target(
+                    &entry.target_label,
+                    &entry.scope_label,
+                    track_count,
+                ) {
+                    entry.scope_label = default_scope_label(&entry.target_label, track_count);
+                }
             }
             MappingField::Scope => {
                 entry.scope_label = cycle_mapping_scope_value(
@@ -7062,6 +7414,12 @@ impl App {
     fn activate_mapping_field(&mut self) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
+
+        if field == MappingField::Target {
+            self.open_mapping_target_lookup();
+            return;
+        }
+
         let track_count = self.project.tracks.len();
         let Some(entry) = self.mappings.get_mut(index) else {
             return;
@@ -7104,11 +7462,7 @@ impl App {
                             .to_string();
                 }
             }
-            MappingField::Target => {
-                entry.target_label = cycle_mapping_target_label(&entry.target_label, 1).to_string();
-                entry.scope_label = default_scope_label(&entry.target_label, track_count);
-                self.page_state.mapping_midi_learn_armed = false;
-            }
+            MappingField::Target => {}
             MappingField::Scope => {
                 entry.scope_label = cycle_mapping_scope_value(
                     &entry.scope_label,
@@ -7132,6 +7486,7 @@ impl App {
             return;
         }
 
+        self.clear_mapping_target_lookup();
         let insert_index = self
             .page_state
             .selected_mapping_index
@@ -7159,6 +7514,7 @@ impl App {
             return;
         }
 
+        self.clear_mapping_target_lookup();
         self.mappings.remove(self.page_state.selected_mapping_index);
         if self.mappings.is_empty() {
             self.mappings.push(MappingEntry::default_new());
@@ -8575,6 +8931,64 @@ impl App {
     }
 
     fn handle_keyboard_event(&mut self, event: &sdl3::event::Event) -> Option<AppControl> {
+        if self.target_lookup_state.active.is_some() {
+            match event {
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Escape),
+                    repeat: false,
+                    ..
+                } => {
+                    self.cancel_mapping_target_lookup();
+                    return Some(AppControl::Continue);
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Return),
+                    repeat: false,
+                    ..
+                } => {
+                    self.commit_mapping_target_lookup();
+                    return Some(AppControl::Continue);
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Up),
+                    repeat: false,
+                    ..
+                } => {
+                    self.move_mapping_target_lookup_highlight(-1);
+                    return Some(AppControl::Continue);
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Down),
+                    repeat: false,
+                    ..
+                } => {
+                    self.move_mapping_target_lookup_highlight(1);
+                    return Some(AppControl::Continue);
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Backspace),
+                    repeat: false,
+                    ..
+                } => {
+                    self.backspace_mapping_target_lookup();
+                    return Some(AppControl::Continue);
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Tab),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(AppControl::Continue);
+                }
+                _ => {
+                    if let Some(input) = mapping_target_lookup_input(event) {
+                        self.append_mapping_target_lookup_text(&input);
+                        return Some(AppControl::Continue);
+                    }
+                }
+            }
+        }
+
         if matches!(
             event,
             sdl3::event::Event::KeyDown {
@@ -8909,6 +9323,25 @@ impl App {
         y: i32,
         source: crate::actions::ActionSource,
     ) -> Option<AppControl> {
+        if let Some(layout) = self.mapping_target_lookup_layout(content_bounds) {
+            if rect_contains(layout.results_panel, x, y) {
+                let relative_y = y - (layout.results_panel.y + 14);
+                if relative_y >= 0 {
+                    let row_index = (relative_y / 12) as usize;
+                    let results = self.mapping_target_lookup_results();
+                    if let Some(label) = results.get(row_index.min(results.len().saturating_sub(1)))
+                    {
+                        self.commit_mapping_target_lookup_label(label);
+                    }
+                }
+                return Some(AppControl::Continue);
+            }
+            if !rect_contains(layout.target_cell, x, y) {
+                self.cancel_mapping_target_lookup();
+                return Some(AppControl::Continue);
+            }
+        }
+
         let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
         let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
@@ -8919,6 +9352,7 @@ impl App {
             && self.page_state.mapping_mode == MappingPageMode::Write
             && self.page_state.selected_mapping_field == MappingField::SourceValue
         {
+            self.clear_mapping_target_lookup();
             return Some(self.apply_action_with_source(AppAction::ActivatePageItem, source));
         }
         if rect_contains(direct_badge, x, y) {
@@ -8965,6 +9399,7 @@ impl App {
             self.page_state.selected_mapping_index = index;
             self.normalize_selected_mapping_field();
             self.page_state.mapping_midi_learn_armed = false;
+            self.clear_mapping_target_lookup();
 
             if self.page_state.mapping_mode != MappingPageMode::Write {
                 return Some(AppControl::Continue);
@@ -10629,6 +11064,74 @@ fn direct_mapping_key_label(event: &sdl3::event::Event) -> Option<String> {
     Some(with_modifier_prefixes(key_label, *keymod))
 }
 
+fn mapping_target_lookup_input(event: &sdl3::event::Event) -> Option<String> {
+    let sdl3::event::Event::KeyDown {
+        keycode: Some(keycode),
+        keymod,
+        repeat: false,
+        ..
+    } = event
+    else {
+        return None;
+    };
+
+    if keymod.intersects(
+        sdl3::keyboard::Mod::LCTRLMOD
+            | sdl3::keyboard::Mod::RCTRLMOD
+            | sdl3::keyboard::Mod::LALTMOD
+            | sdl3::keyboard::Mod::RALTMOD
+            | sdl3::keyboard::Mod::LGUIMOD
+            | sdl3::keyboard::Mod::RGUIMOD,
+    ) {
+        return None;
+    }
+
+    let input = match keycode {
+        sdl3::keyboard::Keycode::Space => " ".to_string(),
+        sdl3::keyboard::Keycode::Minus => "-".to_string(),
+        sdl3::keyboard::Keycode::Slash => "/".to_string(),
+        sdl3::keyboard::Keycode::_0 => "0".to_string(),
+        sdl3::keyboard::Keycode::_1 => "1".to_string(),
+        sdl3::keyboard::Keycode::_2 => "2".to_string(),
+        sdl3::keyboard::Keycode::_3 => "3".to_string(),
+        sdl3::keyboard::Keycode::_4 => "4".to_string(),
+        sdl3::keyboard::Keycode::_5 => "5".to_string(),
+        sdl3::keyboard::Keycode::_6 => "6".to_string(),
+        sdl3::keyboard::Keycode::_7 => "7".to_string(),
+        sdl3::keyboard::Keycode::_8 => "8".to_string(),
+        sdl3::keyboard::Keycode::_9 => "9".to_string(),
+        sdl3::keyboard::Keycode::A => "a".to_string(),
+        sdl3::keyboard::Keycode::B => "b".to_string(),
+        sdl3::keyboard::Keycode::C => "c".to_string(),
+        sdl3::keyboard::Keycode::D => "d".to_string(),
+        sdl3::keyboard::Keycode::E => "e".to_string(),
+        sdl3::keyboard::Keycode::F => "f".to_string(),
+        sdl3::keyboard::Keycode::G => "g".to_string(),
+        sdl3::keyboard::Keycode::H => "h".to_string(),
+        sdl3::keyboard::Keycode::I => "i".to_string(),
+        sdl3::keyboard::Keycode::J => "j".to_string(),
+        sdl3::keyboard::Keycode::K => "k".to_string(),
+        sdl3::keyboard::Keycode::L => "l".to_string(),
+        sdl3::keyboard::Keycode::M => "m".to_string(),
+        sdl3::keyboard::Keycode::N => "n".to_string(),
+        sdl3::keyboard::Keycode::O => "o".to_string(),
+        sdl3::keyboard::Keycode::P => "p".to_string(),
+        sdl3::keyboard::Keycode::Q => "q".to_string(),
+        sdl3::keyboard::Keycode::R => "r".to_string(),
+        sdl3::keyboard::Keycode::S => "s".to_string(),
+        sdl3::keyboard::Keycode::T => "t".to_string(),
+        sdl3::keyboard::Keycode::U => "u".to_string(),
+        sdl3::keyboard::Keycode::V => "v".to_string(),
+        sdl3::keyboard::Keycode::W => "w".to_string(),
+        sdl3::keyboard::Keycode::X => "x".to_string(),
+        sdl3::keyboard::Keycode::Y => "y".to_string(),
+        sdl3::keyboard::Keycode::Z => "z".to_string(),
+        _ => return None,
+    };
+
+    Some(input)
+}
+
 fn with_modifier_prefixes(key_label: &str, keymod: sdl3::keyboard::Mod) -> String {
     let mut label = String::new();
     if keymod.intersects(sdl3::keyboard::Mod::LCTRLMOD | sdl3::keyboard::Mod::RCTRLMOD) {
@@ -11583,6 +12086,147 @@ mod tests {
 
         assert_eq!(app.mappings.len(), original_len);
         assert!(app.page_state.selected_mapping_index < app.mappings.len());
+    }
+
+    #[test]
+    fn mappings_target_lookup_opens_and_commits_filtered_result() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.mappings[0].target_label = "Play/Stop".to_string();
+        app.mappings[0].scope_label = "Global".to_string();
+
+        app.apply_action(AppAction::ActivatePageItem);
+        assert!(app.target_lookup_state.active.is_some());
+
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::A),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::R),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::M),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Return),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
+        assert!(app.target_lookup_state.active.is_none());
+    }
+
+    #[test]
+    fn mappings_target_lookup_resets_invalid_scope_and_escape_cancels() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Track 3".to_string();
+
+        app.apply_action(AppAction::ActivatePageItem);
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::P),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::L),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::A),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Y),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Return),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Play/Stop");
+        assert_eq!(app.mappings[0].scope_label, "Global");
+
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Track 3".to_string();
+        app.apply_action(AppAction::ActivatePageItem);
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Escape),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Track 3");
+        assert!(app.target_lookup_state.active.is_none());
     }
 
     #[test]

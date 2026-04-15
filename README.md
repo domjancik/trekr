@@ -76,7 +76,7 @@ Latest renderer-owned captures from the demo state:
 - a renderer-level footer/status bar that shows hover mapping summaries and falls back to the last performed action
 - hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
 - an inline mapping discoverability overlay with compact built-in vs user-defined badges
-- a field-based mappings editor with MIDI learn for MIDI sources
+- a field-based mappings editor with MIDI learn for MIDI sources and inline target lookup for fast target selection
 - a direct UI mapping mode for supported timeline and routing controls, driven from discoverability targets
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
@@ -266,6 +266,7 @@ The `Mappings` page now supports two modes:
 - `Read Only`: compact overview
 - `Write`: field-based editing for source type, source device, source value, target, scope, and enabled state
 - `Write` mode also supports adding/removing rows and cycling track-scoped mappings into concrete `Track 1`, `Track 2`, ... scopes
+- selecting the `Target` field and pressing `Enter` opens inline lookup; type to filter targets, use `Up` / `Down` to choose, `Enter` to commit, and `Escape` to cancel
 - direct UI mapping entry through `F8` or the `Tap Direct Map` chip, with target selection on supported timeline and routing controls
 
 MIDI learn notes:
@@ -281,6 +282,7 @@ MIDI learn notes:
 - learned MIDI mappings store the device name of the input that triggered learn
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
+- while target lookup is open, `Tab` is suppressed so lookup keeps focus until explicit commit/cancel
 - note-edit targets are available in the mappings page for playhead selection, span focus/resize, deselect, and pitch/time nudging
 - recording-stack targets are available in the mappings page for recording view toggle, clip-step selection, selected clip mute, and selected clip delete
 
