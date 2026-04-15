@@ -13,8 +13,7 @@ use crate::mapping::{
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
     MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
-    process_live_chain_event, process_live_chain_tick, process_live_event, reset_live_fx_timing,
-    transform_notes,
+    process_live_chain_event, process_live_chain_tick, reset_live_fx_timing, transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -7590,6 +7589,7 @@ impl App {
         source_track_index: usize,
         source_events: &[LiveMidiFxEvent],
         state: &mut LiveMidiFxState,
+        current_ticks: u64,
         global_quantize_root: u8,
     ) -> Vec<LiveMidiFxEvent> {
         let mut events = Vec::new();
@@ -7608,10 +7608,11 @@ impl App {
                 _ => {
                     let mut transformed = Vec::new();
                     for event in events {
-                        transformed.extend(process_live_event(
+                        transformed.extend(process_live_chain_event(
                             &[Some(slot.clone())],
                             state,
                             event,
+                            current_ticks,
                             global_quantize_root,
                         ));
                     }
@@ -7675,6 +7676,13 @@ impl App {
 
         self.ensure_fx_live_state_len();
         for target in targets {
+            let input_ticks = self
+                .project
+                .tracks
+                .get(target.target_index)
+                .map(|track| self.record_capture_ticks(track))
+                .unwrap_or(self.playhead_ticks);
+
             let post_input_events = if let (Some(state), Some(track)) = (
                 self.input_fx_live_states.get_mut(target.target_index),
                 self.project.tracks.get(target.target_index),
@@ -7684,6 +7692,7 @@ impl App {
                     source_track_index,
                     source_events,
                     state,
+                    input_ticks,
                     self.project.global_harmony.root,
                 )
             } else {
@@ -7692,13 +7701,6 @@ impl App {
             if post_input_events.is_empty() {
                 continue;
             }
-
-            let input_ticks = self
-                .project
-                .tracks
-                .get(target.target_index)
-                .map(|track| self.record_capture_ticks(track))
-                .unwrap_or(self.playhead_ticks);
 
             if let Some(track) = self.project.tracks.get_mut(target.target_index) {
                 if track.active_take.is_some()

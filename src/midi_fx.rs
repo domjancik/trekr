@@ -222,7 +222,7 @@ pub enum MidiFx {
         percent: u16,
     },
     Duration {
-        percent: u16,
+        ticks: u64,
     },
     ScaleQuantize {
         root: u8,
@@ -323,7 +323,7 @@ impl MidiFx {
             },
             MidiFxKind::Transpose => Self::Transpose { semitones: 0 },
             MidiFxKind::Velocity => Self::Velocity { percent: 100 },
-            MidiFxKind::Duration => Self::Duration { percent: 100 },
+            MidiFxKind::Duration => Self::Duration { ticks: 0 },
             MidiFxKind::ScaleQuantize => Self::ScaleQuantize {
                 root: 0,
                 target: QuantizeTarget::Local,
@@ -369,7 +369,7 @@ impl MidiFx {
             }
             Self::Transpose { semitones } => format!("{:+}", semitones),
             Self::Velocity { percent } => format!("{percent}%"),
-            Self::Duration { percent } => format!("{percent}%"),
+            Self::Duration { ticks } => duration_rate_label(*ticks).to_string(),
             Self::ScaleQuantize { root, target } => {
                 format!("{} {}", note_name(*root), target.label())
             }
@@ -435,9 +435,9 @@ impl MidiFx {
                 label: "Vel",
                 value: format!("{percent}%"),
             }],
-            Self::Duration { percent } => vec![MidiFxInlineParam {
-                label: "Len",
-                value: format!("{percent}%"),
+            Self::Duration { ticks } => vec![MidiFxInlineParam {
+                label: "Dur",
+                value: duration_rate_label(*ticks).to_string(),
             }],
             Self::ScaleQuantize { root, target } => vec![
                 MidiFxInlineParam {
@@ -541,8 +541,12 @@ impl MidiFx {
             Self::Transpose { semitones } => {
                 *semitones = (*semitones as i32 + delta).clamp(-24, 24) as i8;
             }
-            Self::Velocity { percent } | Self::Duration { percent } => {
+            Self::Velocity { percent } => {
                 *percent = (*percent as i32 + delta * 10).clamp(0, 300) as u16;
+            }
+            Self::Duration { ticks } => {
+                let steps = duration_step_choices(ppqn);
+                *ticks = step_u64_choice(*ticks, &steps, delta);
             }
             Self::ScaleQuantize { root, .. } | Self::ChordQuantize { root, .. } => {
                 *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
@@ -641,6 +645,12 @@ fn delay_step_choices(ppqn: u16) -> Vec<u64> {
     steps
 }
 
+fn duration_step_choices(ppqn: u16) -> Vec<u64> {
+    let mut steps = vec![0];
+    steps.extend(arp_step_choices(ppqn));
+    steps
+}
+
 pub fn arp_rate_label(step_ticks: u64) -> &'static str {
     match step_ticks {
         60 => "1/64",
@@ -662,6 +672,14 @@ pub fn delay_rate_label(step_ticks: u64) -> &'static str {
     }
 }
 
+pub fn duration_rate_label(step_ticks: u64) -> &'static str {
+    if step_ticks == 0 {
+        "Off"
+    } else {
+        arp_rate_label(step_ticks)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveMidiFxEvent {
     NoteOn { pitch: u8, velocity: u8 },
@@ -672,6 +690,7 @@ pub enum LiveMidiFxEvent {
 pub struct LiveMidiFxState {
     note_pitch_map: HashMap<u8, Vec<u8>>,
     scheduled_events: Vec<ScheduledLiveMidiFxEvent>,
+    duration_controlled_notes: HashMap<u8, usize>,
     arp_held_notes: Vec<ArpHeldNote>,
     arp_sequence_counter: u64,
     arp_next_step_tick: Option<u64>,
@@ -691,8 +710,14 @@ struct ArpHeldNote {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ScheduledLiveMidiFxEvent {
     tick: u64,
-    event: LiveMidiFxEvent,
+    event: PendingLiveMidiFxEvent,
     next_slot_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingLiveMidiFxEvent {
+    event: LiveMidiFxEvent,
+    suppress_original_note_off_pitch: Option<u8>,
 }
 
 pub fn cycle_fx_kind(current: Option<&MidiFxSlot>, delta: i32) -> Option<MidiFxSlot> {
@@ -736,14 +761,7 @@ pub fn process_live_event(
     event: LiveMidiFxEvent,
     global_quantize_root: u8,
 ) -> Vec<LiveMidiFxEvent> {
-    let mut events = vec![event];
-    for slot in chain.iter().flatten().filter(|slot| slot.enabled) {
-        events = apply_live_fx(slot, state, events, global_quantize_root);
-        if events.is_empty() {
-            break;
-        }
-    }
-    events
+    process_live_chain_event(chain, state, event, 0, global_quantize_root)
 }
 
 pub fn process_live_chain_event(
@@ -756,11 +774,17 @@ pub fn process_live_chain_event(
     process_live_events_from_index(
         chain,
         state,
-        vec![event],
+        vec![PendingLiveMidiFxEvent {
+            event,
+            suppress_original_note_off_pitch: None,
+        }],
         0,
         current_ticks,
         global_quantize_root,
     )
+    .into_iter()
+    .map(|pending| pending.event)
+    .collect()
 }
 
 pub fn process_live_chain_tick(
@@ -796,7 +820,14 @@ pub fn process_live_chain_tick(
                 next_tick,
                 global_quantize_root,
             );
-            output.extend(immediate.into_iter().map(|event| (next_tick, event)));
+            for pending in immediate {
+                if let (LiveMidiFxEvent::NoteOff { .. }, Some(pitch)) =
+                    (&pending.event, pending.suppress_original_note_off_pitch)
+                {
+                    decrement_duration_controlled_note(state, pitch);
+                }
+                output.push((next_tick, pending.event));
+            }
         }
 
         if next_live_arp_tick(chain, state) == Some(next_tick) {
@@ -805,12 +836,22 @@ pub fn process_live_chain_tick(
             let processed = process_live_events_from_index(
                 chain,
                 state,
-                generated,
+                generated
+                    .into_iter()
+                    .map(|event| PendingLiveMidiFxEvent {
+                        event,
+                        suppress_original_note_off_pitch: None,
+                    })
+                    .collect(),
                 arp_index + 1,
                 next_tick,
                 global_quantize_root,
             );
-            output.extend(processed.into_iter().map(|event| (next_tick, event)));
+            output.extend(
+                processed
+                    .into_iter()
+                    .map(|pending| (next_tick, pending.event)),
+            );
         }
     }
     output
@@ -835,11 +876,11 @@ fn first_live_arp_index(chain: &[Option<MidiFxSlot>]) -> Option<usize> {
 fn process_live_events_from_index(
     chain: &[Option<MidiFxSlot>],
     state: &mut LiveMidiFxState,
-    mut events: Vec<LiveMidiFxEvent>,
+    mut events: Vec<PendingLiveMidiFxEvent>,
     start_index: usize,
     current_ticks: u64,
     global_quantize_root: u8,
-) -> Vec<LiveMidiFxEvent> {
+) -> Vec<PendingLiveMidiFxEvent> {
     for (slot_index, slot) in chain.iter().enumerate().skip(start_index) {
         let Some(slot) = slot.as_ref().filter(|slot| slot.enabled) else {
             continue;
@@ -857,13 +898,54 @@ fn process_live_events_from_index(
                     });
                 }
             }
+            MidiFx::Duration { ticks } if *ticks > 0 => {
+                let mut immediate = Vec::new();
+                for pending in events.drain(..) {
+                    match pending.event {
+                        LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                            *state.duration_controlled_notes.entry(pitch).or_default() += 1;
+                            state.scheduled_events.push(ScheduledLiveMidiFxEvent {
+                                tick: current_ticks.saturating_add(*ticks),
+                                event: PendingLiveMidiFxEvent {
+                                    event: LiveMidiFxEvent::NoteOff { pitch },
+                                    suppress_original_note_off_pitch: Some(pitch),
+                                },
+                                next_slot_index: slot_index + 1,
+                            });
+                            immediate.push(PendingLiveMidiFxEvent {
+                                event: LiveMidiFxEvent::NoteOn { pitch, velocity },
+                                suppress_original_note_off_pitch: None,
+                            });
+                        }
+                        LiveMidiFxEvent::NoteOff { pitch } => {
+                            if state
+                                .duration_controlled_notes
+                                .get(&pitch)
+                                .copied()
+                                .unwrap_or(0)
+                                == 0
+                            {
+                                immediate.push(PendingLiveMidiFxEvent {
+                                    event: LiveMidiFxEvent::NoteOff { pitch },
+                                    suppress_original_note_off_pitch: None,
+                                });
+                            }
+                        }
+                    }
+                }
+                events = immediate;
+            }
             MidiFx::Arp { .. } => {
                 let mut immediate = Vec::new();
-                for event in events.drain(..) {
+                for pending in events.drain(..) {
                     if let Some(return_event) =
-                        update_live_arp_held_notes(state, event, current_ticks)
+                        update_live_arp_held_notes(state, pending.event, current_ticks)
                     {
-                        immediate.push(return_event);
+                        immediate.push(PendingLiveMidiFxEvent {
+                            event: return_event,
+                            suppress_original_note_off_pitch: pending
+                                .suppress_original_note_off_pitch,
+                        });
                     }
                 }
                 events = immediate;
@@ -1053,16 +1135,20 @@ fn next_live_arp_note(state: &mut LiveMidiFxState, order: ArpOrder) -> Option<(u
 fn apply_live_fx(
     slot: &MidiFxSlot,
     state: &mut LiveMidiFxState,
-    events: Vec<LiveMidiFxEvent>,
+    events: Vec<PendingLiveMidiFxEvent>,
     global_quantize_root: u8,
-) -> Vec<LiveMidiFxEvent> {
+) -> Vec<PendingLiveMidiFxEvent> {
     let mut transformed = Vec::new();
-    for event in events {
-        match (&slot.effect, event) {
+    for pending in events {
+        let suppress_original_note_off_pitch = pending.suppress_original_note_off_pitch;
+        match (&slot.effect, pending.event) {
             (MidiFx::TrackClone { .. }, event)
             | (MidiFx::Arp { .. }, event)
             | (MidiFx::Duration { .. }, event)
-            | (MidiFx::Delay { .. }, event) => transformed.push(event),
+            | (MidiFx::Delay { .. }, event) => transformed.push(PendingLiveMidiFxEvent {
+                event,
+                suppress_original_note_off_pitch,
+            }),
             (
                 MidiFx::NoteFilter {
                     low,
@@ -1077,7 +1163,10 @@ fn apply_live_fx(
                 if !enabled_notes.is_empty() && !enabled_notes.contains(&pitch) {
                     continue;
                 }
-                transformed.push(LiveMidiFxEvent::NoteOn { pitch, velocity });
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOn { pitch, velocity },
+                    suppress_original_note_off_pitch,
+                });
             }
             (
                 MidiFx::NoteFilter {
@@ -1093,7 +1182,10 @@ fn apply_live_fx(
                 if !enabled_notes.is_empty() && !enabled_notes.contains(&pitch) {
                     continue;
                 }
-                transformed.push(LiveMidiFxEvent::NoteOff { pitch });
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOff { pitch },
+                    suppress_original_note_off_pitch,
+                });
             }
             (MidiFx::Transpose { semitones }, LiveMidiFxEvent::NoteOn { pitch, velocity }) => {
                 let transformed_pitch = transpose_pitch(pitch, *semitones);
@@ -1102,9 +1194,12 @@ fn apply_live_fx(
                     .entry(pitch)
                     .or_default()
                     .push(transformed_pitch);
-                transformed.push(LiveMidiFxEvent::NoteOn {
-                    pitch: transformed_pitch,
-                    velocity,
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOn {
+                        pitch: transformed_pitch,
+                        velocity,
+                    },
+                    suppress_original_note_off_pitch,
                 });
             }
             (MidiFx::Transpose { .. }, LiveMidiFxEvent::NoteOff { pitch }) => {
@@ -1113,19 +1208,31 @@ fn apply_live_fx(
                     .get_mut(&pitch)
                     .and_then(|pitches| pitches.pop())
                 {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch: mapped });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch: mapped },
+                        suppress_original_note_off_pitch,
+                    });
                 } else {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch },
+                        suppress_original_note_off_pitch,
+                    });
                 }
             }
             (MidiFx::Velocity { percent }, LiveMidiFxEvent::NoteOn { pitch, velocity }) => {
-                transformed.push(LiveMidiFxEvent::NoteOn {
-                    pitch,
-                    velocity: scale_percent(velocity, *percent),
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOn {
+                        pitch,
+                        velocity: scale_percent(velocity, *percent),
+                    },
+                    suppress_original_note_off_pitch,
                 });
             }
             (MidiFx::Velocity { .. }, LiveMidiFxEvent::NoteOff { pitch }) => {
-                transformed.push(LiveMidiFxEvent::NoteOff { pitch });
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOff { pitch },
+                    suppress_original_note_off_pitch,
+                });
             }
             (
                 MidiFx::ScaleQuantize { root, target },
@@ -1138,9 +1245,12 @@ fn apply_live_fx(
                     .entry(pitch)
                     .or_default()
                     .push(quantized);
-                transformed.push(LiveMidiFxEvent::NoteOn {
-                    pitch: quantized,
-                    velocity,
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOn {
+                        pitch: quantized,
+                        velocity,
+                    },
+                    suppress_original_note_off_pitch,
                 });
             }
             (MidiFx::ScaleQuantize { .. }, LiveMidiFxEvent::NoteOff { pitch }) => {
@@ -1149,9 +1259,15 @@ fn apply_live_fx(
                     .get_mut(&pitch)
                     .and_then(|pitches| pitches.pop())
                 {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch: mapped });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch: mapped },
+                        suppress_original_note_off_pitch,
+                    });
                 } else {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch },
+                        suppress_original_note_off_pitch,
+                    });
                 }
             }
             (
@@ -1165,9 +1281,12 @@ fn apply_live_fx(
                     .entry(pitch)
                     .or_default()
                     .push(quantized);
-                transformed.push(LiveMidiFxEvent::NoteOn {
-                    pitch: quantized,
-                    velocity,
+                transformed.push(PendingLiveMidiFxEvent {
+                    event: LiveMidiFxEvent::NoteOn {
+                        pitch: quantized,
+                        velocity,
+                    },
+                    suppress_original_note_off_pitch,
                 });
             }
             (MidiFx::ChordQuantize { .. }, LiveMidiFxEvent::NoteOff { pitch }) => {
@@ -1176,14 +1295,31 @@ fn apply_live_fx(
                     .get_mut(&pitch)
                     .and_then(|pitches| pitches.pop())
                 {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch: mapped });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch: mapped },
+                        suppress_original_note_off_pitch,
+                    });
                 } else {
-                    transformed.push(LiveMidiFxEvent::NoteOff { pitch });
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch },
+                        suppress_original_note_off_pitch,
+                    });
                 }
             }
         }
     }
     transformed
+}
+
+fn decrement_duration_controlled_note(state: &mut LiveMidiFxState, pitch: u8) {
+    let Some(count) = state.duration_controlled_notes.get_mut(&pitch) else {
+        return;
+    };
+    if *count <= 1 {
+        state.duration_controlled_notes.remove(&pitch);
+    } else {
+        *count -= 1;
+    }
 }
 
 pub fn transform_notes(
@@ -1235,16 +1371,20 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote], global_quantize_root: u8
                 note
             })
             .collect(),
-        MidiFx::Duration { percent } => notes
-            .iter()
-            .copied()
-            .map(|mut note| {
-                note.length_ticks = ((u128::from(note.length_ticks) * u128::from(*percent))
-                    / 100_u128)
-                    .max(1) as u64;
-                note
-            })
-            .collect(),
+        MidiFx::Duration { ticks } => {
+            if *ticks == 0 {
+                notes.to_vec()
+            } else {
+                notes
+                    .iter()
+                    .copied()
+                    .map(|mut note| {
+                        note.length_ticks = *ticks;
+                        note
+                    })
+                    .collect()
+            }
+        }
         MidiFx::ScaleQuantize { root, target } => notes
             .iter()
             .copied()
@@ -1389,7 +1529,8 @@ mod tests {
     use super::{
         ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, QuantizeTarget,
         arp_rate_label, cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label,
-        process_live_chain_event, process_live_chain_tick, process_live_event, transform_notes,
+        duration_rate_label, process_live_chain_event, process_live_chain_tick, process_live_event,
+        transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -1450,7 +1591,7 @@ mod tests {
         let chain = [
             Some(MidiFxSlot {
                 enabled: true,
-                effect: MidiFx::Duration { percent: 50 },
+                effect: MidiFx::Duration { ticks: 240 },
             }),
             Some(MidiFxSlot {
                 enabled: true,
@@ -1460,7 +1601,7 @@ mod tests {
 
         let transformed = transform_notes(&notes, &chain, 0);
         assert_eq!(transformed[0].start_ticks, 160);
-        assert_eq!(transformed[0].length_ticks, 60);
+        assert_eq!(transformed[0].length_ticks, 240);
     }
 
     #[test]
@@ -1478,6 +1619,8 @@ mod tests {
         );
         assert_eq!(delay_rate_label(0), "Off");
         assert_eq!(delay_rate_label(240), "1/16");
+        assert_eq!(duration_rate_label(0), "Off");
+        assert_eq!(duration_rate_label(240), "1/16");
     }
 
     #[test]
@@ -1627,6 +1770,48 @@ mod tests {
                     velocity: 100
                 }
             )]
+        );
+    }
+
+    #[test]
+    fn live_chain_duration_schedules_absolute_note_off() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        let immediate = process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            0,
+            0,
+        );
+        assert_eq!(
+            immediate,
+            vec![LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100
+            }]
+        );
+
+        let suppressed = process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOff { pitch: 60 },
+            120,
+            0,
+        );
+        assert!(suppressed.is_empty());
+
+        let scheduled = process_live_chain_tick(&chain, &mut state, 0, 241, 0);
+        assert_eq!(
+            scheduled,
+            vec![(240, LiveMidiFxEvent::NoteOff { pitch: 60 })]
         );
     }
 

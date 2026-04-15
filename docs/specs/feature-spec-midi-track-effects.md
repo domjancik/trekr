@@ -24,7 +24,7 @@ The input chain is pre-track:
 - it can transform live MIDI input and cloned track input before that material reaches the track
 - whether input-chain output is what gets recorded must be explicitly controllable
 
-This spec defines UX, behavior, scope, ordering, conflict rules, and likely code touch points. Implementation is intentionally deferred.
+This spec defines the shipped V1 behavior for MIDI track effects plus clearly marked deferred follow-up items.
 
 Related docs:
 
@@ -259,8 +259,10 @@ Recommended tap semantics:
 
 ### Duration Control
 
-- multiplicative note length scaling
-- minimum post-scale duration clamp required
+- sets note length to an absolute musical value
+- uses the same notation family as arp/delay (`Off`, `1/16`, `1/8`, `1/4`, `1/2`, `1 Bar`)
+- `Off` leaves the original note length unchanged
+- because only note start is required, this absolute-duration behavior is valid on both playback and live input paths
 
 ### Scale Quantize
 
@@ -289,6 +291,21 @@ Recommended tap semantics:
 - uses musical duration notation like arp (`Off`, `1/16`, `1/8`, `1/4`, `1/2`, `1 Bar`)
 - does not support negative "look-ahead" shifting
 - live-signal semantics are delay-only: the effect may schedule notes later, but it must not require future note knowledge
+
+## Deferred: Playback-Transform-Only Effects
+
+Effects whose semantics fundamentally depend on already-known note ends, offline look-ahead, or playback-only note-shape inspection should remain deferred from this slice.
+
+This keeps the first shipped family focused on effects that can behave consistently across:
+
+- playback
+- live input
+- cloned live signal
+
+Examples of deferred categories:
+
+- future transform ideas that require future note knowledge
+- purely offline note-shape rewrites with no consistent live-path interpretation
 
 ## Ordering Rules
 
