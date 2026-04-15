@@ -890,8 +890,8 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ToggleDirectMappingMode => &["F8"],
         AppAction::ToggleMappingsWriteMode => &["W"],
         AppAction::AddMappingRow => &["N"],
-        AppAction::RemoveSelectedMapping => &["Delete", "Backspace"],
-        AppAction::DeletePageItem => &["Delete"],
+        AppAction::RemoveSelectedMapping => &[],
+        AppAction::DeletePageItem => &["Delete", "Backspace"],
         AppAction::SelectPreviousPageField => &["Shift+Left", "Shift+Up"],
         AppAction::SelectNextPageField => &["Shift+Right", "Shift+Down"],
         AppAction::TogglePlayback => &["Space"],
@@ -1397,7 +1397,7 @@ mod tests {
         );
         assert_eq!(
             KeyboardBindings.resolve(&backspace_mapping).unwrap().action,
-            AppAction::RemoveSelectedMapping
+            AppAction::DeletePageItem
         );
     }
 

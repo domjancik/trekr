@@ -61,6 +61,7 @@ Latest renderer-owned captures from the demo state:
 - `Track Clone` mirrors the source track's pre-output MIDI signal, so source loop/clip playback can feed later destination input FX and `Post FX` recording
 - clone-fed live signal now follows `Monitor Input FX` on the destination track, so cloned performance can be heard without enabling destination passthrough for direct matched input
 - `Arp` now uses musical rate labels like `1/16`, supports timed playback/live held-note stepping, and can keep stepping held live notes even while transport is stopped
+- `Duration` now uses absolute musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) instead of percentage scaling, so the same fixed-length behavior can apply on playback and live input paths
 - MIDI output runs on a dedicated worker thread so device stalls or hot-plug churn do not block the UI thread
 - in-canvas bitmap text labels for pages, tracks, ports, mappings, and routing values
 - active-track highlighting
@@ -200,6 +201,7 @@ Current controls:
   - kind switching on an existing row cycles between effect kinds without removing the row; `None` is only reached through an empty `ADD ... FX` row
   - when a free slot exists, a single `Add Input FX` / `Add Output FX` row appears; selecting it and using `Q` / `E` on `Kind`, or clicking/tapping the row, inserts a new effect into the next empty slot
   - the former time-shift effect is now `Delay` (`DLY`) and uses musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) instead of signed tick offsets; it only delays notes later, never earlier
+  - `Duration` (`DUR`) now uses absolute musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) rather than relative percentages; `Off` leaves the original note length unchanged
   - `Scale` and `Chord` quantizers expose `Root` plus `Tgt` (`Loc` / `Gbl`); `Gbl` follows the shared timeline `Harmony` transport chip
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
