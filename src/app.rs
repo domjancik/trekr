@@ -6274,6 +6274,14 @@ impl App {
         }
     }
 
+    fn live_input_event_ticks(&self, track: &Track) -> u64 {
+        if self.project.transport.playing {
+            self.record_capture_ticks(track)
+        } else {
+            self.live_fx_ticks
+        }
+    }
+
     fn record_context(&self, track: &Track) -> Option<crate::project::RecordContext> {
         if track.state.loop_enabled {
             Some(crate::project::RecordContext {
@@ -8055,7 +8063,7 @@ impl App {
                 .project
                 .tracks
                 .get(index)
-                .map(|track| self.record_capture_ticks(track))
+                .map(|track| self.live_input_event_ticks(track))
                 .unwrap_or(self.playhead_ticks);
 
             let Some(track_view) = self.project.tracks.get(index) else {
@@ -12689,6 +12697,136 @@ mod tests {
         assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
             port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_some()
         }));
+    }
+
+    #[test]
+    fn stopped_live_input_delay_uses_live_fx_clock_for_note_on_and_note_off() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.transport.playing = false;
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+        app.live_fx_ticks = 0;
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 240 },
+        });
+
+        app.advance_stopped_live_fx(Duration::from_millis(1_000), None);
+        assert!(app.midi_output.sent_messages().is_empty());
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        assert!(app.midi_output.sent_messages().is_empty());
+
+        let note_on_tick = app.live_fx_ticks;
+        app.dispatch_live_arp_events(note_on_tick, note_on_tick + 239);
+        app.live_fx_ticks = note_on_tick + 239;
+        assert!(app.midi_output.sent_messages().is_empty());
+
+        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 240);
+        app.live_fx_ticks = note_on_tick + 240;
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 720);
+        app.live_fx_ticks = note_on_tick + 720;
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+        });
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        let note_off_tick = app.live_fx_ticks;
+        app.dispatch_live_arp_events(note_off_tick, note_off_tick + 239);
+        app.live_fx_ticks = note_off_tick + 239;
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_live_arp_events(app.live_fx_ticks, note_off_tick + 240);
+        app.live_fx_ticks = note_off_tick + 240;
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(100)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn stopped_live_input_duration_uses_live_fx_clock_when_note_starts_late() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.transport.playing = false;
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+        app.live_fx_ticks = 0;
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        });
+
+        app.advance_stopped_live_fx(Duration::from_millis(1_000), None);
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        let note_on_tick = app.live_fx_ticks;
+        app.dispatch_live_arp_events(note_on_tick, note_on_tick + 239);
+        app.live_fx_ticks = note_on_tick + 239;
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 240);
+        app.live_fx_ticks = note_on_tick + 240;
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(100)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
     }
 
     #[test]
