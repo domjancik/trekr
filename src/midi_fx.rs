@@ -808,7 +808,7 @@ pub fn process_live_chain_tick(
         let Some(next_tick) = next_tick else {
             break;
         };
-        if next_tick >= current_ticks {
+        if next_tick > current_ticks {
             break;
         }
         for scheduled in take_scheduled_events_at_tick(state, next_tick) {
@@ -1774,6 +1774,54 @@ mod tests {
     }
 
     #[test]
+    fn live_chain_delay_emits_note_on_at_exact_boundary_before_later_note_off() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 240 },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        assert!(
+            process_live_chain_event(
+                &chain,
+                &mut state,
+                LiveMidiFxEvent::NoteOn {
+                    pitch: 60,
+                    velocity: 100,
+                },
+                0,
+                0,
+            )
+            .is_empty()
+        );
+        assert!(
+            process_live_chain_event(
+                &chain,
+                &mut state,
+                LiveMidiFxEvent::NoteOff { pitch: 60 },
+                120,
+                0,
+            )
+            .is_empty()
+        );
+
+        assert_eq!(
+            process_live_chain_tick(&chain, &mut state, 0, 240, 0),
+            vec![(
+                240,
+                LiveMidiFxEvent::NoteOn {
+                    pitch: 60,
+                    velocity: 100
+                }
+            )]
+        );
+        assert_eq!(
+            process_live_chain_tick(&chain, &mut state, 240, 360, 0),
+            vec![(360, LiveMidiFxEvent::NoteOff { pitch: 60 })]
+        );
+    }
+
+    #[test]
     fn live_chain_duration_schedules_absolute_note_off() {
         let chain = [Some(MidiFxSlot {
             enabled: true,
@@ -1811,6 +1859,37 @@ mod tests {
         let scheduled = process_live_chain_tick(&chain, &mut state, 0, 241, 0);
         assert_eq!(
             scheduled,
+            vec![(240, LiveMidiFxEvent::NoteOff { pitch: 60 })]
+        );
+    }
+
+    #[test]
+    fn live_chain_duration_emits_note_off_at_exact_boundary() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        assert_eq!(
+            process_live_chain_event(
+                &chain,
+                &mut state,
+                LiveMidiFxEvent::NoteOn {
+                    pitch: 60,
+                    velocity: 100,
+                },
+                0,
+                0,
+            ),
+            vec![LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100
+            }]
+        );
+
+        assert_eq!(
+            process_live_chain_tick(&chain, &mut state, 0, 240, 0),
             vec![(240, LiveMidiFxEvent::NoteOff { pitch: 60 })]
         );
     }
