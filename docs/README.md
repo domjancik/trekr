@@ -10,6 +10,7 @@ This folder is organized by audience and intent:
 Recent/additional specs:
 
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
+- `docs/specs/feature-spec-quick-mapping-lookup.md` — target-field fuzzy lookup/edit flow for the mappings page.
 
 ## Contribution rules
 
