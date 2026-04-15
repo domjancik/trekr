@@ -86,7 +86,15 @@ impl App {
                 .selected_recording_clip()
                 .is_some()
             {
-                let (mute_rect, delete_rect) = self.recording_clip_control_rects(full_label_rect);
+                let (align_rect, mute_rect, delete_rect) =
+                    self.recording_clip_control_rects(full_label_rect);
+                if rect_contains(align_rect, x, y) {
+                    self.project.active_track_index = index;
+                    return Some(self.apply_action_with_source(
+                        AppAction::OpenSelectedRecordingClipAlign,
+                        source,
+                    ));
+                }
                 if rect_contains(mute_rect, x, y) {
                     self.project.active_track_index = index;
                     return Some(self.apply_action_with_source(
@@ -243,7 +251,17 @@ impl App {
             },
         ));
         if track.selected_recording_clip().is_some() {
-            let (mute_rect, delete_rect) = self.recording_clip_control_rects(label_rect);
+            let (align_rect, mute_rect, delete_rect) =
+                self.recording_clip_control_rects(label_rect);
+            targets.push((
+                align_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::OpenSelectedRecordingClipAlign,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
             targets.push((
                 mute_rect,
                 DiscoverabilityTarget {

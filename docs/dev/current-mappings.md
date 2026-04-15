@@ -50,6 +50,7 @@ Keyboard mappings currently implemented:
 - `Z` / `X`: nudge selected notes earlier/later
 - `D` / `F`: nudge selected notes down/up
 - `Shift+M`: toggle mute on the selected committed recording clip
+- `Shift+Enter`: open clip align on the selected committed recording clip
 - `Shift+Delete` / `Shift+Backspace`: delete the selected committed recording clip
 - `Left` / `Right`: select previous/next track
 - `1`-`9`: select track by absolute index
@@ -124,7 +125,7 @@ Notes:
 - track-scoped mappings can now target absolute scopes like `Track 3` directly from the UI
 - note-edit mapping targets now include playhead select/add, deselect, previous/next, first/last focus, extend forward/backward/both, contract, and note pitch/time nudges
 - hold-capable MIDI note/CC mappings now support press/release behavior for `Record Hold` and `Select Notes At Playhead Add`
-- recording-stack mapping targets now include `Recording View`, `Select Next Recording Clip`, `Select Previous Recording Clip`, `Recording Clip Mute`, and `Delete Recording Clip`
+- recording-stack mapping targets now include `Recording View`, `Select Next Recording Clip`, `Select Previous Recording Clip`, `Recording Clip Mute`, `Delete Recording Clip`, `Clip Align`, and `Apply Clip Align`
 - timeline view mapping targets now also include `Focused Track View`
 - mapping targets now include `Recall Stored Loop Slot 1..8`, `Store Current Loop To Slot 1..8`, and `Clear Stored Loop Slot 1..8` with `Active Track` or absolute `Track N` scopes
 - stacked recording clip actions now have default keyboard bindings in addition to timeline pointer controls and the mappings system

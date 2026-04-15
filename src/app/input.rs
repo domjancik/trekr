@@ -195,12 +195,14 @@ impl App {
         event: &sdl3::event::Event,
     ) -> Option<AppControl> {
         if let Some((x, y)) = pointer_hover_position(event, self.viewport_size) {
-            self.status_state.hovered_target =
-                if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
-                    self.discoverability_target_at(x, y)
-                } else {
-                    None
-                };
+            self.status_state.hovered_target = if self.direct_mapping_state.mode
+                == DirectMappingMode::Inactive
+                && self.clip_align_session.is_none()
+            {
+                self.discoverability_target_at(x, y)
+            } else {
+                None
+            };
             if self.status_state.hovered_target.is_some() {
                 self.direct_mapping_state.status_message = None;
             }
@@ -215,6 +217,84 @@ impl App {
         &mut self,
         event: &sdl3::event::Event,
     ) -> Option<AppControl> {
+        if self.clip_align_session.is_some() {
+            match event {
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Escape),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::CloseRecordingClipAlign,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Return),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::ApplyRecordingClipAlign,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Left),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::SelectPreviousClipAlignField,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Right),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::SelectNextClipAlignField,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Q),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if !keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::AdjustClipAlignFieldBackward,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::E),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::AdjustClipAlignFieldForward,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         if self.target_lookup_state.active.is_some() {
             match event {
                 sdl3::event::Event::KeyDown {
@@ -249,6 +329,30 @@ impl App {
                     }
                 }
             }
+        }
+
+        if matches!(
+            event,
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Return),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(
+                sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+            )
+        ) && self.page_state.current_page == AppPage::Timeline
+            && self.page_state.selected_timeline_context == TimelineContext::TrackTimeline
+            && self
+                .project
+                .active_track()
+                .and_then(|track| track.selected_recording_clip_or_only())
+                .is_some()
+        {
+            return Some(self.apply_action_with_source(
+                AppAction::OpenSelectedRecordingClipAlign,
+                crate::actions::ActionSource::Keyboard,
+            ));
         }
 
         if matches!(
@@ -314,6 +418,10 @@ impl App {
         )
         .ok()?;
         let (tabs_bounds, content_bounds, _) = self.page_frame_layout(inset).ok()?;
+
+        if let Some(control) = self.handle_clip_align_pointer_down(content_bounds, x, y, source) {
+            return Some(control);
+        }
 
         if let Some(control) =
             self.handle_direct_mapping_pointer_down(tabs_bounds, content_bounds, x, y, source)

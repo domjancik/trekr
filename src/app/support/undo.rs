@@ -58,7 +58,13 @@ impl App {
             | AppAction::StartRecording
             | AppAction::StopRecording
             | AppAction::BeginNoteAdditiveSelectionHold
-            | AppAction::EndNoteAdditiveSelectionHold => Vec::new(),
+            | AppAction::EndNoteAdditiveSelectionHold
+            | AppAction::OpenSelectedRecordingClipAlign
+            | AppAction::CloseRecordingClipAlign
+            | AppAction::SelectPreviousClipAlignField
+            | AppAction::SelectNextClipAlignField
+            | AppAction::AdjustClipAlignFieldBackward
+            | AppAction::AdjustClipAlignFieldForward => Vec::new(),
             AppAction::CycleRecordMode
             | AppAction::ToggleLoopRecordingExtension
             | AppAction::DecreaseTempo
@@ -123,6 +129,7 @@ impl App {
             | AppAction::SelectNextRecordingClip
             | AppAction::ToggleSelectedRecordingClipMute
             | AppAction::DeleteSelectedRecordingClip
+            | AppAction::ApplyRecordingClipAlign
             | AppAction::SelectTrack(_)
             | AppAction::SelectNextTrack
             | AppAction::SelectPreviousTrack

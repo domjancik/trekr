@@ -38,7 +38,9 @@ impl App {
         x: i32,
         y: i32,
     ) -> Option<DiscoverabilityTarget> {
-        if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+        if self.overlay_state.active == Some(AppOverlay::MappingsQuickView)
+            || self.clip_align_session.is_some()
+        {
             return None;
         }
         let surface = crate::ui::surface_rect(
