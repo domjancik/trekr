@@ -25,7 +25,10 @@ use crate::page_widgets::{handle_page_pointer, page_discoverability_targets, ren
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
-use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
+use crate::project::{
+    ClipAlignApplyMode, ClipAlignDestination, ClipAlignSettings, ClipAlignSourceEndMode,
+    ClipAlignSourceStartMode, MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track,
+};
 use crate::routing::{MidiChannelFilter, TrackPortSelection};
 use crate::state::PersistedAppState;
 use crate::theme::{Theme, ThemePreset};
@@ -88,10 +91,11 @@ use timeline::layout::{
 };
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
-    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
-    DirectMappingOrigin, DirectMappingState, DirectMappingTarget, LastActionStatus, MappingBadge,
-    MappingTargetLookupLayout, MappingTargetLookupState, OverlayState, RecordingLaneLayout,
-    RecordingLaneWindow, StatusState, TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
+    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClipAlignField,
+    ClipAlignSession, DirectMappingMode, DirectMappingOrigin, DirectMappingState,
+    DirectMappingTarget, LastActionStatus, MappingBadge, MappingTargetLookupLayout,
+    MappingTargetLookupState, OverlayState, RecordingLaneLayout, RecordingLaneWindow, StatusState,
+    TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
 };
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
@@ -114,6 +118,8 @@ pub struct App {
     status_state: StatusState,
     direct_mapping_state: DirectMappingState,
     target_lookup_state: MappingTargetLookupState,
+    clip_align_defaults: ClipAlignSettings,
+    clip_align_session: Option<ClipAlignSession>,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     ui_scaling_mode: UiScalingMode,
@@ -218,6 +224,8 @@ impl App {
             status_state: StatusState::default(),
             direct_mapping_state: DirectMappingState::default(),
             target_lookup_state: MappingTargetLookupState::default(),
+            clip_align_defaults: ClipAlignSettings::default(),
+            clip_align_session: None,
             viewport_size: (1280, 720),
             ui_scale_override: None,
             ui_scaling_mode: UiScalingMode::Auto,
@@ -514,6 +522,10 @@ impl App {
             self.page_state.current_page = spec.page;
             self.overlay_state.active = spec.overlay;
             self.focused_track_view = spec.focused_track_view;
+            self.clip_align_session = None;
+            if spec.open_clip_align && spec.page == AppPage::Timeline {
+                self.open_selected_recording_clip_align();
+            }
             let surface = sdl3::surface::Surface::new(1280, 720, PixelFormat::RGBA32)?;
             let mut canvas = surface.into_canvas()?;
             canvas.set_scale(1.0, 1.0)?;
@@ -743,18 +755,27 @@ impl App {
             AppAction::ShowPage(page) => {
                 self.clear_mapping_target_lookup();
                 self.page_state.current_page = page;
+                if page != AppPage::Timeline {
+                    self.close_clip_align();
+                }
                 self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowNextPage => {
                 self.clear_mapping_target_lookup();
                 self.page_state.current_page = self.page_state.current_page.next();
+                if self.page_state.current_page != AppPage::Timeline {
+                    self.close_clip_align();
+                }
                 self.sync_midi_inputs();
                 AppControl::Continue
             }
             AppAction::ShowPreviousPage => {
                 self.clear_mapping_target_lookup();
                 self.page_state.current_page = self.page_state.current_page.previous();
+                if self.page_state.current_page != AppPage::Timeline {
+                    self.close_clip_align();
+                }
                 self.sync_midi_inputs();
                 AppControl::Continue
             }
@@ -785,6 +806,8 @@ impl App {
             AppAction::CancelCurrentMode => {
                 if self.target_lookup_state.active.is_some() {
                     self.cancel_mapping_target_lookup();
+                } else if self.clip_align_session.is_some() {
+                    self.close_clip_align();
                 } else if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
                     self.cancel_direct_mapping("Canceled direct mapping.");
                 }
@@ -1252,6 +1275,38 @@ impl App {
                     track.delete_selected_recording_clip();
                 }
                 self.sync_active_track_recording_clip_scroll();
+                AppControl::Continue
+            }
+            AppAction::OpenSelectedRecordingClipAlign => {
+                self.open_selected_recording_clip_align();
+                AppControl::Continue
+            }
+            AppAction::CloseRecordingClipAlign => {
+                self.close_clip_align();
+                AppControl::Continue
+            }
+            AppAction::ApplyRecordingClipAlign => {
+                self.apply_clip_align();
+                AppControl::Continue
+            }
+            AppAction::SelectPreviousClipAlignField => {
+                if let Some(session) = self.clip_align_session.as_mut() {
+                    session.selected_field = session.selected_field.previous();
+                }
+                AppControl::Continue
+            }
+            AppAction::SelectNextClipAlignField => {
+                if let Some(session) = self.clip_align_session.as_mut() {
+                    session.selected_field = session.selected_field.next();
+                }
+                AppControl::Continue
+            }
+            AppAction::AdjustClipAlignFieldBackward => {
+                self.adjust_clip_align_field(-1);
+                AppControl::Continue
+            }
+            AppAction::AdjustClipAlignFieldForward => {
+                self.adjust_clip_align_field(1);
                 AppControl::Continue
             }
             AppAction::ToggleSelectedTimelineFx => {

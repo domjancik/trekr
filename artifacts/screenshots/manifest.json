@@ -1,26 +1,30 @@
-﻿[
-    {
-        "page":  "mappings",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\mappings.png"
-    },
-    {
-        "page":  "mappings-overlay",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\mappings-overlay.png"
-    },
-    {
-        "page":  "midi-io",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\midi-io.png"
-    },
-    {
-        "page":  "routing",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\routing.png"
-    },
-    {
-        "page":  "timeline",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\timeline.png"
-    },
-    {
-        "page":  "timeline-focused",
-        "path":  "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\09d5-fix-track-routin\\trekr\\artifacts\\screenshots\\timeline-focused.png"
-    }
+[
+  {
+    "page": "mappings",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\mappings.png"
+  },
+  {
+    "page": "mappings-overlay",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\mappings-overlay.png"
+  },
+  {
+    "page": "midi-io",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\midi-io.png"
+  },
+  {
+    "page": "routing",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\routing.png"
+  },
+  {
+    "page": "timeline",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\timeline.png"
+  },
+  {
+    "page": "timeline-focused",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\timeline-focused.png"
+  },
+  {
+    "page": "timeline-clip-align",
+    "path": "C:\\Users\\magne\\AppData\\Local\\Temp\\vibe-kanban\\worktrees\\b4bd-feat-spec-clip-a\\trekr\\artifacts\\screenshots\\timeline-clip-align.png"
+  }
 ]

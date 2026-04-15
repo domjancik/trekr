@@ -73,6 +73,7 @@ Latest renderer-owned captures from the demo state:
 - per-track loop preview
 - per-track recording clip ownership with `Overlay` and `Stacked` timeline views
 - per-recording clip selection, scroll, mute, and delete on the timeline
+- selected recording clip align panel for clip-to-loop fitting and optional tempo matching
 - focused-track timeline view for expanding the active track pair while keeping loop detail visible
 - per-track MIDI note selection with focus/anchor highlighting in the timeline columns
 - action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
@@ -213,6 +214,7 @@ Current controls:
   - the former time-shift effect is now `Delay` (`DLY`) and uses musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) instead of signed tick offsets; it only delays notes later, never earlier
   - `Duration` (`DUR`) now uses absolute musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) rather than relative percentages; `Off` leaves the original note length unchanged
   - `Scale` and `Chord` quantizers expose `Root` plus `Tgt` (`Loc` / `Gbl`); `Gbl` follows the shared timeline `Harmony` transport chip
+- `Shift+Enter`: open clip align for the selected committed recording clip
 
 Stored loop slot indicators are shown subtly on the left side of each track loop header, expand to show as many slots as fit (focused view can show all `1`..`8`), and are clickable direct recall targets. Stored loops and the current track loop are also rendered in the track canvas as thin colored loop markers with start/end ticks and inline labels. When launch quantize is enabled, recalls queue per track and switch at the selected launch boundary (or immediately when launch quantize is `Off` / transport is stopped). `LoopEnd` uses each track's clip-cycle boundary (`transport_ticks % clip_loop_length`), so launch timing is independent from song-loop wrap. Recalling a stored loop also enables track loop on that track. Recalls are blocked on actively recording tracks.
 - `Shift+Delete` / `Shift+Backspace`: delete the selected committed recording clip in stacked view
@@ -244,7 +246,7 @@ Pointer/touch notes:
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips
-- when a recording clip is selected, its header-level `MUT` / `DEL` controls are clickable/tappable
+- when a recording clip is selected, its header-level `ALIGN` / `MUT` / `DEL` controls are clickable/tappable
 - the timeline header exposes a clickable/tappable focused-track toggle that collapses the timeline to the active track pair
 - mappings rows and fields are clickable/tappable; in `Write` mode, tapping the selected field activates it
 - the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
@@ -267,7 +269,7 @@ Recording flow notes:
 - the timeline can show committed recording clips overlaid or stacked side by side per track while preserving record order
 - stacked view keeps recording clips inside the track bounds with a per-track clip viewport and header scroll controls
 - while recording in stacked view, the in-progress take appears immediately as a temporary last lane before commit
-- selected recording clips can be muted or deleted without clearing unrelated track content
+- selected recording clips can be muted, deleted, or aligned without clearing unrelated track content
 - in stacked view, note-selection actions only operate on the currently selected recording clip
 - the timeline shows committed regions behind notes and shows the in-progress take as a red preview region
 - MIDI note content now comes from live input note-on/off events on each track's routed MIDI input, not a generated placeholder pattern

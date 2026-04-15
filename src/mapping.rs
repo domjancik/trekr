@@ -156,6 +156,8 @@ const TARGET_OPTIONS: &[&str] = &[
     "Select Previous Recording Clip",
     "Recording Clip Mute",
     "Delete Recording Clip",
+    "Clip Align",
+    "Apply Clip Align",
     "Focused Track View",
     "Select Track",
     "Select Notes At Playhead",
@@ -435,7 +437,9 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Select Next Recording Clip"
         | "Select Previous Recording Clip"
         | "Recording Clip Mute"
-        | "Delete Recording Clip" => {
+        | "Delete Recording Clip"
+        | "Clip Align"
+        | "Apply Clip Align" => {
             let mut options = vec!["Active Track".to_string()];
             options.extend(absolute_track_scopes(track_count));
             options
@@ -739,6 +743,13 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         "Delete Recording Clip" => {
             track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
         }
+        "Clip Align" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::OpenSelectedRecordingClipAlign,
+        ),
+        "Apply Clip Align" => {
+            track_scoped_actions(absolute_track_index, AppAction::ApplyRecordingClipAlign)
+        }
         "Focused Track View" => vec![AppAction::ToggleFocusedTrackView],
         "Select Track" => absolute_track_index
             .map(AppAction::SelectTrack)
@@ -914,6 +925,13 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         ),
         "Delete Recording Clip" => {
             track_scoped_actions(absolute_track_index, AppAction::DeleteSelectedRecordingClip)
+        }
+        "Clip Align" => track_scoped_actions(
+            absolute_track_index,
+            AppAction::OpenSelectedRecordingClipAlign,
+        ),
+        "Apply Clip Align" => {
+            track_scoped_actions(absolute_track_index, AppAction::ApplyRecordingClipAlign)
         }
         "Focused Track View" => vec![AppAction::ToggleFocusedTrackView],
         "Select Track" => absolute_track_index

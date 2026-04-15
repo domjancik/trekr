@@ -128,7 +128,7 @@ impl App {
             None
         };
         let name_right = clip_controls
-            .map(|(mute_rect, _)| mute_rect.x - 4)
+            .map(|(align_rect, _, _)| align_rect.x - 4)
             .unwrap_or(label_rect.x + label_rect.width() as i32 - 4);
         let label_left = if detail {
             let slot_rects = self.stored_loop_slot_rects(label_rect);

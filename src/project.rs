@@ -137,6 +137,150 @@ pub struct RecordingClip {
     pub region: Region,
     #[serde(default)]
     pub muted: bool,
+    #[serde(default)]
+    pub native_start_ticks: u64,
+    #[serde(default)]
+    pub native_end_ticks: u64,
+    #[serde(default = "default_native_duration_ticks")]
+    pub native_duration_ticks: u64,
+    #[serde(default = "default_native_capture_tempo_bpm")]
+    pub native_capture_tempo_bpm: u16,
+}
+
+fn default_native_duration_ticks() -> u64 {
+    1
+}
+
+fn default_native_capture_tempo_bpm() -> u16 {
+    Transport::default().tempo_bpm
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ClipAlignSourceStartMode {
+    ClipStart,
+    #[default]
+    FirstNote,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ClipAlignSourceEndMode {
+    ClipEnd,
+    #[default]
+    StartOfLastNote,
+    LastNoteEnd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ClipAlignTargetLength {
+    Bar1,
+    Bar2,
+    #[default]
+    Bar4,
+    Bar8,
+}
+
+impl ClipAlignTargetLength {
+    pub fn bars(self) -> u64 {
+        match self {
+            Self::Bar1 => 1,
+            Self::Bar2 => 2,
+            Self::Bar4 => 4,
+            Self::Bar8 => 8,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Bar1 => Self::Bar2,
+            Self::Bar2 => Self::Bar4,
+            Self::Bar4 => Self::Bar8,
+            Self::Bar8 => Self::Bar1,
+        }
+    }
+
+    pub fn previous(self) -> Self {
+        match self {
+            Self::Bar1 => Self::Bar8,
+            Self::Bar2 => Self::Bar1,
+            Self::Bar4 => Self::Bar2,
+            Self::Bar8 => Self::Bar4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ClipAlignDestination {
+    #[default]
+    TrackLoop,
+    SongLoop,
+}
+
+impl ClipAlignDestination {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::TrackLoop => Self::SongLoop,
+            Self::SongLoop => Self::TrackLoop,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ClipAlignApplyMode {
+    FitOnly,
+    #[default]
+    FitAndTempo,
+}
+
+impl ClipAlignApplyMode {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::FitOnly => Self::FitAndTempo,
+            Self::FitAndTempo => Self::FitOnly,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipAlignSettings {
+    pub source_start_mode: ClipAlignSourceStartMode,
+    pub source_end_mode: ClipAlignSourceEndMode,
+    pub target_length: ClipAlignTargetLength,
+    pub destination: ClipAlignDestination,
+    pub apply_mode: ClipAlignApplyMode,
+    pub enable_loop_on_apply: bool,
+}
+
+impl Default for ClipAlignSettings {
+    fn default() -> Self {
+        Self {
+            source_start_mode: ClipAlignSourceStartMode::FirstNote,
+            source_end_mode: ClipAlignSourceEndMode::StartOfLastNote,
+            target_length: ClipAlignTargetLength::Bar4,
+            destination: ClipAlignDestination::TrackLoop,
+            apply_mode: ClipAlignApplyMode::FitAndTempo,
+            enable_loop_on_apply: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipAlignPreview {
+    pub clip_id: u64,
+    pub source_start_ticks: u64,
+    pub source_end_ticks: u64,
+    pub source_length_ticks: u64,
+    pub destination_start_ticks: u64,
+    pub target_length_ticks: u64,
+    pub tempo_preview_bpm: Option<u16>,
+    pub tempo_locked: bool,
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipAlignApplyResult {
+    pub clip_id: u64,
+    pub applied_tempo_bpm: Option<u16>,
+    pub tempo_locked: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -443,6 +587,10 @@ impl Track {
             id: recording_clip_id,
             region: committed_region,
             muted: false,
+            native_start_ticks: start_ticks,
+            native_end_ticks: end_ticks,
+            native_duration_ticks: length_ticks.max(1),
+            native_capture_tempo_bpm: transport.tempo_bpm,
         });
         self.selected_recording_clip_id = Some(recording_clip_id);
         self.regions.push(committed_region);
@@ -680,6 +828,120 @@ impl Track {
             .unwrap_or(false)
     }
 
+    pub fn selected_recording_clip_or_only(&self) -> Option<&RecordingClip> {
+        self.selected_recording_clip().or_else(|| {
+            (self.recording_clips.len() == 1)
+                .then(|| self.recording_clips.first())
+                .flatten()
+        })
+    }
+
+    pub fn preview_clip_align(
+        &self,
+        transport: Transport,
+        clip_id: u64,
+        settings: ClipAlignSettings,
+        destination_start_ticks: u64,
+        tempo_commit_allowed: bool,
+    ) -> Option<ClipAlignPreview> {
+        let clip = self.recording_clip(clip_id)?;
+        let source_start_ticks =
+            self.resolve_clip_align_source_start(clip, settings.source_start_mode);
+        let source_end_ticks = self.resolve_clip_align_source_end(clip, settings.source_end_mode);
+        let source_length_ticks = source_end_ticks.saturating_sub(source_start_ticks);
+        let target_length_ticks = clip_align_target_length_ticks(transport, settings.target_length);
+        let blocked_reason = if source_end_ticks <= source_start_ticks {
+            Some(match settings.source_end_mode {
+                ClipAlignSourceEndMode::StartOfLastNote => {
+                    "Source span is empty; try Last Note End.".to_string()
+                }
+                _ => "Source span is empty.".to_string(),
+            })
+        } else {
+            None
+        };
+
+        let tempo_preview_bpm = (settings.apply_mode == ClipAlignApplyMode::FitAndTempo
+            && source_length_ticks > 0)
+            .then(|| {
+                derive_clip_align_tempo_bpm(
+                    u64::from(transport.tempo_bpm.max(1)),
+                    source_length_ticks,
+                    target_length_ticks,
+                )
+            })
+            .flatten();
+
+        Some(ClipAlignPreview {
+            clip_id,
+            source_start_ticks,
+            source_end_ticks,
+            source_length_ticks,
+            destination_start_ticks,
+            target_length_ticks,
+            tempo_preview_bpm,
+            tempo_locked: settings.apply_mode == ClipAlignApplyMode::FitAndTempo
+                && !tempo_commit_allowed,
+            blocked_reason,
+        })
+    }
+
+    pub fn apply_clip_align(
+        &mut self,
+        transport: Transport,
+        clip_id: u64,
+        settings: ClipAlignSettings,
+        destination_start_ticks: u64,
+        tempo_commit_allowed: bool,
+    ) -> Result<ClipAlignApplyResult, String> {
+        let preview = self
+            .preview_clip_align(
+                transport,
+                clip_id,
+                settings,
+                destination_start_ticks,
+                tempo_commit_allowed,
+            )
+            .ok_or_else(|| "Recording clip not found.".to_string())?;
+        if let Some(reason) = preview.blocked_reason.clone() {
+            return Err(reason);
+        }
+
+        let clip_region = LoopRegion::new(preview.source_start_ticks, preview.source_length_ticks);
+        let destination_region = LoopRegion::new(
+            preview.destination_start_ticks,
+            preview.target_length_ticks.max(1),
+        );
+
+        self.clear_note_selection();
+        self.project_clip_owned_notes(clip_id, clip_region, destination_region);
+        self.project_clip_owned_regions(clip_id, destination_region);
+        if let Some(clip) = self
+            .recording_clips
+            .iter_mut()
+            .find(|clip| clip.id == clip_id)
+        {
+            clip.region = Region::new_recorded(
+                destination_region.start_ticks,
+                destination_region.length_ticks,
+                clip_id,
+            );
+        }
+
+        let applied_tempo_bpm =
+            if settings.apply_mode == ClipAlignApplyMode::FitAndTempo && !preview.tempo_locked {
+                preview.tempo_preview_bpm
+            } else {
+                None
+            };
+
+        Ok(ClipAlignApplyResult {
+            clip_id,
+            applied_tempo_bpm,
+            tempo_locked: preview.tempo_locked,
+        })
+    }
+
     fn seed_demo_notes(&mut self) {
         let base_pitch = 48 + ((self.name.len() as u8) % 12);
         let motif = [0_u8, 4, 7, 11, 7, 4, 2, 5];
@@ -729,6 +991,94 @@ impl Track {
         {
             self.queued_stored_loop_recall = None;
         }
+    }
+
+    fn resolve_clip_align_source_start(
+        &self,
+        clip: &RecordingClip,
+        mode: ClipAlignSourceStartMode,
+    ) -> u64 {
+        match mode {
+            ClipAlignSourceStartMode::ClipStart => clip.region.start_ticks,
+            ClipAlignSourceStartMode::FirstNote => self
+                .midi_notes
+                .iter()
+                .filter(|note| note.recording_clip_id == Some(clip.id))
+                .map(|note| note.start_ticks)
+                .min()
+                .unwrap_or(clip.region.start_ticks),
+        }
+    }
+
+    fn resolve_clip_align_source_end(
+        &self,
+        clip: &RecordingClip,
+        mode: ClipAlignSourceEndMode,
+    ) -> u64 {
+        match mode {
+            ClipAlignSourceEndMode::ClipEnd => clip.region.end_ticks(),
+            ClipAlignSourceEndMode::StartOfLastNote => self
+                .midi_notes
+                .iter()
+                .filter(|note| note.recording_clip_id == Some(clip.id))
+                .map(|note| note.start_ticks)
+                .max()
+                .unwrap_or(clip.region.end_ticks()),
+            ClipAlignSourceEndMode::LastNoteEnd => self
+                .midi_notes
+                .iter()
+                .filter(|note| note.recording_clip_id == Some(clip.id))
+                .map(|note| note.end_ticks())
+                .max()
+                .unwrap_or(clip.region.end_ticks()),
+        }
+    }
+
+    fn project_clip_owned_notes(
+        &mut self,
+        clip_id: u64,
+        source: LoopRegion,
+        destination: LoopRegion,
+    ) {
+        let mut transformed = Vec::new();
+        self.midi_notes.retain(|note| {
+            if note.recording_clip_id != Some(clip_id) {
+                return true;
+            }
+            let clipped_start = note.start_ticks.max(source.start_ticks);
+            let clipped_end = note.end_ticks().min(source.end_ticks());
+            if clipped_end <= clipped_start {
+                return false;
+            }
+            let projected_start = project_ticks_floor(clipped_start, source, destination);
+            let mut projected_end = project_ticks_ceil(clipped_end, source, destination);
+            if projected_end <= projected_start {
+                projected_end = projected_start.saturating_add(1);
+            }
+            projected_end = projected_end.min(destination.end_ticks());
+            if projected_end <= projected_start {
+                projected_end = projected_start.saturating_add(1);
+            }
+            transformed.push(MidiNote::new_recorded(
+                note.pitch,
+                projected_start,
+                projected_end.saturating_sub(projected_start).max(1),
+                note.velocity,
+                clip_id,
+            ));
+            false
+        });
+        self.midi_notes.extend(transformed);
+    }
+
+    fn project_clip_owned_regions(&mut self, clip_id: u64, destination: LoopRegion) {
+        self.regions
+            .retain(|region| region.recording_clip_id != Some(clip_id));
+        self.regions.push(Region::new_recorded(
+            destination.start_ticks,
+            destination.length_ticks,
+            clip_id,
+        ));
     }
 
     pub fn has_note_selection(&self) -> bool {
@@ -1345,6 +1695,57 @@ fn projected_loop_ticks(ticks: u64, record_context: RecordContext) -> u64 {
     record_context.range.start_ticks + (relative % record_context.range.length_ticks)
 }
 
+fn clip_align_target_length_ticks(
+    transport: Transport,
+    target_length: ClipAlignTargetLength,
+) -> u64 {
+    (u64::from(transport.ppqn.max(1)) * 4 * target_length.bars()).max(1)
+}
+
+fn derive_clip_align_tempo_bpm(
+    base_tempo_bpm: u64,
+    source_length_ticks: u64,
+    target_length_ticks: u64,
+) -> Option<u16> {
+    if source_length_ticks == 0 {
+        return None;
+    }
+    let scaled = (base_tempo_bpm
+        .saturating_mul(target_length_ticks)
+        .saturating_add(source_length_ticks / 2))
+        / source_length_ticks;
+    Some(scaled.clamp(20, 400) as u16)
+}
+
+fn project_ticks_floor(ticks: u64, source: LoopRegion, destination: LoopRegion) -> u64 {
+    if source.length_ticks == 0 {
+        return destination.start_ticks;
+    }
+    let offset = ticks
+        .saturating_sub(source.start_ticks)
+        .min(source.length_ticks);
+    destination.start_ticks
+        + (offset.saturating_mul(destination.length_ticks) / source.length_ticks)
+}
+
+fn project_ticks_ceil(ticks: u64, source: LoopRegion, destination: LoopRegion) -> u64 {
+    if source.length_ticks == 0 {
+        return destination.end_ticks();
+    }
+    let offset = ticks
+        .saturating_sub(source.start_ticks)
+        .min(source.length_ticks);
+    let scaled = if offset == 0 {
+        0
+    } else {
+        offset
+            .saturating_mul(destination.length_ticks)
+            .saturating_add(source.length_ticks - 1)
+            / source.length_ticks
+    };
+    destination.start_ticks + scaled
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrackKind {
     Midi,
@@ -1416,7 +1817,11 @@ pub struct TrackState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MidiNote, Project, RecordContext, RecordingClip, RecordingView, Track, TrackKind};
+    use super::{
+        ClipAlignApplyMode, ClipAlignDestination, ClipAlignSettings, ClipAlignSourceEndMode,
+        ClipAlignSourceStartMode, ClipAlignTargetLength, MidiNote, Project, RecordContext,
+        RecordingClip, RecordingView, Track, TrackKind,
+    };
     use crate::timeline::{LoopRegion, RecordingTake, Region};
     use crate::transport::{LaunchQuantizeMode, QuantizeMode, RecordMode, Transport};
 
@@ -1473,6 +1878,20 @@ mod tests {
     }
 
     #[test]
+    fn committed_recording_clip_stores_native_metadata() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+
+        track.commit_take(transport, RecordingTake::new(960).release(1_920), None);
+
+        let clip = track.recording_clips[0];
+        assert_eq!(clip.native_start_ticks, 960);
+        assert_eq!(clip.native_end_ticks, 1_920);
+        assert_eq!(clip.native_duration_ticks, 960);
+        assert_eq!(clip.native_capture_tempo_bpm, transport.tempo_bpm);
+    }
+
+    #[test]
     fn preview_region_tracks_active_take_span() {
         let transport = Transport {
             quantize: QuantizeMode::Quarter,
@@ -1487,6 +1906,130 @@ mod tests {
                 .map(region_span),
             Some((0, 960))
         );
+    }
+
+    #[test]
+    fn clip_align_projects_only_selected_clip_notes() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.recording_clips = vec![
+            RecordingClip {
+                id: 1,
+                region: Region::new_recorded(0, 1_440, 1),
+                muted: false,
+                native_start_ticks: 0,
+                native_end_ticks: 1_440,
+                native_duration_ticks: 1_440,
+                native_capture_tempo_bpm: 120,
+            },
+            RecordingClip {
+                id: 2,
+                region: Region::new_recorded(2_000, 960, 2),
+                muted: false,
+                native_start_ticks: 2_000,
+                native_end_ticks: 2_960,
+                native_duration_ticks: 960,
+                native_capture_tempo_bpm: 120,
+            },
+        ];
+        track.selected_recording_clip_id = Some(1);
+        track.regions = vec![
+            Region::new_recorded(0, 1_440, 1),
+            Region::new_recorded(2_000, 960, 2),
+        ];
+        track.midi_notes = vec![
+            MidiNote::new_recorded(60, 120, 200, 100, 1),
+            MidiNote::new_recorded(62, 960, 240, 100, 1),
+            MidiNote::new_recorded(64, 2_100, 240, 100, 2),
+        ];
+
+        let settings = ClipAlignSettings {
+            source_start_mode: ClipAlignSourceStartMode::FirstNote,
+            source_end_mode: ClipAlignSourceEndMode::StartOfLastNote,
+            target_length: ClipAlignTargetLength::Bar2,
+            destination: ClipAlignDestination::TrackLoop,
+            apply_mode: ClipAlignApplyMode::FitOnly,
+            enable_loop_on_apply: true,
+        };
+        let result = track
+            .apply_clip_align(transport, 1, settings, 0, true)
+            .expect("align should succeed");
+
+        assert_eq!(result.applied_tempo_bpm, None);
+        assert_eq!(track.recording_clip(1).unwrap().region.length_ticks, 7_680);
+        assert_eq!(track.recording_clip(2).unwrap().region.start_ticks, 2_000);
+        assert_eq!(
+            track
+                .midi_notes
+                .iter()
+                .filter(|note| note.recording_clip_id == Some(2))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn clip_align_blocks_zero_length_start_of_last_note_span_for_single_note_clip() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.recording_clips = vec![RecordingClip {
+            id: 1,
+            region: Region::new_recorded(0, 960, 1),
+            muted: false,
+            native_start_ticks: 0,
+            native_end_ticks: 960,
+            native_duration_ticks: 960,
+            native_capture_tempo_bpm: 120,
+        }];
+        track.midi_notes = vec![MidiNote::new_recorded(60, 0, 480, 100, 1)];
+
+        let preview = track
+            .preview_clip_align(transport, 1, ClipAlignSettings::default(), 0, true)
+            .unwrap();
+
+        assert_eq!(
+            preview.blocked_reason.as_deref(),
+            Some("Source span is empty; try Last Note End.")
+        );
+    }
+
+    #[test]
+    fn clip_align_uses_selected_source_span_for_tempo_preview() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.recording_clips = vec![RecordingClip {
+            id: 1,
+            region: Region::new_recorded(0, 1_920, 1),
+            muted: false,
+            native_start_ticks: 0,
+            native_end_ticks: 1_920,
+            native_duration_ticks: 1_920,
+            native_capture_tempo_bpm: 120,
+        }];
+        track.midi_notes = vec![
+            MidiNote::new_recorded(60, 0, 120, 100, 1),
+            MidiNote::new_recorded(62, 960, 120, 100, 1),
+        ];
+
+        let preview = track
+            .preview_clip_align(
+                transport,
+                1,
+                ClipAlignSettings {
+                    source_start_mode: ClipAlignSourceStartMode::FirstNote,
+                    source_end_mode: ClipAlignSourceEndMode::StartOfLastNote,
+                    target_length: ClipAlignTargetLength::Bar4,
+                    destination: ClipAlignDestination::TrackLoop,
+                    apply_mode: ClipAlignApplyMode::FitAndTempo,
+                    enable_loop_on_apply: true,
+                },
+                0,
+                true,
+            )
+            .unwrap();
+
+        assert_eq!(preview.source_length_ticks, 960);
+        assert_eq!(preview.tempo_preview_bpm, Some(400));
     }
 
     #[test]
@@ -1745,11 +2288,19 @@ mod tests {
                 id: 1,
                 region: Region::new_recorded(0, 240, 1),
                 muted: false,
+                native_start_ticks: 0,
+                native_end_ticks: 240,
+                native_duration_ticks: 240,
+                native_capture_tempo_bpm: 120,
             },
             RecordingClip {
                 id: 2,
                 region: Region::new_recorded(0, 240, 2),
                 muted: false,
+                native_start_ticks: 0,
+                native_end_ticks: 240,
+                native_duration_ticks: 240,
+                native_capture_tempo_bpm: 120,
             },
         ];
         track.recording_view = RecordingView::Stacked;

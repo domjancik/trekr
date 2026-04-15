@@ -1,48 +1,62 @@
 use crate::app::AppOverlay;
 use crate::pages::AppPage;
-use crate::project::{MidiNote, STORED_LOOP_SLOT_COUNT, Track};
+use crate::project::{MidiNote, RecordingClip, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
+use crate::timeline::Region;
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
 
 use super::types::CaptureSpec;
 
-pub(super) fn capture_specs() -> [CaptureSpec; 6] {
+pub(super) fn capture_specs() -> [CaptureSpec; 7] {
     [
         CaptureSpec {
             page: AppPage::Timeline,
             overlay: None,
             focused_track_view: false,
+            open_clip_align: false,
             filename: "timeline.png",
         },
         CaptureSpec {
             page: AppPage::Timeline,
             overlay: None,
             focused_track_view: true,
+            open_clip_align: false,
             filename: "timeline-focused.png",
+        },
+        CaptureSpec {
+            page: AppPage::Timeline,
+            overlay: None,
+            focused_track_view: true,
+            open_clip_align: true,
+            filename: "timeline-clip-align.png",
         },
         CaptureSpec {
             page: AppPage::Mappings,
             overlay: None,
             focused_track_view: false,
+            open_clip_align: false,
             filename: "mappings.png",
         },
         CaptureSpec {
             page: AppPage::Mappings,
             overlay: Some(AppOverlay::MappingsQuickView),
             focused_track_view: false,
+            open_clip_align: false,
             filename: "mappings-overlay.png",
         },
         CaptureSpec {
             page: AppPage::MidiIo,
             overlay: None,
             focused_track_view: false,
+            open_clip_align: false,
             filename: "midi-io.png",
         },
         CaptureSpec {
             page: AppPage::Routing,
             overlay: None,
             focused_track_view: false,
+            open_clip_align: false,
             filename: "routing.png",
         },
     ]
@@ -142,7 +156,41 @@ pub(super) fn seed_capture_demo_track(track: &mut Track, track_index: usize) {
         crate::timeline::LoopRegion::new(3_360, 960),
     ];
 
-    track.midi_notes = dense_capture_notes(track_index);
+    let recording_clip_id = 1;
+    let clip_start_ticks = 240;
+    let clip_length_ticks = 4_320;
+    track.midi_notes = dense_capture_notes(track_index)
+        .into_iter()
+        .map(|note| {
+            if note.start_ticks >= clip_start_ticks
+                && note.start_ticks < clip_start_ticks + clip_length_ticks
+            {
+                MidiNote::new_recorded(
+                    note.pitch,
+                    note.start_ticks,
+                    note.length_ticks,
+                    note.velocity,
+                    recording_clip_id,
+                )
+            } else {
+                note
+            }
+        })
+        .collect();
+    let clip_region = Region::new_recorded(clip_start_ticks, clip_length_ticks, recording_clip_id);
+    track.regions = vec![clip_region];
+    track.recording_clips = vec![RecordingClip {
+        id: recording_clip_id,
+        region: clip_region,
+        muted: false,
+        native_start_ticks: clip_start_ticks,
+        native_end_ticks: clip_start_ticks + clip_length_ticks,
+        native_duration_ticks: clip_length_ticks,
+        native_capture_tempo_bpm: 96,
+    }];
+    track.selected_recording_clip_id = Some(recording_clip_id);
+    track.next_recording_clip_id = recording_clip_id + 1;
+    track.recording_view = RecordingView::Stacked;
     track.loop_region = overlaps[0];
     track.state.loop_enabled = true;
 
