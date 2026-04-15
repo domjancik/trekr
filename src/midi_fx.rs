@@ -71,6 +71,10 @@ pub struct TimelineFxUiState {
     pub input_param_windows: Vec<usize>,
     #[serde(default = "default_fx_param_windows")]
     pub output_param_windows: Vec<usize>,
+    #[serde(default)]
+    pub input_row_window: usize,
+    #[serde(default)]
+    pub output_row_window: usize,
 }
 
 fn default_fx_param_windows() -> Vec<usize> {
@@ -84,6 +88,8 @@ impl Default for TimelineFxUiState {
             output_selected_row: 0,
             input_param_windows: default_fx_param_windows(),
             output_param_windows: default_fx_param_windows(),
+            input_row_window: 0,
+            output_row_window: 0,
         }
     }
 }

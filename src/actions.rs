@@ -24,6 +24,7 @@ pub enum AppAction {
     ToggleMappingsWriteMode,
     AddMappingRow,
     RemoveSelectedMapping,
+    DeletePageItem,
     SelectPreviousPageField,
     SelectNextPageField,
     TogglePlayback,
@@ -89,6 +90,15 @@ pub enum AppAction {
     SelectNextRecordingClip,
     ToggleSelectedRecordingClipMute,
     DeleteSelectedRecordingClip,
+    ToggleSelectedTimelineFx,
+    CycleSelectedTimelineFxKind,
+    AdjustSelectedTimelineFxPrimary,
+    AdjustSelectedTimelineFxSecondary,
+    ScrollSelectedTimelineFxWindow,
+    MoveSelectedTimelineFxUp,
+    MoveSelectedTimelineFxDown,
+    AddSelectedTimelineFx,
+    DeleteSelectedTimelineFx,
     ToggleFocusedTrackView,
     SelectNextTrack,
     SelectPreviousTrack,
@@ -666,7 +676,7 @@ impl KeyboardBindings {
                 if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
                     AppAction::DeleteSelectedRecordingClip
                 } else {
-                    AppAction::RemoveSelectedMapping
+                    AppAction::DeletePageItem
                 },
                 ActionSource::Keyboard,
             )),
@@ -735,6 +745,7 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::ToggleMappingsWriteMode => "Mappings Write Mode",
         AppAction::AddMappingRow => "Add Mapping",
         AppAction::RemoveSelectedMapping => "Remove Mapping",
+        AppAction::DeletePageItem => "Delete Page Item",
         AppAction::SelectPreviousPageField => "Previous Mapping Field",
         AppAction::SelectNextPageField => "Next Mapping Field",
         AppAction::TogglePlayback => "Play/Stop",
@@ -800,6 +811,15 @@ pub fn action_label(action: AppAction) -> &'static str {
         AppAction::SelectNextRecordingClip => "Next Recording Clip",
         AppAction::ToggleSelectedRecordingClipMute => "Recording Clip Mute",
         AppAction::DeleteSelectedRecordingClip => "Delete Recording Clip",
+        AppAction::ToggleSelectedTimelineFx => "Toggle Timeline FX",
+        AppAction::CycleSelectedTimelineFxKind => "Cycle Timeline FX Kind",
+        AppAction::AdjustSelectedTimelineFxPrimary => "Adjust Timeline FX Param 1",
+        AppAction::AdjustSelectedTimelineFxSecondary => "Adjust Timeline FX Param 2",
+        AppAction::ScrollSelectedTimelineFxWindow => "Scroll Timeline FX Params",
+        AppAction::MoveSelectedTimelineFxUp => "Move Timeline FX Up",
+        AppAction::MoveSelectedTimelineFxDown => "Move Timeline FX Down",
+        AppAction::AddSelectedTimelineFx => "Add Timeline FX",
+        AppAction::DeleteSelectedTimelineFx => "Delete Timeline FX",
         AppAction::ToggleFocusedTrackView => "Focused Track View",
         AppAction::SelectNextTrack => "Next Track",
         AppAction::SelectPreviousTrack => "Previous Track",
@@ -846,6 +866,7 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::ToggleMappingsWriteMode => &["W"],
         AppAction::AddMappingRow => &["N"],
         AppAction::RemoveSelectedMapping => &["Delete", "Backspace"],
+        AppAction::DeletePageItem => &["Delete"],
         AppAction::SelectPreviousPageField => &["Shift+Left"],
         AppAction::SelectNextPageField => &["Shift+Right"],
         AppAction::TogglePlayback => &["Space"],
@@ -911,6 +932,15 @@ pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static
         AppAction::SelectNextRecordingClip => &["Shift+K"],
         AppAction::ToggleSelectedRecordingClipMute => &["Shift+M"],
         AppAction::DeleteSelectedRecordingClip => &["Shift+Delete", "Shift+Backspace"],
+        AppAction::ToggleSelectedTimelineFx => &["Shift+M"],
+        AppAction::CycleSelectedTimelineFxKind => &["Q/E"],
+        AppAction::AdjustSelectedTimelineFxPrimary => &["Q/E"],
+        AppAction::AdjustSelectedTimelineFxSecondary => &["Q/E"],
+        AppAction::ScrollSelectedTimelineFxWindow => &["Q/E"],
+        AppAction::MoveSelectedTimelineFxUp => &["Q"],
+        AppAction::MoveSelectedTimelineFxDown => &["E"],
+        AppAction::AddSelectedTimelineFx => &["Q/E"],
+        AppAction::DeleteSelectedTimelineFx => &["Delete"],
         AppAction::ToggleFocusedTrackView => &["Shift+F8"],
         AppAction::SelectNextTrack => &["Right"],
         AppAction::SelectPreviousTrack => &["Left"],
@@ -1337,7 +1367,7 @@ mod tests {
         );
         assert_eq!(
             KeyboardBindings.resolve(&delete_mapping).unwrap().action,
-            AppAction::RemoveSelectedMapping
+            AppAction::DeletePageItem
         );
         assert_eq!(
             KeyboardBindings.resolve(&backspace_mapping).unwrap().action,
