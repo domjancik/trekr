@@ -18,8 +18,9 @@ To make that practical, the app should distinguish three undo domains plus one n
 The recommended shape is:
 
 - V1 ships with canonical global `Undo` and `Redo`
+- V1 also ships with canonical scoped undo/redo for `Timeline`, `Mappings`, and `UI`
 - every undo entry is tagged with one domain: `Timeline`, `Mappings`, or `UI`
-- the history model is built so domain-specific undo can be added later without redesigning the stack model
+- generic and scoped undo share one history model rather than separate systems
 
 This avoids the biggest failure mode of naive undo systems: mixing unrelated transient UI movements with project edits in a way that feels random, while also avoiding three isolated histories that do not respect actual chronological work.
 
@@ -41,7 +42,7 @@ Because the app is action-first, undo should also be action-first. The user shou
 - provide reliable global undo/redo across current editable app surfaces
 - keep undo behavior consistent regardless of action source
 - support both document edits and editor-context changes where reversal matters
-- keep room for later category-specific undo without invalidating V1
+- make category-specific undo available in the first implementation, not as a follow-on convenience
 - treat recording commit as undoable
 - keep history deterministic and serializable enough for persisted state flows
 
@@ -147,9 +148,6 @@ Add canonical actions for:
 
 - `Undo`
 - `Redo`
-
-Later optional actions:
-
 - `Undo Timeline`
 - `Redo Timeline`
 - `Undo Mappings`
@@ -419,15 +417,12 @@ Decision:
 V1 user-facing behavior should be:
 
 - ship `Undo` and `Redo`
+- ship `Undo Timeline`, `Redo Timeline`, `Undo Mappings`, `Redo Mappings`, `Undo UI`, and `Redo UI`
 - display the label and domain of the action that was undone/redone in the status area
-- do not expose category-specific undo buttons yet
 - internally tag every entry with a domain from day one
+- present scoped undo as a first-class workflow rather than a hidden internal capability
 
-Later, if users want scoped undo, add:
-
-- dedicated mapped actions for `Undo Timeline`, `Undo Mappings`, and `Undo UI`
-
-Those should be convenience commands over the same underlying history model, not a second undo system.
+Those commands should be convenience views over the same underlying history model, not a second undo system.
 
 ## Implementation Notes
 
@@ -492,23 +487,26 @@ Recovery behavior:
 ## Suggested Rollout
 
 1. Add domain-tagged undo entry types and global/domain cursors.
-2. Wire `Undo` and `Redo` actions into the canonical action layer.
-3. Integrate `Timeline` mutations.
-4. Integrate `Mappings` mutations.
+2. Wire `Undo`, `Redo`, `Undo Timeline`, `Redo Timeline`, `Undo Mappings`, `Redo Mappings`, `Undo UI`, and `Redo UI` into the canonical action layer.
+3. Integrate `Mappings` mutations so scoped mapping undo is testable immediately.
+4. Integrate `Timeline` mutations.
 5. Integrate `UI` mutations.
 6. Add status reporting for last undo/redo.
-7. Evaluate whether scoped undo commands are still necessary after real use.
+7. Refine coalescing only after scoped and generic undo both feel correct in real use.
 
 ## Acceptance Criteria
 
 - a user can undo and redo timeline/project edits through canonical actions
 - a user can undo and redo mapping edits through the same generic actions
 - a user can undo and redo non-document UI changes such as page switches and overlay toggles
+- a user can undo and redo timeline/project edits through the timeline-scoped actions
+- a user can undo and redo mapping edits through the mappings-scoped actions
+- a user can undo and redo non-document UI changes through the UI-scoped actions
 - passive runtime updates do not create undo history entries
 - recording commit is undone as one timeline transaction
 - no-op actions do not create history entries
 - every committed entry has a user-facing label and domain tag
-- the architecture permits later `Undo Timeline`, `Undo Mappings`, and `Undo UI` actions without replacing the history model
+- generic and scoped undo/redo operate over the same persisted history model
 
 ## Resolved Decisions (March 13, 2026)
 
