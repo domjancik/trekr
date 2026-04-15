@@ -48,7 +48,7 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 6] = [
     SuggestedCommand {
         label: "Desktop persisted session",
         command: "cargo run -- run",
-        description: "Use the last persisted state when available and save back on clean exit.",
+        description: "Use the last persisted state when available, auto-save while editing, and recover from versioned snapshots when needed.",
         args: &["run"],
         launchable: true,
     },
@@ -171,12 +171,31 @@ pub fn execute_app_command(command: AppCommand) -> Result<(), Box<dyn std::error
 }
 
 pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let mut startup_notice = None;
     let mut app = match options.state_mode {
         StateMode::Persisted => {
             if options.state_file.exists() {
                 match state::load(&options.state_file) {
                     Ok(state) => App::from_persisted_state(state),
-                    Err(_) => App::new_demo(),
+                    Err(error) => {
+                        if let Some((state, recovered_from)) =
+                            state::load_latest_recoverable_version(&options.state_file)?
+                        {
+                            let recovered_label = recovered_from
+                                .file_name()
+                                .and_then(|value| value.to_str())
+                                .unwrap_or("latest version");
+                            startup_notice = Some(format!(
+                                "Recovered session from {recovered_label} after working file load failed."
+                            ));
+                            App::from_persisted_state(state)
+                        } else {
+                            startup_notice = Some(format!(
+                                "Working state load failed ({error}); recovery failed, so trekr opened the demo state."
+                            ));
+                            App::new_demo()
+                        }
+                    }
                 }
             } else {
                 App::new_demo()
@@ -185,17 +204,17 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
         StateMode::Demo => App::new_demo(),
         StateMode::Empty => App::new_empty(),
     };
+    if options.state_mode == StateMode::Persisted {
+        app.enable_persistence(options.state_file.clone())?;
+    }
+    if let Some(message) = startup_notice {
+        app.set_session_notice(message);
+    }
     app.set_ui_scale_override(options.ui_scale);
     app.set_ui_scaling_mode(options.ui_scaling_mode);
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
-        LaunchMode::Interactive(run_options) => {
-            let result = app.run_with_options(run_options);
-            if result.is_ok() && options.state_mode == StateMode::Persisted {
-                state::save(&options.state_file, &app.persisted_state())?;
-            }
-            result
-        }
+        LaunchMode::Interactive(run_options) => app.run_with_options(run_options),
         LaunchMode::Capture(capture) => {
             if options.state_mode == StateMode::Demo {
                 app.seed_capture_demo_timeline_overlaps();
