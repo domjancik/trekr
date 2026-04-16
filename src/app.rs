@@ -4180,8 +4180,6 @@ impl App {
 
         canvas.set_draw_color(Color::RGB(28, 32, 44));
         canvas.fill_rect(layout.results_panel)?;
-        canvas.set_draw_color(Color::RGB(164, 142, 96));
-        canvas.draw_rect(layout.results_panel)?;
 
         let query_text = if lookup.query.is_empty() {
             "Type to search targets".to_string()
@@ -4245,6 +4243,9 @@ impl App {
                 },
             )?;
         }
+
+        canvas.set_draw_color(Color::RGB(164, 142, 96));
+        canvas.draw_rect(layout.results_panel)?;
 
         Ok(())
     }
