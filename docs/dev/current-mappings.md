@@ -92,6 +92,9 @@ Notes:
   - `Tab` is suppressed while lookup is open so the temporary editor keeps focus
   - clicking/tapping outside the lookup cancels it immediately without mutating the row
   - reopening lookup starts from an empty query rather than preserving the previous session query
+- current design direction:
+  - the mappings page should eventually expose its own editor/navigation actions as mapping targets so MIDI and other mapped inputs can drive row/field selection and activation through the same canonical action model
+  - keyboard lookup remains valuable as a deliberate accelerator for large target sets, but it is not intended to become the only completion path long-term
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations

@@ -41,6 +41,7 @@ The mappings page still needs a fast, text-driven lookup path for cases where th
 - Let the user quickly find a target by typing a few characters instead of cycling the whole list.
 - Reuse the current canonical target labels from `src/mapping.rs`; do not create a second target namespace.
 - Keep the current row editor and action-driven navigation model intact.
+- Keep the mappings editor aligned with the product direction that the app is hyper-mappable: important editor actions should be reachable through the same canonical action surface as transport and track actions.
 - Make scope behavior explicit when changing targets through lookup.
 - Work on desktop keyboard-first setups first, without blocking touch support on the mappings page.
 - Keep conflict/replacement behavior aligned with the existing row model rather than inventing hidden auto-merge behavior.
@@ -87,6 +88,69 @@ Current mappings-page behavior:
 Implication:
 
 - Quick lookup should feel like a sibling to MIDI learn: a temporary field-level editing state inside the existing mappings page, not a separate page.
+- Longer-term, mappings-page navigation/editing should also be treated as a mappable action surface rather than a keyboard-only implementation detail.
+
+## Canonical model: hyper-mappable editor actions plus keyboard accelerator
+
+The recommended model is a two-layer interaction design.
+
+### Layer 1: canonical editor actions
+
+The durable, cross-device model should be action-driven:
+
+- select row
+- select field
+- adjust backward/forward
+- activate current field
+- commit
+- cancel
+
+These actions already largely exist in `AppAction` and current page-state behavior:
+
+- `SelectPreviousPageItem`
+- `SelectNextPageItem`
+- `SelectPreviousPageField`
+- `SelectNextPageField`
+- `AdjustPageItemBackward`
+- `AdjustPageItemForward`
+- `ActivatePageItem`
+- `ToggleMappingsWriteMode`
+- `AddMappingRow`
+- `RemoveSelectedMapping`
+
+Recommended product direction:
+
+- expose these editor/navigation actions as mapping targets in the future
+- treat the mappings page itself as part of the app's hyper-mappable action surface
+- ensure MIDI, keyboard, mouse, touch, and future OSC can all drive the same canonical editor model
+
+This is the consistency layer.
+
+### Layer 2: direct-manipulation and text accelerators
+
+Faster input-specific affordances may sit on top of the canonical layer:
+
+- mouse/touch clicking specific rows and fields directly
+- keyboard fuzzy target lookup
+- direct UI mapping hit-target selection
+
+These accelerators are valuable, but should not become the only way to complete an operation.
+
+### Deliberate exception: keyboard lookup
+
+Target lookup is allowed to be a keyboard-first accelerator because large target sets benefit disproportionately from text search.
+
+However, the canonical model should still exist underneath it:
+
+- `ActivatePageItem` on `Target` opens the picker
+- non-text actions should be able to move lookup selection
+- non-text actions should be able to commit/cancel
+
+Design rule:
+
+> Keyboard text lookup is an accelerator, not the canonical interaction contract.
+
+This keeps the app mostly consistent with its hyper-mappable philosophy while allowing a practical keyboard-only fast path for large target catalogs.
 
 ## Proposed UX
 
@@ -116,6 +180,10 @@ Recommended compatibility rule:
 
 - `Q` / `E` should continue to cycle targets when lookup is not open
 - once lookup is open, text entry owns the keyboard until commit/cancel
+
+Recommended future-compatible rule:
+
+- the picker opened by `Target` activation should also support non-text navigation through canonical editor actions, so MIDI-mapped or pointer-driven operation does not depend on typing
 
 ## Inline presentation
 
@@ -258,6 +326,10 @@ Mouse support on desktop:
 - click result to commit
 - click outside closes lookup and preserves or cancels according to final implementation choice; recommended default is cancel without mutation
 
+Recommended future addition:
+
+- visible previous/next result affordances or scroll affordance for pointer-only operation when the desired target is not in the initial visible subset
+
 ### Touch
 
 Touch is secondary but should not be blocked by the model.
@@ -270,6 +342,23 @@ Recommended touch behavior:
 - a visible cancel affordance is required; touch should not rely on `Escape`
 
 Because the current app is still desktop-oriented and uses SDL UI primitives, the first implementation may support pointer opening and result tapping while leaving full soft-keyboard validation to later device testing.
+
+### MIDI and other mapped input behavior
+
+For long-term consistency, MIDI-mapped editor actions should be able to operate the mappings page and the target picker without requiring keyboard text entry.
+
+Recommended picker behavior once editor navigation targets are exposed:
+
+- `ActivatePageItem` on `Target` opens lookup
+- `AdjustPageItemForward` / `AdjustPageItemBackward` moves highlighted lookup result while lookup is open
+- `ActivatePageItem` commits highlighted result while lookup is open
+- a future explicit `Cancel` action closes lookup without mutation
+
+This would let:
+
+- MIDI-only rigs navigate and edit mappings using mapped buttons/encoders
+- mouse users rely on direct manipulation without being forced into typing for completion
+- keyboard users retain the faster text-search path
 
 ## State model
 
@@ -355,6 +444,26 @@ Not part of this spec-only commit, but likely follow-up implementation updates:
 4. Route text input/backspace/up/down/enter/escape to the lookup state while active.
 5. Update commit logic so target changes preserve valid scopes instead of always resetting.
 6. Refresh docs and screenshots only if the implemented UI changes the visible mappings-page layout materially.
+
+## Follow-on plan: expose editor actions as mapping targets
+
+Recommended follow-on slice after the current lookup implementation:
+
+1. Add mapping targets for editor/navigation actions already represented in `AppAction`, especially:
+   - `SelectPreviousPageItem`
+   - `SelectNextPageItem`
+   - `SelectPreviousPageField`
+   - `SelectNextPageField`
+   - `AdjustPageItemBackward`
+   - `AdjustPageItemForward`
+   - `ActivatePageItem`
+   - `ToggleMappingsWriteMode`
+   - `AddMappingRow`
+   - `RemoveSelectedMapping`
+2. Keep those targets canonical and shared across keyboard, MIDI, and future OSC.
+3. Teach the target picker to interpret canonical adjust/activate/cancel actions while open.
+4. Add pointer-visible navigation affordances so pointer-only use does not depend on typing.
+5. Update `docs/dev/current-mappings.md`, `README.md`, and screenshots when those actions become user-exposed mapping targets.
 
 ## Open questions
 
