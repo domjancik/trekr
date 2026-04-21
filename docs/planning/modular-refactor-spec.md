@@ -16,7 +16,7 @@ Required outcome:
   - `vk/0afe-color-refactor`
 - treat renderer screenshots as a regression gate: the tracked screenshots should show no intentional visual change before vs after the refactor
 
-This spec is grounded in the current repository state, including `README.md`, `docs/specs/product-spec.md`, `docs/specs/feature-spec-midi-manipulation.md`, `docs/specs/feature-spec-mapping-discoverability.md`, `docs/specs/direct-ui-mapping-mode-spec.md`, `docs/feature-spec-undo.md`, `docs/planning/handoff-summary.md`, `docs/planning/implementation-plan.md`, `docs/planning/color-refactor-plan.md`, and the current `src/*` code.
+This spec is grounded in the current repository state, including `README.md`, `docs/specs/product-spec.md`, `docs/specs/feature-spec-midi-manipulation.md`, `docs/specs/feature-spec-mapping-discoverability.md`, `docs/specs/direct-ui-mapping-mode-spec.md`, `docs/specs/feature-spec-midi-track-effects.md`, `docs/specs/feature-spec-quick-mapping-lookup.md`, `docs/specs/feature-spec-timeline-control-contexts.md`, `docs/feature-spec-undo.md`, `docs/planning/handoff-summary.md`, `docs/planning/implementation-plan.md`, `docs/planning/color-refactor-plan.md`, and the current `src/*` code.
 
 ## Problem
 
@@ -38,6 +38,7 @@ Current pressure points in the repo:
 - color/styling logic remains largely inline, which conflicts with the desired theme extraction direction in `docs/planning/color-refactor-plan.md`
 - upcoming undo/history work in `docs/feature-spec-undo.md` will be harder to add safely if mutable state boundaries remain blurred
 - the recently expanded direct mapping and note-editing flows increase the cost of any change made inside one central file
+- the newer timeline FX, mapping target lookup, and hyper-mappable mappings-editor flows further increase the amount of context that currently has to be held together across app shell, page UI, and action routing
 
 This increases risk in three ways:
 
@@ -50,6 +51,7 @@ This increases risk in three ways:
 - split app behavior by domain and interaction layer, not by arbitrary helper buckets
 - preserve the canonical action-driven architecture
 - isolate UX/state-machine logic for mapping, discoverability, note editing, and recording so each can evolve independently
+- isolate timeline FX / MIDI FX editing behavior and mapping-target lookup behavior so they can evolve without further bloating the app shell
 - extract common rendering/layout/palette patterns into shared utilities without creating a heavyweight UI framework
 - prepare clean seams for:
   - direct mapping and discoverability growth
@@ -108,6 +110,8 @@ Good extraction targets are domains with stable meaning:
 - direct mapping
 - discoverability
 - timeline/note editing
+- timeline FX / MIDI FX editing
+- mapping target lookup
 - transport strip
 - routing page behavior
 - mappings page behavior
@@ -181,6 +185,7 @@ Likely contents:
 - track column/subcolumn rendering
 - recording lane layout
 - note/region draw helpers
+- timeline FX bands, row layout, and control-context hit targets
 - timeline-specific hit targets
 - timeline track indicator target descriptors
 
@@ -196,7 +201,22 @@ Likely contents:
 - direct mapping footer summaries
 - direct mapping target discovery
 - direct mapping conflict/replacement workflow helpers
+- quick mapping target lookup UI/model glue
+- mappings editor context controls that are now themselves mapping targets
 - mapping badge summarization and rendering
+
+#### `timeline_fx_ui` or equivalent timeline-FX-focused module
+
+Own timeline-facing MIDI FX interaction and rendering support that sits between the core FX data model and the timeline page.
+
+Likely contents:
+
+- timeline FX row layout and hit-target computation
+- selected timeline control context rendering
+- add/remove/reorder/toggle/edit control wiring
+- compact-title and narrow-layout policies shared by timeline FX bands
+
+This module should compose with `src/midi_fx.rs` and `src/timeline_fx.rs`, not duplicate the canonical FX model.
 
 #### `routing_ui` and `midi_io_ui`
 
@@ -250,6 +270,20 @@ Required preservation details:
 - `Escape` and `F8` still cancel instead of being capturable mappings
 - keyboard capture precedence stays ahead of built-in shortcut fallback where currently tested
 - pointer targeting while awaiting input can retarget without forcing an explicit cancel first
+- direct mapping and lookup-related reserved actions remain explicit where the current app treats them as control affordances rather than normal captured text input
+
+### Mapping editor and target lookup behavior
+
+The newer mapping-editor workflows added on `main` must remain stable through the refactor.
+
+Required preservation:
+
+- quick mapping target lookup behavior, including focus/scroll/navigation behavior
+- mappings editor actions that are now exposed as mapping targets
+- `Cancel` remaining a canonical mappable action where the current action model exposes it
+- field/context navigation behavior on the mappings page, including the recent duplicate-navigation cleanup on `main`
+
+The refactor should move lookup-specific state, navigation helpers, and rendering support toward a mapping-focused module boundary instead of keeping them embedded in the app shell.
 
 ### Scope behavior
 
@@ -301,6 +335,18 @@ Important preservation points:
 - playhead-based selection entry
 - quantized vs unquantized nudge defaults
 - active-track-relative default scope with support for absolute targeting through mappings
+
+### Timeline FX and control-context behavior
+
+The timeline FX and control-context flows now present on `main` must also be preserved.
+
+Important preservation points:
+
+- timeline FX row hit testing stays aligned with rendered geometry
+- selected timeline control context remains explicit and deterministic
+- add/remove/reorder/enable/disable/parameter adjustment behavior remains action-driven
+- narrow-layout compaction rules remain rendering concerns, not hidden behavior changes
+- MIDI FX model logic remains separate from page-specific drawing and hit-target code
 
 ### Screenshot-equivalent UI output
 
@@ -382,9 +428,10 @@ Start with low-risk moves that reduce file size without changing call flow:
 Move domain-specific rendering and hit-target logic out of `app.rs` in slices:
 
 1. mappings/direct mapping/discoverability
-2. routing + MIDI I/O page helpers
-3. timeline rendering helpers and interaction descriptors
-4. transport strip and shared footer/chrome
+2. mapping target lookup and mapping-editor context helpers
+3. routing + MIDI I/O page helpers
+4. timeline rendering helpers, timeline FX helpers, and interaction descriptors
+5. transport strip and shared footer/chrome
 
 Each slice should preserve behavior and keep tests green before moving on.
 
@@ -417,6 +464,8 @@ Primary refactor touch points:
 - `src/app.rs`
 - `src/actions.rs`
 - `src/mapping.rs`
+- `src/midi_fx.rs`
+- `src/timeline_fx.rs`
 - `src/ui.rs`
 - `src/pages.rs`
 - `src/project.rs`
@@ -437,6 +486,8 @@ The refactor is successful when all of the following are true:
 - the codebase has clear domain-scoped modules for at least direct mapping/discoverability, timeline UI, page UI behavior, capture helpers, and theme/palette ownership
 - canonical `AppAction` routing remains the single control boundary across keyboard, MIDI, pointer, and touch inputs
 - direct mapping UX, scope behavior, and replacement/conflict outcomes remain behaviorally identical to the current tested surface
+- mapping target lookup, mappings editor targetability, and `Cancel` action behavior remain behaviorally identical to the current tested surface
+- timeline FX and control-context interactions remain behaviorally identical to the current tested surface
 - note-editing actions continue to behave identically to the current tested surface
 - existing tests continue to pass after relocation-adjusted test updates
 - screenshot regression review shows no intentional visual changes before vs after
