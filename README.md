@@ -33,6 +33,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/specs/feature-spec-auto-save-versioning.md`: implemented auto-save/versioning behavior for the persisted state flow.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
@@ -79,6 +80,8 @@ Latest renderer-owned captures from the demo state:
 - a field-based mappings editor with MIDI learn for MIDI sources and inline target lookup for fast target selection
 - a direct UI mapping mode for supported timeline and routing controls, driven from discoverability targets
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
+- persisted-session auto-save to the active working state file plus timestamped version snapshots
+- automatic recovery from the newest valid version snapshot when the working state file is unreadable
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
 
 Launch state:
@@ -86,7 +89,10 @@ Launch state:
 - `cargo run -- help` prints the CLI reference, option details, and suggested commands
 - `cargo run -- commands` prints the recommended documented launch commands only
 - `cargo run -- run` explicitly launches the interactive app
-- default interactive run uses persisted state from `artifacts/state/last-run.json` when available and saves back on clean exit
+- default interactive run uses persisted state from `artifacts/state/last-run.json` when available
+- persisted interactive sessions auto-save while editing and flush pending dirty state again on exit
+- persisted interactive sessions also write timestamped snapshots under a sibling versions directory such as `artifacts/state/last-run.versions/`
+- if the working state file is unreadable, trekr automatically tries the newest valid version snapshot before falling back to demo state
 - `cargo run -- --state-mode demo` forces the built-in demo state
 - `cargo run -- --state-mode empty` forces an empty deterministic state
 - `cargo run -- run --state-mode demo` is the subcommand form of the same demo launch

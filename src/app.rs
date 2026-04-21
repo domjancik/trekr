@@ -27,7 +27,7 @@ use crate::pages::{
 };
 use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
-use crate::state::PersistedAppState;
+use crate::state::{self, PersistedAppState};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
@@ -41,6 +41,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
+const AUTO_SAVE_INTERVAL: Duration = Duration::from_millis(1_000);
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
@@ -57,6 +58,7 @@ pub struct App {
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
     status_state: StatusState,
+    persistence_state: Option<PersistenceState>,
     direct_mapping_state: DirectMappingState,
     target_lookup_state: MappingTargetLookupState,
     viewport_size: (u32, u32),
@@ -87,10 +89,35 @@ struct OverlayState {
     active: Option<AppOverlay>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct StatusState {
     hovered_target: Option<DiscoverabilityTarget>,
     last_action: Option<LastActionStatus>,
+    session_message: Option<SessionMessage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SessionMessage {
+    kind: SessionMessageKind,
+    text: String,
+    visible_until: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionMessageKind {
+    Pending,
+    Success,
+    Notice,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PersistenceState {
+    working_file: PathBuf,
+    dirty: bool,
+    pending_since: Option<Instant>,
+    last_saved_serialized_state: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -310,6 +337,27 @@ impl App {
         }
     }
 
+    pub fn enable_persistence(
+        &mut self,
+        working_file: PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.persistence_state = Some(PersistenceState {
+            working_file,
+            dirty: false,
+            pending_since: None,
+            last_saved_serialized_state: state::serialize(&self.persisted_state())?,
+        });
+        Ok(())
+    }
+
+    pub fn set_session_notice(&mut self, message: impl Into<String>) {
+        self.status_state.session_message = Some(SessionMessage {
+            kind: SessionMessageKind::Notice,
+            text: message.into(),
+            visible_until: Some(Instant::now() + Duration::from_secs(8)),
+        });
+    }
+
     fn with_project(
         project: Project,
         mappings: Vec<MappingEntry>,
@@ -341,6 +389,7 @@ impl App {
             mappings,
             overlay_state: OverlayState::default(),
             status_state: StatusState::default(),
+            persistence_state: None,
             direct_mapping_state: DirectMappingState::default(),
             target_lookup_state: MappingTargetLookupState::default(),
             viewport_size: (1280, 720),
@@ -476,8 +525,10 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_finalize_session_message(now);
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.maybe_auto_save(now);
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
 
@@ -489,6 +540,7 @@ impl App {
             std::thread::sleep(Duration::from_millis(16));
         }
 
+        self.flush_persistence_on_exit()?;
         Ok(())
     }
 
@@ -530,8 +582,10 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_finalize_session_message(now);
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.maybe_auto_save(now);
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
 
@@ -541,6 +595,7 @@ impl App {
             std::thread::sleep(Duration::from_millis(16));
         }
 
+        self.flush_persistence_on_exit()?;
         Ok(())
     }
     fn run_kmsdrm_surface_console(
@@ -581,8 +636,10 @@ impl App {
 
             self.poll_midi_input();
             let now = Instant::now();
+            self.maybe_finalize_session_message(now);
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.maybe_auto_save(now);
             last_frame_at = now;
             self.viewport_size = window.size_in_pixels();
 
@@ -606,6 +663,7 @@ impl App {
             std::thread::sleep(Duration::from_millis(16));
         }
 
+        self.flush_persistence_on_exit()?;
         Ok(())
     }
 
@@ -644,6 +702,190 @@ impl App {
         self.project.active_track_index = 0;
         self.transport_ticks = 0;
         self.playhead_ticks = 0;
+    }
+
+    fn maybe_finalize_session_message(&mut self, now: Instant) {
+        if self
+            .status_state
+            .session_message
+            .as_ref()
+            .and_then(|message| message.visible_until)
+            .is_some_and(|deadline| now >= deadline)
+        {
+            self.status_state.session_message = None;
+        }
+    }
+
+    fn set_session_message(
+        &mut self,
+        kind: SessionMessageKind,
+        message: impl Into<String>,
+        visible_for: Option<Duration>,
+    ) {
+        self.status_state.session_message = Some(SessionMessage {
+            kind,
+            text: message.into(),
+            visible_until: visible_for.map(|duration| Instant::now() + duration),
+        });
+    }
+
+    fn refresh_persistence_dirty_state(&mut self) {
+        let Some(last_saved_serialized_state) = self
+            .persistence_state
+            .as_ref()
+            .map(|state| state.last_saved_serialized_state.clone())
+        else {
+            return;
+        };
+
+        let Ok(current_serialized_state) = state::serialize(&self.persisted_state()) else {
+            return;
+        };
+
+        if let Some(persistence_state) = &mut self.persistence_state {
+            if current_serialized_state == persistence_state.last_saved_serialized_state {
+                persistence_state.dirty = false;
+                persistence_state.pending_since = None;
+                if self
+                    .status_state
+                    .session_message
+                    .as_ref()
+                    .is_some_and(|message| message.kind == SessionMessageKind::Pending)
+                {
+                    self.status_state.session_message = None;
+                }
+            } else {
+                persistence_state.dirty = true;
+                persistence_state.pending_since = Some(Instant::now());
+                if last_saved_serialized_state != current_serialized_state {
+                    self.set_session_message(
+                        SessionMessageKind::Pending,
+                        "Auto-save pending…",
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    fn maybe_auto_save(&mut self, now: Instant) {
+        let Some(persistence_state) = self.persistence_state.as_ref() else {
+            return;
+        };
+        if !persistence_state.dirty {
+            return;
+        }
+        if persistence_state
+            .pending_since
+            .is_none_or(|started_at| now.saturating_duration_since(started_at) < AUTO_SAVE_INTERVAL)
+        {
+            return;
+        }
+
+        let _ = self.save_persisted_state("Auto-saved", false);
+    }
+
+    fn save_persisted_state(
+        &mut self,
+        success_message: &str,
+        is_exit_flush: bool,
+    ) -> Result<bool, String> {
+        let (working_file, previous_serialized_state, dirty) = match self.persistence_state.as_ref()
+        {
+            Some(state) => (
+                state.working_file.clone(),
+                state.last_saved_serialized_state.clone(),
+                state.dirty,
+            ),
+            None => return Ok(false),
+        };
+        if !dirty {
+            return Ok(false);
+        }
+
+        let current_state = self.persisted_state();
+        let current_serialized_state =
+            state::serialize(&current_state).map_err(|error| error.to_string())?;
+        if current_serialized_state == previous_serialized_state {
+            if let Some(persistence_state) = &mut self.persistence_state {
+                persistence_state.dirty = false;
+                persistence_state.pending_since = None;
+            }
+            if self
+                .status_state
+                .session_message
+                .as_ref()
+                .is_some_and(|message| message.kind == SessionMessageKind::Pending)
+            {
+                self.status_state.session_message = None;
+            }
+            return Ok(false);
+        }
+
+        match state::save_serialized_with_version(
+            &working_file,
+            &current_serialized_state,
+            Some(&previous_serialized_state),
+        ) {
+            Ok(result) => {
+                if let Some(persistence_state) = &mut self.persistence_state {
+                    persistence_state.last_saved_serialized_state = result.serialized_state;
+                    persistence_state.dirty = false;
+                    persistence_state.pending_since = None;
+                }
+                let detail = if is_exit_flush {
+                    format!("{success_message} on exit.")
+                } else if result.version_path.is_some() {
+                    success_message.to_string()
+                } else {
+                    "Already up to date.".to_string()
+                };
+                self.set_session_message(
+                    SessionMessageKind::Success,
+                    detail,
+                    Some(Duration::from_secs(3)),
+                );
+                Ok(true)
+            }
+            Err(error) => {
+                if let Some(persistence_state) = &mut self.persistence_state {
+                    persistence_state.dirty = true;
+                    persistence_state.pending_since = Some(Instant::now());
+                }
+                let message = if is_exit_flush {
+                    format!("Save failed during exit: {error}")
+                } else {
+                    format!("Save failed: {error}")
+                };
+                self.set_session_message(SessionMessageKind::Error, message.clone(), None);
+                Err(message)
+            }
+        }
+    }
+
+    fn flush_persistence_on_exit(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self
+            .persistence_state
+            .as_ref()
+            .is_none_or(|state| !state.dirty)
+        {
+            return Ok(());
+        }
+
+        if self.save_persisted_state("Saved", true).is_ok() {
+            return Ok(());
+        }
+
+        match self.save_persisted_state("Saved", true) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let warning =
+                    format!("Save retry failed on exit; allowing shutdown with warning: {error}");
+                self.set_session_message(SessionMessageKind::Warning, warning.clone(), None);
+                eprintln!("{warning}");
+                Ok(())
+            }
+        }
     }
 
     fn draw_frame_surface(
@@ -3494,7 +3736,27 @@ impl App {
             right_edge = chip.x - 6;
         }
 
-        if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
+        if let Some(message) = &self.status_state.session_message {
+            let color = match message.kind {
+                SessionMessageKind::Pending => Color::RGB(214, 204, 142),
+                SessionMessageKind::Success => Color::RGB(178, 220, 176),
+                SessionMessageKind::Notice => Color::RGB(176, 208, 236),
+                SessionMessageKind::Warning => Color::RGB(236, 196, 136),
+                SessionMessageKind::Error => Color::RGB(244, 146, 146),
+            };
+            crate::ui::draw_text_fitted(
+                canvas,
+                &message.text,
+                Rect::new(
+                    bounds.x + 8,
+                    bounds.y + 7,
+                    (right_edge - bounds.x - 12).max(0) as u32,
+                    8,
+                ),
+                1,
+                color,
+            )?;
+        } else if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
             let label_width = crate::ui::text_width(&title, 1) + 4;
             let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
             crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, Color::RGB(248, 228, 208))?;
@@ -8441,10 +8703,12 @@ impl App {
 
     fn handle_midi_input_event(&mut self, event: MidiInputEvent) {
         if self.capture_direct_mapping_input(&event) {
+            self.refresh_persistence_dirty_state();
             return;
         }
 
         if self.capture_mapping_midi_learn(&event) {
+            self.refresh_persistence_dirty_state();
             return;
         }
 
@@ -8574,6 +8838,8 @@ impl App {
                 MidiInputMessage::ControlChange { .. } => {}
             }
         }
+
+        self.refresh_persistence_dirty_state();
     }
 
     fn capture_direct_mapping_input(&mut self, event: &MidiInputEvent) -> bool {
@@ -8661,6 +8927,7 @@ impl App {
         self.direct_mapping_state.mode = DirectMappingMode::Targeting;
         self.direct_mapping_state.status_message = Some(message);
         self.sync_midi_inputs();
+        self.refresh_persistence_dirty_state();
     }
 
     fn capture_mapping_midi_learn(&mut self, event: &MidiInputEvent) -> bool {
@@ -9064,14 +9331,18 @@ impl App {
             return Some(self.apply_action_with_source(AppAction::ShowPage(page), source));
         }
 
-        handle_page_pointer(
+        let control = handle_page_pointer(
             self.page_state.current_page,
             self,
             content_bounds,
             x,
             y,
             source,
-        )
+        );
+        if control.is_some() {
+            self.refresh_persistence_dirty_state();
+        }
+        control
     }
 
     fn handle_direct_mapping_pointer_down(
@@ -9971,7 +10242,9 @@ impl App {
         self.status_state.hovered_target = None;
         self.direct_mapping_state.status_message = None;
         self.status_state.last_action = Some(LastActionStatus { action, source });
-        self.apply_action(action)
+        let control = self.apply_action(action);
+        self.refresh_persistence_dirty_state();
+        control
     }
 
     fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
