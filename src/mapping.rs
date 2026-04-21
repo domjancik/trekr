@@ -164,6 +164,7 @@ const TARGET_OPTIONS: &[&str] = &[
     "Adjust Page Item Backward",
     "Adjust Page Item Forward",
     "Activate Page Item",
+    "Cancel",
     "Mappings Write Mode",
     "Add Mapping",
     "Remove Mapping",
@@ -349,6 +350,7 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Adjust Page Item Backward"
         | "Adjust Page Item Forward"
         | "Activate Page Item"
+        | "Cancel"
         | "Mappings Write Mode"
         | "Add Mapping"
         | "Remove Mapping"
@@ -632,6 +634,7 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
         "Adjust Page Item Forward" => vec![AppAction::AdjustPageItemForward],
         "Activate Page Item" => vec![AppAction::ActivatePageItem],
+        "Cancel" => vec![AppAction::CancelCurrentMode],
         "Mappings Write Mode" => vec![AppAction::ToggleMappingsWriteMode],
         "Add Mapping" => vec![AppAction::AddMappingRow],
         "Remove Mapping" => vec![AppAction::RemoveSelectedMapping],
@@ -800,6 +803,7 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
         "Adjust Page Item Forward" => vec![AppAction::AdjustPageItemForward],
         "Activate Page Item" => vec![AppAction::ActivatePageItem],
+        "Cancel" => vec![AppAction::CancelCurrentMode],
         "Mappings Write Mode" => vec![AppAction::ToggleMappingsWriteMode],
         "Add Mapping" => vec![AppAction::AddMappingRow],
         "Remove Mapping" => vec![AppAction::RemoveSelectedMapping],
@@ -1190,6 +1194,7 @@ mod tests {
             ),
             ("Adjust Page Item Forward", AppAction::AdjustPageItemForward),
             ("Activate Page Item", AppAction::ActivatePageItem),
+            ("Cancel", AppAction::CancelCurrentMode),
             ("Mappings Write Mode", AppAction::ToggleMappingsWriteMode),
             ("Add Mapping", AppAction::AddMappingRow),
             ("Remove Mapping", AppAction::RemoveSelectedMapping),

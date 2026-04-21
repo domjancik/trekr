@@ -101,6 +101,7 @@ Notes:
   - `Adjust Page Item Backward`
   - `Adjust Page Item Forward`
   - `Activate Page Item`
+  - `Cancel`
   - `Mappings Write Mode`
   - `Add Mapping`
   - `Remove Mapping`
@@ -109,6 +110,7 @@ Notes:
 - while target lookup is open, canonical page actions now operate it:
   - next/previous item and adjust actions move the highlighted result through the full filtered set without wrapping, scrolling the visible window as needed
   - activate commits the highlighted result
+  - cancel restores the original target/scope and closes the lookup
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
