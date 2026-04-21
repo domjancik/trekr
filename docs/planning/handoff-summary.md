@@ -31,6 +31,25 @@
 - MIDI device enumeration and routing
 - MIDI playback to routed output ports/channels
 - MIDI input capture, passthrough, and recording
+- per-track MIDI FX:
+  - ordered input and output chains
+  - compact timeline controls plus Routing-page editing
+  - enable/disable, reorder, add/remove, parameter adjustment
+- shipped MIDI FX kinds:
+  - `Arp`
+  - `Note Filter`
+  - `Transpose`
+  - `Velocity`
+  - `Duration`
+  - `Scale Quantize`
+  - `Chord Quantize`
+  - `Delay`
+  - `Track Clone`
+- global harmony root with quantizer `Local | Global` targeting
+- track-clone live monitoring that follows destination `Monitor Input FX` without requiring destination passthrough
+- stopped-transport live FX clocking for held/live timing effects (notably arp, delay, duration)
+- playback timing lookback for timing transforms so delayed/extended note-offs are still emitted after the source note leaves the current dispatch window
+- FX reconfiguration safety: changing timeline FX while notes are sounding flushes active notes / timing state to avoid stuck notes
 - device-aware MIDI mappings that trigger app actions
 - mapping editor with:
   - write mode
@@ -73,6 +92,7 @@
   - `src/app.rs`
   - `src/actions.rs`
   - `src/mapping.rs`
+  - `src/midi_fx.rs`
   - `src/midi_io.rs`
   - `src/project.rs`
   - `src/transport.rs`
@@ -134,6 +154,12 @@
   - `I`
   - `Left` / `Right`
   - `1`-`9`
+- Timeline FX:
+  - `Enter` cycles forward within the selected FX row
+  - `Shift+Enter` cycles backward within the selected FX row
+  - `Q` / `E` adjust selected FX kind/value
+  - `Shift+M` toggle selected FX enabled/bypassed
+  - `Delete` / `Backspace` delete selected FX or mapping row (context-sensitive)
 
 ## Current Verification Baseline
 
@@ -156,37 +182,47 @@ Recent completed checks before this handoff:
 
 ## Recent Relevant Commits
 
-- `ed6a056` `feat: add mouse and touch controls for app chrome`
-- `b7960b3` `feat: clarify pointer affordances in mappings and routing`
-- `1f9b4d4` `fix: disable device field for non-midi mappings`
-- `aad8be0` `fix: subscribe all midi inputs for mapping learn`
-- `ee4b832` `feat: add mapping row editing and absolute track scopes`
-- `807538e` `feat: trigger actions from device-aware midi mappings`
-- `775bdde` `docs: track latest ui artifacts and refresh readme`
-- `45ed4ce` `feat: add cross-platform ableton link bridge`
+- `a6a0d31` `docs: clarify timing guarantees for delay and duration fx`
+- `cdf0994` `fix: reset active notes when timeline fx changes mid-playback`
+- `860f47d` `fix: cover duration sustain with playback timing lookback`
+- `7cc9816` `fix: recover delayed playback note-offs across frame windows`
+- `80014f7` `fix: anchor stopped live input fx to live clock`
+- `1430b41` `fix: correct live delay and duration scheduling boundaries`
+- `b534a89` `feat: make duration absolute and align fx docs`
+- `27369a0` `fix: restore CI for preview scheduling and stored-loop hit tests`
 
 ## Current Worktree State
 
-At the time of writing this handoff, the worktree is dirty and includes changes not made as part of this handoff. Do not overwrite them blindly.
+Current local branch state when this summary was refreshed:
 
-Observed modified/untracked items:
+- branch: `vk/9b67-feature-spec-mid`
+- status: clean worktree
+- divergence vs remote branch at refresh time:
+  - `ahead 74`
+  - `behind 64`
 
-- modified:
-  - `README.md`
-  - `artifacts/reviews/ui-findings.md`
-  - `scripts/deploy-rpi-zero-2w.ps1`
-  - `scripts/launch-rpi-zero-2w.sh`
-  - `src/app.rs`
-- untracked:
-  - `scripts/setup-rpi-zero-2w-runtime.sh`
+Before pushing or opening follow-up PR changes, re-check branch state and whether a rebase onto current `origin/main` is required.
 
-Those should be reviewed before any reset, cleanup, or broad staging step.
+## Important Implementation Considerations
+
+- Live timing effects are split across two clocks:
+  - transport/playback timing when playback is running
+  - `live_fx_ticks` when transport is stopped
+- Stopped-transport live input must be timestamped from `live_fx_ticks`, not `transport_ticks` / `playhead_ticks`, or delay/duration/arp timing will drift or collapse.
+- Playback timing transforms (`Delay`, absolute `Duration`) require source-note lookback beyond the current dispatch window so transformed note-offs are not lost after the source note leaves the current frame.
+- FX-engine tests alone are not enough for timing bugs; app-level tests that step playback/live windows explicitly were needed to catch the real failures.
+- Changing timing-sensitive FX mid-playback should be treated as a state reset boundary:
+  - send note-off/all-notes-off as needed
+  - reset live FX runtime state
+  - let following notes use only the new configuration
+- `Duration` now means absolute musical length, not relative percentage scaling.
+- `Delay` is delay-only (no negative look-ahead); any future “shift earlier” concept would need a different design because live paths do not have future note knowledge.
 
 ## Highest-Value Next Steps
 
-1. Tackle remaining timeline clarity issues from `artifacts/reviews/ui-findings.md`, especially the transport strip density and track header readability.
-2. Improve `Routing` and `Mappings` further so pointer affordances are more explicit and less text-dependent.
+1. Rebase/push the MIDI FX slice and verify CI on the rebased branch state.
+2. Decide whether MIDI mapping for FX parameters/kinds/toggles should land after the related mapping branch merges.
 3. Move MIDI timing and capture further off the UI loop.
 4. Design the timeline note/region editing UX before implementing pointer editing.
-5. Decide whether the in-progress Raspberry Pi Zero 2 W deployment scripts should be committed as a finished supported flow.
+5. Refresh screenshots/UI review again if the next FX/timeline polish materially changes the renderer output.
 
