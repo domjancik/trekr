@@ -263,6 +263,7 @@ Recommended tap semantics:
 - uses the same notation family as arp/delay (`Off`, `1/16`, `1/8`, `1/4`, `1/2`, `1 Bar`)
 - `Off` leaves the original note length unchanged
 - because only note start is required, this absolute-duration behavior is valid on both playback and live input paths
+- if the configured duration is longer than the source note, playback/live note-off must still be emitted at the configured absolute length rather than being dropped when the source note leaves the current scheduling window
 
 ### Scale Quantize
 
@@ -291,6 +292,7 @@ Recommended tap semantics:
 - uses musical duration notation like arp (`Off`, `1/16`, `1/8`, `1/4`, `1/2`, `1 Bar`)
 - does not support negative "look-ahead" shifting
 - live-signal semantics are delay-only: the effect may schedule notes later, but it must not require future note knowledge
+- playback scheduling must preserve delayed note-off emission even when the original source note no longer overlaps the current dispatch frame
 
 ## Deferred: Playback-Transform-Only Effects
 
@@ -566,6 +568,17 @@ When track notes play from the arrangement:
 
 - recorded/stored track notes are scheduled as today
 - output-chain processing is applied before MIDI output send
+- timing transforms that move note end later than the source note's original overlap window must still emit the transformed note-off
+
+### FX Reconfiguration During Playback
+
+Changing timing-sensitive FX while notes are already sounding must avoid stuck notes.
+
+Required behavior:
+
+- changing effect kind, enabled state, ordering, or timing parameters while playback/live monitoring is active sends note-off / all-notes-off as needed
+- live FX timing state is reset when timeline FX configuration changes
+- after the reset, subsequent notes should use the new configuration only
 
 ## Serialization
 
@@ -607,6 +620,8 @@ This avoids redesigning storage when automation arrives.
 - effects are manageable from a compact timeline presentation and an active-track editor on the Routing page
 - arp is supported in the initial effect family using the same extensible parameter model as other effects
 - list-valued parameters are supported for effects that need selective note or step collections
+- delay and duration do not leave notes stuck when transformed note-offs land outside the source note's original scheduling window
+- changing timing-related FX during playback/live monitoring does not leave previously sounding notes held
 - stacked scale/chord quantizers surface a stronger warning than generic duplicate-stack notices
 - effect control routes through the canonical action layer and supports active-track and absolute-track mapping scope
 - parameter storage is schema-driven enough to support future effects and modulation without per-effect ad hoc UI state
