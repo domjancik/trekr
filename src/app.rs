@@ -13,7 +13,8 @@ use crate::mapping::{
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind,
     MidiFxInlineParam, MidiFxSlot, cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
-    process_live_chain_event, process_live_chain_tick, reset_live_fx_timing, transform_notes,
+    playback_timing_lookback_ticks, process_live_chain_event, process_live_chain_tick,
+    reset_live_fx_timing, transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -8312,12 +8313,17 @@ impl App {
             .map(|(track_index, track)| {
                 let channel = track.routing.output_channel.unwrap_or(1).clamp(1, 16);
                 let port = track.routing.output_port.clone();
+                let output_lookback = playback_timing_lookback_ticks(&track.midi_fx.output_fx);
+                let lookback_padding =
+                    output_lookback.saturating_add(u64::from(output_lookback > 0));
+                let source_previous_ticks = previous_ticks.saturating_sub(lookback_padding);
+                let source_advanced_ticks = advanced_ticks.saturating_add(lookback_padding);
                 let mut visited = vec![false; self.project.tracks.len()];
                 let mut pre_output_notes = self
                     .effective_track_pre_output_playback_notes_recursive(
                         track_index,
-                        previous_ticks,
-                        advanced_ticks,
+                        source_previous_ticks,
+                        source_advanced_ticks,
                         &mut visited,
                     );
                 let preview_notes = track.playback_preview_notes(
@@ -8328,8 +8334,8 @@ impl App {
                 let preview_occurrences = scheduled_note_occurrences(
                     track,
                     &preview_notes,
-                    previous_ticks,
-                    advanced_ticks,
+                    source_previous_ticks,
+                    source_advanced_ticks,
                     self.playback_loop_range_for_track(track),
                 );
                 pre_output_notes.extend(preview_occurrences);
@@ -12697,6 +12703,80 @@ mod tests {
         assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
             port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_some()
         }));
+    }
+
+    #[test]
+    fn playback_output_delay_emits_note_off_after_source_note_window() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 240, 100));
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 60 },
+        });
+
+        app.dispatch_midi_notes(0, 60);
+        assert!(app.midi_output.sent_messages().is_empty());
+
+        app.dispatch_midi_notes(60, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_midi_notes(120, 60);
+        app.dispatch_midi_notes(180, 60);
+        app.dispatch_midi_notes(240, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_midi_notes(300, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(100)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn demo_track_three_delay_releases_notes_with_small_frame_windows() {
+        let mut app = App::new();
+        app.project.tracks[2].routing.output_port = Some(MidiPortRef::new("Out C"));
+        app.project.tracks[2].routing.output_channel = Some(3);
+        app.project.tracks[2].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[2].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 60 },
+        });
+
+        for start in [0_u64, 60, 120, 180, 240, 300, 360, 420] {
+            app.dispatch_midi_notes(start, 60);
+        }
+
+        let sent = app.midi_output.sent_messages();
+        let note_on_count = sent
+            .iter()
+            .filter(|(port, channel, pitch, velocity)| {
+                port == "Out C" && *channel == 3 && *pitch == 55 && velocity.is_some()
+            })
+            .count();
+        let note_off_count = sent
+            .iter()
+            .filter(|(port, channel, pitch, velocity)| {
+                port == "Out C" && *channel == 3 && *pitch == 55 && velocity.is_none()
+            })
+            .count();
+        assert_eq!(note_on_count, 1);
+        assert_eq!(note_off_count, 1);
     }
 
     #[test]

@@ -1334,6 +1334,16 @@ pub fn transform_notes(
     transformed
 }
 
+pub fn playback_timing_lookback_ticks(chain: &[Option<MidiFxSlot>]) -> u64 {
+    let mut lookback = 0_u64;
+    for slot in chain.iter().flatten().filter(|slot| slot.enabled) {
+        if let MidiFx::Delay { ticks } = slot.effect {
+            lookback = lookback.saturating_add(ticks);
+        }
+    }
+    lookback
+}
+
 fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote], global_quantize_root: u8) -> Vec<MidiNote> {
     match &slot.effect {
         MidiFx::TrackClone { .. } => notes.to_vec(),
