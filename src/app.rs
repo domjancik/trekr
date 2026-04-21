@@ -6772,15 +6772,19 @@ impl App {
         let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
             return;
         };
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        if let Some(Some(slot)) = chain.get_mut(slot_index) {
-            slot.enabled = !slot.enabled;
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            if let Some(Some(slot)) = chain.get_mut(slot_index) {
+                slot.enabled = !slot.enabled;
+                changed = true;
+            }
+        }
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
         }
     }
 
@@ -6789,22 +6793,27 @@ impl App {
             return;
         };
         let selected_slot_index = self.selected_timeline_fx_slot_index(chain_kind);
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        if let Some(slot_index) = selected_slot_index {
-            if let Some(Some(slot)) = chain.get_mut(slot_index) {
-                *slot = cycle_existing_fx_kind(slot, delta);
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            if let Some(slot_index) = selected_slot_index {
+                if let Some(Some(slot)) = chain.get_mut(slot_index) {
+                    *slot = cycle_existing_fx_kind(slot, delta);
+                    changed = true;
+                }
+            } else if let Some(empty_slot) = chain.iter().position(|slot| slot.is_none()) {
+                chain[empty_slot] = cycle_fx_kind(None, delta);
+                self.set_selected_timeline_fx_slot_index(chain_kind, empty_slot);
+                changed = true;
             }
-        } else if let Some(empty_slot) = chain.iter().position(|slot| slot.is_none()) {
-            chain[empty_slot] = cycle_fx_kind(None, delta);
-            self.set_selected_timeline_fx_slot_index(chain_kind, empty_slot);
         }
         self.normalize_timeline_fx_selection();
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
     }
 
     fn add_selected_timeline_fx(&mut self) {
@@ -6825,24 +6834,28 @@ impl App {
         let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
             return;
         };
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let (chain, windows) = match chain_kind {
-            MidiFxChainKind::Input => (
-                &mut track.midi_fx.input_fx,
-                &mut track.midi_fx.timeline_ui.input_param_windows,
-            ),
-            MidiFxChainKind::Output => (
-                &mut track.midi_fx.output_fx,
-                &mut track.midi_fx.timeline_ui.output_param_windows,
-            ),
-        };
-        chain[slot_index] = None;
-        if let Some(window) = windows.get_mut(slot_index) {
-            *window = 0;
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let (chain, windows) = match chain_kind {
+                MidiFxChainKind::Input => (
+                    &mut track.midi_fx.input_fx,
+                    &mut track.midi_fx.timeline_ui.input_param_windows,
+                ),
+                MidiFxChainKind::Output => (
+                    &mut track.midi_fx.output_fx,
+                    &mut track.midi_fx.timeline_ui.output_param_windows,
+                ),
+            };
+            chain[slot_index] = None;
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = 0;
+            }
+            changed = true;
         }
         self.normalize_timeline_fx_selection();
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
     }
 
     fn adjust_selected_timeline_fx_parameter(&mut self, visible_offset: usize, delta: i32) {
@@ -6856,18 +6869,22 @@ impl App {
         let ppqn = self.project.transport.ppqn;
         let window_start = self.selected_timeline_fx_param_window(chain_kind);
         let parameter_index = window_start + visible_offset;
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        let Some(Some(slot)) = chain.get_mut(slot_index) else {
-            return;
-        };
-        slot.effect
-            .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            let Some(Some(slot)) = chain.get_mut(slot_index) else {
+                return;
+            };
+            slot.effect
+                .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
+            changed = true;
+        }
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
     }
 
     fn scroll_selected_timeline_fx_parameter_window(&mut self, delta: i32) {
@@ -6908,22 +6925,26 @@ impl App {
         }
         let source_slot = active_slots[row_index];
         let target_slot = active_slots[target_row];
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let (chain, windows) = match chain_kind {
-            MidiFxChainKind::Input => (
-                &mut track.midi_fx.input_fx,
-                &mut track.midi_fx.timeline_ui.input_param_windows,
-            ),
-            MidiFxChainKind::Output => (
-                &mut track.midi_fx.output_fx,
-                &mut track.midi_fx.timeline_ui.output_param_windows,
-            ),
-        };
-        chain.swap(source_slot, target_slot);
-        windows.swap(source_slot, target_slot);
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let (chain, windows) = match chain_kind {
+                MidiFxChainKind::Input => (
+                    &mut track.midi_fx.input_fx,
+                    &mut track.midi_fx.timeline_ui.input_param_windows,
+                ),
+                MidiFxChainKind::Output => (
+                    &mut track.midi_fx.output_fx,
+                    &mut track.midi_fx.timeline_ui.output_param_windows,
+                ),
+            };
+            chain.swap(source_slot, target_slot);
+            windows.swap(source_slot, target_slot);
+            changed = true;
+        }
         self.set_selected_timeline_fx_row(chain_kind, target_row);
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
     }
 
     fn adjust_page_item(&mut self, delta: i32) {
@@ -8426,6 +8447,16 @@ impl App {
 
     fn silence_tracks_for_loop_change(&mut self) {
         self.silence_all_tracks();
+    }
+
+    fn handle_timeline_fx_configuration_changed(&mut self) {
+        self.silence_all_tracks();
+        let current_ticks = if self.project.transport.playing {
+            self.transport_ticks
+        } else {
+            self.live_fx_ticks
+        };
+        self.reset_live_fx_timing(current_ticks);
     }
 
     fn reset_live_fx_timing(&mut self, current_ticks: u64) {
@@ -12832,6 +12863,46 @@ mod tests {
                 ("Out A".to_string(), 1, 60, Some(100)),
                 ("Out A".to_string(), 1, 60, None),
             ]
+        );
+    }
+
+    #[test]
+    fn shortening_duration_mid_playback_sends_all_notes_off_and_resets_fx_timing() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.transport.playing = true;
+        app.transport_ticks = 0;
+        app.playhead_ticks = 0;
+        app.project.select_track(0);
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 60, 100));
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        });
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.page_state.selected_timeline_fx_field = TimelineFxField::ParamPrimary;
+        app.set_selected_timeline_fx_slot_index(MidiFxChainKind::Output, 0);
+
+        app.dispatch_midi_notes(0, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+        let baseline_all_notes_off = app.midi_output.sent_all_notes_off_count();
+
+        app.adjust_selected_timeline_fx_parameter(0, -1);
+
+        assert!(app.midi_output.sent_all_notes_off_count() > baseline_all_notes_off);
+        assert!(
+            app.midi_output
+                .sent_messages()
+                .contains(&("Out A".to_string(), 1, 123, None))
         );
     }
 
