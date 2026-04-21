@@ -83,6 +83,14 @@ The page should make the following visible:
 
 V1 may prioritize display-first with lightweight editing, but the structure should support later in-app reassignment and learn flows.
 
+The mappings page should also follow the same unified action model as the rest of the app:
+
+- important editor/navigation operations should resolve through canonical app actions rather than existing only as keyboard-specific logic
+- direct pointer interaction and keyboard text lookup may exist as accelerators on top of that action model
+- keyboard text lookup is an allowed exception for large choice sets, but it should remain an accelerator rather than the only way to complete an edit
+
+This preserves the product direction that the app is hyper-mappable: durable operations should be reachable from any supported input surface once exposed in the mappings system.
+
 ### MIDI I/O Page
 
 The MIDI I/O page should expose device selection and availability for the full application:
