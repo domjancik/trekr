@@ -6869,6 +6869,7 @@ impl App {
         match self.page_state.current_page {
             AppPage::Timeline => self.select_next_timeline_context(),
             AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
+                self.clear_mapping_target_lookup();
                 self.page_state.selected_mapping_field =
                     self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
                 self.page_state.mapping_midi_learn_armed = false;
@@ -7312,19 +7313,6 @@ impl App {
         self.set_selected_timeline_fx_row(chain_kind, target_row);
         if changed {
             self.handle_timeline_fx_configuration_changed();
-        }
-    }
-
-    fn select_next_page_field(&mut self) {
-        match self.page_state.current_page {
-            AppPage::Timeline => self.select_next_timeline_context(),
-            AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
-                self.clear_mapping_target_lookup();
-                self.page_state.selected_mapping_field =
-                    self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
-                self.page_state.mapping_midi_learn_armed = false;
-            }
-            _ => {}
         }
     }
 
