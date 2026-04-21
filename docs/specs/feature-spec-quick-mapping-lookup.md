@@ -352,7 +352,7 @@ Recommended picker behavior once editor navigation targets are exposed:
 - `ActivatePageItem` on `Target` opens lookup
 - `AdjustPageItemForward` / `AdjustPageItemBackward` moves highlighted lookup result while lookup is open
 - `ActivatePageItem` commits highlighted result while lookup is open
-- a future explicit `Cancel` action closes lookup without mutation
+- `Cancel` closes lookup without mutation and restores the original target/scope
 
 This would let:
 

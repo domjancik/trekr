@@ -268,6 +268,7 @@ The `Mappings` page now supports two modes:
 - `Write` mode also supports adding/removing rows and cycling track-scoped mappings into concrete `Track 1`, `Track 2`, ... scopes
 - selecting the `Target` field and pressing `Enter` opens inline lookup; type to filter targets, use `Up` / `Down` to choose, `Enter` to commit, and `Escape` to cancel
 - mappings now also expose mappings-page editor/navigation actions as mapping targets, so row/field navigation and activation can be driven through the same canonical action model as the rest of the app
+- `Cancel` is now also exposed as a mapping target so lookup/direct-mapping cancel can be triggered from non-keyboard inputs too
 - direct UI mapping entry through `F8` or the `Tap Direct Map` chip, with target selection on supported timeline and routing controls
 
 MIDI learn notes:
@@ -285,6 +286,7 @@ MIDI learn notes:
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
 - while target lookup is open, `Tab` is suppressed so lookup keeps focus until explicit commit/cancel
 - while target lookup is open, canonical page actions now drive it too: next/previous item and adjust actions move the highlighted result through the full result set without wrapping, scrolling the visible list as needed, and activate commits it
+- `Escape` now closes lookup via the canonical `Cancel` action, so cancel is action-tracked and remappable
 - note-edit targets are available in the mappings page for playhead selection, span focus/resize, deselect, and pitch/time nudging
 - recording-stack targets are available in the mappings page for recording view toggle, clip-step selection, selected clip mute, and selected clip delete
 

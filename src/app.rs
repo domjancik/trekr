@@ -5858,6 +5858,14 @@ impl App {
                 self.reverse_activate_page_item();
                 AppControl::Continue
             }
+            AppAction::CancelCurrentMode => {
+                if self.target_lookup_state.active.is_some() {
+                    self.cancel_mapping_target_lookup();
+                } else if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
+                    self.cancel_direct_mapping("Canceled direct mapping.");
+                }
+                AppControl::Continue
+            }
             AppAction::ToggleMappingsOverlay => {
                 self.overlay_state.active =
                     if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
@@ -8974,8 +8982,10 @@ impl App {
                     repeat: false,
                     ..
                 } => {
-                    self.cancel_mapping_target_lookup();
-                    return Some(AppControl::Continue);
+                    return Some(self.apply_action_with_source(
+                        AppAction::CancelCurrentMode,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
                 }
                 sdl3::event::Event::KeyDown {
                     keycode: Some(sdl3::keyboard::Keycode::Backspace),
@@ -9010,8 +9020,10 @@ impl App {
             }
         ) && self.direct_mapping_state.mode != DirectMappingMode::Inactive
         {
-            self.cancel_direct_mapping("Canceled direct mapping.");
-            return Some(AppControl::Continue);
+            return Some(self.apply_action_with_source(
+                AppAction::CancelCurrentMode,
+                crate::actions::ActionSource::Keyboard,
+            ));
         }
 
         if let Some(source_label) = direct_mapping_key_label(event) {
@@ -12241,6 +12253,13 @@ mod tests {
         assert_eq!(app.mappings[0].target_label, "Track Arm");
         assert_eq!(app.mappings[0].scope_label, "Track 3");
         assert!(app.target_lookup_state.active.is_none());
+        assert_eq!(
+            app.status_state
+                .last_action
+                .as_ref()
+                .map(|status| status.action),
+            Some(AppAction::CancelCurrentMode)
+        );
     }
 
     #[test]
