@@ -4033,6 +4033,10 @@ impl App {
         entry.scope_label = lookup.original_scope_label;
     }
 
+    fn mapping_target_lookup_is_active(&self) -> bool {
+        self.target_lookup_state.active.is_some()
+    }
+
     fn move_mapping_target_lookup_highlight(&mut self, delta: i32) {
         let results = self.mapping_target_lookup_results();
         let Some(lookup) = self.target_lookup_state.active.as_mut() else {
@@ -6743,6 +6747,10 @@ impl App {
     }
 
     fn select_previous_page_item(&mut self) {
+        if self.mapping_target_lookup_is_active() {
+            self.move_mapping_target_lookup_highlight(-1);
+            return;
+        }
         self.clear_mapping_target_lookup();
         match self.page_state.current_page {
             AppPage::Timeline => {
@@ -6781,6 +6789,10 @@ impl App {
     }
 
     fn select_next_page_item(&mut self) {
+        if self.mapping_target_lookup_is_active() {
+            self.move_mapping_target_lookup_highlight(1);
+            return;
+        }
         self.clear_mapping_target_lookup();
         match self.page_state.current_page {
             AppPage::Timeline => {
@@ -7294,6 +7306,10 @@ impl App {
     }
 
     fn adjust_page_item(&mut self, delta: i32) {
+        if self.mapping_target_lookup_is_active() {
+            self.move_mapping_target_lookup_highlight(delta);
+            return;
+        }
         match self.page_state.current_page {
             AppPage::Timeline => self.adjust_timeline_context(delta),
             AppPage::Mappings => {
@@ -7312,6 +7328,10 @@ impl App {
     }
 
     fn activate_page_item(&mut self) {
+        if self.mapping_target_lookup_is_active() {
+            self.commit_mapping_target_lookup();
+            return;
+        }
         match self.page_state.current_page {
             AppPage::Timeline => self.activate_timeline_context_item(),
             AppPage::Mappings => {
@@ -8940,30 +8960,6 @@ impl App {
                     ..
                 } => {
                     self.cancel_mapping_target_lookup();
-                    return Some(AppControl::Continue);
-                }
-                sdl3::event::Event::KeyDown {
-                    keycode: Some(sdl3::keyboard::Keycode::Return),
-                    repeat: false,
-                    ..
-                } => {
-                    self.commit_mapping_target_lookup();
-                    return Some(AppControl::Continue);
-                }
-                sdl3::event::Event::KeyDown {
-                    keycode: Some(sdl3::keyboard::Keycode::Up),
-                    repeat: false,
-                    ..
-                } => {
-                    self.move_mapping_target_lookup_highlight(-1);
-                    return Some(AppControl::Continue);
-                }
-                sdl3::event::Event::KeyDown {
-                    keycode: Some(sdl3::keyboard::Keycode::Down),
-                    repeat: false,
-                    ..
-                } => {
-                    self.move_mapping_target_lookup_highlight(1);
                     return Some(AppControl::Continue);
                 }
                 sdl3::event::Event::KeyDown {
@@ -12227,6 +12223,48 @@ mod tests {
 
         assert_eq!(app.mappings[0].target_label, "Track Arm");
         assert_eq!(app.mappings[0].scope_label, "Track 3");
+        assert!(app.target_lookup_state.active.is_none());
+    }
+
+    #[test]
+    fn mappings_target_lookup_uses_canonical_page_actions_while_open() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert!(app.target_lookup_state.active.is_some());
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(0)
+        );
+
+        app.apply_action(AppAction::SelectNextPageItem);
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(1)
+        );
+
+        app.apply_action(AppAction::AdjustPageItemForward);
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(2)
+        );
+
+        let expected = app.mapping_target_lookup_highlighted_label();
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert_eq!(app.mappings[0].target_label.as_str(), expected.unwrap());
         assert!(app.target_lookup_state.active.is_none());
     }
 

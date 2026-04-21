@@ -159,6 +159,16 @@ const TARGET_OPTIONS: &[&str] = &[
     "Nudge Selected Notes Later",
     "Nudge Selected Notes Up",
     "Nudge Selected Notes Down",
+    "Previous Page Item",
+    "Next Page Item",
+    "Adjust Page Item Backward",
+    "Adjust Page Item Forward",
+    "Activate Page Item",
+    "Mappings Write Mode",
+    "Add Mapping",
+    "Remove Mapping",
+    "Previous Mapping Field",
+    "Next Mapping Field",
     "Pages/Overlay",
     "Link Enable",
     "Link Start/Stop",
@@ -334,7 +344,17 @@ fn fuzzy_match_distance(label: &str, query: &str) -> Option<usize> {
 
 fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<String> {
     match target_label {
-        "Play/Stop"
+        "Previous Page Item"
+        | "Next Page Item"
+        | "Adjust Page Item Backward"
+        | "Adjust Page Item Forward"
+        | "Activate Page Item"
+        | "Mappings Write Mode"
+        | "Add Mapping"
+        | "Remove Mapping"
+        | "Previous Mapping Field"
+        | "Next Mapping Field"
+        | "Play/Stop"
         | "Record Mode"
         | "Loop Recording Wrap"
         | "Song Loop"
@@ -607,6 +627,16 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
 pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) -> Vec<AppAction> {
     let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
     match entry.target_label.as_str() {
+        "Previous Page Item" => vec![AppAction::SelectPreviousPageItem],
+        "Next Page Item" => vec![AppAction::SelectNextPageItem],
+        "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
+        "Adjust Page Item Forward" => vec![AppAction::AdjustPageItemForward],
+        "Activate Page Item" => vec![AppAction::ActivatePageItem],
+        "Mappings Write Mode" => vec![AppAction::ToggleMappingsWriteMode],
+        "Add Mapping" => vec![AppAction::AddMappingRow],
+        "Remove Mapping" => vec![AppAction::RemoveSelectedMapping],
+        "Previous Mapping Field" => vec![AppAction::SelectPreviousPageField],
+        "Next Mapping Field" => vec![AppAction::SelectNextPageField],
         "Play/Stop" => vec![AppAction::TogglePlayback],
         "Record" => vec![AppAction::ToggleRecording],
         "Record Hold" => hold_mapping_actions(
@@ -765,6 +795,16 @@ fn track_scoped_actions(
 fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
     let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
     match entry.target_label.as_str() {
+        "Previous Page Item" => vec![AppAction::SelectPreviousPageItem],
+        "Next Page Item" => vec![AppAction::SelectNextPageItem],
+        "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
+        "Adjust Page Item Forward" => vec![AppAction::AdjustPageItemForward],
+        "Activate Page Item" => vec![AppAction::ActivatePageItem],
+        "Mappings Write Mode" => vec![AppAction::ToggleMappingsWriteMode],
+        "Add Mapping" => vec![AppAction::AddMappingRow],
+        "Remove Mapping" => vec![AppAction::RemoveSelectedMapping],
+        "Previous Mapping Field" => vec![AppAction::SelectPreviousPageField],
+        "Next Mapping Field" => vec![AppAction::SelectNextPageField],
         "Play/Stop" => vec![AppAction::TogglePlayback],
         "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
         "Record Mode" => vec![AppAction::CycleRecordMode],
@@ -1129,5 +1169,45 @@ mod tests {
             &entry,
             AppAction::RecallStoredLoopSlot2
         ));
+    }
+
+    #[test]
+    fn editor_navigation_targets_resolve_to_page_actions() {
+        let event = MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        };
+        let cases = [
+            ("Previous Page Item", AppAction::SelectPreviousPageItem),
+            ("Next Page Item", AppAction::SelectNextPageItem),
+            (
+                "Adjust Page Item Backward",
+                AppAction::AdjustPageItemBackward,
+            ),
+            ("Adjust Page Item Forward", AppAction::AdjustPageItemForward),
+            ("Activate Page Item", AppAction::ActivatePageItem),
+            ("Mappings Write Mode", AppAction::ToggleMappingsWriteMode),
+            ("Add Mapping", AppAction::AddMappingRow),
+            ("Remove Mapping", AppAction::RemoveSelectedMapping),
+            ("Previous Mapping Field", AppAction::SelectPreviousPageField),
+            ("Next Mapping Field", AppAction::SelectNextPageField),
+        ];
+
+        for (target_label, action) in cases {
+            let entry = MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Port A".to_string(),
+                source_label: "CC20".to_string(),
+                target_label: target_label.to_string(),
+                scope_label: "Global".to_string(),
+                enabled: true,
+            };
+            assert_eq!(mapping_entry_to_actions(&entry, &event), vec![action]);
+            assert!(mapping_entry_targets_action(&entry, action));
+        }
     }
 }
