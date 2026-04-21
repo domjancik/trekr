@@ -1335,13 +1335,20 @@ pub fn transform_notes(
 }
 
 pub fn playback_timing_lookback_ticks(chain: &[Option<MidiFxSlot>]) -> u64 {
-    let mut lookback = 0_u64;
+    let mut delay_ticks = 0_u64;
+    let mut duration_ticks = None;
     for slot in chain.iter().flatten().filter(|slot| slot.enabled) {
-        if let MidiFx::Delay { ticks } = slot.effect {
-            lookback = lookback.saturating_add(ticks);
+        match slot.effect {
+            MidiFx::Delay { ticks } => {
+                delay_ticks = delay_ticks.saturating_add(ticks);
+            }
+            MidiFx::Duration { ticks } if ticks > 0 => {
+                duration_ticks = Some(ticks);
+            }
+            _ => {}
         }
     }
-    lookback
+    delay_ticks.saturating_add(duration_ticks.unwrap_or(0))
 }
 
 fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote], global_quantize_root: u8) -> Vec<MidiNote> {
@@ -1539,8 +1546,8 @@ mod tests {
     use super::{
         ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, QuantizeTarget,
         arp_rate_label, cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label,
-        duration_rate_label, process_live_chain_event, process_live_chain_tick, process_live_event,
-        transform_notes,
+        duration_rate_label, playback_timing_lookback_ticks, process_live_chain_event,
+        process_live_chain_tick, process_live_event, transform_notes,
     };
     use crate::project::MidiNote;
 
@@ -1902,6 +1909,22 @@ mod tests {
             process_live_chain_tick(&chain, &mut state, 0, 240, 0),
             vec![(240, LiveMidiFxEvent::NoteOff { pitch: 60 })]
         );
+    }
+
+    #[test]
+    fn playback_timing_lookback_covers_delay_and_absolute_duration() {
+        let chain = [
+            Some(MidiFxSlot {
+                enabled: true,
+                effect: MidiFx::Delay { ticks: 60 },
+            }),
+            Some(MidiFxSlot {
+                enabled: true,
+                effect: MidiFx::Duration { ticks: 240 },
+            }),
+        ];
+
+        assert_eq!(playback_timing_lookback_ticks(&chain), 300);
     }
 
     #[test]

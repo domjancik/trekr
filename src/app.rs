@@ -12748,35 +12748,91 @@ mod tests {
     }
 
     #[test]
-    fn demo_track_three_delay_releases_notes_with_small_frame_windows() {
+    fn playback_output_delay_releases_notes_for_repeated_pattern_across_small_windows() {
         let mut app = App::new();
-        app.project.tracks[2].routing.output_port = Some(MidiPortRef::new("Out C"));
-        app.project.tracks[2].routing.output_channel = Some(3);
-        app.project.tracks[2].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[2].midi_fx.output_fx[0] = Some(MidiFxSlot {
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_notes = vec![
+            MidiNote::new(60, 0, 240, 100),
+            MidiNote::new(64, 480, 240, 96),
+        ];
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
             enabled: true,
             effect: MidiFx::Delay { ticks: 60 },
         });
 
-        for start in [0_u64, 60, 120, 180, 240, 300, 360, 420] {
+        for start in [
+            0_u64, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720, 780,
+        ] {
             app.dispatch_midi_notes(start, 60);
         }
 
         let sent = app.midi_output.sent_messages();
-        let note_on_count = sent
-            .iter()
-            .filter(|(port, channel, pitch, velocity)| {
-                port == "Out C" && *channel == 3 && *pitch == 55 && velocity.is_some()
-            })
-            .count();
-        let note_off_count = sent
-            .iter()
-            .filter(|(port, channel, pitch, velocity)| {
-                port == "Out C" && *channel == 3 && *pitch == 55 && velocity.is_none()
-            })
-            .count();
-        assert_eq!(note_on_count, 1);
-        assert_eq!(note_off_count, 1);
+        for (pitch, velocity) in [(60, Some(100)), (64, Some(96))] {
+            assert_eq!(
+                sent.iter()
+                    .filter(|(port, channel, event_pitch, event_velocity)| {
+                        port == "Out A"
+                            && *channel == 1
+                            && *event_pitch == pitch
+                            && *event_velocity == velocity
+                    })
+                    .count(),
+                1
+            );
+            assert_eq!(
+                sent.iter()
+                    .filter(|(port, channel, event_pitch, event_velocity)| {
+                        port == "Out A"
+                            && *channel == 1
+                            && *event_pitch == pitch
+                            && event_velocity.is_none()
+                    })
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn playback_output_duration_releases_note_after_extended_length_window() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 60, 100));
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        });
+
+        app.dispatch_midi_notes(0, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_midi_notes(60, 60);
+        app.dispatch_midi_notes(120, 60);
+        app.dispatch_midi_notes(180, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(100))]
+        );
+
+        app.dispatch_midi_notes(240, 60);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(100)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
     }
 
     #[test]
