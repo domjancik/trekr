@@ -284,7 +284,7 @@ MIDI learn notes:
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields
 - while target lookup is open, `Tab` is suppressed so lookup keeps focus until explicit commit/cancel
-- while target lookup is open, canonical page actions now drive it too: next/previous item and adjust actions move the highlighted result, and activate commits it
+- while target lookup is open, canonical page actions now drive it too: next/previous item and adjust actions move the highlighted result through the full result set without wrapping, scrolling the visible list as needed, and activate commits it
 - note-edit targets are available in the mappings page for playhead selection, span focus/resize, deselect, and pitch/time nudging
 - recording-stack targets are available in the mappings page for recording view toggle, clip-step selection, selected clip mute, and selected clip delete
 

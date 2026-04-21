@@ -167,6 +167,7 @@ struct ActiveMappingTargetLookup {
 struct MappingTargetLookupLayout {
     target_cell: Rect,
     results_panel: Rect,
+    start_index: usize,
     visible_count: usize,
 }
 
@@ -4046,11 +4047,11 @@ impl App {
             lookup.highlighted_index = 0;
             return;
         }
-        let len = results.len() as i32;
+        let max_index = results.len().saturating_sub(1) as i32;
         let current = lookup
             .highlighted_index
             .min(results.len().saturating_sub(1)) as i32;
-        lookup.highlighted_index = (current + delta).rem_euclid(len) as usize;
+        lookup.highlighted_index = (current + delta).clamp(0, max_index) as usize;
     }
 
     fn append_mapping_target_lookup_text(&mut self, text: &str) {
@@ -4153,10 +4154,26 @@ impl App {
         let preferred_y = target_cell.y + target_cell.height() as i32 + 2;
         let max_y = content_bounds.y + content_bounds.height() as i32 - panel_height as i32 - 24;
         let panel_y = preferred_y.min(max_y.max(content_bounds.y + 28));
+        let results_len = self.mapping_target_lookup_results().len();
+        let highlighted_index = self
+            .target_lookup_state
+            .active
+            .as_ref()
+            .map(|lookup| lookup.highlighted_index)
+            .unwrap_or(0)
+            .min(results_len.saturating_sub(1));
+        let start_index = if results_len <= result_count {
+            0
+        } else {
+            highlighted_index
+                .saturating_sub(result_count / 2)
+                .min(results_len - result_count)
+        };
 
         Some(MappingTargetLookupLayout {
             target_cell,
             results_panel: Rect::new(panel_x, panel_y, panel_width, panel_height),
+            start_index,
             visible_count: result_count,
         })
     }
@@ -4214,11 +4231,9 @@ impl App {
                 layout.results_panel.width().saturating_sub(8),
                 10,
             );
-            let highlighted = row_index
-                == lookup
-                    .highlighted_index
-                    .min(layout.visible_count.saturating_sub(1))
-                && !results.is_empty();
+            let result_index = layout.start_index + row_index;
+            let highlighted =
+                result_index == lookup.highlighted_index && result_index < results.len();
             canvas.set_draw_color(if highlighted {
                 Color::RGB(88, 98, 132)
             } else {
@@ -4227,7 +4242,7 @@ impl App {
             canvas.fill_rect(item_rect)?;
 
             let label = results
-                .get(row_index)
+                .get(result_index)
                 .copied()
                 .unwrap_or("No matching targets");
             crate::ui::draw_text_fitted(
@@ -9326,7 +9341,9 @@ impl App {
                 if relative_y >= 0 {
                     let row_index = (relative_y / 12) as usize;
                     let results = self.mapping_target_lookup_results();
-                    if let Some(label) = results.get(row_index.min(results.len().saturating_sub(1)))
+                    let result_index = layout.start_index + row_index;
+                    if let Some(label) =
+                        results.get(result_index.min(results.len().saturating_sub(1)))
                     {
                         self.commit_mapping_target_lookup_label(label);
                     }
@@ -12266,6 +12283,60 @@ mod tests {
 
         assert_eq!(app.mappings[0].target_label.as_str(), expected.unwrap());
         assert!(app.target_lookup_state.active.is_none());
+    }
+
+    #[test]
+    fn mappings_target_lookup_next_and_previous_clamp_and_scroll_instead_of_wrapping() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        let result_len = app.mapping_target_lookup_results().len();
+        assert!(result_len > 6);
+
+        for _ in 0..(result_len + 3) {
+            app.apply_action(AppAction::SelectNextPageItem);
+        }
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(result_len - 1)
+        );
+
+        let content_bounds = Rect::new(0, 0, 960, 540);
+        let layout = app
+            .mapping_target_lookup_layout(content_bounds)
+            .expect("lookup layout");
+        assert_eq!(layout.visible_count, 6);
+        assert_eq!(layout.start_index, result_len - layout.visible_count);
+
+        app.apply_action(AppAction::SelectNextPageItem);
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(result_len - 1)
+        );
+
+        for _ in 0..(result_len + 3) {
+            app.apply_action(AppAction::SelectPreviousPageItem);
+        }
+        assert_eq!(
+            app.target_lookup_state
+                .active
+                .as_ref()
+                .map(|lookup| lookup.highlighted_index),
+            Some(0)
+        );
+        let layout = app
+            .mapping_target_lookup_layout(content_bounds)
+            .expect("lookup layout");
+        assert_eq!(layout.start_index, 0);
     }
 
     #[test]

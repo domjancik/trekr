@@ -107,7 +107,7 @@ Notes:
   - `Previous Mapping Field`
   - `Next Mapping Field`
 - while target lookup is open, canonical page actions now operate it:
-  - next/previous item and adjust actions move the highlighted result
+  - next/previous item and adjust actions move the highlighted result through the full filtered set without wrapping, scrolling the visible window as needed
   - activate commits the highlighted result
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets

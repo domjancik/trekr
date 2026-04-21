@@ -172,7 +172,7 @@ Recommended keyboard shortcut behavior:
 - first `Enter` on `Target` opens lookup edit mode
 - subsequent `Enter` commits the currently highlighted result
 - `Escape` cancels lookup edit mode and restores the original target/scope
-- `Up` / `Down` moves within filtered results while lookup is open
+- `Up` / `Down` moves within filtered results while lookup is open; reaching the bottom/top of the visible subset should continue through the full filtered result set by scrolling rather than wrapping
 - typed printable keys update the query instead of triggering global bindings
 - `Backspace` deletes one query character
 
@@ -429,6 +429,7 @@ Not part of this spec-only commit, but likely follow-up implementation updates:
 - The result list filters canonical mapping targets from the current `src/mapping.rs` catalog.
 - Fuzzy or substring matching allows queries like `arm`, `slot 4`, `record`, or `note` to surface relevant targets quickly.
 - `Up` / `Down` changes the highlighted result and `Enter` commits it.
+- Hitting `Next` on the last visible row or `Previous` on the first visible row should move through the remaining filtered results by scrolling the list window; it should not wrap to the opposite end.
 - `Escape` cancels lookup edit mode without mutating the row.
 - Committing a new target preserves the current scope when that scope remains valid for the new target.
 - Committing a new target resets scope only when the previous scope is invalid for the chosen target.
