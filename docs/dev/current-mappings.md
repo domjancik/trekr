@@ -95,6 +95,20 @@ Notes:
 - current design direction:
   - the mappings page should eventually expose its own editor/navigation actions as mapping targets so MIDI and other mapped inputs can drive row/field selection and activation through the same canonical action model
   - keyboard lookup remains valuable as a deliberate accelerator for large target sets, but it is not intended to become the only completion path long-term
+- mappings now expose editor/navigation targets including:
+  - `Previous Page Item`
+  - `Next Page Item`
+  - `Adjust Page Item Backward`
+  - `Adjust Page Item Forward`
+  - `Activate Page Item`
+  - `Mappings Write Mode`
+  - `Add Mapping`
+  - `Remove Mapping`
+  - `Previous Mapping Field`
+  - `Next Mapping Field`
+- while target lookup is open, canonical page actions now operate it:
+  - next/previous item and adjust actions move the highlighted result
+  - activate commits the highlighted result
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
