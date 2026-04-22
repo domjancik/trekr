@@ -1,10 +1,16 @@
 use crate::{
     present::window_present_plan,
-    theme::{app_chrome, mappings as mappings_theme},
+    theme::{app_chrome, mappings as mappings_theme, transport as transport_theme},
 };
 
 use super::*;
 use super::shell_layout::{page_tabs_layout, preferred_branding_width};
+
+pub(super) struct TransportChipSpec {
+    pub(super) label: String,
+    pub(super) action: Option<AppAction>,
+    pub(super) fill: Color,
+}
 
 impl App {
     pub(super) fn draw_frame_surface(
@@ -178,10 +184,10 @@ impl App {
 
             let accent = Rect::new(tab.x + 6, tab.y + 6, 18, tab.height().saturating_sub(12));
             let color = match page {
-                AppPage::Timeline => Color::RGB(84, 144, 220),
-                AppPage::Mappings => Color::RGB(212, 168, 84),
-                AppPage::MidiIo => Color::RGB(96, 200, 164),
-                AppPage::Routing => Color::RGB(224, 112, 112),
+                AppPage::Timeline => app_chrome::TAB_ACCENT_TIMELINE,
+                AppPage::Mappings => app_chrome::TAB_ACCENT_MAPPINGS,
+                AppPage::MidiIo => app_chrome::TAB_ACCENT_MIDI_IO,
+                AppPage::Routing => app_chrome::TAB_ACCENT_ROUTING,
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
@@ -226,6 +232,146 @@ impl App {
         Ok(())
     }
 
+    pub(super) fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!("Play {}", on_off(self.project.transport.playing)),
+                action: Some(AppAction::TogglePlayback),
+                fill: if self.project.transport.playing {
+                    transport_theme::PLAY_ACTIVE
+                } else {
+                    transport_theme::PLAY_IDLE
+                },
+            },
+            TransportChipSpec {
+                label: format!("Record {}", on_off(self.project.transport.recording)),
+                action: Some(AppAction::ToggleRecording),
+                fill: if self.project.transport.recording {
+                    transport_theme::RECORD_ACTIVE
+                } else {
+                    transport_theme::RECORD_IDLE
+                },
+            },
+            TransportChipSpec {
+                label: format!("Mode {}", self.project.transport.record_mode.label()),
+                action: Some(AppAction::CycleRecordMode),
+                fill: transport_theme::RECORD_MODE,
+            },
+        ]
+    }
+
+    pub(super) fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!(
+                    "Wrap {}",
+                    if self.project.transport.loop_recording_extends_clip {
+                        "Extend"
+                    } else {
+                        "Clamp"
+                    }
+                ),
+                action: Some(AppAction::ToggleLoopRecordingExtension),
+                fill: if self.project.transport.loop_recording_extends_clip {
+                    transport_theme::LOOP_WRAP_EXTEND
+                } else {
+                    transport_theme::LOOP_WRAP_CLAMP
+                },
+            },
+            TransportChipSpec {
+                label: format!("Song Loop {}", on_off(self.project.transport.loop_enabled)),
+                action: Some(AppAction::ToggleGlobalLoop),
+                fill: transport_theme::SONG_LOOP,
+            },
+            TransportChipSpec {
+                label: format!("Tempo {}", self.project.transport.tempo_bpm),
+                action: None,
+                fill: transport_theme::TEMPO,
+            },
+            TransportChipSpec {
+                label: format!("Harmony {}", note_name(self.project.global_harmony.root)),
+                action: Some(AppAction::CycleGlobalHarmonyRoot),
+                fill: transport_theme::HARMONY,
+            },
+            TransportChipSpec {
+                label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
+                action: None,
+                fill: if self.note_additive_select_held {
+                    transport_theme::NOTE_ADD_HELD
+                } else {
+                    transport_theme::NOTE_ADD_IDLE
+                },
+            },
+        ]
+    }
+
+    pub(super) fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!("Link {}", on_off(self.project.transport.link_enabled)),
+                action: Some(AppAction::ToggleLinkEnabled),
+                fill: if self.project.transport.link_enabled {
+                    transport_theme::LINK_ACTIVE
+                } else {
+                    transport_theme::LINK_IDLE
+                },
+            },
+            TransportChipSpec {
+                label: format!(
+                    "Start/Stop {}",
+                    on_off(self.project.transport.link_start_stop_sync)
+                ),
+                action: Some(AppAction::ToggleLinkStartStopSync),
+                fill: transport_theme::LINK_START_STOP,
+            },
+        ]
+    }
+
+    pub(super) fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
+        vec![
+            TransportChipSpec {
+                label: format!(
+                    "LaunchQ {}",
+                    on_off(self.project.transport.stored_loop_recall_quantized)
+                ),
+                action: Some(AppAction::ToggleStoredLoopRecallQuantize),
+                fill: if self.project.transport.stored_loop_recall_quantized {
+                    transport_theme::LAUNCH_QUANTIZE_ENABLED
+                } else {
+                    transport_theme::LAUNCH_QUANTIZE_DISABLED
+                },
+            },
+            TransportChipSpec {
+                label: format!(
+                    "Launch {}",
+                    launch_quantize_label(self.project.transport.stored_loop_launch_quantize)
+                ),
+                action: Some(AppAction::CycleStoredLoopLaunchQuantize),
+                fill: transport_theme::LAUNCH_QUANTIZE_MODE,
+            },
+            TransportChipSpec {
+                label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
+                action: None,
+                fill: transport_theme::QUANTIZE,
+            },
+            TransportChipSpec {
+                label: format!("Peers {}", self.link_snapshot.peers),
+                action: None,
+                fill: transport_theme::PEERS,
+            },
+        ]
+    }
+
+    pub(super) fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
+        let top_row = chip_row_width(&self.transport_link_chip_specs())
+            .saturating_add(96)
+            .saturating_add(12);
+        let bottom_row = chip_row_width(&self.transport_status_chip_specs()).saturating_add(12);
+        let desired = top_row.max(bottom_row).max(236);
+        let max_allowed = bounds.width().saturating_sub(220).max(236);
+        desired.min(max_allowed)
+    }
+
     fn draw_footer<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -240,17 +386,17 @@ impl App {
             (
                 "F5 Mappings",
                 self.overlay_state.active == Some(AppOverlay::MappingsQuickView),
-                Color::RGB(156, 122, 68),
+                app_chrome::FOOTER_CHIP_MAPPINGS,
             ),
             (
                 "F7 Discover",
                 self.overlay_state.active == Some(AppOverlay::Discoverability),
-                Color::RGB(72, 136, 166),
+                app_chrome::FOOTER_CHIP_DISCOVER,
             ),
             (
                 "F8 Direct",
                 self.direct_mapping_state.mode != DirectMappingMode::Inactive,
-                Color::RGB(188, 82, 82),
+                app_chrome::FOOTER_CHIP_DIRECT,
             ),
         ];
         let mut right_edge = bounds.x + bounds.width() as i32 - 6;
@@ -285,7 +431,13 @@ impl App {
         if let Some((title, detail, badges)) = self.direct_mapping_footer_content() {
             let label_width = crate::ui::text_width(&title, 1) + 4;
             let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
-            crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, Color::RGB(248, 228, 208))?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &title,
+                label_rect,
+                1,
+                app_chrome::FOOTER_TITLE_DIRECT,
+            )?;
             let detail_left = label_rect.x + label_rect.width() as i32 + 8;
             let detail_width = (right_edge - detail_left).max(0) as u32;
             if !badges.is_empty() {
@@ -308,7 +460,7 @@ impl App {
                     &detail,
                     Rect::new(detail_left, bounds.y + 7, detail_width, 8),
                     1,
-                    Color::RGB(214, 200, 188),
+                    app_chrome::FOOTER_DETAIL_DIRECT,
                 )?;
             }
         } else if let Some(target) = self.status_state.hovered_target {
@@ -330,7 +482,7 @@ impl App {
                     "No mappings",
                     Rect::new(badges_left, bounds.y + 7, badges_width, 8),
                     1,
-                    Color::RGB(168, 178, 194),
+                    app_chrome::FOOTER_EMPTY_MAPPING,
                 )?;
             } else {
                 self.draw_mapping_badges(
@@ -464,7 +616,7 @@ impl App {
             &format!("Tap Mode: {}", self.page_state.mapping_mode.label()),
             Rect::new(content_bounds.x + 208, content_bounds.y + 12, 170, 8),
             1,
-            Color::RGB(236, 242, 248),
+            mappings_theme::OVERVIEW_TEXT,
         )?;
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
         canvas.set_draw_color(if self.page_state.mapping_midi_learn_armed {
@@ -477,9 +629,9 @@ impl App {
             if self.page_state.selected_mapping_field == MappingField::SourceValue
                 && self.page_state.mapping_mode == MappingPageMode::Write
             {
-                Color::RGB(252, 232, 146)
+                mappings_theme::LEARN_SELECTED_BORDER
             } else {
-                Color::RGB(96, 108, 132)
+                mappings_theme::LEARN_IDLE_BORDER
             },
         );
         canvas.draw_rect(learn_badge)?;
@@ -492,12 +644,12 @@ impl App {
             },
             Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
-            Color::RGB(236, 240, 246),
+            mappings_theme::LEARN_TEXT,
         )?;
         let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
         canvas.set_draw_color(
             if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
-                Color::RGB(54, 62, 82)
+                mappings_theme::DIRECT_BADGE_IDLE_FILL
             } else {
                 mappings_theme::DIRECT_ARMED_FILL
             },
@@ -520,7 +672,7 @@ impl App {
             },
             Rect::new(direct_badge.x + 8, direct_badge.y + 4, 138, 8),
             1,
-            Color::RGB(242, 238, 234),
+            mappings_theme::DIRECT_TEXT,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -539,7 +691,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(154, 166, 182),
+            mappings_theme::META_TEXT,
         )?;
 
         let footer_bounds = Rect::new(
@@ -625,18 +777,18 @@ impl App {
             let cells = self.mapping_row_cells(row);
             let source_rect = Rect::new(cells[0].x, cells[0].y, 14, cells[0].height());
             let source_color = match entry.source_kind {
-                MappingSourceKind::Key => Color::RGB(98, 148, 232),
-                MappingSourceKind::Midi => Color::RGB(96, 202, 146),
-                MappingSourceKind::Osc => Color::RGB(220, 154, 88),
+                MappingSourceKind::Key => mappings_theme::SOURCE_KIND_KEY,
+                MappingSourceKind::Midi => mappings_theme::SOURCE_KIND_MIDI,
+                MappingSourceKind::Osc => mappings_theme::SOURCE_KIND_OSC,
             };
             canvas.set_draw_color(source_color);
             canvas.fill_rect(source_rect)?;
 
             let enabled_rect = Rect::new(cells[5].x + 6, cells[5].y, 14, cells[5].height());
             canvas.set_draw_color(if entry.enabled {
-                Color::RGB(132, 220, 120)
+                mappings_theme::ENABLED_FILL_ON
             } else {
-                Color::RGB(92, 96, 102)
+                mappings_theme::ENABLED_FILL_OFF
             });
             canvas.fill_rect(enabled_rect)?;
 
@@ -646,20 +798,20 @@ impl App {
             let target_rect = cells[3];
             let scope_rect = cells[4];
             canvas.set_draw_color(if selected {
-                Color::RGB(66, 80, 112)
+                mappings_theme::FIELD_FILL_SELECTED
             } else {
-                Color::RGB(42, 50, 70)
+                mappings_theme::FIELD_FILL_IDLE
             });
             canvas.fill_rect(kind_rect)?;
             canvas.fill_rect(trigger_rect)?;
             canvas.fill_rect(device_rect)?;
             canvas.set_draw_color(if entry.enabled {
-                Color::RGB(182, 194, 212)
+                mappings_theme::TARGET_FILL_ENABLED
             } else {
-                Color::RGB(104, 112, 124)
+                mappings_theme::TARGET_FILL_DISABLED
             });
             canvas.fill_rect(target_rect)?;
-            canvas.set_draw_color(Color::RGB(66, 74, 88));
+            canvas.set_draw_color(mappings_theme::SCOPE_FILL);
             canvas.fill_rect(scope_rect)?;
             canvas.fill_rect(cells[5])?;
             if selected && self.page_state.mapping_mode == MappingPageMode::Write {
@@ -668,9 +820,9 @@ impl App {
                     if self.page_state.mapping_midi_learn_armed
                         && self.page_state.selected_mapping_field == MappingField::SourceValue
                     {
-                        Color::RGB(120, 42, 42)
+                        mappings_theme::WRITE_FIELD_LEARN
                     } else {
-                        Color::RGB(92, 98, 64)
+                        mappings_theme::WRITE_FIELD_ACTIVE
                     },
                 );
                 canvas.fill_rect(field_rect)?;
@@ -721,9 +873,9 @@ impl App {
                 ),
                 1,
                 if entry.source_kind == MappingSourceKind::Midi {
-                    Color::RGB(226, 234, 244)
+                    mappings_theme::DEVICE_TEXT_ACTIVE
                 } else {
-                    Color::RGB(124, 132, 146)
+                    mappings_theme::DEVICE_TEXT_INACTIVE
                 },
             )?;
             crate::ui::draw_text_fitted(
@@ -754,7 +906,7 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(24, 28, 36),
+                mappings_theme::TARGET_TEXT,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -766,7 +918,7 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(236, 238, 242),
+                mappings_theme::SCOPE_TEXT,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -778,7 +930,7 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(236, 238, 242),
+                mappings_theme::SCOPE_TEXT,
             )?;
 
             if selected && self.page_state.mapping_mode == MappingPageMode::Write {
@@ -787,14 +939,14 @@ impl App {
                     if self.page_state.mapping_midi_learn_armed
                         && self.page_state.selected_mapping_field == MappingField::SourceValue
                     {
-                        Color::RGB(252, 126, 126)
+                        mappings_theme::WRITE_FIELD_BORDER_LEARN
                     } else {
-                        Color::RGB(252, 232, 146)
+                        mappings_theme::WRITE_FIELD_BORDER
                     },
                 );
                 canvas.draw_rect(field_rect)?;
                 let tap_tag = Rect::new(row.x + row.width() as i32 - 68, row.y + 3, 34, 12);
-                canvas.set_draw_color(Color::RGB(86, 98, 124));
+                canvas.set_draw_color(mappings_theme::TAP_BADGE_FILL);
                 canvas.fill_rect(tap_tag)?;
                 crate::ui::draw_text_fitted(
                     canvas,
@@ -813,16 +965,16 @@ impl App {
 
         self.draw_mapping_target_lookup(canvas, content_bounds)?;
 
-        canvas.set_draw_color(Color::RGB(26, 32, 46));
+        canvas.set_draw_color(mappings_theme::FOOTER_BG);
         canvas.fill_rect(footer_bounds)?;
         let footer_tokens = [
-            ("Tap row", Color::RGB(62, 78, 106)),
-            ("Tap field", Color::RGB(74, 88, 118)),
-            ("Tap again act", Color::RGB(82, 100, 136)),
-            ("W Write", Color::RGB(96, 82, 52)),
-            ("F8 Direct", Color::RGB(128, 78, 78)),
-            ("N New", Color::RGB(66, 96, 84)),
-            ("Del/Bsp Remove", Color::RGB(110, 74, 74)),
+            ("Tap row", mappings_theme::FOOTER_TOKEN_ROW),
+            ("Tap field", mappings_theme::FOOTER_TOKEN_FIELD),
+            ("Tap again act", mappings_theme::FOOTER_TOKEN_ACT),
+            ("W Write", mappings_theme::FOOTER_TOKEN_WRITE),
+            ("F8 Direct", mappings_theme::FOOTER_TOKEN_DIRECT),
+            ("N New", mappings_theme::FOOTER_TOKEN_NEW),
+            ("Del/Bsp Remove", mappings_theme::FOOTER_TOKEN_REMOVE),
         ];
         let mut footer_x = footer_bounds.x + 6;
         for (label, fill) in footer_tokens {
@@ -865,7 +1017,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(154, 166, 182),
+            mappings_theme::META_TEXT,
         )?;
 
         Ok(())
@@ -876,7 +1028,7 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGBA(10, 14, 24, 220));
+        canvas.set_draw_color(app_chrome::OVERLAY_BACKDROP);
         canvas.fill_rect(bounds)?;
 
         let panel = Rect::new(
@@ -885,7 +1037,7 @@ impl App {
             bounds.width() - 168,
             bounds.height() - 88,
         );
-        canvas.set_draw_color(Color::RGB(24, 30, 44));
+        canvas.set_draw_color(app_chrome::OVERLAY_PANEL_FILL);
         canvas.fill_rect(panel)?;
         canvas.set_draw_color(mappings_theme::PAGE_TITLE);
         canvas.draw_rect(panel)?;
@@ -916,21 +1068,21 @@ impl App {
             "Trigger",
             Rect::new(panel.x + 12, panel.y + 46, 56, 8),
             1,
-            Color::RGB(150, 162, 180),
+            app_chrome::OVERLAY_HEADER_TEXT,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Action",
             Rect::new(panel.x + 146, panel.y + 46, 48, 8),
             1,
-            Color::RGB(150, 162, 180),
+            app_chrome::OVERLAY_HEADER_TEXT,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Scope",
             Rect::new(panel.x + panel.width() as i32 - 126, panel.y + 46, 44, 8),
             1,
-            Color::RGB(150, 162, 180),
+            app_chrome::OVERLAY_HEADER_TEXT,
         )?;
 
         let list_bounds = crate::ui::inset_rect(panel, 12, 66)?;
@@ -964,15 +1116,15 @@ impl App {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
             canvas.set_draw_color(if selected {
-                Color::RGB(58, 72, 102)
+                app_chrome::OVERLAY_ROW_SELECTED_FILL
             } else {
-                Color::RGB(34, 42, 60)
+                app_chrome::OVERLAY_ROW_IDLE_FILL
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if selected {
                 mappings_theme::PAGE_TITLE
             } else {
-                Color::RGB(82, 92, 114)
+                app_chrome::OVERLAY_ROW_IDLE_BORDER
             });
             canvas.draw_rect(row)?;
 
@@ -988,14 +1140,14 @@ impl App {
                 &entry.target_label,
                 Rect::new(row.x + 146, row.y + 5, 210, 8),
                 1,
-                Color::RGB(208, 220, 236),
+                app_chrome::OVERLAY_TARGET_TEXT,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
                 compact_scope_label(&entry.scope_label),
                 Rect::new(row.x + row.width() as i32 - 126, row.y + 5, 90, 8),
                 1,
-                Color::RGB(182, 192, 210),
+                app_chrome::OVERLAY_SCOPE_TEXT,
             )?;
         }
 
@@ -1009,11 +1161,15 @@ impl App {
             ),
             Rect::new(panel.x + panel.width() as i32 - 116, panel.y + 34, 104, 8),
             1,
-            Color::RGB(160, 170, 184),
+            app_chrome::OVERLAY_META_TEXT,
         )?;
 
         Ok(())
     }
+}
+
+pub(super) fn transport_strip_height() -> u32 {
+    34
 }
 
 #[cfg(test)]
@@ -1049,5 +1205,17 @@ mod tests {
             page_area_bounds.y + page_area_bounds.height() as i32
         );
         assert_eq!(content_bounds.height() + 22 + 8, page_area_bounds.height());
+    }
+
+    #[test]
+    fn cycle_global_harmony_root_updates_transport_chip_label() {
+        let mut app = App::new();
+        app.apply_action(AppAction::CycleGlobalHarmonyRoot);
+        let labels = app
+            .transport_bottom_chip_specs()
+            .into_iter()
+            .map(|chip| chip.label)
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "Harmony C#"));
     }
 }
