@@ -9,6 +9,7 @@ pub mod midi_fx;
 pub mod midi_io;
 pub mod page_widgets;
 pub mod pages;
+pub mod present;
 pub mod project;
 pub mod render;
 pub mod routing;

@@ -1,4 +1,7 @@
-use crate::theme::{app_chrome, mappings as mappings_theme};
+use crate::{
+    present::window_present_plan,
+    theme::{app_chrome, mappings as mappings_theme},
+};
 
 use super::*;
 
@@ -108,6 +111,7 @@ impl App {
         }
 
         let output_size = canvas.output_size()?;
+        let present_plan = window_present_plan(output_size, true, app_chrome::WINDOW_CLEAR);
         let logical_size = self.viewport_size;
         let texture_creator = canvas.texture_creator();
         let mut frame = texture_creator.create_texture_target(
@@ -127,18 +131,9 @@ impl App {
         draw_result?;
 
         canvas.set_scale(1.0, 1.0)?;
-        canvas.set_draw_color(app_chrome::WINDOW_CLEAR);
+        canvas.set_draw_color(present_plan.clear_color);
         canvas.clear();
-        canvas.copy(
-            &frame,
-            None,
-            FRect::new(
-                0.0,
-                0.0,
-                output_size.0.max(1) as f32,
-                output_size.1.max(1) as f32,
-            ),
-        )?;
+        canvas.copy(&frame, None, present_plan.destination)?;
         canvas.present();
         canvas.set_scale(scale_x, scale_y)?;
         Ok(())
