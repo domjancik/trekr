@@ -1,5 +1,6 @@
 use crate::actions::ActionSource;
 use crate::mapping::MappingSourceKind;
+use crate::pages::MappingField;
 use crate::transport::{LaunchQuantizeMode, QuantizeMode};
 use sdl3::pixels::Color;
 
@@ -95,5 +96,16 @@ pub(super) fn compact_badge_text(text: &str, max_len: usize) -> String {
         compact
     } else {
         compact.chars().take(max_len).collect()
+    }
+}
+
+pub(super) fn mapping_field_index(field: MappingField) -> usize {
+    match field {
+        MappingField::SourceKind => 0,
+        MappingField::SourceDevice => 1,
+        MappingField::SourceValue => 2,
+        MappingField::Target => 3,
+        MappingField::Scope => 4,
+        MappingField::Enabled => 5,
     }
 }
