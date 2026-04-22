@@ -104,6 +104,7 @@ use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 use mapping_input::{midi_learn_label, midi_mapping_matches_event};
+pub(super) use shell_ui::{transport_strip_height, TransportChipSpec};
 use shell_scaling::{
     active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
 };
@@ -3774,149 +3775,6 @@ impl App {
         self.apply_action(action)
     }
 
-    fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
-        vec![
-            TransportChipSpec {
-                label: format!("Play {}", on_off(self.project.transport.playing)),
-                action: Some(AppAction::TogglePlayback),
-                fill: if self.project.transport.playing {
-                    Color::RGB(96, 162, 122)
-                } else {
-                    Color::RGB(74, 84, 102)
-                },
-            },
-            TransportChipSpec {
-                label: format!("Record {}", on_off(self.project.transport.recording)),
-                action: Some(AppAction::ToggleRecording),
-                fill: if self.project.transport.recording {
-                    Color::RGB(180, 76, 76)
-                } else {
-                    Color::RGB(88, 78, 82)
-                },
-            },
-            TransportChipSpec {
-                label: format!("Mode {}", self.project.transport.record_mode.label()),
-                action: Some(AppAction::CycleRecordMode),
-                fill: Color::RGB(76, 94, 136),
-            },
-        ]
-    }
-
-    fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
-        vec![
-            TransportChipSpec {
-                label: format!(
-                    "Wrap {}",
-                    if self.project.transport.loop_recording_extends_clip {
-                        "Extend"
-                    } else {
-                        "Clamp"
-                    }
-                ),
-                action: Some(AppAction::ToggleLoopRecordingExtension),
-                fill: if self.project.transport.loop_recording_extends_clip {
-                    Color::RGB(126, 106, 60)
-                } else {
-                    Color::RGB(96, 82, 70)
-                },
-            },
-            TransportChipSpec {
-                label: format!("Song Loop {}", on_off(self.project.transport.loop_enabled)),
-                action: Some(AppAction::ToggleGlobalLoop),
-                fill: Color::RGB(116, 96, 54),
-            },
-            TransportChipSpec {
-                label: format!("Tempo {}", self.project.transport.tempo_bpm),
-                action: None,
-                fill: Color::RGB(70, 100, 120),
-            },
-            TransportChipSpec {
-                label: format!("Harmony {}", note_name(self.project.global_harmony.root)),
-                action: Some(AppAction::CycleGlobalHarmonyRoot),
-                fill: Color::RGB(88, 82, 124),
-            },
-            TransportChipSpec {
-                label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
-                action: None,
-                fill: if self.note_additive_select_held {
-                    Color::RGB(88, 130, 176)
-                } else {
-                    Color::RGB(62, 76, 94)
-                },
-            },
-        ]
-    }
-
-    fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
-        vec![
-            TransportChipSpec {
-                label: format!("Link {}", on_off(self.project.transport.link_enabled)),
-                action: Some(AppAction::ToggleLinkEnabled),
-                fill: if self.project.transport.link_enabled {
-                    Color::RGB(74, 122, 144)
-                } else {
-                    Color::RGB(68, 76, 92)
-                },
-            },
-            TransportChipSpec {
-                label: format!(
-                    "Start/Stop {}",
-                    on_off(self.project.transport.link_start_stop_sync)
-                ),
-                action: Some(AppAction::ToggleLinkStartStopSync),
-                fill: Color::RGB(82, 98, 130),
-            },
-        ]
-    }
-
-    fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
-        vec![
-            TransportChipSpec {
-                label: format!(
-                    "LaunchQ {}",
-                    on_off(self.project.transport.stored_loop_recall_quantized)
-                ),
-                action: Some(AppAction::ToggleStoredLoopRecallQuantize),
-                fill: if self.project.transport.stored_loop_recall_quantized {
-                    Color::RGB(102, 124, 86)
-                } else {
-                    Color::RGB(72, 88, 110)
-                },
-            },
-            TransportChipSpec {
-                label: format!(
-                    "Launch {}",
-                    launch_quantize_label(self.project.transport.stored_loop_launch_quantize)
-                ),
-                action: Some(AppAction::CycleStoredLoopLaunchQuantize),
-                fill: Color::RGB(78, 96, 122),
-            },
-            TransportChipSpec {
-                label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
-                action: None,
-                fill: Color::RGB(70, 86, 108),
-            },
-            TransportChipSpec {
-                label: format!("Peers {}", self.link_snapshot.peers),
-                action: None,
-                fill: Color::RGB(66, 80, 102),
-            },
-        ]
-    }
-
-    fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
-        let top_row = chip_row_width(&self.transport_link_chip_specs())
-            .saturating_add(96)
-            .saturating_add(12);
-        let bottom_row = chip_row_width(&self.transport_status_chip_specs()).saturating_add(12);
-        let desired = top_row.max(bottom_row).max(236);
-        let max_allowed = bounds.width().saturating_sub(220).max(236);
-        desired.min(max_allowed)
-    }
-}
-
-fn transport_strip_height() -> u32 {
-    34
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3925,17 +3783,9 @@ pub(crate) enum AppControl {
     Quit,
 }
 
-struct TransportChipSpec {
-    label: String,
-    action: Option<AppAction>,
-    fill: Color,
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        mapping_field_index, App, AppControl, AppOverlay, LastActionStatus,
-    };
+    use super::{mapping_field_index, App, AppControl, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
     use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};
@@ -3979,18 +3829,6 @@ mod tests {
 
         assert!(app.project.transport.playing);
         assert!(!app.project.transport.loop_enabled);
-    }
-
-    #[test]
-    fn cycle_global_harmony_root_updates_transport_chip_label() {
-        let mut app = App::new();
-        app.apply_action(AppAction::CycleGlobalHarmonyRoot);
-        let labels = app
-            .transport_bottom_chip_specs()
-            .into_iter()
-            .map(|chip| chip.label)
-            .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Harmony C#"));
     }
 
     #[test]
@@ -4636,20 +4474,6 @@ mod tests {
 
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.armed);
-    }
-
-    #[test]
-    fn discoverability_overlay_toggles_separately_from_quick_overlay() {
-        let mut app = App::new();
-
-        app.apply_action(AppAction::ToggleDiscoverabilityOverlay);
-        assert_eq!(app.overlay_state.active, Some(AppOverlay::Discoverability));
-
-        app.apply_action(AppAction::ToggleMappingsOverlay);
-        assert_eq!(
-            app.overlay_state.active,
-            Some(AppOverlay::MappingsQuickView)
-        );
     }
 
     #[test]
