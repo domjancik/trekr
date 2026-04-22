@@ -43,6 +43,8 @@ use std::time::{Duration, Instant};
 mod capture;
 #[path = "app/labels.rs"]
 mod labels;
+#[path = "app/mapping_ui.rs"]
+mod mapping_ui;
 #[path = "app/types.rs"]
 mod types;
 
@@ -52,7 +54,11 @@ use capture::{
 use labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     launch_quantize_label, mapping_badge_palette, mapping_source_label, mapping_source_sort_key,
-    quantize_label,
+    mapping_field_index, quantize_label,
+};
+use mapping_ui::{
+    direct_mapping_key_label, mapping_target_label_for_action, mapping_target_lookup_input,
+    track_indicator_target,
 };
 pub(crate) use types::DiscoverabilityTarget;
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
@@ -10620,259 +10626,7 @@ fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
 }
 
 
-fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
-    match action {
-        AppAction::TogglePlayback => Some("Play/Stop"),
-        AppAction::ToggleRecording => Some("Record"),
-        AppAction::CycleRecordMode => Some("Record Mode"),
-        AppAction::ToggleLoopRecordingExtension => Some("Loop Recording Wrap"),
-        AppAction::ToggleGlobalLoop => Some("Song Loop"),
-        AppAction::CycleGlobalHarmonyRoot => Some("Global Harmony Root"),
-        AppAction::ResetGlobalLoop => Some("Reset Song Loop"),
-        AppAction::ToggleCurrentTrackLoop => Some("Track Loop"),
-        AppAction::ToggleStoredLoopRecallQuantize => Some("Stored Loop Recall Quantize"),
-        AppAction::CycleStoredLoopLaunchQuantize => Some("Stored Loop Launch Quantize"),
-        AppAction::RecallStoredLoopSlot1 => Some("Recall Stored Loop Slot 1"),
-        AppAction::RecallStoredLoopSlot2 => Some("Recall Stored Loop Slot 2"),
-        AppAction::RecallStoredLoopSlot3 => Some("Recall Stored Loop Slot 3"),
-        AppAction::RecallStoredLoopSlot4 => Some("Recall Stored Loop Slot 4"),
-        AppAction::RecallStoredLoopSlot5 => Some("Recall Stored Loop Slot 5"),
-        AppAction::RecallStoredLoopSlot6 => Some("Recall Stored Loop Slot 6"),
-        AppAction::RecallStoredLoopSlot7 => Some("Recall Stored Loop Slot 7"),
-        AppAction::RecallStoredLoopSlot8 => Some("Recall Stored Loop Slot 8"),
-        AppAction::StoreCurrentLoopToSlot1 => Some("Store Current Loop To Slot 1"),
-        AppAction::StoreCurrentLoopToSlot2 => Some("Store Current Loop To Slot 2"),
-        AppAction::StoreCurrentLoopToSlot3 => Some("Store Current Loop To Slot 3"),
-        AppAction::StoreCurrentLoopToSlot4 => Some("Store Current Loop To Slot 4"),
-        AppAction::StoreCurrentLoopToSlot5 => Some("Store Current Loop To Slot 5"),
-        AppAction::StoreCurrentLoopToSlot6 => Some("Store Current Loop To Slot 6"),
-        AppAction::StoreCurrentLoopToSlot7 => Some("Store Current Loop To Slot 7"),
-        AppAction::StoreCurrentLoopToSlot8 => Some("Store Current Loop To Slot 8"),
-        AppAction::ClearStoredLoopSlot1 => Some("Clear Stored Loop Slot 1"),
-        AppAction::ClearStoredLoopSlot2 => Some("Clear Stored Loop Slot 2"),
-        AppAction::ClearStoredLoopSlot3 => Some("Clear Stored Loop Slot 3"),
-        AppAction::ClearStoredLoopSlot4 => Some("Clear Stored Loop Slot 4"),
-        AppAction::ClearStoredLoopSlot5 => Some("Clear Stored Loop Slot 5"),
-        AppAction::ClearStoredLoopSlot6 => Some("Clear Stored Loop Slot 6"),
-        AppAction::ClearStoredLoopSlot7 => Some("Clear Stored Loop Slot 7"),
-        AppAction::ClearStoredLoopSlot8 => Some("Clear Stored Loop Slot 8"),
-        AppAction::ToggleCurrentTrackArm => Some("Track Arm"),
-        AppAction::ToggleCurrentTrackMute => Some("Track Mute"),
-        AppAction::ToggleCurrentTrackSolo => Some("Track Solo"),
-        AppAction::ToggleCurrentTrackPassthrough => Some("Passthrough"),
-        AppAction::ToggleCurrentTrackRecordingView => Some("Recording View"),
-        AppAction::SelectPreviousRecordingClip => Some("Select Previous Recording Clip"),
-        AppAction::SelectNextRecordingClip => Some("Select Next Recording Clip"),
-        AppAction::ToggleSelectedRecordingClipMute => Some("Recording Clip Mute"),
-        AppAction::DeleteSelectedRecordingClip => Some("Delete Recording Clip"),
-        AppAction::ToggleFocusedTrackView => Some("Focused Track View"),
-        AppAction::ToggleLinkEnabled => Some("Link Enable"),
-        AppAction::ToggleLinkStartStopSync => Some("Link Start/Stop"),
-        _ => None,
-    }
-}
 
-
-fn direct_mapping_key_label(event: &sdl3::event::Event) -> Option<String> {
-    let sdl3::event::Event::KeyDown {
-        keycode: Some(keycode),
-        keymod,
-        repeat: false,
-        ..
-    } = event
-    else {
-        return None;
-    };
-
-    if matches!(
-        keycode,
-        sdl3::keyboard::Keycode::LShift
-            | sdl3::keyboard::Keycode::RShift
-            | sdl3::keyboard::Keycode::LCtrl
-            | sdl3::keyboard::Keycode::RCtrl
-            | sdl3::keyboard::Keycode::LAlt
-            | sdl3::keyboard::Keycode::RAlt
-            | sdl3::keyboard::Keycode::LGui
-            | sdl3::keyboard::Keycode::RGui
-            | sdl3::keyboard::Keycode::Mode
-            | sdl3::keyboard::Keycode::Escape
-            | sdl3::keyboard::Keycode::F8
-    ) {
-        return None;
-    }
-
-    let key_label = keycode_mapping_label(*keycode)?;
-    Some(with_modifier_prefixes(key_label, *keymod))
-}
-
-fn mapping_target_lookup_input(event: &sdl3::event::Event) -> Option<String> {
-    let sdl3::event::Event::KeyDown {
-        keycode: Some(keycode),
-        keymod,
-        repeat: false,
-        ..
-    } = event
-    else {
-        return None;
-    };
-
-    if keymod.intersects(
-        sdl3::keyboard::Mod::LCTRLMOD
-            | sdl3::keyboard::Mod::RCTRLMOD
-            | sdl3::keyboard::Mod::LALTMOD
-            | sdl3::keyboard::Mod::RALTMOD
-            | sdl3::keyboard::Mod::LGUIMOD
-            | sdl3::keyboard::Mod::RGUIMOD,
-    ) {
-        return None;
-    }
-
-    let input = match keycode {
-        sdl3::keyboard::Keycode::Space => " ".to_string(),
-        sdl3::keyboard::Keycode::Minus => "-".to_string(),
-        sdl3::keyboard::Keycode::Slash => "/".to_string(),
-        sdl3::keyboard::Keycode::_0 => "0".to_string(),
-        sdl3::keyboard::Keycode::_1 => "1".to_string(),
-        sdl3::keyboard::Keycode::_2 => "2".to_string(),
-        sdl3::keyboard::Keycode::_3 => "3".to_string(),
-        sdl3::keyboard::Keycode::_4 => "4".to_string(),
-        sdl3::keyboard::Keycode::_5 => "5".to_string(),
-        sdl3::keyboard::Keycode::_6 => "6".to_string(),
-        sdl3::keyboard::Keycode::_7 => "7".to_string(),
-        sdl3::keyboard::Keycode::_8 => "8".to_string(),
-        sdl3::keyboard::Keycode::_9 => "9".to_string(),
-        sdl3::keyboard::Keycode::A => "a".to_string(),
-        sdl3::keyboard::Keycode::B => "b".to_string(),
-        sdl3::keyboard::Keycode::C => "c".to_string(),
-        sdl3::keyboard::Keycode::D => "d".to_string(),
-        sdl3::keyboard::Keycode::E => "e".to_string(),
-        sdl3::keyboard::Keycode::F => "f".to_string(),
-        sdl3::keyboard::Keycode::G => "g".to_string(),
-        sdl3::keyboard::Keycode::H => "h".to_string(),
-        sdl3::keyboard::Keycode::I => "i".to_string(),
-        sdl3::keyboard::Keycode::J => "j".to_string(),
-        sdl3::keyboard::Keycode::K => "k".to_string(),
-        sdl3::keyboard::Keycode::L => "l".to_string(),
-        sdl3::keyboard::Keycode::M => "m".to_string(),
-        sdl3::keyboard::Keycode::N => "n".to_string(),
-        sdl3::keyboard::Keycode::O => "o".to_string(),
-        sdl3::keyboard::Keycode::P => "p".to_string(),
-        sdl3::keyboard::Keycode::Q => "q".to_string(),
-        sdl3::keyboard::Keycode::R => "r".to_string(),
-        sdl3::keyboard::Keycode::S => "s".to_string(),
-        sdl3::keyboard::Keycode::T => "t".to_string(),
-        sdl3::keyboard::Keycode::U => "u".to_string(),
-        sdl3::keyboard::Keycode::V => "v".to_string(),
-        sdl3::keyboard::Keycode::W => "w".to_string(),
-        sdl3::keyboard::Keycode::X => "x".to_string(),
-        sdl3::keyboard::Keycode::Y => "y".to_string(),
-        sdl3::keyboard::Keycode::Z => "z".to_string(),
-        _ => return None,
-    };
-
-    Some(input)
-}
-
-fn with_modifier_prefixes(key_label: &str, keymod: sdl3::keyboard::Mod) -> String {
-    let mut label = String::new();
-    if keymod.intersects(sdl3::keyboard::Mod::LCTRLMOD | sdl3::keyboard::Mod::RCTRLMOD) {
-        label.push_str("Ctrl+");
-    }
-    if keymod.intersects(sdl3::keyboard::Mod::LALTMOD | sdl3::keyboard::Mod::RALTMOD) {
-        label.push_str("Alt+");
-    }
-    if keymod.intersects(sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD) {
-        label.push_str("Shift+");
-    }
-    label.push_str(key_label);
-    label
-}
-
-fn keycode_mapping_label(keycode: sdl3::keyboard::Keycode) -> Option<&'static str> {
-    match keycode {
-        sdl3::keyboard::Keycode::Space => Some("Space"),
-        sdl3::keyboard::Keycode::Tab => Some("Tab"),
-        sdl3::keyboard::Keycode::Return => Some("Enter"),
-        sdl3::keyboard::Keycode::Delete => Some("Delete"),
-        sdl3::keyboard::Keycode::Backspace => Some("Backspace"),
-        sdl3::keyboard::Keycode::Home => Some("Home"),
-        sdl3::keyboard::Keycode::Left => Some("Left"),
-        sdl3::keyboard::Keycode::Right => Some("Right"),
-        sdl3::keyboard::Keycode::Up => Some("Up"),
-        sdl3::keyboard::Keycode::Down => Some("Down"),
-        sdl3::keyboard::Keycode::LeftBracket => Some("["),
-        sdl3::keyboard::Keycode::RightBracket => Some("]"),
-        sdl3::keyboard::Keycode::Comma => Some(","),
-        sdl3::keyboard::Keycode::Period => Some("."),
-        sdl3::keyboard::Keycode::Minus => Some("-"),
-        sdl3::keyboard::Keycode::Equals => Some("="),
-        sdl3::keyboard::Keycode::Slash => Some("/"),
-        sdl3::keyboard::Keycode::Backslash => Some("\\"),
-        sdl3::keyboard::Keycode::F1 => Some("F1"),
-        sdl3::keyboard::Keycode::F2 => Some("F2"),
-        sdl3::keyboard::Keycode::F3 => Some("F3"),
-        sdl3::keyboard::Keycode::F4 => Some("F4"),
-        sdl3::keyboard::Keycode::F5 => Some("F5"),
-        sdl3::keyboard::Keycode::F6 => Some("F6"),
-        sdl3::keyboard::Keycode::F7 => Some("F7"),
-        sdl3::keyboard::Keycode::_0 => Some("0"),
-        sdl3::keyboard::Keycode::_1 => Some("1"),
-        sdl3::keyboard::Keycode::_2 => Some("2"),
-        sdl3::keyboard::Keycode::_3 => Some("3"),
-        sdl3::keyboard::Keycode::_4 => Some("4"),
-        sdl3::keyboard::Keycode::_5 => Some("5"),
-        sdl3::keyboard::Keycode::_6 => Some("6"),
-        sdl3::keyboard::Keycode::_7 => Some("7"),
-        sdl3::keyboard::Keycode::_8 => Some("8"),
-        sdl3::keyboard::Keycode::_9 => Some("9"),
-        sdl3::keyboard::Keycode::Kp1 => Some("Numpad1"),
-        sdl3::keyboard::Keycode::Kp2 => Some("Numpad2"),
-        sdl3::keyboard::Keycode::Kp3 => Some("Numpad3"),
-        sdl3::keyboard::Keycode::Kp4 => Some("Numpad4"),
-        sdl3::keyboard::Keycode::Kp5 => Some("Numpad5"),
-        sdl3::keyboard::Keycode::Kp6 => Some("Numpad6"),
-        sdl3::keyboard::Keycode::Kp7 => Some("Numpad7"),
-        sdl3::keyboard::Keycode::Kp8 => Some("Numpad8"),
-        sdl3::keyboard::Keycode::A => Some("A"),
-        sdl3::keyboard::Keycode::B => Some("B"),
-        sdl3::keyboard::Keycode::C => Some("C"),
-        sdl3::keyboard::Keycode::D => Some("D"),
-        sdl3::keyboard::Keycode::E => Some("E"),
-        sdl3::keyboard::Keycode::F => Some("F"),
-        sdl3::keyboard::Keycode::G => Some("G"),
-        sdl3::keyboard::Keycode::H => Some("H"),
-        sdl3::keyboard::Keycode::I => Some("I"),
-        sdl3::keyboard::Keycode::J => Some("J"),
-        sdl3::keyboard::Keycode::K => Some("K"),
-        sdl3::keyboard::Keycode::L => Some("L"),
-        sdl3::keyboard::Keycode::M => Some("M"),
-        sdl3::keyboard::Keycode::N => Some("N"),
-        sdl3::keyboard::Keycode::O => Some("O"),
-        sdl3::keyboard::Keycode::P => Some("P"),
-        sdl3::keyboard::Keycode::Q => Some("Q"),
-        sdl3::keyboard::Keycode::R => Some("R"),
-        sdl3::keyboard::Keycode::S => Some("S"),
-        sdl3::keyboard::Keycode::T => Some("T"),
-        sdl3::keyboard::Keycode::U => Some("U"),
-        sdl3::keyboard::Keycode::V => Some("V"),
-        sdl3::keyboard::Keycode::W => Some("W"),
-        sdl3::keyboard::Keycode::X => Some("X"),
-        sdl3::keyboard::Keycode::Y => Some("Y"),
-        sdl3::keyboard::Keycode::Z => Some("Z"),
-        _ => None,
-    }
-}
-
-fn mapping_field_index(field: MappingField) -> usize {
-    match field {
-        MappingField::SourceKind => 0,
-        MappingField::SourceDevice => 1,
-        MappingField::SourceValue => 2,
-        MappingField::Target => 3,
-        MappingField::Scope => 4,
-        MappingField::Enabled => 5,
-    }
-}
 
 fn midi_learn_label(event: &MidiInputEvent) -> String {
     match event.message {
@@ -10931,37 +10685,6 @@ fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> b
 
 fn midi_mapping_target_supports_release(target_label: &str) -> bool {
     matches!(target_label, "Record Hold" | "Select Notes At Playhead Add")
-}
-fn track_indicator_target(
-    kind: crate::ui::TrackIndicatorKind,
-    overlay_slot: Option<Rect>,
-) -> Option<DiscoverabilityTarget> {
-    match kind {
-        crate::ui::TrackIndicatorKind::Armed => Some(DiscoverabilityTarget {
-            action: AppAction::ToggleCurrentTrackArm,
-            display_scope: Some("Active Track"),
-            allowed_mapping_scopes: &["Active Track"],
-            overlay_slot,
-        }),
-        crate::ui::TrackIndicatorKind::Recording => Some(DiscoverabilityTarget {
-            action: AppAction::ToggleRecording,
-            display_scope: Some("Armed/Active"),
-            allowed_mapping_scopes: &["Armed/Active", "Active Track"],
-            overlay_slot,
-        }),
-        crate::ui::TrackIndicatorKind::Muted => Some(DiscoverabilityTarget {
-            action: AppAction::ToggleCurrentTrackMute,
-            display_scope: Some("Active Track"),
-            allowed_mapping_scopes: &["Active Track"],
-            overlay_slot,
-        }),
-        crate::ui::TrackIndicatorKind::Solo => Some(DiscoverabilityTarget {
-            action: AppAction::ToggleCurrentTrackSolo,
-            display_scope: Some("Active Track"),
-            allowed_mapping_scopes: &["Active Track"],
-            overlay_slot,
-        }),
-    }
 }
 
 fn port_name(port: Option<&MidiPortRef>) -> &str {
@@ -14950,3 +14673,4 @@ mod tests {
         );
     }
 }
+
