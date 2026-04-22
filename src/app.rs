@@ -4066,21 +4066,6 @@ fn transport_strip_height() -> u32 {
     34
 }
 
-fn loop_regions_intersect(a: crate::timeline::LoopRegion, b: crate::timeline::LoopRegion) -> bool {
-    a.start_ticks < b.end_ticks() && a.end_ticks() > b.start_ticks
-}
-
-fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
-    (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
-}
-
-fn rects_overlap(a: Rect, b: Rect) -> bool {
-    a.x < b.x + b.width() as i32
-        && a.x + a.width() as i32 > b.x
-        && a.y < b.y + b.height() as i32
-        && a.y + a.height() as i32 > b.y
-}
-
 fn draw_loop_label_underline<T: RenderTarget>(
     canvas: &mut Canvas<T>,
     label: &str,
@@ -6389,7 +6374,7 @@ mod tests {
         let two = [b, r];
         assert_eq!(
             (0..4)
-                .filter_map(|pixel| super::interlaced_color_at(&two, pixel))
+                .filter_map(|pixel| super::timeline_layout::interlaced_color_at(&two, pixel))
                 .collect::<Vec<_>>(),
             vec![b, r, b, r]
         );
@@ -6397,7 +6382,7 @@ mod tests {
         let three = [r, b, g];
         assert_eq!(
             (0..6)
-                .filter_map(|pixel| super::interlaced_color_at(&three, pixel))
+                .filter_map(|pixel| super::timeline_layout::interlaced_color_at(&three, pixel))
                 .collect::<Vec<_>>(),
             vec![r, b, g, r, b, g]
         );

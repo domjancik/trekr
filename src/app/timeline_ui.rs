@@ -1,4 +1,5 @@
 use super::*;
+use super::timeline_layout::{interlaced_color_at, loop_regions_intersect, rects_overlap};
 
 impl App {
     pub(crate) fn handle_timeline_pointer(

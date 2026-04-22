@@ -136,6 +136,24 @@ impl App {
     }
 }
 
+pub(super) fn loop_regions_intersect(
+    a: crate::timeline::LoopRegion,
+    b: crate::timeline::LoopRegion,
+) -> bool {
+    a.start_ticks < b.end_ticks() && a.end_ticks() > b.start_ticks
+}
+
+pub(super) fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
+    (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
+}
+
+pub(super) fn rects_overlap(a: Rect, b: Rect) -> bool {
+    a.x < b.x + b.width() as i32
+        && a.x + a.width() as i32 > b.x
+        && a.y < b.y + b.height() as i32
+        && a.y + a.height() as i32 > b.y
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
