@@ -4197,7 +4197,6 @@ mod tests {
     use crate::timeline_fx::{TimelineContext, TimelineFxField};
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
-    use sdl3::pixels::Color;
     use sdl3::rect::Rect;
     use std::time::Duration;
 
@@ -6365,26 +6364,4 @@ mod tests {
         assert!(app.stored_loop_slot_rects(narrow).len() < STORED_LOOP_SLOT_COUNT);
     }
 
-    #[test]
-    fn interlaced_color_pattern_cycles_proportionally() {
-        let b = Color::RGB(0, 0, 255);
-        let r = Color::RGB(255, 0, 0);
-        let g = Color::RGB(0, 255, 0);
-
-        let two = [b, r];
-        assert_eq!(
-            (0..4)
-                .filter_map(|pixel| super::timeline_layout::interlaced_color_at(&two, pixel))
-                .collect::<Vec<_>>(),
-            vec![b, r, b, r]
-        );
-
-        let three = [r, b, g];
-        assert_eq!(
-            (0..6)
-                .filter_map(|pixel| super::timeline_layout::interlaced_color_at(&three, pixel))
-                .collect::<Vec<_>>(),
-            vec![r, b, g, r, b, g]
-        );
-    }
 }

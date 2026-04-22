@@ -159,6 +159,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn interlaced_color_pattern_cycles_proportionally() {
+        let b = Color::RGB(0, 0, 255);
+        let r = Color::RGB(255, 0, 0);
+        let g = Color::RGB(0, 255, 0);
+
+        let two = [b, r];
+        assert_eq!(
+            (0..4)
+                .filter_map(|pixel| interlaced_color_at(&two, pixel))
+                .collect::<Vec<_>>(),
+            vec![b, r, b, r]
+        );
+
+        let three = [r, b, g];
+        assert_eq!(
+            (0..6)
+                .filter_map(|pixel| interlaced_color_at(&three, pixel))
+                .collect::<Vec<_>>(),
+            vec![r, b, g, r, b, g]
+        );
+    }
+
+    #[test]
     fn timeline_body_label_controls_do_not_overlap_input_fx_band() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
