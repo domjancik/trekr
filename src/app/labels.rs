@@ -1,6 +1,7 @@
 use crate::actions::ActionSource;
 use crate::mapping::MappingSourceKind;
 use crate::pages::MappingField;
+use crate::routing::MidiChannelFilter;
 use crate::transport::{LaunchQuantizeMode, QuantizeMode};
 use sdl3::pixels::Color;
 
@@ -107,5 +108,48 @@ pub(super) fn mapping_field_index(field: MappingField) -> usize {
         MappingField::Target => 3,
         MappingField::Scope => 4,
         MappingField::Enabled => 5,
+    }
+}
+
+pub(super) fn input_channel_label(channel: MidiChannelFilter) -> String {
+    match channel {
+        MidiChannelFilter::Omni => "all".to_string(),
+        MidiChannelFilter::Channel(value) => value.to_string(),
+    }
+}
+
+pub(super) fn output_channel_label(channel: Option<u8>) -> String {
+    channel
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
+pub(super) fn on_off(value: bool) -> &'static str {
+    if value {
+        "on"
+    } else {
+        "off"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_labels_match_compact_shell_status_format() {
+        assert_eq!(input_channel_label(MidiChannelFilter::Omni), "all");
+        assert_eq!(
+            input_channel_label(MidiChannelFilter::Channel(12)),
+            "12".to_string()
+        );
+        assert_eq!(output_channel_label(None), "none");
+        assert_eq!(output_channel_label(Some(3)), "3".to_string());
+    }
+
+    #[test]
+    fn on_off_uses_short_status_words() {
+        assert_eq!(on_off(true), "on");
+        assert_eq!(on_off(false), "off");
     }
 }

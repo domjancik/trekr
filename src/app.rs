@@ -80,8 +80,8 @@ use capture::{
 pub(super) use input::rect_contains;
 use labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
-    launch_quantize_label, mapping_badge_palette, mapping_field_index, mapping_source_label,
-    mapping_source_sort_key, quantize_label,
+    input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
+    mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
 };
 use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
@@ -4300,27 +4300,6 @@ fn clamp_index(index: usize, len: usize) -> usize {
         0
     } else {
         index.min(len - 1)
-    }
-}
-
-fn input_channel_label(channel: MidiChannelFilter) -> String {
-    match channel {
-        MidiChannelFilter::Omni => "all".to_string(),
-        MidiChannelFilter::Channel(value) => value.to_string(),
-    }
-}
-
-fn output_channel_label(channel: Option<u8>) -> String {
-    channel
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "none".to_string())
-}
-
-fn on_off(value: bool) -> &'static str {
-    if value {
-        "on"
-    } else {
-        "off"
     }
 }
 
