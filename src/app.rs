@@ -84,6 +84,7 @@ use labels::{
 use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
+use routing_ui::{cycle_input_channel, cycle_optional_port, cycle_output_channel};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -4331,53 +4332,6 @@ fn indexed_all_notes(track: &Track) -> Vec<(usize, crate::project::MidiNote)> {
     track.midi_notes.iter().copied().enumerate().collect()
 }
 
-fn cycle_optional_port(
-    current: Option<&MidiPortRef>,
-    ports: &[MidiPortRef],
-    delta: i32,
-) -> Option<MidiPortRef> {
-    if ports.is_empty() {
-        return None;
-    }
-
-    let option_count = ports.len() as i32 + 1;
-    let current_index = current
-        .and_then(|port| ports.iter().position(|candidate| candidate == port))
-        .map(|index| index as i32 + 1)
-        .unwrap_or(0);
-    let next_index = (current_index + delta).rem_euclid(option_count);
-    if next_index == 0 {
-        None
-    } else {
-        ports.get((next_index - 1) as usize).cloned()
-    }
-}
-
-fn cycle_input_channel(current: MidiChannelFilter, delta: i32) -> MidiChannelFilter {
-    let current_index = match current {
-        MidiChannelFilter::Omni => 0,
-        MidiChannelFilter::Channel(channel) => i32::from(channel.clamp(1, 16)),
-    };
-    let next_index = (current_index + delta).rem_euclid(17);
-    if next_index == 0 {
-        MidiChannelFilter::Omni
-    } else {
-        MidiChannelFilter::Channel(next_index as u8)
-    }
-}
-
-fn cycle_output_channel(current: Option<u8>, delta: i32) -> Option<u8> {
-    let current_index = current
-        .map(|value| i32::from(value.clamp(1, 16)))
-        .unwrap_or(0);
-    let next_index = (current_index + delta).rem_euclid(17);
-    if next_index == 0 {
-        None
-    } else {
-        Some(next_index as u8)
-    }
-}
-
 fn transport_strip_height() -> u32 {
     34
 }
@@ -4696,10 +4650,10 @@ struct TransportChipSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        cycle_input_channel, cycle_optional_port, cycle_output_channel, mapping_field_index,
-        ticks_per_second_for_tempo, transport_strip_height, App, AppControl, AppOverlay,
-        LastActionStatus,
+        mapping_field_index, ticks_per_second_for_tempo, transport_strip_height, App, AppControl,
+        AppOverlay, LastActionStatus,
     };
+    use super::routing_ui::{cycle_input_channel, cycle_optional_port, cycle_output_channel};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
     use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};

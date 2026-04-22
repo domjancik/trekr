@@ -744,6 +744,67 @@ fn visible_param_label(param: Option<&MidiFxInlineParam>, fallback: &'static str
         .unwrap_or_else(|| fallback.to_string())
 }
 
+pub(super) fn cycle_optional_port(
+    current: Option<&MidiPortRef>,
+    ports: &[MidiPortRef],
+    delta: i32,
+) -> Option<MidiPortRef> {
+    if ports.is_empty() {
+        return None;
+    }
+
+    let option_count = ports.len() as i32 + 1;
+    let current_index = current
+        .and_then(|port| ports.iter().position(|candidate| candidate == port))
+        .map(|index| index as i32 + 1)
+        .unwrap_or(0);
+    let next_index = (current_index + delta).rem_euclid(option_count);
+    if next_index == 0 {
+        None
+    } else {
+        ports.get((next_index - 1) as usize).cloned()
+    }
+}
+
+pub(super) fn cycle_input_channel(current: MidiChannelFilter, delta: i32) -> MidiChannelFilter {
+    let current_index = match current {
+        MidiChannelFilter::Omni => 0,
+        MidiChannelFilter::Channel(channel) => i32::from(channel.clamp(1, 16)),
+    };
+    let next_index = (current_index + delta).rem_euclid(17);
+    if next_index == 0 {
+        MidiChannelFilter::Omni
+    } else {
+        MidiChannelFilter::Channel(next_index as u8)
+    }
+}
+
+pub(super) fn cycle_output_channel(current: Option<u8>, delta: i32) -> Option<u8> {
+    let current_index = current
+        .map(|value| i32::from(value.clamp(1, 16)))
+        .unwrap_or(0);
+    let next_index = (current_index + delta).rem_euclid(17);
+    if next_index == 0 {
+        None
+    } else {
+        Some(next_index as u8)
+    }
+}
+
+fn input_channel_label(channel: MidiChannelFilter) -> String {
+    match channel {
+        MidiChannelFilter::Omni => "Omni".to_string(),
+        MidiChannelFilter::Channel(channel) => format!("Ch{channel}"),
+    }
+}
+
+fn output_channel_label(channel: Option<u8>) -> String {
+    match channel {
+        Some(channel) => format!("Ch{}", channel.clamp(1, 16)),
+        None => "None".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
