@@ -424,6 +424,7 @@ The current test suite is heavily concentrated in `src/app.rs`, including direct
 Refactor rule:
 
 - keep the same coverage expectations
+- no existing test may be dropped solely because of the refactor; tests may only be relocated, split, or minimally adapted to match the new module boundaries
 - tests may move with the code they validate
 - assertions may be adjusted only where relocation changes test harness setup, not where product behavior changes
 
