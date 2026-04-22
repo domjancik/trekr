@@ -98,6 +98,7 @@ Launch state:
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - `cargo run --bin trekr-tui` opens a terminal menu for selecting launch mode, state, video mode, scale, and capture path
 - `cargo run --bin trekr-mdns-probe -- --service-type _apple-midi._udp --duration-secs 120` runs a headless mDNS advertise/browse probe for discovery validation on thin Linux targets
+- `cargo run --bin trekr-rtpmidi-smoke -- --host 10.11.99.5 --control-port 5004 --note 60 --velocity 100` runs a headless RTP-MIDI invite + note on/off smoke sender against a target AppleMIDI endpoint
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
 CLI notes:
