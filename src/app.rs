@@ -51,6 +51,8 @@ mod labels;
 mod mapping_ui;
 #[path = "app/shell_ui.rs"]
 mod shell_ui;
+#[path = "app/timeline_fx_ui.rs"]
+mod timeline_fx_ui;
 #[path = "app/timeline_recording.rs"]
 mod timeline_recording;
 #[path = "app/timeline_ui.rs"]
@@ -5042,9 +5044,7 @@ mod tests {
     use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
-    use crate::project::{
-        MidiNote, RecordContext, Track, TrackKind, STORED_LOOP_SLOT_COUNT,
-    };
+    use crate::project::{MidiNote, RecordContext, Track, TrackKind, STORED_LOOP_SLOT_COUNT};
     use crate::routing::MidiChannelFilter;
     use crate::timeline_fx::{TimelineContext, TimelineFxField};
     use crate::transport::{QuantizeMode, RecordMode};
@@ -7684,42 +7684,6 @@ mod tests {
     }
 
     #[test]
-    fn timeline_track_fx_row_click_selects_output_fx_context() {
-        let mut app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (_, output_band) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
-        let row = app.timeline_fx_row_layouts(
-            output_band,
-            &displayed,
-            &app.project.tracks[0].midi_fx.output_fx,
-            None,
-        )[0]
-        .row;
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            row.x + 2,
-            row.y + row.height() as i32 / 2,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(
-            app.page_state.selected_timeline_context,
-            TimelineContext::OutputFx
-        );
-    }
-
-    #[test]
     fn timeline_resized_content_rects_do_not_overlap_input_fx_band() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
@@ -7745,33 +7709,6 @@ mod tests {
 
         assert!(!intersects(input_band, full_content));
         assert!(!intersects(input_band, detail_content));
-    }
-
-    #[test]
-    fn timeline_fx_adjust_and_move_actions_update_selected_output_row() {
-        let mut app = App::new();
-        app.page_state.current_page = AppPage::Timeline;
-        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
-        app.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
-
-        let before_kind = app
-            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
-            .unwrap()
-            .effect
-            .kind();
-        app.adjust_page_item(1);
-        let after_kind = app
-            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
-            .unwrap()
-            .effect
-            .kind();
-        assert_ne!(before_kind, after_kind);
-
-        app.page_state.selected_timeline_fx_field = TimelineFxField::Move;
-        let before_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
-        app.adjust_page_item(1);
-        let after_row = app.selected_timeline_fx_row(MidiFxChainKind::Output);
-        assert!(after_row >= before_row);
     }
 
     #[test]
@@ -8202,58 +8139,6 @@ mod tests {
     }
 
     #[test]
-    fn timeline_fx_enabled_click_toggles_effect_without_changing_kind() {
-        let mut app = App::new();
-        app.project.active_track_mut().unwrap().midi_fx.output_fx =
-            vec![Some(MidiFxSlot::default()), None, None, None];
-        app.page_state.current_page = AppPage::Timeline;
-        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
-        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, 0);
-        let before_enabled = app.project.tracks[0].midi_fx.output_fx[0]
-            .as_ref()
-            .unwrap()
-            .enabled;
-        let before_kind = app.project.tracks[0].midi_fx.output_fx[0]
-            .as_ref()
-            .unwrap()
-            .effect
-            .kind();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (_, output_band) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
-        let layout = app.timeline_fx_row_layouts(
-            output_band,
-            &displayed,
-            &app.project.tracks[0].midi_fx.output_fx,
-            Some(0),
-        )[0];
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            layout.enabled.x + layout.enabled.width() as i32 / 2,
-            layout.enabled.y + layout.enabled.height() as i32 / 2,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(
-            app.page_state.selected_timeline_fx_field,
-            TimelineFxField::Enabled
-        );
-        let after_slot = app.project.tracks[0].midi_fx.output_fx[0].as_ref().unwrap();
-        assert_ne!(after_slot.enabled, before_enabled);
-        assert_eq!(after_slot.effect.kind(), before_kind);
-    }
-
-    #[test]
     fn timeline_fx_enabled_chip_hides_label_when_kind_title_is_visible() {
         let slot = MidiFxSlot::default();
         assert_eq!(super::timeline_fx_enabled_chip_label(&slot, true), "");
@@ -8318,87 +8203,6 @@ mod tests {
             .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
             .len();
         assert_eq!(after, before - 1);
-    }
-
-    #[test]
-    fn timeline_add_row_click_inserts_effect_on_first_click() {
-        let mut app = App::new();
-        app.project.active_track_mut().unwrap().midi_fx.output_fx =
-            vec![Some(MidiFxSlot::default()), None, None, None];
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (_, output_band) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
-        let layouts = app.timeline_fx_row_layouts(
-            output_band,
-            &displayed,
-            &app.project.tracks[0].midi_fx.output_fx,
-            None,
-        );
-        let add_row = layouts.last().expect("add row").row;
-        let before = app
-            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
-            .len();
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            add_row.x + 4,
-            add_row.y + add_row.height() as i32 / 2,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        let after = app
-            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
-            .len();
-        assert_eq!(after, before + 1);
-    }
-
-    #[test]
-    fn timeline_fx_hover_targets_kind_action_not_routing() {
-        let app = App::new();
-        let mut app = app;
-        app.project.active_track_mut().unwrap().midi_fx.output_fx =
-            vec![Some(MidiFxSlot::default()), None, None, None];
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (_, output_band) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
-        let layout = app.timeline_fx_row_layouts(
-            output_band,
-            &displayed,
-            &app.project.tracks[0].midi_fx.output_fx,
-            None,
-        )[0];
-
-        let target = app
-            .timeline_discoverability_targets(content_bounds)
-            .into_iter()
-            .find_map(|(rect, target)| {
-                super::rect_contains(
-                    rect,
-                    layout.kind.x + layout.kind.width() as i32 / 2,
-                    layout.kind.y + layout.kind.height() as i32 / 2,
-                )
-                .then_some(target)
-            })
-            .expect("discoverability target");
-
-        assert_eq!(target.action, AppAction::CycleSelectedTimelineFxKind);
     }
 
     #[test]
