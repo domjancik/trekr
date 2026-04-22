@@ -15,7 +15,7 @@ use crate::midi_fx::{
     cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
     playback_timing_lookback_ticks, process_live_chain_event, process_live_chain_tick,
     reset_live_fx_timing, transform_notes, LiveMidiFxEvent, LiveMidiFxState, MidiFx,
-    MidiFxChainKind, MidiFxInlineParam, MidiFxSlot, MIDI_FX_SLOT_COUNT,
+    MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -84,7 +84,6 @@ use labels::{
 use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
-use routing_ui::{cycle_input_channel, cycle_optional_port, cycle_output_channel};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -2469,272 +2468,6 @@ impl App {
         !matches!(field, MappingField::SourceDevice) || entry.source_kind == MappingSourceKind::Midi
     }
 
-    fn selected_fx_slot_index(&self, chain_kind: MidiFxChainKind) -> usize {
-        match chain_kind {
-            MidiFxChainKind::Input => self
-                .page_state
-                .selected_input_fx_slot
-                .min(MIDI_FX_SLOT_COUNT - 1),
-            MidiFxChainKind::Output => self
-                .page_state
-                .selected_output_fx_slot
-                .min(MIDI_FX_SLOT_COUNT - 1),
-        }
-    }
-
-    fn set_selected_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, index: usize) {
-        let clamped = index.min(MIDI_FX_SLOT_COUNT - 1);
-        match chain_kind {
-            MidiFxChainKind::Input => self.page_state.selected_input_fx_slot = clamped,
-            MidiFxChainKind::Output => self.page_state.selected_output_fx_slot = clamped,
-        }
-    }
-
-    fn selected_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
-        let Some(track) = self.project.active_track() else {
-            return 0;
-        };
-        let slot_index = self.selected_fx_slot_index(chain_kind);
-        let windows = match chain_kind {
-            MidiFxChainKind::Input => &track.midi_fx.timeline_ui.input_param_windows,
-            MidiFxChainKind::Output => &track.midi_fx.timeline_ui.output_param_windows,
-        };
-        windows.get(slot_index).copied().unwrap_or(0)
-    }
-
-    fn set_selected_fx_param_window(&mut self, chain_kind: MidiFxChainKind, start: usize) {
-        let slot_index = self.selected_fx_slot_index(chain_kind);
-        if let Some(track) = self.project.active_track_mut() {
-            let windows = match chain_kind {
-                MidiFxChainKind::Input => &mut track.midi_fx.timeline_ui.input_param_windows,
-                MidiFxChainKind::Output => &mut track.midi_fx.timeline_ui.output_param_windows,
-            };
-            if let Some(window) = windows.get_mut(slot_index) {
-                *window = start;
-            }
-        }
-    }
-
-    fn fx_chain<'a>(
-        &self,
-        track: &'a Track,
-        chain_kind: MidiFxChainKind,
-    ) -> &'a [Option<MidiFxSlot>] {
-        match chain_kind {
-            MidiFxChainKind::Input => &track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &track.midi_fx.output_fx,
-        }
-    }
-
-    fn selected_fx_slot<'a>(
-        &self,
-        track: &'a Track,
-        chain_kind: MidiFxChainKind,
-    ) -> Option<&'a MidiFxSlot> {
-        self.fx_chain(track, chain_kind)
-            .get(self.selected_fx_slot_index(chain_kind))
-            .and_then(|slot| slot.as_ref())
-    }
-
-    fn selected_fx_visible_params(
-        &self,
-        track: &Track,
-        chain_kind: MidiFxChainKind,
-    ) -> (
-        Option<MidiFxInlineParam>,
-        Option<MidiFxInlineParam>,
-        usize,
-        usize,
-    ) {
-        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
-            return (None, None, 0, 0);
-        };
-        let params = slot.effect.inline_parameters();
-        let window_start = self
-            .selected_fx_param_window(chain_kind)
-            .min(params.len().saturating_sub(1));
-        (
-            params.get(window_start).cloned(),
-            params.get(window_start + 1).cloned(),
-            params.len(),
-            window_start,
-        )
-    }
-
-    fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
-        let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
-        timeline_fx_ui::timeline_fx_overflow_label(param_count, window_start)
-    }
-
-    fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
-        let current = self.selected_fx_slot_index(chain_kind) as i32;
-        let next = (current + delta).rem_euclid(MIDI_FX_SLOT_COUNT as i32) as usize;
-        self.set_selected_fx_slot_index(chain_kind, next);
-    }
-
-    fn adjust_fx_kind(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
-        let track_count = self.project.tracks.len();
-        let slot_index = self.selected_fx_slot_index(chain_kind);
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        if slot_index >= chain.len() {
-            return;
-        }
-        let current = chain[slot_index].as_ref();
-        chain[slot_index] = cycle_fx_kind(current, delta);
-        if let Some(slot) = chain[slot_index].as_mut() {
-            if let MidiFx::TrackClone { source_track } = &mut slot.effect {
-                let max_source = track_count.saturating_sub(1);
-                *source_track = (*source_track).min(max_source);
-            }
-        }
-        self.set_selected_fx_param_window(chain_kind, 0);
-    }
-
-    fn toggle_fx_enabled(&mut self, chain_kind: MidiFxChainKind) {
-        let slot_index = self.selected_fx_slot_index(chain_kind);
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        if let Some(Some(slot)) = chain.get_mut(slot_index) {
-            slot.enabled = !slot.enabled;
-        }
-    }
-
-    fn adjust_fx_parameter(
-        &mut self,
-        chain_kind: MidiFxChainKind,
-        visible_offset: usize,
-        delta: i32,
-    ) {
-        let slot_index = self.selected_fx_slot_index(chain_kind);
-        let track_count = self.project.tracks.len();
-        let ppqn = self.project.transport.ppqn;
-        let active_track_index = self.project.active_track_index;
-        let parameter_index = self.selected_fx_param_window(chain_kind) + visible_offset;
-        let source_muted: Vec<bool> = self
-            .project
-            .tracks
-            .iter()
-            .map(|track| track.state.muted)
-            .collect();
-        let Some(track) = self.project.active_track_mut() else {
-            return;
-        };
-        let chain = match chain_kind {
-            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
-            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
-        };
-        let Some(Some(slot)) = chain.get_mut(slot_index) else {
-            return;
-        };
-        slot.effect
-            .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
-        if let MidiFx::TrackClone { source_track } = &mut slot.effect {
-            if *source_track == active_track_index && track_count > 1 {
-                *source_track = if delta >= 0 { 1 } else { track_count - 1 };
-            }
-            if source_muted.get(*source_track).copied().unwrap_or(false) && track_count > 1 {
-                let step = if delta >= 0 { 1 } else { track_count - 1 };
-                *source_track = (*source_track + step) % track_count;
-            }
-        }
-    }
-
-    fn adjust_routing_field(&mut self, delta: i32) {
-        let current_input = self.midi_devices.selected_input_port().cloned();
-        let current_output = self.midi_devices.selected_output_port().cloned();
-        match self.page_state.selected_routing_field {
-            RoutingField::InputDevice => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.routing.input_port = cycle_optional_port(
-                        track.routing.input_port.as_ref(),
-                        &self.midi_devices.inputs,
-                        delta,
-                    );
-                }
-                self.sync_midi_inputs();
-            }
-            RoutingField::InputChannel => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.routing.input_channel =
-                        cycle_input_channel(track.routing.input_channel, delta);
-                }
-            }
-            RoutingField::OutputDevice => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.routing.output_port = cycle_optional_port(
-                        track.routing.output_port.as_ref(),
-                        &self.midi_devices.outputs,
-                        delta,
-                    );
-                }
-            }
-            RoutingField::OutputChannel => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.routing.output_channel =
-                        cycle_output_channel(track.routing.output_channel, delta);
-                }
-            }
-            RoutingField::Passthrough => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.state.passthrough = !track.state.passthrough;
-                    if track.routing.input_port.is_none() {
-                        track.routing.input_port = current_input;
-                    }
-                    if track.routing.output_port.is_none() {
-                        track.routing.output_port = current_output;
-                    }
-                }
-                self.sync_midi_inputs();
-            }
-            RoutingField::RecordInputFx => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.midi_fx.record_input_fx_mode =
-                        track.midi_fx.record_input_fx_mode.toggle();
-                }
-            }
-            RoutingField::MonitorInputFx => {
-                if let Some(track) = self.project.active_track_mut() {
-                    track.midi_fx.monitor_input_fx = !track.midi_fx.monitor_input_fx;
-                }
-            }
-            RoutingField::InputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Input, delta),
-            RoutingField::InputFxKind => self.adjust_fx_kind(MidiFxChainKind::Input, delta),
-            RoutingField::InputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Input),
-            RoutingField::InputFxParam1 => {
-                self.adjust_fx_parameter(MidiFxChainKind::Input, 0, delta)
-            }
-            RoutingField::InputFxParam2 => {
-                self.adjust_fx_parameter(MidiFxChainKind::Input, 1, delta)
-            }
-            RoutingField::InputFxMore => {
-                self.scroll_fx_parameter_window(MidiFxChainKind::Input, delta)
-            }
-            RoutingField::OutputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Output, delta),
-            RoutingField::OutputFxKind => self.adjust_fx_kind(MidiFxChainKind::Output, delta),
-            RoutingField::OutputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Output),
-            RoutingField::OutputFxParam1 => {
-                self.adjust_fx_parameter(MidiFxChainKind::Output, 0, delta)
-            }
-            RoutingField::OutputFxParam2 => {
-                self.adjust_fx_parameter(MidiFxChainKind::Output, 1, delta)
-            }
-            RoutingField::OutputFxMore => {
-                self.scroll_fx_parameter_window(MidiFxChainKind::Output, delta)
-            }
-        }
-    }
-
     fn maybe_refresh_midi_devices(&mut self, now: Instant) {
         self.refresh_midi_devices(false, now);
     }
@@ -3198,20 +2931,6 @@ impl App {
                 }
             }
         }
-    }
-
-    fn scroll_fx_parameter_window(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
-        let Some(track) = self.project.active_track() else {
-            return;
-        };
-        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
-            return;
-        };
-        let param_count = slot.effect.inline_parameters().len();
-        let max_start = param_count.saturating_sub(2);
-        let current = self.selected_fx_param_window(chain_kind);
-        let next = (current as i32 + delta).clamp(0, max_start as i32) as usize;
-        self.set_selected_fx_param_window(chain_kind, next);
     }
 
     fn effective_track_clone_playback_notes_recursive(
@@ -4653,7 +4372,6 @@ mod tests {
         mapping_field_index, ticks_per_second_for_tempo, transport_strip_height, App, AppControl,
         AppOverlay, LastActionStatus,
     };
-    use super::routing_ui::{cycle_input_channel, cycle_optional_port, cycle_output_channel};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
     use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};
@@ -5474,22 +5192,6 @@ mod tests {
         assert_eq!(control, Some(AppControl::Continue));
         assert!(app.project.transport.recording);
         assert!(app.project.transport.playing);
-    }
-
-    #[test]
-    fn cycle_helpers_wrap_through_expected_ranges() {
-        let app = App::new();
-        assert_eq!(
-            cycle_optional_port(None, &app.midi_devices.outputs, 1)
-                .unwrap()
-                .name,
-            app.midi_devices.outputs[0].name
-        );
-        assert_eq!(
-            cycle_input_channel(MidiChannelFilter::Omni, 1),
-            MidiChannelFilter::Channel(1)
-        );
-        assert_eq!(cycle_output_channel(None, -1), Some(16));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use super::*;
+use crate::midi_fx::MidiFxInlineParam;
 
 impl App {
     pub(super) fn draw_timeline_fx_row<T: RenderTarget>(
