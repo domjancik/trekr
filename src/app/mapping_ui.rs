@@ -276,7 +276,9 @@ pub(super) fn track_indicator_target(
 use super::*;
 
 impl App {
-    pub(super) fn direct_mapping_footer_content(&self) -> Option<(String, String, Vec<MappingBadge>)> {
+    pub(super) fn direct_mapping_footer_content(
+        &self,
+    ) -> Option<(String, String, Vec<MappingBadge>)> {
         match self.direct_mapping_state.mode {
             DirectMappingMode::Inactive => {
                 if self.status_state.hovered_target.is_some() {
@@ -914,4 +916,3 @@ impl App {
         Ok(())
     }
 }
-
