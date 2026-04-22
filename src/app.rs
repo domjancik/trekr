@@ -47,6 +47,8 @@ mod direct_mapping_ui;
 mod discoverability_ui;
 #[path = "app/input.rs"]
 mod input;
+#[path = "app/io_helpers.rs"]
+mod io_helpers;
 #[path = "app/labels.rs"]
 mod labels;
 #[path = "app/mapping_ui.rs"]
@@ -63,6 +65,8 @@ mod routing_ui;
 mod shell_ui;
 #[path = "app/shell_layout.rs"]
 mod shell_layout;
+#[path = "app/shell_scaling.rs"]
+mod shell_scaling;
 #[path = "app/stored_loops.rs"]
 mod stored_loops;
 #[path = "app/timeline_fx_ui.rs"]
@@ -84,6 +88,7 @@ use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
 };
 pub(super) use input::rect_contains;
+use io_helpers::{clamp_index, port_name, resolve_port_by_name};
 use labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
@@ -93,6 +98,9 @@ use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 use mapping_input::{midi_learn_label, midi_mapping_matches_event};
+use shell_scaling::{
+    active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
+};
 use stored_loops::{
     clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
     stored_loop_slot_color, stored_loop_slot_recall_action,
@@ -3901,39 +3909,6 @@ impl App {
     }
 }
 
-fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u32) {
-    let scale = display_scale.max(1.0);
-    let logical_width = (output_size.0 as f32 / scale).round().max(1.0) as u32;
-    let logical_height = (output_size.1 as f32 / scale).round().max(1.0) as u32;
-    (logical_width, logical_height)
-}
-
-fn active_draw_size(canvas_output_size: (u32, u32), viewport_size: (u32, u32)) -> (u32, u32) {
-    if viewport_size.0 > 0 && viewport_size.1 > 0 {
-        viewport_size
-    } else {
-        canvas_output_size
-    }
-}
-
-fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
-    override_scale.unwrap_or(display_scale).max(1.0)
-}
-
-fn should_interpolate_window_scale(mode: UiScalingMode, scale_x: f32, scale_y: f32) -> bool {
-    match mode {
-        UiScalingMode::Auto => {
-            has_fractional_scale_component(scale_x) || has_fractional_scale_component(scale_y)
-        }
-        UiScalingMode::Nearest => false,
-        UiScalingMode::Linear => true,
-    }
-}
-
-fn has_fractional_scale_component(scale: f32) -> bool {
-    (scale - scale.round()).abs() > 0.001
-}
-
 fn scheduled_note_occurrences(
     track: &Track,
     notes: &[MidiNote],
@@ -4077,23 +4052,6 @@ fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
     ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
 }
 
-fn port_name(port: Option<&MidiPortRef>) -> &str {
-    port.map(|value| value.name.as_str()).unwrap_or("none")
-}
-
-fn resolve_port_by_name(ports: &[MidiPortRef], preferred_name: Option<&str>) -> Option<usize> {
-    let preferred_name = preferred_name?;
-    ports.iter().position(|port| port.name == preferred_name)
-}
-
-fn clamp_index(index: usize, len: usize) -> usize {
-    if len == 0 {
-        0
-    } else {
-        index.min(len - 1)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppControl {
     Continue,
@@ -4142,66 +4100,6 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.loop_enabled);
         assert!(app.project.tracks[2].state.armed);
-    }
-
-    #[test]
-    fn logical_viewport_size_respects_display_scale() {
-        assert_eq!(super::logical_viewport_size((2560, 1440), 2.0), (1280, 720));
-        assert_eq!(super::logical_viewport_size((1920, 1080), 1.5), (1280, 720));
-    }
-
-    #[test]
-    fn active_draw_size_prefers_logical_viewport_over_output_pixels() {
-        assert_eq!(
-            super::active_draw_size((2560, 1440), (1280, 720)),
-            (1280, 720)
-        );
-        assert_eq!(super::active_draw_size((1280, 720), (0, 0)), (1280, 720));
-    }
-
-    #[test]
-    fn ui_scale_override_wins_over_display_scale() {
-        assert_eq!(super::effective_ui_scale(1.5, Some(2.0)), 2.0);
-        assert_eq!(super::effective_ui_scale(1.5, None), 1.5);
-        assert_eq!(super::effective_ui_scale(0.5, None), 1.0);
-    }
-
-    #[test]
-    fn auto_window_scale_interpolation_only_enables_for_non_integer_values() {
-        assert!(super::should_interpolate_window_scale(
-            super::UiScalingMode::Auto,
-            1.5,
-            1.0
-        ));
-        assert!(super::should_interpolate_window_scale(
-            super::UiScalingMode::Auto,
-            1.0,
-            1.25
-        ));
-        assert!(!super::should_interpolate_window_scale(
-            super::UiScalingMode::Auto,
-            1.0,
-            2.0
-        ));
-        assert!(!super::should_interpolate_window_scale(
-            super::UiScalingMode::Auto,
-            2.0004,
-            1.0
-        ));
-    }
-
-    #[test]
-    fn explicit_window_scale_modes_override_auto_behavior() {
-        assert!(!super::should_interpolate_window_scale(
-            super::UiScalingMode::Nearest,
-            1.5,
-            1.5
-        ));
-        assert!(super::should_interpolate_window_scale(
-            super::UiScalingMode::Linear,
-            1.0,
-            1.0
-        ));
     }
 
     #[test]
