@@ -53,6 +53,8 @@ mod mapping_ui;
 mod shell_ui;
 #[path = "app/timeline_fx_ui.rs"]
 mod timeline_fx_ui;
+#[path = "app/timeline_page.rs"]
+mod timeline_page;
 #[path = "app/timeline_recording.rs"]
 mod timeline_recording;
 #[path = "app/timeline_ui.rs"]
@@ -5073,24 +5075,6 @@ mod tests {
     }
 
     #[test]
-    fn focused_track_view_limits_timeline_to_active_track() {
-        let mut app = App::new();
-        let timeline_bounds = Rect::new(0, 0, 1000, 420);
-
-        assert_eq!(
-            app.visible_track_columns(timeline_bounds).len(),
-            app.project.tracks.len()
-        );
-
-        app.apply_action(AppAction::SelectTrack(2));
-        app.apply_action(AppAction::ToggleFocusedTrackView);
-
-        let visible = app.visible_track_columns(timeline_bounds);
-        assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].0, 2);
-    }
-
-    #[test]
     fn logical_viewport_size_respects_display_scale() {
         assert_eq!(super::logical_viewport_size((2560, 1440), 2.0), (1280, 720));
         assert_eq!(super::logical_viewport_size((1920, 1080), 1.5), (1280, 720));
@@ -5161,26 +5145,6 @@ mod tests {
 
         assert!(app.project.transport.playing);
         assert!(!app.project.transport.loop_enabled);
-    }
-
-    #[test]
-    fn transport_chip_specs_include_visible_loop_recording_wrap_status() {
-        let mut app = App::new();
-        let labels = app
-            .transport_bottom_chip_specs()
-            .into_iter()
-            .map(|chip| chip.label)
-            .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Wrap Extend"));
-        assert!(labels.iter().any(|label| label == "Harmony C"));
-
-        app.apply_action(AppAction::ToggleLoopRecordingExtension);
-        let labels = app
-            .transport_bottom_chip_specs()
-            .into_iter()
-            .map(|chip| chip.label)
-            .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Wrap Clamp"));
     }
 
     #[test]
@@ -8313,31 +8277,6 @@ mod tests {
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
 
         assert_eq!(output_rect.y, body_pair.y + body_pair.height() as i32 + 4);
-    }
-
-    #[test]
-    fn timeline_context_indicator_sits_left_of_selected_context_with_gap() {
-        let mut app = App::new();
-        app.page_state.selected_timeline_context = TimelineContext::TrackTimeline;
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let track = &app.project.tracks[0];
-        let layout = app.timeline_track_layout(0, full_bounds, detail_bounds);
-        let context_rect = layout.fx_rect(app.page_state.selected_timeline_context);
-        let indicator = app
-            .timeline_context_indicator_rect(full_bounds, detail_bounds, track)
-            .expect("indicator rect");
-
-        assert_eq!(indicator.width(), 1);
-        assert_eq!(indicator.height(), context_rect.height());
-        assert_eq!(indicator.y, context_rect.y);
-        assert_eq!(indicator.x + indicator.width() as i32 + 1, context_rect.x);
     }
 
     #[test]
