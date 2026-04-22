@@ -2,6 +2,54 @@ use super::*;
 use crate::theme::io_pages as io_theme;
 
 impl App {
+    pub(crate) fn routing_discoverability_targets(
+        &self,
+        content_bounds: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let mut targets = Vec::new();
+        let inner = crate::ui::inset_rect(content_bounds, 12, 32).expect("routing inner");
+        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).expect("routing layout");
+        targets.push((
+            Rect::new(
+                header.x + 106,
+                header.y + 8,
+                92,
+                header.height().saturating_sub(16),
+            ),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackPassthrough,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+
+        for (field, row) in self.routing_field_rects(body) {
+            if field != RoutingField::Passthrough {
+                continue;
+            }
+            let control_height = row.height().saturating_sub(20).max(10);
+            let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
+            let value = Rect::new(
+                row.x + 8,
+                control_y,
+                row.width().saturating_sub(64),
+                control_height,
+            );
+            targets.push((
+                value,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleCurrentTrackPassthrough,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
+
+        targets
+    }
+
     pub(crate) fn draw_routing_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -670,6 +718,30 @@ impl App {
 
         None
     }
+}
+
+pub(super) fn routing_field_short_label(field: RoutingField) -> &'static str {
+    match field {
+        RoutingField::InputDevice => "Input Device",
+        RoutingField::InputChannel => "Input Chan",
+        RoutingField::OutputDevice => "Output Device",
+        RoutingField::OutputChannel => "Output Chan",
+        RoutingField::Passthrough => "Thru",
+        RoutingField::RecordInputFx => "Rec FX",
+        RoutingField::MonitorInputFx => "Mon FX",
+        RoutingField::InputFxSlot | RoutingField::OutputFxSlot => "Slot",
+        RoutingField::InputFxKind | RoutingField::OutputFxKind => "Kind",
+        RoutingField::InputFxEnabled | RoutingField::OutputFxEnabled => "On",
+        RoutingField::InputFxParam1 | RoutingField::OutputFxParam1 => "P1",
+        RoutingField::InputFxParam2 | RoutingField::OutputFxParam2 => "P2",
+        RoutingField::InputFxMore | RoutingField::OutputFxMore => "More",
+    }
+}
+
+fn visible_param_label(param: Option<&MidiFxInlineParam>, fallback: &'static str) -> String {
+    param
+        .map(|param| param.label.to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 #[cfg(test)]
