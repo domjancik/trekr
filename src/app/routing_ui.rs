@@ -1,4 +1,5 @@
 use super::*;
+use crate::midi_fx::MidiFxInlineParam;
 use crate::theme::io_pages as io_theme;
 
 impl App {
@@ -645,6 +646,286 @@ impl App {
         }
     }
 
+    pub(super) fn selected_fx_slot_index(&self, chain_kind: MidiFxChainKind) -> usize {
+        match chain_kind {
+            MidiFxChainKind::Input => self
+                .page_state
+                .selected_input_fx_slot
+                .min(MIDI_FX_SLOT_COUNT - 1),
+            MidiFxChainKind::Output => self
+                .page_state
+                .selected_output_fx_slot
+                .min(MIDI_FX_SLOT_COUNT - 1),
+        }
+    }
+
+    pub(super) fn set_selected_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, index: usize) {
+        let clamped = index.min(MIDI_FX_SLOT_COUNT - 1);
+        match chain_kind {
+            MidiFxChainKind::Input => self.page_state.selected_input_fx_slot = clamped,
+            MidiFxChainKind::Output => self.page_state.selected_output_fx_slot = clamped,
+        }
+    }
+
+    pub(super) fn selected_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let windows = match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.timeline_ui.input_param_windows,
+            MidiFxChainKind::Output => &track.midi_fx.timeline_ui.output_param_windows,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    pub(super) fn set_selected_fx_param_window(&mut self, chain_kind: MidiFxChainKind, start: usize) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        if let Some(track) = self.project.active_track_mut() {
+            let windows = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.timeline_ui.input_param_windows,
+                MidiFxChainKind::Output => &mut track.midi_fx.timeline_ui.output_param_windows,
+            };
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = start;
+            }
+        }
+    }
+
+    pub(super) fn fx_chain<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> &'a [Option<MidiFxSlot>] {
+        match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &track.midi_fx.output_fx,
+        }
+    }
+
+    pub(super) fn selected_fx_slot<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<&'a MidiFxSlot> {
+        self.fx_chain(track, chain_kind)
+            .get(self.selected_fx_slot_index(chain_kind))
+            .and_then(|slot| slot.as_ref())
+    }
+
+    pub(super) fn selected_fx_visible_params(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> (
+        Option<MidiFxInlineParam>,
+        Option<MidiFxInlineParam>,
+        usize,
+        usize,
+    ) {
+        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
+            return (None, None, 0, 0);
+        };
+        let params = slot.effect.inline_parameters();
+        let window_start = self
+            .selected_fx_param_window(chain_kind)
+            .min(params.len().saturating_sub(1));
+        (
+            params.get(window_start).cloned(),
+            params.get(window_start + 1).cloned(),
+            params.len(),
+            window_start,
+        )
+    }
+
+    pub(super) fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
+        let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
+        timeline_fx_ui::timeline_fx_overflow_label(param_count, window_start)
+    }
+
+    fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let current = self.selected_fx_slot_index(chain_kind) as i32;
+        let next = (current + delta).rem_euclid(MIDI_FX_SLOT_COUNT as i32) as usize;
+        self.set_selected_fx_slot_index(chain_kind, next);
+    }
+
+    fn adjust_fx_kind(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let track_count = self.project.tracks.len();
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        if slot_index >= chain.len() {
+            return;
+        }
+        let current = chain[slot_index].as_ref();
+        chain[slot_index] = cycle_fx_kind(current, delta);
+        if let Some(slot) = chain[slot_index].as_mut() {
+            if let MidiFx::TrackClone { source_track } = &mut slot.effect {
+                let max_source = track_count.saturating_sub(1);
+                *source_track = (*source_track).min(max_source);
+            }
+        }
+        self.set_selected_fx_param_window(chain_kind, 0);
+    }
+
+    fn toggle_fx_enabled(&mut self, chain_kind: MidiFxChainKind) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        if let Some(Some(slot)) = chain.get_mut(slot_index) {
+            slot.enabled = !slot.enabled;
+        }
+    }
+
+    fn adjust_fx_parameter(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        visible_offset: usize,
+        delta: i32,
+    ) {
+        let slot_index = self.selected_fx_slot_index(chain_kind);
+        let track_count = self.project.tracks.len();
+        let ppqn = self.project.transport.ppqn;
+        let active_track_index = self.project.active_track_index;
+        let parameter_index = self.selected_fx_param_window(chain_kind) + visible_offset;
+        let source_muted: Vec<bool> = self
+            .project
+            .tracks
+            .iter()
+            .map(|track| track.state.muted)
+            .collect();
+        let Some(track) = self.project.active_track_mut() else {
+            return;
+        };
+        let chain = match chain_kind {
+            MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+            MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+        };
+        let Some(Some(slot)) = chain.get_mut(slot_index) else {
+            return;
+        };
+        slot.effect
+            .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
+        if let MidiFx::TrackClone { source_track } = &mut slot.effect {
+            if *source_track == active_track_index && track_count > 1 {
+                *source_track = if delta >= 0 { 1 } else { track_count - 1 };
+            }
+            if source_muted.get(*source_track).copied().unwrap_or(false) && track_count > 1 {
+                let step = if delta >= 0 { 1 } else { track_count - 1 };
+                *source_track = (*source_track + step) % track_count;
+            }
+        }
+    }
+
+    fn scroll_fx_parameter_window(&mut self, chain_kind: MidiFxChainKind, delta: i32) {
+        let Some(track) = self.project.active_track() else {
+            return;
+        };
+        let Some(slot) = self.selected_fx_slot(track, chain_kind) else {
+            return;
+        };
+        let param_count = slot.effect.inline_parameters().len();
+        let max_start = param_count.saturating_sub(2);
+        let current = self.selected_fx_param_window(chain_kind);
+        let next = (current as i32 + delta).clamp(0, max_start as i32) as usize;
+        self.set_selected_fx_param_window(chain_kind, next);
+    }
+
+    pub(super) fn adjust_routing_field(&mut self, delta: i32) {
+        let current_input = self.midi_devices.selected_input_port().cloned();
+        let current_output = self.midi_devices.selected_output_port().cloned();
+        match self.page_state.selected_routing_field {
+            RoutingField::InputDevice => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.routing.input_port = cycle_optional_port(
+                        track.routing.input_port.as_ref(),
+                        &self.midi_devices.inputs,
+                        delta,
+                    );
+                }
+                self.sync_midi_inputs();
+            }
+            RoutingField::InputChannel => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.routing.input_channel =
+                        cycle_input_channel(track.routing.input_channel, delta);
+                }
+            }
+            RoutingField::OutputDevice => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.routing.output_port = cycle_optional_port(
+                        track.routing.output_port.as_ref(),
+                        &self.midi_devices.outputs,
+                        delta,
+                    );
+                }
+            }
+            RoutingField::OutputChannel => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.routing.output_channel =
+                        cycle_output_channel(track.routing.output_channel, delta);
+                }
+            }
+            RoutingField::Passthrough => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.state.passthrough = !track.state.passthrough;
+                    if track.routing.input_port.is_none() {
+                        track.routing.input_port = current_input;
+                    }
+                    if track.routing.output_port.is_none() {
+                        track.routing.output_port = current_output;
+                    }
+                }
+                self.sync_midi_inputs();
+            }
+            RoutingField::RecordInputFx => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.midi_fx.record_input_fx_mode =
+                        track.midi_fx.record_input_fx_mode.toggle();
+                }
+            }
+            RoutingField::MonitorInputFx => {
+                if let Some(track) = self.project.active_track_mut() {
+                    track.midi_fx.monitor_input_fx = !track.midi_fx.monitor_input_fx;
+                }
+            }
+            RoutingField::InputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Input, delta),
+            RoutingField::InputFxKind => self.adjust_fx_kind(MidiFxChainKind::Input, delta),
+            RoutingField::InputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Input),
+            RoutingField::InputFxParam1 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Input, 0, delta)
+            }
+            RoutingField::InputFxParam2 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Input, 1, delta)
+            }
+            RoutingField::InputFxMore => {
+                self.scroll_fx_parameter_window(MidiFxChainKind::Input, delta)
+            }
+            RoutingField::OutputFxSlot => self.adjust_fx_slot_index(MidiFxChainKind::Output, delta),
+            RoutingField::OutputFxKind => self.adjust_fx_kind(MidiFxChainKind::Output, delta),
+            RoutingField::OutputFxEnabled => self.toggle_fx_enabled(MidiFxChainKind::Output),
+            RoutingField::OutputFxParam1 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Output, 0, delta)
+            }
+            RoutingField::OutputFxParam2 => {
+                self.adjust_fx_parameter(MidiFxChainKind::Output, 1, delta)
+            }
+            RoutingField::OutputFxMore => {
+                self.scroll_fx_parameter_window(MidiFxChainKind::Output, delta)
+            }
+        }
+    }
+
     pub(crate) fn handle_routing_pointer(
         &mut self,
         content_bounds: Rect,
@@ -808,6 +1089,23 @@ fn output_channel_label(channel: Option<u8>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::routing::MidiChannelFilter;
+
+    #[test]
+    fn cycle_helpers_wrap_through_expected_ranges() {
+        let app = App::new();
+        assert_eq!(
+            cycle_optional_port(None, &app.midi_devices.outputs, 1)
+                .unwrap()
+                .name,
+            app.midi_devices.outputs[0].name
+        );
+        assert_eq!(
+            cycle_input_channel(MidiChannelFilter::Omni, 1),
+            MidiChannelFilter::Channel(1)
+        );
+        assert_eq!(cycle_output_channel(None, -1), Some(16));
+    }
 
     #[test]
     fn routing_page_adjusts_active_track_routing() {
