@@ -4,6 +4,7 @@ use crate::{
 };
 
 use super::*;
+use super::shell_layout::{page_tabs_layout, preferred_branding_width};
 
 impl App {
     pub(super) fn draw_frame_surface(

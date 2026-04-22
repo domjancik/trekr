@@ -59,6 +59,8 @@ mod midi_io_page;
 mod routing_ui;
 #[path = "app/shell_ui.rs"]
 mod shell_ui;
+#[path = "app/shell_layout.rs"]
+mod shell_layout;
 #[path = "app/timeline_fx_ui.rs"]
 mod timeline_fx_ui;
 #[path = "app/timeline_layout.rs"]
@@ -4312,38 +4314,6 @@ fn output_channel_label(channel: Option<u8>) -> String {
     channel
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
-}
-
-fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
-    let branding_width = preferred_branding_width(bounds.width());
-    if branding_width == 0 {
-        return (Rect::new(bounds.x, bounds.y, 0, bounds.height()), bounds);
-    }
-
-    let gap = 14_i32;
-    let tabs_width = bounds
-        .width()
-        .saturating_sub(branding_width)
-        .saturating_sub(gap as u32);
-    (
-        Rect::new(bounds.x, bounds.y, branding_width, bounds.height()),
-        Rect::new(
-            bounds.x + branding_width as i32 + gap,
-            bounds.y,
-            tabs_width,
-            bounds.height(),
-        ),
-    )
-}
-
-fn preferred_branding_width(bounds_width: u32) -> u32 {
-    let desired = 220_u32;
-    let minimum_tabs_width = 360_u32;
-    if bounds_width <= desired + minimum_tabs_width {
-        0
-    } else {
-        desired
-    }
 }
 
 fn on_off(value: bool) -> &'static str {
