@@ -142,3 +142,17 @@ pub mod transport {
     pub const QUANTIZE: Color = rgb(70, 86, 108);
     pub const PEERS: Color = rgb(66, 80, 102);
 }
+
+pub mod discoverability {
+    use super::rgb;
+    use sdl3::pixels::Color;
+
+    pub const BADGE_OVERFLOW_FILL: Color = rgb(56, 64, 80);
+    pub const BADGE_OVERFLOW_TEXT: Color = rgb(228, 232, 238);
+    pub const DIRECT_TAB_TARGET: Color = rgb(132, 84, 84);
+    pub const DIRECT_TARGET_BORDER: Color = rgb(176, 116, 72);
+    pub const DIRECT_TARGET_ACTIVE_BORDER: Color = rgb(252, 146, 126);
+    pub const SLOT_BUILT_IN_FILL: Color = rgb(64, 84, 126);
+    pub const SLOT_USER_FILL: Color = rgb(88, 128, 76);
+    pub const SLOT_COUNT_TEXT: Color = rgb(244, 244, 236);
+}

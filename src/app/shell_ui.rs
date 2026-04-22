@@ -6,10 +6,10 @@ use crate::{
 use super::*;
 use super::shell_layout::{page_tabs_layout, preferred_branding_width};
 
-pub(super) struct TransportChipSpec {
-    pub(super) label: String,
-    pub(super) action: Option<AppAction>,
-    pub(super) fill: Color,
+pub(crate) struct TransportChipSpec {
+    pub(crate) label: String,
+    pub(crate) action: Option<AppAction>,
+    pub(crate) fill: Color,
 }
 
 impl App {
@@ -1168,7 +1168,7 @@ impl App {
     }
 }
 
-pub(super) fn transport_strip_height() -> u32 {
+pub(crate) fn transport_strip_height() -> u32 {
     34
 }
 
