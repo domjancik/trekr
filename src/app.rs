@@ -41,6 +41,8 @@ use std::time::{Duration, Instant};
 
 #[path = "app/capture.rs"]
 mod capture;
+#[path = "app/discoverability_ui.rs"]
+mod discoverability_ui;
 #[path = "app/input.rs"]
 mod input;
 #[path = "app/io_pages.rs"]
@@ -76,7 +78,8 @@ use labels::{
     mapping_source_sort_key, quantize_label,
 };
 use mapping_lookup::mapping_target_lookup_input;
-use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action, track_indicator_target};
+use discoverability_ui::track_indicator_target;
+use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -5744,66 +5747,6 @@ mod tests {
             app.overlay_state.active,
             Some(AppOverlay::MappingsQuickView)
         );
-    }
-
-    #[test]
-    fn discoverability_summary_hides_disabled_and_absolute_track_mappings() {
-        let mut app = App::new();
-        app.mappings = vec![
-            MappingEntry {
-                source_kind: MappingSourceKind::Midi,
-                source_device_label: "Any MIDI".to_string(),
-                source_label: "CC20".to_string(),
-                target_label: "Track Arm".to_string(),
-                scope_label: "Active Track".to_string(),
-                enabled: true,
-            },
-            MappingEntry {
-                source_kind: MappingSourceKind::Midi,
-                source_device_label: "Any MIDI".to_string(),
-                source_label: "CC21".to_string(),
-                target_label: "Track Arm".to_string(),
-                scope_label: "Track 3".to_string(),
-                enabled: true,
-            },
-            MappingEntry {
-                source_kind: MappingSourceKind::Osc,
-                source_device_label: default_mapping_source_device(),
-                source_label: "/track/active/arm".to_string(),
-                target_label: "Track Arm".to_string(),
-                scope_label: "Active Track".to_string(),
-                enabled: false,
-            },
-        ];
-
-        let summary = app.summarize_discoverability_target(DiscoverabilityTarget {
-            action: AppAction::ToggleCurrentTrackArm,
-            display_scope: Some("Active Track"),
-            allowed_mapping_scopes: &["Active Track"],
-            overlay_slot: None,
-        });
-
-        assert!(summary.badges.iter().any(|badge| badge.text == "A"));
-        assert!(summary.badges.iter().any(|badge| badge.text == "CC20"));
-        assert!(!summary.badges.iter().any(|badge| badge.text == "CC21"));
-        assert!(!summary
-            .badges
-            .iter()
-            .any(|badge| badge.text == "/track/active/arm"));
-    }
-
-    #[test]
-    fn summarize_discoverability_target_includes_note_edit_shortcuts() {
-        let app = App::new();
-
-        let summary = app.summarize_discoverability_target(DiscoverabilityTarget {
-            action: AppAction::SelectNotesAtPlayhead,
-            display_scope: Some("Active Track"),
-            allowed_mapping_scopes: &["Active Track"],
-            overlay_slot: None,
-        });
-
-        assert!(summary.badges.iter().any(|badge| badge.text == "T"));
     }
 
     #[test]
