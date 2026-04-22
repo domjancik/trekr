@@ -1,3 +1,4 @@
+use flume::RecvTimeoutError;
 use mdns_sd::{IfKind, ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::time::{Duration, Instant};
 
@@ -84,7 +85,7 @@ fn run_probe(config: &ProbeConfig) -> Result<(), String> {
             &config.host_name,
             "",
             config.port,
-            &properties,
+            &properties[..],
         )
         .map_err(|error| error.to_string())?
         .enable_addr_auto();
@@ -131,7 +132,7 @@ fn run_probe(config: &ProbeConfig) -> Result<(), String> {
                         for address in info.get_addresses_v4() {
                             println!("  address={address}");
                         }
-                        for property in info.get_properties() {
+                        for property in info.get_properties().iter() {
                             println!("  txt={property}");
                         }
 
@@ -147,8 +148,8 @@ fn run_probe(config: &ProbeConfig) -> Result<(), String> {
                         }
                     }
                 }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
                     return Err("browse receiver disconnected".to_string());
                 }
             }
