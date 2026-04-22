@@ -1,4 +1,5 @@
 use super::*;
+use crate::theme::io_pages as io_theme;
 
 impl App {
     pub(crate) fn draw_routing_page<T: RenderTarget>(
@@ -6,23 +7,23 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(22, 28, 42));
+        canvas.set_draw_color(io_theme::PAGE_BG);
         canvas.fill_rect(content_bounds)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(io_theme::PAGE_BORDER);
         canvas.draw_rect(content_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Routing",
             Rect::new(content_bounds.x + 8, content_bounds.y + 8, 140, 14),
             2,
-            Color::RGB(244, 232, 146),
+            io_theme::PAGE_TITLE,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Active Track Routing",
             Rect::new(content_bounds.x + 184, content_bounds.y + 12, 180, 8),
             1,
-            Color::RGB(184, 194, 206),
+            io_theme::SUBTITLE,
         )?;
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::theme::io_pages as io_theme;
 
 impl App {
     pub(crate) fn draw_midi_io_page<T: RenderTarget>(
@@ -6,9 +7,9 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(22, 28, 42));
+        canvas.set_draw_color(io_theme::PAGE_BG);
         canvas.fill_rect(content_bounds)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(io_theme::PAGE_BORDER);
         canvas.draw_rect(content_bounds)?;
 
         let (header_bounds, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
@@ -20,14 +21,14 @@ impl App {
             "MIDI I/O",
             Rect::new(header_bounds.x + 8, header_bounds.y + 8, 160, 14),
             2,
-            Color::RGB(244, 232, 146),
+            io_theme::PAGE_TITLE,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Auto refresh: on",
             Rect::new(header_bounds.x + 188, header_bounds.y + 8, 220, 8),
             1,
-            Color::RGB(184, 194, 206),
+            io_theme::SUBTITLE,
         )?;
         let offline_input = self
             .preferred_default_input_name
@@ -51,16 +52,16 @@ impl App {
             if offline_input.is_some() || offline_output.is_some() {
                 Color::RGB(248, 182, 124)
             } else {
-                Color::RGB(184, 194, 206)
+                io_theme::SUBTITLE
             },
         )?;
 
         let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
         let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
-        canvas.set_draw_color(Color::RGB(28, 34, 50));
+        canvas.set_draw_color(io_theme::PANEL_BG);
         canvas.fill_rect(input_header)?;
         canvas.fill_rect(output_header)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(io_theme::PAGE_BORDER);
         canvas.draw_rect(input_header)?;
         canvas.draw_rect(output_header)?;
         crate::ui::draw_text_fitted(
@@ -127,12 +128,12 @@ impl App {
         accent: Color,
         role_label: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(22, 28, 42));
+        canvas.set_draw_color(io_theme::PAGE_BG);
         canvas.fill_rect(bounds)?;
         canvas.set_draw_color(if focused {
-            Color::RGB(242, 232, 150)
+            io_theme::FOCUS_BORDER
         } else {
-            Color::RGB(88, 96, 120)
+            io_theme::PAGE_BORDER
         });
         canvas.draw_rect(bounds)?;
 
@@ -146,15 +147,15 @@ impl App {
             let is_active = active_index == Some(index);
 
             canvas.set_draw_color(if is_selected {
-                Color::RGB(56, 70, 100)
+                io_theme::ROW_SELECTED_BG
             } else {
-                Color::RGB(28, 34, 50)
+                io_theme::ROW_IDLE_BG
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if is_selected {
-                Color::RGB(244, 232, 146)
+                io_theme::ROW_SELECTED_BORDER
             } else {
-                Color::RGB(70, 80, 102)
+                io_theme::ROW_IDLE_BORDER
             });
             canvas.draw_rect(row)?;
 
@@ -194,7 +195,7 @@ impl App {
                 &ports[index].name,
                 header_rect,
                 1,
-                Color::RGB(230, 236, 244),
+                io_theme::LABEL_TEXT,
             )?;
             if is_active {
                 let active_badge = Rect::new(

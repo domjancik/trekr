@@ -46,3 +46,20 @@ pub mod mappings {
     pub const ROW_SELECTED_BORDER: Color = rgb(244, 232, 146);
     pub const ROW_IDLE_BORDER: Color = rgb(78, 88, 110);
 }
+
+pub mod io_pages {
+    use super::rgb;
+    use sdl3::pixels::Color;
+
+    pub const PAGE_BG: Color = rgb(22, 28, 42);
+    pub const PAGE_BORDER: Color = rgb(88, 96, 120);
+    pub const PAGE_TITLE: Color = rgb(244, 232, 146);
+    pub const SUBTITLE: Color = rgb(184, 194, 206);
+    pub const PANEL_BG: Color = rgb(28, 34, 50);
+    pub const ROW_IDLE_BG: Color = rgb(28, 34, 50);
+    pub const ROW_SELECTED_BG: Color = rgb(56, 70, 100);
+    pub const ROW_IDLE_BORDER: Color = rgb(70, 80, 102);
+    pub const ROW_SELECTED_BORDER: Color = rgb(244, 232, 146);
+    pub const FOCUS_BORDER: Color = rgb(242, 232, 150);
+    pub const LABEL_TEXT: Color = rgb(230, 236, 244);
+}
