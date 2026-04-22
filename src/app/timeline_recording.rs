@@ -1,5 +1,25 @@
 use super::*;
 
+pub(super) fn indexed_notes(
+    track: &Track,
+    recording_clip_id: Option<u64>,
+) -> Vec<(usize, crate::project::MidiNote)> {
+    track
+        .midi_notes
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, note)| match recording_clip_id {
+            Some(clip_id) => note.recording_clip_id == Some(clip_id),
+            None => note.recording_clip_id.is_none(),
+        })
+        .collect()
+}
+
+pub(super) fn indexed_all_notes(track: &Track) -> Vec<(usize, crate::project::MidiNote)> {
+    track.midi_notes.iter().copied().enumerate().collect()
+}
+
 impl App {
     pub(super) fn draw_recording_view_controls<T: RenderTarget>(
         &self,
