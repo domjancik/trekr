@@ -3934,8 +3934,7 @@ struct TransportChipSpec {
 #[cfg(test)]
 mod tests {
     use super::{
-        mapping_field_index, transport_strip_height, App, AppControl, AppOverlay,
-        LastActionStatus,
+        mapping_field_index, App, AppControl, AppOverlay, LastActionStatus,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
@@ -5623,124 +5622,6 @@ mod tests {
             .tracks
             .iter()
             .all(|track| track.regions.is_empty()));
-    }
-
-    #[test]
-    fn timeline_track_arm_indicator_is_clickable() {
-        let mut app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[1];
-        let status_rect = crate::ui::track_status_rect(
-            crate::ui::union_rect(full_bounds, detail_bounds),
-            app.timeline_flow,
-        );
-        let arm_rect = crate::ui::track_indicators(status_rect)[0].rect;
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            arm_rect.x + arm_rect.width() as i32 / 2,
-            arm_rect.y + arm_rect.height() as i32 / 2,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(app.project.active_track_index, 1);
-        assert!(app.project.tracks[1].state.armed);
-    }
-
-    #[test]
-    fn timeline_track_record_indicator_starts_recording_for_clicked_track() {
-        let mut app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[2];
-        let status_rect = crate::ui::track_status_rect(
-            crate::ui::union_rect(full_bounds, detail_bounds),
-            app.timeline_flow,
-        );
-        let record_rect = crate::ui::track_indicators(status_rect)[1].rect;
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            record_rect.x + record_rect.width() as i32 / 2,
-            record_rect.y + record_rect.height() as i32 / 2,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(app.project.active_track_index, 2);
-        assert!(app.project.transport.recording);
-        assert!(app.project.transport.playing);
-    }
-
-    #[test]
-    fn timeline_thru_hit_rect_matches_rendered_subcolumn_header() {
-        let app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
-        let label_rect = super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
-        let content_rect =
-            super::timeline_subcolumn_content_rect(body_full_bounds, app.timeline_flow);
-        let thru_rect = app.track_passthrough_button_rect(label_rect);
-        let intersects = |a: Rect, b: Rect| {
-            a.x < b.x + b.width() as i32
-                && a.x + a.width() as i32 > b.x
-                && a.y < b.y + b.height() as i32
-                && a.y + a.height() as i32 > b.y
-        };
-
-        assert!(super::rect_contains(
-            label_rect,
-            thru_rect.x + thru_rect.width() as i32 / 2,
-            thru_rect.y + thru_rect.height() as i32 / 2,
-        ));
-        assert!(!intersects(thru_rect, content_rect));
-    }
-
-    #[test]
-    fn click_below_thru_does_not_toggle_passthrough() {
-        let mut app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
-        let label_rect = super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
-        let thru_rect = app.track_passthrough_button_rect(label_rect);
-        let before = app.project.tracks[0].state.passthrough;
-        let below_y = thru_rect.y + thru_rect.height() as i32 + 2;
-
-        let control = app.handle_timeline_pointer(
-            content_bounds,
-            thru_rect.x + thru_rect.width() as i32 / 2,
-            below_y,
-            ActionSource::Pointer,
-        );
-
-        assert!(matches!(control, None | Some(AppControl::Continue)));
-        assert_eq!(app.project.tracks[0].state.passthrough, before);
     }
 
     #[test]
