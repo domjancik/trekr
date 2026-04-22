@@ -4,13 +4,13 @@
 
 This spec defines a second-pass modularization after the first successful `app.rs` breakup.
 
-Phase 1 reduced the single-file hotspot and preserved behavior. Phase 2 should reduce the size and responsibility breadth of the new large page/domain modules without changing UX, interaction rules, state semantics, persisted data shape, or screenshot output.
+Phase 1 reduced the single-file hotspot, preserved behavior, and already introduced initial shell, theme, input, and present-plan seams. Phase 2 should deepen those seams and reduce the size and responsibility breadth of the remaining large page/domain modules without changing UX, interaction rules, state semantics, persisted data shape, or screenshot output.
 
 Required outcome:
 
 - keep current behavior, tests, and tracked screenshots stable
 - split the still-large page modules by subdomain, not by arbitrary helper type
-- make timeline, mapping, and theming work easier to extend without recreating a new large-file hotspot
+- make timeline, mapping, theming, and presenter-related work easier to extend without recreating a new large-file hotspot
 - keep the action model, scope behavior, conflict/replacement rules, and touch/desktop interaction rules unchanged
 
 This phase is grounded in the current repository state after the first refactor pass, including:
@@ -25,11 +25,11 @@ This phase is grounded in the current repository state after the first refactor 
 - `docs/specs/feature-spec-quick-mapping-lookup.md`
 - `docs/specs/feature-spec-timeline-control-contexts.md`
 - `docs/specs/feature-spec-remarkable-paper-pro-move-eink.md`
-- current code in `src/app.rs`, `src/app/mapping_ui.rs`, `src/app/io_pages.rs`, `src/app/timeline_ui.rs`, `src/present.rs`, and `src/presenter.rs`
+- current code in `src/app.rs`, `src/app/shell_ui.rs`, `src/app/input.rs`, `src/app/mapping_ui.rs`, `src/app/io_pages.rs`, `src/app/timeline_ui.rs`, `src/theme.rs`, and `src/present.rs`
 
 ## Current Follow-On Problem
 
-The first pass improved top-level ownership, but some extracted modules are now large enough to deserve their own internal seams.
+The first pass improved top-level ownership and established initial seams for shell UI, input routing, theme tokens, and present planning, but some extracted modules are still large enough to deserve their own internal seams and the new seams are still intentionally shallow.
 
 Current pressure points:
 
@@ -46,7 +46,9 @@ Current pressure points:
   - discoverability overlay behavior
   - mappings target lookup behavior
   - mapping badges/summary rendering
-- palette and style values are still mostly inline, which keeps theming and presenter-specific rendering constraints harder to evolve cleanly
+- `src/app.rs` is much smaller than before but still owns a sizable reducer and integration surface
+- `src/theme.rs` now exists, but semantic token adoption is still partial rather than complete
+- `src/present.rs` now exists, but the current present-plan seam is intentionally minimal rather than a fuller presenter/runtime family
 
 This is now a codebase maintenance problem, not an urgent correctness problem.
 
@@ -55,8 +57,9 @@ This is now a codebase maintenance problem, not an urgent correctness problem.
 - reduce the size of the remaining large page modules
 - make ownership inside each page domain obvious from file names alone
 - separate render/layout helpers from interaction/hit-testing helpers where doing so improves clarity
-- introduce a semantic color/theme seam that externalizes recurring palette choices without changing visuals
-- avoid creating circular dependencies between timeline, mapping, routing, and presenter code
+- deepen semantic color/theme adoption without changing visuals
+- deepen the present/render seam only where it meaningfully improves ownership
+- avoid creating circular dependencies between timeline, mapping, routing, theme, and presenter code
 - keep test relocation close to the behavior being extracted
 
 ## Non-Goals
@@ -149,9 +152,13 @@ Rules:
 
 ### 4. Theme and color seam
 
+Current status:
+
+- `src/theme.rs` exists and already holds an initial semantic token set
+
 Recommended target structure:
 
-- `src/theme.rs` or `src/app/theme.rs`
+- continue growing `src/theme.rs` or split to `src/app/theme.rs` only if ownership becomes clearer
   - semantic color tokens only
 - optional follow-on subfiles if justified:
   - `theme/timeline.rs`
@@ -161,7 +168,7 @@ Recommended target structure:
 Rules:
 
 - use semantic names such as `accent_warning`, `panel_border_selected`, `timeline_loop_active`, not raw color-purpose guesses like `yellow_2`
-- Phase 2 should externalize repeated colors and style constants, not redesign the palette
+- Phase 2 should expand semantic token usage across remaining inline colors and style constants, not redesign the palette
 - screenshot output must remain unchanged
 - newer components should consume the same semantic tokens rather than adding new inline colors by default
 
@@ -199,7 +206,9 @@ Phase 2 is complete when:
 - `timeline_ui.rs` has been broken into smaller domain-scoped files with clear ownership
 - `mapping_ui.rs` has been broken into direct-mapping, lookup, and discoverability-oriented files
 - `io_pages.rs` has been split into clearer page-specific files if that split improves ownership without needless churn
-- recurring inline colors/styles are replaced by semantic theme tokens where practical
+- semantic theme tokens are used broadly enough that new shared chrome and page work no longer default to ad hoc inline colors
+- the present-plan seam is either kept intentionally minimal and documented, or expanded into a clearer presenter/runtime family if follow-on work actually requires it
+- more page-local tests have moved out of `src/app.rs` where ownership is now clear
 - full `cargo test` passes
 - tracked screenshots remain unchanged unless an explicit visual change is separately approved
 - README only changes if runnable app surface changes, which is not expected for this phase
@@ -207,11 +216,14 @@ Phase 2 is complete when:
 ## Likely Code Touch Points
 
 - `src/app.rs`
+- `src/app/shell_ui.rs`
+- `src/app/input.rs`
 - `src/app/labels.rs`
 - `src/app/mapping_ui.rs` or its replacements
 - `src/app/io_pages.rs` or its replacements
 - `src/app/timeline_ui.rs` or its replacements
-- `src/theme.rs` or `src/app/theme.rs`
+- `src/theme.rs`
+- `src/present.rs`
 - tests in `src/app.rs` and any relocated module-local test blocks
 
 ## Suggested Execution Order
@@ -219,8 +231,9 @@ Phase 2 is complete when:
 1. split `timeline_ui.rs` by recording/layout/FX/page shell
 2. split `mapping_ui.rs` by direct mapping / lookup / discoverability
 3. split `io_pages.rs` only if the ownership improvement is still worth the churn
-4. introduce semantic theme tokens with zero screenshot drift
-5. run full regression and screenshot gate
+4. deepen semantic theme token adoption with zero screenshot drift
+5. decide whether the minimal `present.rs` seam should stay minimal or expand for concrete follow-on runtime work
+6. relocate more page-local tests and run full regression and screenshot gate
 
 ## Confidence Gate
 
