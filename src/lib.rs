@@ -13,6 +13,7 @@ pub mod project;
 pub mod render;
 pub mod routing;
 pub mod state;
+pub mod theme;
 pub mod timeline;
 pub mod timeline_fx;
 pub mod transport;

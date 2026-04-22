@@ -1022,11 +1022,11 @@ fn midi_entry(
 #[cfg(test)]
 mod tests {
     use super::{
-        MappingEntry, MappingSourceKind, cycle_mapping_scope_label, cycle_mapping_scope_value,
-        cycle_mapping_source_device_label, cycle_mapping_source_kind, cycle_mapping_target_label,
-        default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
-        mapping_entry_targets_action, mapping_entry_to_actions, mapping_scope_valid_for_target,
-        parse_absolute_track_scope, search_mapping_targets,
+        cycle_mapping_scope_label, cycle_mapping_scope_value, cycle_mapping_source_device_label,
+        cycle_mapping_source_kind, cycle_mapping_target_label, default_mapping_source_device,
+        default_scope_label, default_source_label, demo_mappings, mapping_entry_targets_action,
+        mapping_entry_to_actions, mapping_scope_valid_for_target, parse_absolute_track_scope,
+        search_mapping_targets, MappingEntry, MappingSourceKind,
     };
     use crate::actions::AppAction;
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
@@ -1035,21 +1035,15 @@ mod tests {
     fn demo_mappings_cover_key_midi_and_osc_sources() {
         let mappings = demo_mappings();
 
-        assert!(
-            mappings
-                .iter()
-                .any(|entry| entry.source_kind == MappingSourceKind::Key)
-        );
-        assert!(
-            mappings
-                .iter()
-                .any(|entry| entry.source_kind == MappingSourceKind::Midi)
-        );
-        assert!(
-            mappings
-                .iter()
-                .any(|entry| entry.source_kind == MappingSourceKind::Osc)
-        );
+        assert!(mappings
+            .iter()
+            .any(|entry| entry.source_kind == MappingSourceKind::Key));
+        assert!(mappings
+            .iter()
+            .any(|entry| entry.source_kind == MappingSourceKind::Midi));
+        assert!(mappings
+            .iter()
+            .any(|entry| entry.source_kind == MappingSourceKind::Osc));
     }
 
     #[test]
