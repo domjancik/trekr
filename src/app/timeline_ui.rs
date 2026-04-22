@@ -855,3 +855,32 @@ impl App {
         Ok(())
     }
 }
+
+fn draw_loop_label_underline<T: RenderTarget>(
+    canvas: &mut Canvas<T>,
+    label: &str,
+    label_rect: Rect,
+    content_rect: Rect,
+    viewport_size: (u32, u32),
+    fallback_bg: Color,
+) -> Result<(), String> {
+    let underline_width = crate::ui::text_width(label, 1)
+        .min(label_rect.width())
+        .max(1);
+    let underline_x =
+        (label_rect.x + ((label_rect.width() as i32 - underline_width as i32) / 2).max(0) - 1)
+            .max(content_rect.x);
+    let underline_y = (label_rect.y + label_rect.height() as i32 + 1)
+        .min(content_rect.y + content_rect.height() as i32 - 1);
+    let underline_rect = Rect::new(underline_x, underline_y, underline_width, 1);
+    let underline_readback = readback_rect_rgba(canvas, underline_rect, viewport_size);
+    for offset in 0..underline_width as i32 {
+        let px = underline_x + offset;
+        let bg = readback_color_at(&underline_readback, px, underline_y).unwrap_or(fallback_bg);
+        canvas.set_draw_color(Color::RGB(255 - bg.r, 255 - bg.g, 255 - bg.b));
+        canvas
+            .fill_rect(Rect::new(px, underline_y, 1, 1))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
