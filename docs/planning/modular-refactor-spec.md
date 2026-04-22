@@ -202,11 +202,14 @@ Likely contents:
 - present plan calculation (`Skip`, `Partial`, `Full`-style decisions)
 - full-frame presenter traits for detached framebuffer or DRM-style outputs
 - runtime/backend-specific presenters such as KMSDRM or reMarkable-oriented paths
+- refresh-policy state such as clean/UI/content/partial refresh modes where the runtime backend requires them
+- presenter-debug or probe helpers kept separate from the core app model
 
 Hard rule:
 
 - presenter modules must not own product semantics, mapping logic, scope logic, or page state mutation
 - presenter mode must be a backend/runtime concern layered under the same app/action/render behavior
+- runtime tuning controls and probe instrumentation must not become hidden product-state dependencies inside `App`
 
 #### `timeline_ui`
 
@@ -398,6 +401,9 @@ Important preservation points:
 - detached framebuffer or DRM/full-frame presenters can be introduced without moving control logic out of the canonical action model
 - any future dirty-region tracking remains driven by render/invalidation boundaries rather than ad hoc product-state branching
 - touch-first runtime variants still reuse the same action, scope, and mapping behavior
+- presenter refresh policy can request clean redraws for page transitions without teaching page/domain reducers about backend-specific refresh modes
+- touch-driven redraw urgency can be prioritized above playback-driven present cadence as a runtime scheduling concern
+- playback-driven presents can be scoped to pages that actually need them without changing page semantics
 
 ### Screenshot-equivalent UI output
 
@@ -487,6 +493,12 @@ Move domain-specific rendering and hit-target logic out of `app.rs` in slices:
 6. present/presenter/runtime display seam helpers
 
 Each slice should preserve behavior and keep tests green before moving on.
+
+For the presenter/runtime slice specifically, prefer this order:
+
+1. extract backend-neutral frame/present-plan types
+2. extract refresh-policy ownership and invalidation scheduling
+3. keep qtfb/reMarkable probe and tuning helpers in backend/debug-facing binaries or modules, not in the core app shell
 
 ### Phase 4: Normalize shared utilities
 
