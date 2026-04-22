@@ -31,14 +31,38 @@ use crate::state::PersistedAppState;
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
 use image::RgbaImage;
-use sdl3::pixels::Color;
-use sdl3::pixels::PixelFormat;
+use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, FRect, RenderTarget};
 use sdl3::surface::SurfaceRef;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
+
+#[path = "app/capture.rs"]
+mod capture;
+#[path = "app/labels.rs"]
+mod labels;
+#[path = "app/types.rs"]
+mod types;
+
+use capture::{
+    capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
+};
+use labels::{
+    action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
+    launch_quantize_label, mapping_badge_palette, mapping_source_label, mapping_source_sort_key,
+    quantize_label,
+};
+pub(crate) use types::DiscoverabilityTarget;
+pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
+use types::{
+    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
+    DirectMappingOrigin, DirectMappingState, DirectMappingTarget, LastActionStatus,
+    MappingBadge, MappingTargetLookupLayout, MappingTargetLookupState, OverlayState,
+    RecordingLaneLayout, RecordingLaneWindow, StatusState, TimelineFxRowLayout,
+    TimelineFxRowRef, TimelineTrackLayout,
+};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 
@@ -74,198 +98,6 @@ pub struct App {
     preferred_default_output_name: Option<String>,
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AppOverlay {
-    MappingsQuickView,
-    Discoverability,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct OverlayState {
-    active: Option<AppOverlay>,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct StatusState {
-    hovered_target: Option<DiscoverabilityTarget>,
-    last_action: Option<LastActionStatus>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TimelineFxRowRef {
-    context: TimelineContext,
-    row_index: usize,
-    slot_index: Option<usize>,
-    layout: TimelineFxRowLayout,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TimelineFxRowLayout {
-    row: Rect,
-    enabled: Rect,
-    kind: Rect,
-    param_primary: Rect,
-    param_secondary: Rect,
-    overflow: Rect,
-    move_up: Rect,
-    move_down: Rect,
-    delete: Rect,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TimelineTrackLayout {
-    track_index: usize,
-    full_bounds: Rect,
-    detail_bounds: Rect,
-    pair_bounds: Rect,
-    status_rect: Rect,
-    body_full_bounds: Rect,
-    body_detail_bounds: Rect,
-    full_label_rect: Rect,
-    detail_label_rect: Rect,
-    full_content_rect: Rect,
-    detail_content_rect: Rect,
-    input_fx_rect: Rect,
-    output_fx_rect: Rect,
-}
-
-impl TimelineTrackLayout {
-    fn fx_rect(self, context: TimelineContext) -> Rect {
-        match context {
-            TimelineContext::InputFx => self.input_fx_rect,
-            TimelineContext::OutputFx => self.output_fx_rect,
-            TimelineContext::TrackTimeline => {
-                crate::ui::union_rect(self.body_full_bounds, self.body_detail_bounds)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct DirectMappingState {
-    mode: DirectMappingMode,
-    origin: DirectMappingOrigin,
-    status_message: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct MappingTargetLookupState {
-    active: Option<ActiveMappingTargetLookup>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ActiveMappingTargetLookup {
-    original_target_label: String,
-    original_scope_label: String,
-    query: String,
-    highlighted_index: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MappingTargetLookupLayout {
-    target_cell: Rect,
-    results_panel: Rect,
-    start_index: usize,
-    visible_count: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum DirectMappingMode {
-    #[default]
-    Inactive,
-    Targeting,
-    AwaitingInput(DirectMappingTarget),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum DirectMappingOrigin {
-    #[default]
-    InPlace,
-    MappingsPage,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DirectMappingTarget {
-    action: AppAction,
-    target_label: &'static str,
-    scope_label: &'static str,
-    display_scope: Option<&'static str>,
-    hit_rect: Rect,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LastActionStatus {
-    action: AppAction,
-    source: ActionSource,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DiscoverabilityTarget {
-    action: AppAction,
-    display_scope: Option<&'static str>,
-    allowed_mapping_scopes: &'static [&'static str],
-    overlay_slot: Option<Rect>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ActionDiscoverabilitySummary {
-    title: String,
-    badges: Vec<MappingBadge>,
-    total_bindings: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MappingBadge {
-    text: String,
-    source_kind: MappingSourceKind,
-    built_in: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RecordingLaneLayout {
-    clip_id: Option<u64>,
-    rect: Rect,
-    selected: bool,
-    muted: bool,
-    preview: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RecordingLaneWindow {
-    start: usize,
-    visible_total: usize,
-    committed_start: usize,
-    committed_end: usize,
-    visible_committed: usize,
-    show_preview: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UiCaptureOptions {
-    pub output_dir: PathBuf,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum VideoMode {
-    #[default]
-    Windowed,
-    Fullscreen,
-    KmsDrmConsole,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum UiScalingMode {
-    #[default]
-    Auto,
-    Nearest,
-    Linear,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RunOptions {
-    pub video_mode: VideoMode,
 }
 
 impl App {
@@ -10283,67 +10115,6 @@ impl App {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct CaptureSpec {
-    page: AppPage,
-    overlay: Option<AppOverlay>,
-    focused_track_view: bool,
-    filename: &'static str,
-}
-
-fn chip_row_width(specs: &[TransportChipSpec]) -> u32 {
-    if specs.is_empty() {
-        return 0;
-    }
-    let chips = specs
-        .iter()
-        .map(|spec| crate::ui::text_width(&spec.label, 1) + 10)
-        .sum::<u32>();
-    let gaps = (specs.len().saturating_sub(1) as u32) * 6;
-    chips.saturating_add(gaps)
-}
-
-fn capture_specs() -> [CaptureSpec; 6] {
-    [
-        CaptureSpec {
-            page: AppPage::Timeline,
-            overlay: None,
-            focused_track_view: false,
-            filename: "timeline.png",
-        },
-        CaptureSpec {
-            page: AppPage::Timeline,
-            overlay: None,
-            focused_track_view: true,
-            filename: "timeline-focused.png",
-        },
-        CaptureSpec {
-            page: AppPage::Mappings,
-            overlay: None,
-            focused_track_view: false,
-            filename: "mappings.png",
-        },
-        CaptureSpec {
-            page: AppPage::Mappings,
-            overlay: Some(AppOverlay::MappingsQuickView),
-            focused_track_view: false,
-            filename: "mappings-overlay.png",
-        },
-        CaptureSpec {
-            page: AppPage::MidiIo,
-            overlay: None,
-            focused_track_view: false,
-            filename: "midi-io.png",
-        },
-        CaptureSpec {
-            page: AppPage::Routing,
-            overlay: None,
-            focused_track_view: false,
-            filename: "routing.png",
-        },
-    ]
-}
-
 fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
     x >= rect.x
         && x < rect.x + rect.width() as i32
@@ -10593,25 +10364,6 @@ fn cycle_output_channel(current: Option<u8>, delta: i32) -> Option<u8> {
         None
     } else {
         Some(next_index as u8)
-    }
-}
-
-fn mapping_source_label(source: MappingSourceKind) -> &'static str {
-    match source {
-        MappingSourceKind::Key => "Key",
-        MappingSourceKind::Midi => "MIDI",
-        MappingSourceKind::Osc => "OSC",
-    }
-}
-
-fn compact_scope_label(scope: &str) -> &str {
-    match scope {
-        "Active Track" => "Act Track",
-        "Armed/Active" => "Armed/Act",
-        "Global" => "Global",
-        "Relative" => "Relative",
-        "Absolute" => "Absolute",
-        other => other,
     }
 }
 
@@ -10867,86 +10619,6 @@ fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
     ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
 }
 
-struct RgbaReadback {
-    logical_rect: Rect,
-    output_rect: Rect,
-    scale_x: f32,
-    scale_y: f32,
-    pitch: usize,
-    pixels: Vec<u8>,
-}
-
-fn readback_rect_rgba<T: RenderTarget>(
-    canvas: &Canvas<T>,
-    logical_rect: Rect,
-    logical_viewport_size: (u32, u32),
-) -> Option<RgbaReadback> {
-    if logical_rect.width() == 0 || logical_rect.height() == 0 {
-        return None;
-    }
-    let output_size = canvas.output_size().ok()?;
-    let scale_x = if logical_viewport_size.0 > 0 {
-        output_size.0 as f32 / logical_viewport_size.0 as f32
-    } else {
-        1.0
-    };
-    let scale_y = if logical_viewport_size.1 > 0 {
-        output_size.1 as f32 / logical_viewport_size.1 as f32
-    } else {
-        1.0
-    };
-    let sx = scale_x.max(0.0001);
-    let sy = scale_y.max(0.0001);
-    let output_rect = Rect::new(
-        (logical_rect.x as f32 * sx).floor() as i32,
-        (logical_rect.y as f32 * sy).floor() as i32,
-        ((logical_rect.width() as f32 * sx).ceil() as u32).max(1),
-        ((logical_rect.height() as f32 * sy).ceil() as u32).max(1),
-    );
-    let surface = canvas.read_pixels(output_rect).ok()?;
-    let converted = surface.convert_format(PixelFormat::RGBA32).ok()?;
-    let pitch = converted.pitch() as usize;
-    let pixels = converted.with_lock(|src| src.to_vec());
-    Some(RgbaReadback {
-        logical_rect,
-        output_rect,
-        scale_x: sx,
-        scale_y: sy,
-        pitch,
-        pixels,
-    })
-}
-
-fn readback_color_at(readback: &Option<RgbaReadback>, x: i32, y: i32) -> Option<Color> {
-    let readback = readback.as_ref()?;
-    if x < readback.logical_rect.x
-        || y < readback.logical_rect.y
-        || x >= readback.logical_rect.x + readback.logical_rect.width() as i32
-        || y >= readback.logical_rect.y + readback.logical_rect.height() as i32
-    {
-        return None;
-    }
-    let local_logical_x = x - readback.logical_rect.x;
-    let local_logical_y = y - readback.logical_rect.y;
-    let local_x = (local_logical_x as f32 * readback.scale_x).floor() as usize;
-    let local_y = (local_logical_y as f32 * readback.scale_y).floor() as usize;
-    if local_x >= readback.output_rect.width() as usize
-        || local_y >= readback.output_rect.height() as usize
-    {
-        return None;
-    }
-    let base = local_y
-        .saturating_mul(readback.pitch)
-        .saturating_add(local_x.saturating_mul(4));
-    if base + 2 >= readback.pixels.len() {
-        return None;
-    }
-    Some(Color::RGB(
-        readback.pixels[base],
-        readback.pixels[base + 1],
-        readback.pixels[base + 2],
-    ))
-}
 
 fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
@@ -11000,51 +10672,6 @@ fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     }
 }
 
-fn seed_capture_demo_track(track: &mut Track, track_index: usize) {
-    let overlaps = [
-        crate::timeline::LoopRegion::new(0, 3_840),
-        crate::timeline::LoopRegion::new(480, 3_360),
-        crate::timeline::LoopRegion::new(960, 2_880),
-        crate::timeline::LoopRegion::new(1_440, 2_400),
-        crate::timeline::LoopRegion::new(1_920, 1_920),
-        crate::timeline::LoopRegion::new(2_400, 1_440),
-        crate::timeline::LoopRegion::new(2_880, 960),
-        crate::timeline::LoopRegion::new(3_360, 960),
-    ];
-
-    track.midi_notes = dense_capture_notes(track_index);
-    track.loop_region = overlaps[0];
-    track.state.loop_enabled = true;
-
-    track.stored_loops = vec![None; STORED_LOOP_SLOT_COUNT];
-    track.active_stored_loop_slot = None;
-    for (slot_index, range) in overlaps.iter().copied().enumerate() {
-        track.loop_region = range;
-        track.store_current_loop_to_slot(slot_index);
-    }
-    track.recall_stored_loop_slot(2);
-}
-
-fn dense_capture_notes(track_index: usize) -> Vec<MidiNote> {
-    let mut notes = Vec::with_capacity(80);
-    let base_pitch = 42_u8.saturating_add((track_index as u8).saturating_mul(2));
-    for step in 0..40_u64 {
-        let start = step * 120;
-        let primary_pitch = base_pitch.saturating_add((step % 12) as u8);
-        let secondary_pitch = primary_pitch.saturating_add(7);
-        let velocity = 72_u8.saturating_add(((step * 9) % 44) as u8);
-        notes.push(MidiNote::new(primary_pitch, start, 180, velocity));
-        if step % 2 == 0 {
-            notes.push(MidiNote::new(
-                secondary_pitch,
-                start + 60,
-                120,
-                velocity.saturating_sub(10),
-            ));
-        }
-    }
-    notes
-}
 
 fn direct_mapping_key_label(event: &sdl3::event::Event) -> Option<String> {
     let sdl3::event::Event::KeyDown {
@@ -11305,80 +10932,6 @@ fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> b
 fn midi_mapping_target_supports_release(target_label: &str) -> bool {
     matches!(target_label, "Record Hold" | "Select Notes At Playhead Add")
 }
-fn quantize_label(quantize: crate::transport::QuantizeMode) -> &'static str {
-    match quantize {
-        crate::transport::QuantizeMode::Off => "Off",
-        crate::transport::QuantizeMode::Pulse => "Pulse",
-        crate::transport::QuantizeMode::Sixteenth => "1/16",
-        crate::transport::QuantizeMode::Eighth => "1/8",
-        crate::transport::QuantizeMode::Quarter => "1/4",
-        crate::transport::QuantizeMode::Bar => "Bar",
-    }
-}
-
-fn launch_quantize_label(quantize: crate::transport::LaunchQuantizeMode) -> &'static str {
-    match quantize {
-        crate::transport::LaunchQuantizeMode::Off => "Off",
-        crate::transport::LaunchQuantizeMode::Sixteenth => "1/16",
-        crate::transport::LaunchQuantizeMode::Eighth => "1/8",
-        crate::transport::LaunchQuantizeMode::Quarter => "1/4",
-        crate::transport::LaunchQuantizeMode::Bar => "Bar",
-        crate::transport::LaunchQuantizeMode::LoopEnd => "LoopEnd",
-    }
-}
-
-fn action_source_label(source: ActionSource) -> &'static str {
-    match source {
-        ActionSource::Keyboard => "Keyboard",
-        ActionSource::Pointer => "Pointer",
-        ActionSource::Midi => "MIDI",
-        ActionSource::Touch => "Touch",
-        ActionSource::Remote => "Remote",
-        ActionSource::Internal => "Internal",
-    }
-}
-
-fn mapping_source_sort_key(source_kind: MappingSourceKind) -> usize {
-    match source_kind {
-        MappingSourceKind::Key => 0,
-        MappingSourceKind::Midi => 1,
-        MappingSourceKind::Osc => 2,
-    }
-}
-
-fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str {
-    match source_kind {
-        MappingSourceKind::Key => "K",
-        MappingSourceKind::Midi => "M",
-        MappingSourceKind::Osc => "O",
-    }
-}
-
-fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
-    match (badge.built_in, badge.source_kind) {
-        (true, MappingSourceKind::Key) => (Color::RGB(64, 84, 126), Color::RGB(244, 244, 236)),
-        (true, MappingSourceKind::Midi) => (Color::RGB(88, 94, 116), Color::RGB(236, 240, 246)),
-        (true, MappingSourceKind::Osc) => (Color::RGB(84, 90, 112), Color::RGB(236, 240, 246)),
-        (false, MappingSourceKind::Key) => (Color::RGB(88, 128, 76), Color::RGB(246, 248, 232)),
-        (false, MappingSourceKind::Midi) => (Color::RGB(170, 104, 62), Color::RGB(250, 242, 228)),
-        (false, MappingSourceKind::Osc) => (Color::RGB(148, 82, 104), Color::RGB(248, 238, 244)),
-    }
-}
-
-fn compact_badge_text(text: &str, max_len: usize) -> String {
-    let compact = text
-        .replace("Shift+", "S+")
-        .replace("Space", "Spc")
-        .replace("Left", "Lf")
-        .replace("Right", "Rt")
-        .replace("Active", "Act");
-    if compact.chars().count() <= max_len {
-        compact
-    } else {
-        compact.chars().take(max_len).collect()
-    }
-}
-
 fn track_indicator_target(
     kind: crate::ui::TrackIndicatorKind,
     overlay_slot: Option<Rect>,
