@@ -9,7 +9,7 @@ use crate::mapping::{
     cycle_mapping_source_label, cycle_mapping_target_label, default_mapping_source_device,
     default_scope_label, default_source_label, demo_mappings, mapping_entry_key_actions,
     mapping_entry_targets_action, mapping_entry_to_actions, mapping_scope_valid_for_target,
-    search_mapping_targets, MappingEntry, MappingSourceKind,
+    MappingEntry, MappingSourceKind,
 };
 use crate::midi_fx::{
     cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
@@ -49,6 +49,8 @@ mod io_pages;
 mod labels;
 #[path = "app/mapping_ui.rs"]
 mod mapping_ui;
+#[path = "app/mapping_lookup.rs"]
+mod mapping_lookup;
 #[path = "app/shell_ui.rs"]
 mod shell_ui;
 #[path = "app/timeline_fx_ui.rs"]
@@ -73,10 +75,8 @@ use labels::{
     launch_quantize_label, mapping_badge_palette, mapping_field_index, mapping_source_label,
     mapping_source_sort_key, quantize_label,
 };
-use mapping_ui::{
-    direct_mapping_key_label, mapping_target_label_for_action, mapping_target_lookup_input,
-    track_indicator_target,
-};
+use mapping_lookup::mapping_target_lookup_input;
+use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action, track_indicator_target};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -5540,102 +5540,6 @@ mod tests {
                 .map(|status| status.action),
             Some(AppAction::CancelCurrentMode)
         );
-    }
-
-    #[test]
-    fn mappings_target_lookup_uses_canonical_page_actions_while_open() {
-        let mut app = App::new();
-        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
-        app.apply_action(AppAction::ToggleMappingsWriteMode);
-        app.page_state.selected_mapping_field = MappingField::Target;
-        app.apply_action(AppAction::ActivatePageItem);
-
-        assert!(app.target_lookup_state.active.is_some());
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(0)
-        );
-
-        app.apply_action(AppAction::SelectNextPageItem);
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(1)
-        );
-
-        app.apply_action(AppAction::AdjustPageItemForward);
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(2)
-        );
-
-        let expected = app.mapping_target_lookup_highlighted_label();
-        app.apply_action(AppAction::ActivatePageItem);
-
-        assert_eq!(app.mappings[0].target_label.as_str(), expected.unwrap());
-        assert!(app.target_lookup_state.active.is_none());
-    }
-
-    #[test]
-    fn mappings_target_lookup_next_and_previous_clamp_and_scroll_instead_of_wrapping() {
-        let mut app = App::new();
-        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
-        app.apply_action(AppAction::ToggleMappingsWriteMode);
-        app.page_state.selected_mapping_field = MappingField::Target;
-        app.apply_action(AppAction::ActivatePageItem);
-
-        let result_len = app.mapping_target_lookup_results().len();
-        assert!(result_len > 6);
-
-        for _ in 0..(result_len + 3) {
-            app.apply_action(AppAction::SelectNextPageItem);
-        }
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(result_len - 1)
-        );
-
-        let content_bounds = Rect::new(0, 0, 960, 540);
-        let layout = app
-            .mapping_target_lookup_layout(content_bounds)
-            .expect("lookup layout");
-        assert_eq!(layout.visible_count, 6);
-        assert_eq!(layout.start_index, result_len - layout.visible_count);
-
-        app.apply_action(AppAction::SelectNextPageItem);
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(result_len - 1)
-        );
-
-        for _ in 0..(result_len + 3) {
-            app.apply_action(AppAction::SelectPreviousPageItem);
-        }
-        assert_eq!(
-            app.target_lookup_state
-                .active
-                .as_ref()
-                .map(|lookup| lookup.highlighted_index),
-            Some(0)
-        );
-        let layout = app
-            .mapping_target_lookup_layout(content_bounds)
-            .expect("lookup layout");
-        assert_eq!(layout.start_index, 0);
     }
 
     #[test]
