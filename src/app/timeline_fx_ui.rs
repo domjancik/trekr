@@ -723,6 +723,63 @@ impl App {
     }
 }
 
+pub(super) fn timeline_fx_enabled_chip_label(
+    slot: &MidiFxSlot,
+    show_kind_title: bool,
+) -> &'static str {
+    if show_kind_title {
+        ""
+    } else {
+        slot.effect.kind().compact_label()
+    }
+}
+
+pub(super) fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
+    if width >= 20 {
+        slot.effect.kind().short_label()
+    } else {
+        slot.effect.kind().compact_label()
+    }
+}
+
+pub(super) fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -> u32 {
+    let label = if available >= 72 {
+        slot.effect.kind().short_label()
+    } else {
+        slot.effect.kind().compact_label()
+    };
+    let glyph_width = 5_u32;
+    let padding = 8_u32;
+    (label.len() as u32 * glyph_width + padding).clamp(20, 28)
+}
+
+pub(super) fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String {
+    if param_count <= 2 {
+        "--".to_string()
+    } else {
+        let window_count = param_count.saturating_sub(1).max(1);
+        format!("{}/{}", window_start + 1, window_count)
+    }
+}
+
+fn timeline_param_compact_label(label: &str) -> &str {
+    match label {
+        "Rate" => "Rt",
+        "Gate" => "Gt",
+        "Low" => "Lo",
+        "High" => "Hi",
+        "List" => "Ls",
+        "Semi" => "Sm",
+        "Vel" => "Vl",
+        "Len" => "Ln",
+        "Root" => "Rt",
+        "Tgt" => "Tg",
+        "Dly" => "Dl",
+        "Src" => "Sc",
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -921,5 +978,334 @@ mod tests {
             .expect("discoverability target");
 
         assert_eq!(target.action, AppAction::CycleSelectedTimelineFxKind);
+    }
+
+    #[test]
+    fn timeline_unselected_fx_row_prioritizes_kind_and_primary_value_width() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let layout = app.timeline_fx_row_layouts(
+            output_band,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            None,
+        )[0];
+
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.kind.width() < layout.row.width());
+        assert!(layout.param_secondary.width() > 0);
+        assert!(layout.delete.width() > 0);
+    }
+
+    #[test]
+    fn timeline_fx_row_layout_drops_low_priority_controls_when_narrow() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let displayed = vec![Some(0)];
+        let layout = app.timeline_fx_row_layouts(
+            Rect::new(10, 10, 56, 14),
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            None,
+        )[0];
+        let row_right = layout.row.x + layout.row.width() as i32;
+        for rect in [
+            layout.enabled,
+            layout.kind,
+            layout.param_primary,
+            layout.param_secondary,
+            layout.overflow,
+            layout.move_up,
+            layout.move_down,
+            layout.delete,
+        ] {
+            if rect.x >= layout.row.x {
+                assert!(rect.x + rect.width() as i32 <= row_right);
+            }
+        }
+        assert!(layout.kind.width() > 0);
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.delete.width() > 0);
+        assert!(layout.param_secondary.x < layout.row.x);
+        assert!(layout.move_up.x < layout.row.x);
+        assert!(layout.move_down.x < layout.row.x);
+    }
+
+    #[test]
+    fn timeline_selected_fx_row_uses_same_compact_layout() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let unselected_layout = app.timeline_fx_row_layouts(
+            output_band,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            None,
+        )[0];
+        let layout = app.timeline_fx_row_layouts(
+            output_band,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+
+        assert!(layout.param_secondary.width() > 0);
+        assert!(layout.move_up.width() > 0);
+        assert!(layout.move_down.width() > 0);
+        assert!(layout.delete.width() > 0);
+        assert_eq!(layout.kind.width(), unselected_layout.kind.width());
+        assert_eq!(
+            layout.param_secondary.width(),
+            unselected_layout.param_secondary.width()
+        );
+        assert_eq!(layout.delete.width(), unselected_layout.delete.width());
+    }
+
+    #[test]
+    fn timeline_fx_row_places_secondary_parameter_before_overflow() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let displayed = vec![Some(0)];
+        let layout = app.timeline_fx_row_layouts(
+            Rect::new(10, 10, 120, 14),
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+
+        assert!(layout.param_secondary.width() > 0);
+        assert!(layout.overflow.width() > 0);
+        assert!(layout.param_secondary.x < layout.overflow.x);
+    }
+
+    #[test]
+    fn overflow_label_uses_window_position() {
+        assert_eq!(timeline_fx_overflow_label(2, 0), "--");
+        assert_eq!(timeline_fx_overflow_label(3, 0), "1/2");
+        assert_eq!(timeline_fx_overflow_label(3, 1), "2/2");
+    }
+
+    #[test]
+    fn timeline_fx_kind_display_uses_short_labels_at_compact_widths() {
+        let slot = MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        };
+
+        assert_eq!(timeline_fx_kind_display(&slot, 19), "AR");
+        assert_eq!(timeline_fx_kind_display(&slot, 20), "ARP");
+    }
+
+    #[test]
+    fn timeline_fx_row_splits_width_evenly_between_two_visible_params() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Arp {
+                step_ticks: 240,
+                order: crate::midi_fx::ArpOrder::Up,
+                gate_percent: 100,
+            },
+        });
+        let displayed = vec![Some(0)];
+        let layout = app.timeline_fx_row_layouts(
+            Rect::new(10, 10, 120, 14),
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+
+        assert!(layout.param_primary.width() > 0);
+        assert!(layout.param_secondary.width() > 0);
+        assert!(
+            (layout.param_primary.width() as i32 - layout.param_secondary.width() as i32).abs()
+                <= 1
+        );
+    }
+
+    #[test]
+    fn timeline_fx_enabled_chip_hides_label_when_kind_title_is_visible() {
+        let slot = MidiFxSlot::default();
+        assert_eq!(timeline_fx_enabled_chip_label(&slot, true), "");
+    }
+
+    #[test]
+    fn timeline_fx_enabled_chip_uses_two_letter_code_when_kind_title_is_hidden() {
+        let slot = MidiFxSlot::default();
+        assert_eq!(timeline_fx_enabled_chip_label(&slot, false), "TR");
+    }
+
+    #[test]
+    fn timeline_fx_enabled_and_kind_rects_are_disjoint() {
+        let app = App::new();
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let layout = app.timeline_fx_row_layouts(
+            Rect::new(10, 10, 120, 14),
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+        assert!(layout.enabled.x + layout.enabled.width() as i32 <= layout.kind.x);
+    }
+
+    #[test]
+    fn timeline_fx_delete_chip_click_removes_effect() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, 0);
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (full_bounds, detail_bounds) = columns[0];
+        let (_, output_band) =
+            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let layout = app.timeline_fx_row_layouts(
+            output_band,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0];
+        let before = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+
+        let control = app.handle_timeline_pointer(
+            content_bounds,
+            layout.delete.x + layout.delete.width() as i32 / 2,
+            layout.delete.y + layout.delete.height() as i32 / 2,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        let after = app
+            .active_timeline_fx_slot_indices(MidiFxChainKind::Output)
+            .len();
+        assert_eq!(after, before - 1);
+    }
+
+    #[test]
+    fn output_fx_lower_empty_band_space_does_not_hit_row() {
+        let mut app = App::new();
+        app.project.tracks[0].midi_fx.output_fx =
+            vec![Some(MidiFxSlot::default()), None, None, None];
+        app.project.tracks[1].midi_fx.output_fx = vec![
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            Some(MidiFxSlot::default()),
+            None,
+        ];
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let row = app.timeline_fx_row_layouts(
+            layout.output_fx_rect,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0]
+        .row;
+        let x = row.x + row.width() as i32 / 2;
+        let y = layout.output_fx_rect.y + layout.output_fx_rect.height() as i32 - 2;
+
+        assert!(y > row.y + row.height() as i32);
+        assert!(app
+            .timeline_fx_hit(
+                TimelineContext::OutputFx,
+                layout.output_fx_rect,
+                &app.project.tracks[0],
+                x,
+                y,
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn canonical_output_fx_row_point_does_not_land_in_body_content() {
+        let app = App::new();
+        let content_bounds = Rect::new(40, 40, 1200, 620);
+        let (_, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
+        let (_, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+                .expect("timeline body");
+        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
+        let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
+        let row = app.timeline_fx_row_layouts(
+            layout.output_fx_rect,
+            &displayed,
+            &app.project.tracks[0].midi_fx.output_fx,
+            Some(0),
+        )[0]
+        .row;
+        let x = row.x + row.width() as i32 / 2;
+        let y = row.y + row.height() as i32 / 2;
+
+        assert!(!super::rect_contains(layout.full_content_rect, x, y));
+        assert!(!super::rect_contains(layout.detail_content_rect, x, y));
     }
 }
