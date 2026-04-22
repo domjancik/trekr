@@ -18,6 +18,13 @@ Required outcome:
 
 This spec is grounded in the current repository state, including `README.md`, `docs/specs/product-spec.md`, `docs/specs/feature-spec-midi-manipulation.md`, `docs/specs/feature-spec-mapping-discoverability.md`, `docs/specs/direct-ui-mapping-mode-spec.md`, `docs/specs/feature-spec-midi-track-effects.md`, `docs/specs/feature-spec-quick-mapping-lookup.md`, `docs/specs/feature-spec-timeline-control-contexts.md`, `docs/feature-spec-undo.md`, `docs/planning/handoff-summary.md`, `docs/planning/implementation-plan.md`, `docs/planning/color-refactor-plan.md`, and the current `src/*` code.
 
+This spec also explicitly considers the presenter/runtime direction sketched on `vk/5bf4-implement-spec-r`, especially:
+
+- `docs/specs/feature-spec-remarkable-paper-pro-move-eink.md`
+- `src/present.rs`
+- `src/presenter.rs`
+- `src/remarkable.rs`
+
 ## Problem
 
 The current app surface is already feature-rich, but implementation responsibilities are not cleanly separated.
@@ -39,6 +46,7 @@ Current pressure points in the repo:
 - upcoming undo/history work in `docs/feature-spec-undo.md` will be harder to add safely if mutable state boundaries remain blurred
 - the recently expanded direct mapping and note-editing flows increase the cost of any change made inside one central file
 - the newer timeline FX, mapping target lookup, and hyper-mappable mappings-editor flows further increase the amount of context that currently has to be held together across app shell, page UI, and action routing
+- the presenter-mode / detached-framebuffer direction from `vk/5bf4-implement-spec-r` depends on a cleaner separation between app state, render invalidation, and final presentation backends than the current `app.rs` shape provides
 
 This increases risk in three ways:
 
@@ -52,6 +60,7 @@ This increases risk in three ways:
 - preserve the canonical action-driven architecture
 - isolate UX/state-machine logic for mapping, discoverability, note editing, and recording so each can evolve independently
 - isolate timeline FX / MIDI FX editing behavior and mapping-target lookup behavior so they can evolve without further bloating the app shell
+- preserve a clean seam for explicit presenter modes, including detached framebuffer / dirty-region presentation paths, without forking core app behavior
 - extract common rendering/layout/palette patterns into shared utilities without creating a heavyweight UI framework
 - prepare clean seams for:
   - direct mapping and discoverability growth
@@ -103,6 +112,12 @@ Layout math, color/styling decisions, and draw helpers should move out of featur
 
 State mutation and drawing must remain coordinated, but the same function should not own both when a stable seam exists.
 
+The same rule applies to presentation:
+
+- scene rendering should be separable from how the final frame is presented
+- dirty-region tracking should not be hard-coded into domain reducers
+- explicit presenter backends should be able to consume either full-frame or region-based output without changing app semantics
+
 ### 4. Prefer feature/domain modules over generic catch-all helpers
 
 Good extraction targets are domains with stable meaning:
@@ -112,6 +127,7 @@ Good extraction targets are domains with stable meaning:
 - timeline/note editing
 - timeline FX / MIDI FX editing
 - mapping target lookup
+- present/damage-tracking/runtime display backends
 - transport strip
 - routing page behavior
 - mappings page behavior
@@ -174,6 +190,23 @@ Likely contents:
 - overlay dispatch
 - transport strip chrome helpers shared across pages
 - shared badge/chip drawing helpers that are app-specific rather than generic SDL helpers
+- scene-level invalidation hooks or damage emission points, if introduced during the refactor
+
+#### `present` / `presenter` / runtime display module family
+
+Own the seam between rendered UI output and the final display backend.
+
+Likely contents:
+
+- dirty-region tracking / region merge utilities
+- present plan calculation (`Skip`, `Partial`, `Full`-style decisions)
+- full-frame presenter traits for detached framebuffer or DRM-style outputs
+- runtime/backend-specific presenters such as KMSDRM or reMarkable-oriented paths
+
+Hard rule:
+
+- presenter modules must not own product semantics, mapping logic, scope logic, or page state mutation
+- presenter mode must be a backend/runtime concern layered under the same app/action/render behavior
 
 #### `timeline_ui`
 
@@ -241,6 +274,12 @@ Likely contents:
 - deterministic demo capture seed helpers
 
 This keeps renderer regression tooling first-class without bloating page logic.
+
+The capture path should remain conceptually separate from explicit presenter backends:
+
+- capture owns deterministic artifact generation and readback
+- presenter owns runtime display submission
+- both may share low-level frame/rect utility types where useful, but neither should absorb the other's primary responsibility
 
 #### `mapping`, `timeline`, `project`, `transport`
 
@@ -348,6 +387,18 @@ Important preservation points:
 - narrow-layout compaction rules remain rendering concerns, not hidden behavior changes
 - MIDI FX model logic remains separate from page-specific drawing and hit-target code
 
+### Presenter-mode and detached framebuffer readiness
+
+The refactor should preserve a clean path for the explicit presenter/runtime mode sketched on `vk/5bf4-implement-spec-r`.
+
+Important preservation points:
+
+- desktop/windowed behavior remains unchanged
+- runtime display backend selection remains an outer integration concern, not a fork of app semantics
+- detached framebuffer or DRM/full-frame presenters can be introduced without moving control logic out of the canonical action model
+- any future dirty-region tracking remains driven by render/invalidation boundaries rather than ad hoc product-state branching
+- touch-first runtime variants still reuse the same action, scope, and mapping behavior
+
 ### Screenshot-equivalent UI output
 
 Because this is a refactor, tracked renderer screenshots should remain visually unchanged unless an intentional cleanup is explicitly called out and approved.
@@ -422,6 +473,7 @@ Start with low-risk moves that reduce file size without changing call flow:
 - layout structs
 - direct mapping state types
 - badge/style helpers
+- frame/presenter seam helpers if they can be extracted without changing the current desktop present path
 
 ### Phase 3: Extract feature-local UI modules
 
@@ -432,6 +484,7 @@ Move domain-specific rendering and hit-target logic out of `app.rs` in slices:
 3. routing + MIDI I/O page helpers
 4. timeline rendering helpers, timeline FX helpers, and interaction descriptors
 5. transport strip and shared footer/chrome
+6. present/presenter/runtime display seam helpers
 
 Each slice should preserve behavior and keep tests green before moving on.
 
@@ -471,6 +524,7 @@ Primary refactor touch points:
 - `src/project.rs`
 - `src/lib.rs`
 - `src/app_ui/branding.rs`
+- future-aligned modules such as `src/present.rs`, `src/presenter.rs`, and runtime/backend-specific presenter files if this refactor introduces the seam now
 - new modules under `src/` or `src/app/` for app shell, page UI, capture, and theme responsibilities
 
 Likely supporting touch points:
@@ -484,6 +538,7 @@ The refactor is successful when all of the following are true:
 
 - `src/app.rs` is substantially smaller and no longer owns most feature-specific logic
 - the codebase has clear domain-scoped modules for at least direct mapping/discoverability, timeline UI, page UI behavior, capture helpers, and theme/palette ownership
+- the codebase has a clean render-to-present seam so explicit presenter modes can be added without re-entangling app logic into the app shell
 - canonical `AppAction` routing remains the single control boundary across keyboard, MIDI, pointer, and touch inputs
 - direct mapping UX, scope behavior, and replacement/conflict outcomes remain behaviorally identical to the current tested surface
 - mapping target lookup, mappings editor targetability, and `Cancel` action behavior remain behaviorally identical to the current tested surface
