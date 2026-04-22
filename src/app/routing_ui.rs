@@ -1,250 +1,6 @@
 use super::*;
 
 impl App {
-    pub(crate) fn draw_midi_io_page<T: RenderTarget>(
-        &self,
-        canvas: &mut Canvas<T>,
-        content_bounds: Rect,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(22, 28, 42));
-        canvas.fill_rect(content_bounds)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
-        canvas.draw_rect(content_bounds)?;
-
-        let (header_bounds, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
-        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
-        let input_bounds = columns[0];
-        let output_bounds = columns[1];
-        crate::ui::draw_text_fitted(
-            canvas,
-            "MIDI I/O",
-            Rect::new(header_bounds.x + 8, header_bounds.y + 8, 160, 14),
-            2,
-            Color::RGB(244, 232, 146),
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Auto refresh: on",
-            Rect::new(header_bounds.x + 188, header_bounds.y + 8, 220, 8),
-            1,
-            Color::RGB(184, 194, 206),
-        )?;
-        let offline_input = self
-            .preferred_default_input_name
-            .as_deref()
-            .filter(|name| !self.input_port_is_available(name));
-        let offline_output = self
-            .preferred_default_output_name
-            .as_deref()
-            .filter(|name| !self.output_port_is_available(name));
-        let offline_summary = match (offline_input, offline_output) {
-            (Some(input), Some(output)) => format!("Offline defaults: In {input} | Out {output}"),
-            (Some(input), None) => format!("Offline default input: {input}"),
-            (None, Some(output)) => format!("Offline default output: {output}"),
-            (None, None) => "Select default inputs and outputs".to_string(),
-        };
-        crate::ui::draw_text_fitted(
-            canvas,
-            &offline_summary,
-            Rect::new(header_bounds.x + 188, header_bounds.y + 18, 420, 8),
-            1,
-            if offline_input.is_some() || offline_output.is_some() {
-                Color::RGB(248, 182, 124)
-            } else {
-                Color::RGB(184, 194, 206)
-            },
-        )?;
-
-        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
-        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
-        canvas.set_draw_color(Color::RGB(28, 34, 50));
-        canvas.fill_rect(input_header)?;
-        canvas.fill_rect(output_header)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
-        canvas.draw_rect(input_header)?;
-        canvas.draw_rect(output_header)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Inputs",
-            Rect::new(input_header.x + 8, input_header.y + 7, 96, 8),
-            2,
-            Color::RGB(214, 242, 220),
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "Outputs",
-            Rect::new(output_header.x + 8, output_header.y + 7, 96, 8),
-            2,
-            Color::RGB(246, 212, 194),
-        )?;
-
-        self.draw_device_list(
-            canvas,
-            Rect::new(
-                input_bounds.x,
-                input_header.y + input_header.height() as i32 + 6,
-                input_bounds.width(),
-                input_bounds
-                    .height()
-                    .saturating_sub(input_header.height().saturating_add(28)),
-            ),
-            &self.midi_devices.inputs,
-            self.page_state.midi_io.selected_input_index,
-            self.midi_devices.selected_input,
-            self.page_state.midi_io.focus == MidiIoListFocus::Inputs,
-            Color::RGB(78, 196, 164),
-            "Input",
-        )?;
-        self.draw_device_list(
-            canvas,
-            Rect::new(
-                output_bounds.x,
-                output_header.y + output_header.height() as i32 + 6,
-                output_bounds.width(),
-                output_bounds
-                    .height()
-                    .saturating_sub(output_header.height().saturating_add(28)),
-            ),
-            &self.midi_devices.outputs,
-            self.page_state.midi_io.selected_output_index,
-            self.midi_devices.selected_output,
-            self.page_state.midi_io.focus == MidiIoListFocus::Outputs,
-            Color::RGB(224, 132, 90),
-            "Output",
-        )?;
-
-        Ok(())
-    }
-
-    fn draw_device_list<T: RenderTarget>(
-        &self,
-        canvas: &mut Canvas<T>,
-        bounds: Rect,
-        ports: &[MidiPortRef],
-        selected_index: usize,
-        active_index: Option<usize>,
-        focused: bool,
-        accent: Color,
-        role_label: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(22, 28, 42));
-        canvas.fill_rect(bounds)?;
-        canvas.set_draw_color(if focused {
-            Color::RGB(242, 232, 150)
-        } else {
-            Color::RGB(88, 96, 120)
-        });
-        canvas.draw_rect(bounds)?;
-
-        let rows = crate::ui::stacked_rows(
-            crate::ui::inset_rect(bounds, 10, 10)?,
-            ports.len().max(1),
-            8,
-        );
-        for (index, row) in rows.into_iter().enumerate().take(ports.len()) {
-            let is_selected = index == selected_index;
-            let is_active = active_index == Some(index);
-
-            canvas.set_draw_color(if is_selected {
-                Color::RGB(56, 70, 100)
-            } else {
-                Color::RGB(28, 34, 50)
-            });
-            canvas.fill_rect(row)?;
-            canvas.set_draw_color(if is_selected {
-                Color::RGB(244, 232, 146)
-            } else {
-                Color::RGB(70, 80, 102)
-            });
-            canvas.draw_rect(row)?;
-
-            let status = Rect::new(row.x + 6, row.y + 6, 16, row.height().saturating_sub(12));
-            canvas.set_draw_color(if is_active {
-                accent
-            } else {
-                Color::RGB(72, 76, 84)
-            });
-            canvas.fill_rect(status)?;
-
-            let selected_badge_width = if is_selected { 24 } else { 0 };
-            let active_badge_width = if is_active { 24 } else { 0 };
-            let reserved_badge_width = selected_badge_width + active_badge_width;
-            let header_rect = Rect::new(
-                status.x + status.width() as i32 + 8,
-                row.y + 8,
-                row.width()
-                    .saturating_sub(40)
-                    .saturating_sub(reserved_badge_width as u32),
-                8,
-            );
-            let body_rect = Rect::new(
-                status.x + status.width() as i32 + 8,
-                row.y + 20,
-                row.width().saturating_sub(40),
-                row.height().saturating_sub(28),
-            );
-            canvas.set_draw_color(if is_selected {
-                Color::RGB(216, 224, 238)
-            } else {
-                Color::RGB(182, 194, 212)
-            });
-            canvas.fill_rect(body_rect)?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                &ports[index].name,
-                header_rect,
-                1,
-                Color::RGB(230, 236, 244),
-            )?;
-            if is_active {
-                let active_badge = Rect::new(
-                    row.x + row.width() as i32 - 12 - active_badge_width - selected_badge_width,
-                    row.y + 8,
-                    active_badge_width as u32,
-                    8,
-                );
-                canvas.set_draw_color(accent);
-                canvas.fill_rect(active_badge)?;
-                crate::ui::draw_text_fitted(
-                    canvas,
-                    if role_label == "Input" { "Def" } else { "Def" },
-                    Rect::new(
-                        active_badge.x + 3,
-                        active_badge.y,
-                        active_badge.width().saturating_sub(6),
-                        8,
-                    ),
-                    1,
-                    Color::RGB(22, 28, 36),
-                )?;
-            }
-            if is_selected {
-                let selected_badge = Rect::new(
-                    row.x + row.width() as i32 - 12 - selected_badge_width,
-                    row.y + 8,
-                    selected_badge_width as u32,
-                    8,
-                );
-                canvas.set_draw_color(Color::RGB(244, 232, 146));
-                canvas.fill_rect(selected_badge)?;
-                crate::ui::draw_text_fitted(
-                    canvas,
-                    "Sel",
-                    Rect::new(
-                        selected_badge.x + 3,
-                        selected_badge.y,
-                        selected_badge.width().saturating_sub(6),
-                        8,
-                    ),
-                    1,
-                    Color::RGB(24, 28, 36),
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-
     pub(crate) fn draw_routing_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -271,10 +27,7 @@ impl App {
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
         let (header, body) = crate::ui::split_top_strip(inner, 48, 10)?;
-        let active_track = self
-            .project
-            .active_track()
-            .expect("demo project has tracks");
+        let active_track = self.project.active_track().expect("demo project has tracks");
 
         canvas.set_draw_color(Color::RGB(54, 70, 104));
         canvas.fill_rect(header)?;
@@ -689,11 +442,7 @@ impl App {
         rects
     }
 
-    fn routing_group_rows(
-        &self,
-        panel: Rect,
-        fields: &[RoutingField],
-    ) -> Vec<(RoutingField, Rect)> {
+    fn routing_group_rows(&self, panel: Rect, fields: &[RoutingField]) -> Vec<(RoutingField, Rect)> {
         let inner = crate::ui::inset_rect(panel, 10, 10).unwrap_or(panel);
         let rows_bounds = Rect::new(
             inner.x,
@@ -751,13 +500,7 @@ impl App {
             panel.width().saturating_sub(16),
             12,
         );
-        crate::ui::draw_text_fitted(
-            canvas,
-            title,
-            Rect::new(header.x, header.y, 74, 8),
-            1,
-            accent,
-        )?;
+        crate::ui::draw_text_fitted(canvas, title, Rect::new(header.x, header.y, 74, 8), 1, accent)?;
         crate::ui::draw_text_fitted(
             canvas,
             subtitle,
@@ -805,10 +548,7 @@ impl App {
             RoutingField::RecordInputFx => track.midi_fx.record_input_fx_mode.label().to_string(),
             RoutingField::MonitorInputFx => on_off(track.midi_fx.monitor_input_fx).to_string(),
             RoutingField::InputFxSlot => {
-                format!(
-                    "Slot {}",
-                    self.selected_fx_slot_index(MidiFxChainKind::Input) + 1
-                )
+                format!("Slot {}", self.selected_fx_slot_index(MidiFxChainKind::Input) + 1)
             }
             RoutingField::InputFxKind => self
                 .selected_fx_slot(track, MidiFxChainKind::Input)
@@ -828,14 +568,9 @@ impl App {
                 .1
                 .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
-            RoutingField::InputFxMore => {
-                self.selected_fx_overflow_label(track, MidiFxChainKind::Input)
-            }
+            RoutingField::InputFxMore => self.selected_fx_overflow_label(track, MidiFxChainKind::Input),
             RoutingField::OutputFxSlot => {
-                format!(
-                    "Slot {}",
-                    self.selected_fx_slot_index(MidiFxChainKind::Output) + 1
-                )
+                format!("Slot {}", self.selected_fx_slot_index(MidiFxChainKind::Output) + 1)
             }
             RoutingField::OutputFxKind => self
                 .selected_fx_slot(track, MidiFxChainKind::Output)
@@ -859,67 +594,6 @@ impl App {
                 self.selected_fx_overflow_label(track, MidiFxChainKind::Output)
             }
         }
-    }
-
-    pub(crate) fn handle_midi_io_pointer(
-        &mut self,
-        content_bounds: Rect,
-        x: i32,
-        y: i32,
-        _source: crate::actions::ActionSource,
-    ) -> Option<AppControl> {
-        let (_, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10).ok()?;
-        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
-        let input_bounds = columns[0];
-        let output_bounds = columns[1];
-        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
-        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
-
-        if rect_contains(input_header, x, y) {
-            self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
-            return Some(AppControl::Continue);
-        }
-        if rect_contains(output_header, x, y) {
-            self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
-            return Some(AppControl::Continue);
-        }
-
-        let input_list = Rect::new(
-            input_bounds.x,
-            input_header.y + input_header.height() as i32 + 6,
-            input_bounds.width(),
-            input_bounds
-                .height()
-                .saturating_sub(input_header.height().saturating_add(28)),
-        );
-        let output_list = Rect::new(
-            output_bounds.x,
-            output_header.y + output_header.height() as i32 + 6,
-            output_bounds.width(),
-            output_bounds
-                .height()
-                .saturating_sub(output_header.height().saturating_add(28)),
-        );
-
-        if let Some(index) =
-            self.hit_device_list_row(input_list, self.midi_devices.inputs.len(), x, y)
-        {
-            self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
-            self.page_state.midi_io.selected_input_index = index;
-            self.set_preferred_default_input_from_index(index);
-            return Some(AppControl::Continue);
-        }
-
-        if let Some(index) =
-            self.hit_device_list_row(output_list, self.midi_devices.outputs.len(), x, y)
-        {
-            self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
-            self.page_state.midi_io.selected_output_index = index;
-            self.set_preferred_default_output_from_index(index);
-            return Some(AppControl::Continue);
-        }
-
-        None
     }
 
     pub(crate) fn handle_routing_pointer(
@@ -985,11 +659,7 @@ impl App {
                 control_height,
             );
             if rect_contains(value, x, y) {
-                let delta = if x < value.x + value.width() as i32 / 2 {
-                    -1
-                } else {
-                    1
-                };
+                let delta = if x < value.x + value.width() as i32 / 2 { -1 } else { 1 };
                 self.adjust_routing_field(delta);
             } else if rect_contains(affordance, x, y) {
                 self.adjust_routing_field(1);
@@ -999,13 +669,95 @@ impl App {
 
         None
     }
+}
 
-    fn hit_device_list_row(&self, bounds: Rect, count: usize, x: i32, y: i32) -> Option<usize> {
-        let rows =
-            crate::ui::stacked_rows(crate::ui::inset_rect(bounds, 10, 10).ok()?, count.max(1), 8);
-        rows.into_iter()
-            .enumerate()
-            .take(count)
-            .find_map(|(index, rect)| rect_contains(rect, x, y).then_some(index))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routing_page_adjusts_active_track_routing() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Routing));
+        app.page_state.selected_routing_field = RoutingField::OutputChannel;
+
+        let before = app.project.active_track().unwrap().routing.output_channel;
+        app.apply_action(AppAction::AdjustPageItemForward);
+
+        assert_ne!(app.project.active_track().unwrap().routing.output_channel, before);
+    }
+
+    #[test]
+    fn routing_fx_panels_use_two_column_grid_for_six_fields() {
+        let app = App::new();
+        let body = Rect::new(0, 0, 900, 520);
+        let (_, input_panel, _, output_panel) = app.routing_panel_rects(body);
+        let rects = app.routing_field_rects(body);
+
+        let input_slot = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxSlot)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_kind = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxKind)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_on = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxEnabled)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_p1 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxParam1)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_p2 = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxParam2)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let input_more = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::InputFxMore)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+
+        assert_eq!(input_slot.y, input_kind.y);
+        assert_eq!(input_on.y, input_p1.y);
+        assert_eq!(input_p2.y, input_more.y);
+        assert!(input_slot.x < input_kind.x);
+        assert!(input_on.x < input_p1.x);
+        assert!(input_p2.x < input_more.x);
+        for rect in [input_slot, input_kind, input_on, input_p1, input_p2, input_more] {
+            assert!(input_panel.contains_point((rect.x, rect.y)));
+            assert!(input_panel.contains_point((rect.x + rect.width() as i32 - 1, rect.y + rect.height() as i32 - 1)));
+        }
+
+        let output_slot = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxSlot)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        let output_kind = rects
+            .iter()
+            .find(|(field, _)| *field == RoutingField::OutputFxKind)
+            .map(|(_, rect)| *rect)
+            .unwrap();
+        assert_eq!(output_slot.y, output_kind.y);
+        assert!(output_slot.x < output_kind.x);
+        assert!(output_panel.contains_point((output_kind.x, output_kind.y)));
+    }
+
+    #[test]
+    fn routing_field_short_labels_match_compact_fx_grid() {
+        assert_eq!(routing_field_short_label(RoutingField::InputFxSlot), "Slot");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxKind), "Kind");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxEnabled), "On");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxParam1), "P1");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxParam2), "P2");
+        assert_eq!(routing_field_short_label(RoutingField::InputFxMore), "More");
     }
 }

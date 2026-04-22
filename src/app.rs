@@ -47,14 +47,16 @@ mod direct_mapping_ui;
 mod discoverability_ui;
 #[path = "app/input.rs"]
 mod input;
-#[path = "app/io_pages.rs"]
-mod io_pages;
 #[path = "app/labels.rs"]
 mod labels;
 #[path = "app/mapping_ui.rs"]
 mod mapping_ui;
 #[path = "app/mapping_lookup.rs"]
 mod mapping_lookup;
+#[path = "app/midi_io_page.rs"]
+mod midi_io_page;
+#[path = "app/routing_ui.rs"]
+mod routing_ui;
 #[path = "app/shell_ui.rs"]
 mod shell_ui;
 #[path = "app/timeline_fx_ui.rs"]
@@ -4821,14 +4823,14 @@ struct TransportChipSpec {
 mod tests {
     use super::{
         cycle_input_channel, cycle_optional_port, cycle_output_channel, mapping_field_index,
-        routing_field_short_label, ticks_per_second_for_tempo, timeline_fx_overflow_label,
-        transport_strip_height, App, AppControl, AppOverlay, LastActionStatus,
+        ticks_per_second_for_tempo, timeline_fx_overflow_label, transport_strip_height, App,
+        AppControl, AppOverlay, LastActionStatus,
     };
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
     use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
-    use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
+    use crate::pages::{AppPage, MappingField, MappingPageMode};
     use crate::project::{MidiNote, RecordContext, Track, TrackKind, STORED_LOOP_SLOT_COUNT};
     use crate::routing::MidiChannelFilter;
     use crate::timeline_fx::{TimelineContext, TimelineFxField};
@@ -5644,158 +5646,6 @@ mod tests {
         assert_eq!(control, Some(AppControl::Continue));
         assert!(app.project.transport.recording);
         assert!(app.project.transport.playing);
-    }
-
-    #[test]
-    fn midi_io_page_can_switch_focus_and_commit_default_ports() {
-        let mut app = App::new();
-        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
-        app.midi_devices.outputs = vec![MidiPortRef::new("Out A"), MidiPortRef::new("Out B")];
-        app.apply_action(AppAction::ShowPage(AppPage::MidiIo));
-        app.apply_action(AppAction::SelectNextPageItem);
-        app.apply_action(AppAction::ActivatePageItem);
-        assert_eq!(
-            app.midi_devices.selected_input,
-            Some(app.page_state.midi_io.selected_input_index)
-        );
-
-        app.apply_action(AppAction::AdjustPageItemForward);
-        assert_eq!(app.page_state.midi_io.focus, MidiIoListFocus::Outputs);
-    }
-
-    #[test]
-    fn routing_page_adjusts_active_track_routing() {
-        let mut app = App::new();
-        app.apply_action(AppAction::ShowPage(AppPage::Routing));
-        app.page_state.selected_routing_field = RoutingField::OutputChannel;
-
-        let before = app.project.active_track().unwrap().routing.output_channel;
-        app.apply_action(AppAction::AdjustPageItemForward);
-
-        assert_ne!(
-            app.project.active_track().unwrap().routing.output_channel,
-            before
-        );
-    }
-
-    #[test]
-    fn routing_fx_panels_use_two_column_grid_for_six_fields() {
-        let app = App::new();
-        let body = Rect::new(0, 0, 900, 520);
-        let (_, input_panel, _, output_panel) = app.routing_panel_rects(body);
-        let rects = app.routing_field_rects(body);
-
-        let input_slot = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxSlot)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let input_kind = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxKind)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let input_on = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxEnabled)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let input_p1 = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxParam1)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let input_p2 = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxParam2)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let input_more = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::InputFxMore)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-
-        assert_eq!(input_slot.y, input_kind.y);
-        assert_eq!(input_on.y, input_p1.y);
-        assert_eq!(input_p2.y, input_more.y);
-        assert!(input_slot.x < input_kind.x);
-        assert!(input_on.x < input_p1.x);
-        assert!(input_p2.x < input_more.x);
-        for rect in [
-            input_slot, input_kind, input_on, input_p1, input_p2, input_more,
-        ] {
-            assert!(input_panel.contains_point((rect.x, rect.y)));
-            assert!(input_panel.contains_point((
-                rect.x + rect.width() as i32 - 1,
-                rect.y + rect.height() as i32 - 1
-            )));
-        }
-
-        let output_slot = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxSlot)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let output_kind = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxKind)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let output_on = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxEnabled)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let output_p1 = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxParam1)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let output_p2 = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxParam2)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-        let output_more = rects
-            .iter()
-            .find(|(field, _)| *field == RoutingField::OutputFxMore)
-            .map(|(_, rect)| *rect)
-            .unwrap();
-
-        assert_eq!(output_slot.y, output_kind.y);
-        assert_eq!(output_on.y, output_p1.y);
-        assert_eq!(output_p2.y, output_more.y);
-        assert!(output_slot.x < output_kind.x);
-        assert!(output_on.x < output_p1.x);
-        assert!(output_p2.x < output_more.x);
-        for rect in [
-            output_slot,
-            output_kind,
-            output_on,
-            output_p1,
-            output_p2,
-            output_more,
-        ] {
-            assert!(output_panel.contains_point((rect.x, rect.y)));
-            assert!(output_panel.contains_point((
-                rect.x + rect.width() as i32 - 1,
-                rect.y + rect.height() as i32 - 1
-            )));
-        }
-    }
-
-    #[test]
-    fn routing_field_short_labels_match_compact_fx_grid() {
-        assert_eq!(routing_field_short_label(RoutingField::InputFxSlot), "Slot");
-        assert_eq!(routing_field_short_label(RoutingField::InputFxKind), "Kind");
-        assert_eq!(
-            routing_field_short_label(RoutingField::InputFxEnabled),
-            "On"
-        );
-        assert_eq!(routing_field_short_label(RoutingField::InputFxParam1), "P1");
-        assert_eq!(routing_field_short_label(RoutingField::InputFxParam2), "P2");
-        assert_eq!(routing_field_short_label(RoutingField::InputFxMore), "More");
     }
 
     #[test]
