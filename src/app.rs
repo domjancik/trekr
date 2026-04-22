@@ -79,6 +79,8 @@ mod timeline_layout;
 mod timeline_page;
 #[path = "app/timeline_recording.rs"]
 mod timeline_recording;
+#[path = "app/timeline_track_ui.rs"]
+mod timeline_track_ui;
 #[path = "app/timeline_ui.rs"]
 mod timeline_ui;
 #[path = "app/types.rs"]
