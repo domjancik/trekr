@@ -154,6 +154,40 @@ pub(super) fn rects_overlap(a: Rect, b: Rect) -> bool {
         && a.y + a.height() as i32 > b.y
 }
 
+pub(super) fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
+    let line_height = 8_i32;
+    let line_gap = 2_i32;
+    let vertical_padding = 4_i32;
+    let active = chain.iter().flatten().count();
+    let show_add = active < chain.len().max(MIDI_FX_SLOT_COUNT);
+    let line_count = (active + usize::from(show_add)).max(1) as i32;
+    vertical_padding + line_count * line_height + (line_count - 1) * line_gap
+}
+
+pub(super) fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 24),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height().saturating_sub(14)),
+    }
+}
+
+pub(super) fn timeline_subcolumn_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + 24,
+            lane.width(),
+            lane.height().saturating_sub(24),
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x + 56,
+            lane.y,
+            lane.width().saturating_sub(56),
+            lane.height(),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

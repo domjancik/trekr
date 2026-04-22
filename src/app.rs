@@ -77,6 +77,8 @@ mod timeline_recording;
 mod timeline_ui;
 #[path = "app/types.rs"]
 mod types;
+#[path = "app/ui_helpers.rs"]
+mod ui_helpers;
 
 use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
@@ -95,6 +97,10 @@ use stored_loops::{
     clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
     stored_loop_slot_color, stored_loop_slot_recall_action,
 };
+use timeline_layout::{
+    displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
+};
+use ui_helpers::{centered_text_rect, contrasting_text_color};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -4093,58 +4099,6 @@ fn draw_loop_label_underline<T: RenderTarget>(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
-}
-
-fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
-    let line_height = 8_i32;
-    let line_gap = 2_i32;
-    let vertical_padding = 4_i32;
-    let active = chain.iter().flatten().count();
-    let show_add = active < chain.len().max(MIDI_FX_SLOT_COUNT);
-    let line_count = (active + usize::from(show_add)).max(1) as i32;
-    vertical_padding + line_count * line_height + (line_count - 1) * line_gap
-}
-
-fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
-    match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 24),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height().saturating_sub(14)),
-    }
-}
-
-fn timeline_subcolumn_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
-    match flow {
-        TimelineFlow::DownwardColumns => Rect::new(
-            lane.x,
-            lane.y + 24,
-            lane.width(),
-            lane.height().saturating_sub(24),
-        ),
-        TimelineFlow::AcrossRows => Rect::new(
-            lane.x + 56,
-            lane.y,
-            lane.width().saturating_sub(56),
-            lane.height(),
-        ),
-    }
-}
-
-fn centered_text_rect(rect: Rect) -> Rect {
-    Rect::new(
-        rect.x,
-        rect.y + ((rect.height() as i32 - 8) / 2).max(0),
-        rect.width(),
-        8,
-    )
-}
-
-fn contrasting_text_color(fill: Color) -> Color {
-    let brightness = u32::from(fill.r) * 299 + u32::from(fill.g) * 587 + u32::from(fill.b) * 114;
-    if brightness / 1000 < 140 {
-        Color::RGB(244, 244, 236)
-    } else {
-        Color::RGB(24, 28, 36)
-    }
 }
 
 fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
