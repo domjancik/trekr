@@ -53,6 +53,8 @@ mod labels;
 mod mapping_ui;
 #[path = "app/mapping_lookup.rs"]
 mod mapping_lookup;
+#[path = "app/mapping_input.rs"]
+mod mapping_input;
 #[path = "app/midi_io_page.rs"]
 mod midi_io_page;
 #[path = "app/routing_ui.rs"]
@@ -86,6 +88,7 @@ use labels::{
 use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
+use mapping_input::{midi_learn_label, midi_mapping_matches_event};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -4225,65 +4228,6 @@ fn contrasting_text_color(fill: Color) -> Color {
 fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
     let clamped_bpm = tempo_bpm.clamp(20.0, 400.0);
     ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
-}
-
-fn midi_learn_label(event: &MidiInputEvent) -> String {
-    match event.message {
-        MidiInputMessage::NoteOn { pitch, .. } | MidiInputMessage::NoteOff { pitch } => {
-            format!("Note {} Ch{}", midi_note_name(pitch), event.channel)
-        }
-        MidiInputMessage::ControlChange { controller, .. } => {
-            format!("CC{} Ch{}", controller, event.channel)
-        }
-    }
-}
-
-fn midi_note_name(pitch: u8) -> String {
-    const NAMES: [&str; 12] = [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-    ];
-    let name = NAMES[(pitch % 12) as usize];
-    let octave = (pitch / 12) as i16 - 1;
-    format!("{name}{octave}")
-}
-
-fn midi_note_label(pitch: u8) -> String {
-    format!("Note {}", midi_note_name(pitch))
-}
-
-fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> bool {
-    if !entry.enabled || entry.source_kind != MappingSourceKind::Midi {
-        return false;
-    }
-
-    if entry.source_device_label != default_mapping_source_device()
-        && entry.source_device_label != event.port.name
-    {
-        return false;
-    }
-
-    match event.message {
-        MidiInputMessage::NoteOn { pitch, .. } | MidiInputMessage::NoteOff { pitch } => {
-            if matches!(event.message, MidiInputMessage::NoteOff { .. })
-                && !midi_mapping_target_supports_release(entry.target_label.as_str())
-            {
-                return false;
-            }
-            entry.source_label == midi_note_label(pitch)
-                || entry.source_label == format!("{} Ch{}", midi_note_label(pitch), event.channel)
-        }
-        MidiInputMessage::ControlChange { controller, value } => {
-            if value == 0 && !midi_mapping_target_supports_release(entry.target_label.as_str()) {
-                return false;
-            }
-            entry.source_label == format!("CC{controller}")
-                || entry.source_label == format!("CC{controller} Ch{}", event.channel)
-        }
-    }
-}
-
-fn midi_mapping_target_supports_release(target_label: &str) -> bool {
-    matches!(target_label, "Record Hold" | "Select Notes At Playhead Add")
 }
 
 fn port_name(port: Option<&MidiPortRef>) -> &str {
