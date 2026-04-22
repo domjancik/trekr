@@ -53,6 +53,8 @@ mod mapping_ui;
 mod shell_ui;
 #[path = "app/timeline_fx_ui.rs"]
 mod timeline_fx_ui;
+#[path = "app/timeline_layout.rs"]
+mod timeline_layout;
 #[path = "app/timeline_page.rs"]
 mod timeline_page;
 #[path = "app/timeline_recording.rs"]
@@ -4211,80 +4213,6 @@ impl App {
         self.apply_action(action)
     }
 
-    fn visible_track_columns(&self, timeline_bounds: Rect) -> Vec<(usize, Rect, Rect)> {
-        if self.project.tracks.is_empty() {
-            return Vec::new();
-        }
-
-        if self.focused_track_view {
-            return crate::ui::track_column_pairs(timeline_bounds, 1)
-                .into_iter()
-                .next()
-                .map(|(full_bounds, detail_bounds)| {
-                    vec![(self.project.active_track_index, full_bounds, detail_bounds)]
-                })
-                .unwrap_or_default();
-        }
-
-        crate::ui::track_column_pairs(timeline_bounds, self.project.tracks.len())
-            .into_iter()
-            .enumerate()
-            .map(|(index, (full_bounds, detail_bounds))| (index, full_bounds, detail_bounds))
-            .collect()
-    }
-
-    fn timeline_track_layout(
-        &self,
-        track_index: usize,
-        full_bounds: Rect,
-        detail_bounds: Rect,
-    ) -> TimelineTrackLayout {
-        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
-        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds);
-        let full_label_rect = timeline_subcolumn_label_rect(body_full_bounds, self.timeline_flow);
-        let detail_label_rect =
-            timeline_subcolumn_label_rect(body_detail_bounds, self.timeline_flow);
-        let full_content_rect =
-            timeline_subcolumn_content_rect(body_full_bounds, self.timeline_flow);
-        let detail_content_rect =
-            timeline_subcolumn_content_rect(body_detail_bounds, self.timeline_flow);
-        let (input_fx_rect, output_fx_rect) = self.track_fx_band_rects(
-            full_bounds,
-            detail_bounds,
-            &self.project.tracks[track_index],
-        );
-        TimelineTrackLayout {
-            track_index,
-            full_bounds,
-            detail_bounds,
-            pair_bounds,
-            status_rect,
-            body_full_bounds,
-            body_detail_bounds,
-            full_label_rect,
-            detail_label_rect,
-            full_content_rect,
-            detail_content_rect,
-            input_fx_rect,
-            output_fx_rect,
-        }
-    }
-
-    fn active_track_full_bounds(&self) -> Option<Rect> {
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
-        let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
-        let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
-        self.visible_track_columns(timeline_bounds)
-            .into_iter()
-            .find(|(index, _, _)| *index == self.project.active_track_index)
-            .map(|(_, full_bounds, _)| full_bounds)
-    }
-
     fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
@@ -7553,42 +7481,6 @@ mod tests {
     }
 
     #[test]
-    fn timeline_body_label_controls_do_not_overlap_input_fx_band() {
-        let app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (body_full_bounds, body_detail_bounds) =
-            app.track_column_body_bounds(full_bounds, detail_bounds);
-        let full_label_rect =
-            super::timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
-        let detail_label_rect =
-            super::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
-        let (input_fx_rect, _) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let view_rect = app.recording_view_chip_rect(full_label_rect);
-        let thru_rect = app.track_passthrough_button_rect(full_label_rect);
-        let detail_badge = crate::ui::detail_badge_rect(detail_label_rect);
-        let stored_slot = app.stored_loop_slot_rects(detail_label_rect)[0].1;
-        let intersects = |a: Rect, b: Rect| {
-            a.x < b.x + b.width() as i32
-                && a.x + a.width() as i32 > b.x
-                && a.y < b.y + b.height() as i32
-                && a.y + a.height() as i32 > b.y
-        };
-
-        assert!(!intersects(input_fx_rect, view_rect));
-        assert!(!intersects(input_fx_rect, thru_rect));
-        assert!(!intersects(input_fx_rect, detail_badge));
-        assert!(!intersects(input_fx_rect, stored_slot));
-    }
-
-    #[test]
     fn timeline_thru_hit_rect_matches_rendered_subcolumn_header() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
@@ -7645,34 +7537,6 @@ mod tests {
 
         assert!(matches!(control, None | Some(AppControl::Continue)));
         assert_eq!(app.project.tracks[0].state.passthrough, before);
-    }
-
-    #[test]
-    fn timeline_resized_content_rects_do_not_overlap_input_fx_band() {
-        let app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (body_full_bounds, body_detail_bounds) =
-            app.track_column_body_bounds(full_bounds, detail_bounds);
-        let (input_band, _) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-        let full_content = crate::ui::track_content_rect(body_full_bounds, app.timeline_flow);
-        let detail_content = crate::ui::track_content_rect(body_detail_bounds, app.timeline_flow);
-        let intersects = |a: Rect, b: Rect| {
-            a.x < b.x + b.width() as i32
-                && a.x + a.width() as i32 > b.x
-                && a.y < b.y + b.height() as i32
-                && a.y + a.height() as i32 > b.y
-        };
-
-        assert!(!intersects(input_band, full_content));
-        assert!(!intersects(input_band, detail_content));
     }
 
     #[test]
@@ -8211,30 +8075,6 @@ mod tests {
     }
 
     #[test]
-    fn canonical_timeline_layout_keeps_output_fx_band_disjoint_from_body_content() {
-        let app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
-        let intersects = |a: Rect, b: Rect| {
-            a.x < b.x + b.width() as i32
-                && a.x + a.width() as i32 > b.x
-                && a.y < b.y + b.height() as i32
-                && a.y + a.height() as i32 > b.y
-        };
-
-        assert!(!intersects(layout.output_fx_rect, layout.full_content_rect));
-        assert!(!intersects(
-            layout.output_fx_rect,
-            layout.detail_content_rect
-        ));
-    }
-
-    #[test]
     fn canonical_output_fx_row_point_does_not_land_in_body_content() {
         let app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
@@ -8257,26 +8097,6 @@ mod tests {
 
         assert!(!super::rect_contains(layout.full_content_rect, x, y));
         assert!(!super::rect_contains(layout.detail_content_rect, x, y));
-    }
-
-    #[test]
-    fn output_fx_band_starts_below_track_body_with_fixed_gap() {
-        let app = App::new();
-        let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
-        let (full_bounds, detail_bounds) = columns[0];
-        let (body_full_bounds, body_detail_bounds) =
-            app.track_column_body_bounds(full_bounds, detail_bounds);
-        let body_pair = crate::ui::union_rect(body_full_bounds, body_detail_bounds);
-        let (_, output_rect) =
-            app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
-
-        assert_eq!(output_rect.y, body_pair.y + body_pair.height() as i32 + 4);
     }
 
     #[test]

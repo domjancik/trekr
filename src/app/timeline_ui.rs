@@ -550,66 +550,6 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn track_column_body_bounds(
-        &self,
-        full_bounds: Rect,
-        detail_bounds: Rect,
-    ) -> (Rect, Rect) {
-        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
-        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
-        let top_gap = 4_i32;
-        let bottom_gap = 4_i32;
-        let top_reserve = (status_rect.y + status_rect.height() as i32 + top_gap + top_band_height
-            - pair_bounds.y)
-            .max(0);
-        let bottom_reserve = (bottom_gap + bottom_band_height).max(0);
-        let new_height = full_bounds
-            .height()
-            .saturating_sub(top_reserve as u32)
-            .saturating_sub(bottom_reserve as u32);
-        let full = Rect::new(
-            full_bounds.x,
-            full_bounds.y + top_reserve,
-            full_bounds.width(),
-            new_height,
-        );
-        let detail = Rect::new(
-            detail_bounds.x,
-            detail_bounds.y + top_reserve,
-            detail_bounds.width(),
-            new_height,
-        );
-        (full, detail)
-    }
-
-    pub(super) fn track_fx_band_rects(
-        &self,
-        full_bounds: Rect,
-        detail_bounds: Rect,
-        _track: &Track,
-    ) -> (Rect, Rect) {
-        let pair_bounds = crate::ui::union_rect(full_bounds, detail_bounds);
-        let status_rect = crate::ui::track_status_rect(pair_bounds, self.timeline_flow);
-        let (body_full_bounds, body_detail_bounds) =
-            self.track_column_body_bounds(full_bounds, detail_bounds);
-        let body_pair_bounds = crate::ui::union_rect(body_full_bounds, body_detail_bounds);
-        let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
-        let top = Rect::new(
-            pair_bounds.x + 4,
-            status_rect.y + status_rect.height() as i32 + 4,
-            pair_bounds.width().saturating_sub(8),
-            top_band_height as u32,
-        );
-        let bottom = Rect::new(
-            pair_bounds.x + 4,
-            body_pair_bounds.y + body_pair_bounds.height() as i32 + 4,
-            pair_bounds.width().saturating_sub(8),
-            bottom_band_height as u32,
-        );
-        (top, bottom)
-    }
-
     fn draw_track_loop_markers<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
