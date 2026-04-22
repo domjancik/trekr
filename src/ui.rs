@@ -743,11 +743,11 @@ fn horizontal_note_rect(
 #[cfg(test)]
 mod tests {
     use super::{
-        TimelineFlow, TrackIndicatorKind, detail_badge_rect, equal_columns, note_rects,
-        playhead_rect_in_range, range_highlight_rect, split_top_strip, stacked_rows, surface_rect,
-        text_width, timeline_guides, timeline_ruler_ticks, track_column_pairs, track_content_rect,
-        track_header_rect, track_indicators, track_label_rect, track_status_rect,
-        truncate_text_to_width, union_rect,
+        detail_badge_rect, equal_columns, note_rects, playhead_rect_in_range, range_highlight_rect,
+        split_top_strip, stacked_rows, surface_rect, text_width, timeline_guides,
+        timeline_ruler_ticks, track_column_pairs, track_content_rect, track_header_rect,
+        track_indicators, track_label_rect, track_status_rect, truncate_text_to_width, union_rect,
+        TimelineFlow, TrackIndicatorKind,
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;

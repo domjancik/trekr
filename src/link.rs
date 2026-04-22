@@ -139,7 +139,11 @@ impl Drop for LinkRuntime {
 }
 
 fn bool_to_u8(value: bool) -> u8 {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 unsafe extern "C" {

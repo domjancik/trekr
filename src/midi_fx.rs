@@ -1544,10 +1544,10 @@ fn quantize_to_allowed_steps(pitch: u8, root: u8, steps: &[u8]) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ArpOrder, LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, QuantizeTarget,
         arp_rate_label, cycle_existing_fx_kind, cycle_fx_kind, delay_rate_label,
         duration_rate_label, playback_timing_lookback_ticks, process_live_chain_event,
-        process_live_chain_tick, process_live_event, transform_notes,
+        process_live_chain_tick, process_live_event, transform_notes, ArpOrder, LiveMidiFxEvent,
+        LiveMidiFxState, MidiFx, MidiFxSlot, QuantizeTarget,
     };
     use crate::project::MidiNote;
 
@@ -1664,26 +1664,18 @@ mod tests {
             },
         })];
         let transformed = transform_notes(&notes, &chain, 0);
-        assert!(
-            transformed
-                .iter()
-                .any(|note| note.start_ticks == 0 && note.pitch == 60)
-        );
-        assert!(
-            transformed
-                .iter()
-                .any(|note| note.start_ticks == 240 && note.pitch == 64)
-        );
-        assert!(
-            transformed
-                .iter()
-                .any(|note| note.start_ticks == 480 && note.pitch == 60)
-        );
-        assert!(
-            transformed
-                .iter()
-                .any(|note| note.start_ticks == 720 && note.pitch == 64)
-        );
+        assert!(transformed
+            .iter()
+            .any(|note| note.start_ticks == 0 && note.pitch == 60));
+        assert!(transformed
+            .iter()
+            .any(|note| note.start_ticks == 240 && note.pitch == 64));
+        assert!(transformed
+            .iter()
+            .any(|note| note.start_ticks == 480 && note.pitch == 60));
+        assert!(transformed
+            .iter()
+            .any(|note| note.start_ticks == 720 && note.pitch == 64));
     }
 
     #[test]
@@ -1798,29 +1790,25 @@ mod tests {
         })];
         let mut state = LiveMidiFxState::default();
 
-        assert!(
-            process_live_chain_event(
-                &chain,
-                &mut state,
-                LiveMidiFxEvent::NoteOn {
-                    pitch: 60,
-                    velocity: 100,
-                },
-                0,
-                0,
-            )
-            .is_empty()
-        );
-        assert!(
-            process_live_chain_event(
-                &chain,
-                &mut state,
-                LiveMidiFxEvent::NoteOff { pitch: 60 },
-                120,
-                0,
-            )
-            .is_empty()
-        );
+        assert!(process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            0,
+            0,
+        )
+        .is_empty());
+        assert!(process_live_chain_event(
+            &chain,
+            &mut state,
+            LiveMidiFxEvent::NoteOff { pitch: 60 },
+            120,
+            0,
+        )
+        .is_empty());
 
         assert_eq!(
             process_live_chain_tick(&chain, &mut state, 0, 240, 0),
