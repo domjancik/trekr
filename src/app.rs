@@ -51,6 +51,8 @@ mod labels;
 mod mapping_ui;
 #[path = "app/shell_ui.rs"]
 mod shell_ui;
+#[path = "app/timeline_recording.rs"]
+mod timeline_recording;
 #[path = "app/timeline_ui.rs"]
 mod timeline_ui;
 #[path = "app/types.rs"]
@@ -5041,10 +5043,9 @@ mod tests {
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::pages::{AppPage, MappingField, MappingPageMode, MidiIoListFocus, RoutingField};
     use crate::project::{
-        MidiNote, RecordContext, RecordingView, Track, TrackKind, STORED_LOOP_SLOT_COUNT,
+        MidiNote, RecordContext, Track, TrackKind, STORED_LOOP_SLOT_COUNT,
     };
     use crate::routing::MidiChannelFilter;
-    use crate::timeline::RecordingTake;
     use crate::timeline_fx::{TimelineContext, TimelineFxField};
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -5072,46 +5073,6 @@ mod tests {
     }
 
     #[test]
-    fn recording_clip_actions_update_active_track_clip_state() {
-        let mut app = App::new();
-        let transport = app.project.transport;
-        {
-            let track = app.project.active_track_mut().unwrap();
-            track.clear_content();
-            track.commit_take(transport, RecordingTake::new(0).release(480), None);
-            track.commit_take(transport, RecordingTake::new(960).release(1_440), None);
-        }
-
-        app.apply_action(AppAction::ToggleCurrentTrackRecordingView);
-        assert_eq!(
-            app.project.active_track().unwrap().recording_view,
-            RecordingView::Stacked
-        );
-
-        app.apply_action(AppAction::SelectPreviousRecordingClip);
-        let selected_before_delete = app
-            .project
-            .active_track()
-            .unwrap()
-            .selected_recording_clip_id
-            .expect("selected clip");
-        app.apply_action(AppAction::ToggleSelectedRecordingClipMute);
-        assert!(
-            app.project
-                .active_track()
-                .unwrap()
-                .selected_recording_clip()
-                .unwrap()
-                .muted
-        );
-
-        app.apply_action(AppAction::DeleteSelectedRecordingClip);
-        let active = app.project.active_track().unwrap();
-        assert_eq!(active.recording_clips.len(), 1);
-        assert_ne!(active.recording_clips[0].id, selected_before_delete);
-    }
-
-    #[test]
     fn focused_track_view_limits_timeline_to_active_track() {
         let mut app = App::new();
         let timeline_bounds = Rect::new(0, 0, 1000, 420);
@@ -5127,109 +5088,6 @@ mod tests {
         let visible = app.visible_track_columns(timeline_bounds);
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].0, 2);
-    }
-
-    #[test]
-    fn stacked_all_track_layout_shows_at_least_three_recording_lanes() {
-        let app = App::new();
-        let timeline_bounds = Rect::new(0, 0, 1000, 420);
-        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
-
-        assert!(app.recording_lane_capacity(content_rect) >= 3);
-    }
-
-    #[test]
-    fn stacked_view_shows_preview_lane_while_recording() {
-        let mut app = App::new();
-        let transport = app.project.transport;
-        {
-            let track = app.project.active_track_mut().unwrap();
-            track.clear_content();
-            track.recording_view = RecordingView::Stacked;
-            track.commit_take(transport, RecordingTake::new(0).release(480), None);
-        }
-
-        app.transport_ticks = 960;
-        app.playhead_ticks = 960;
-        app.apply_action(AppAction::ToggleRecording);
-
-        let timeline_bounds = Rect::new(0, 0, 1000, 420);
-        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
-        let layouts = app.recording_lane_layouts(content_rect, app.project.active_track().unwrap());
-
-        assert_eq!(layouts.len(), 2);
-        assert!(layouts.iter().any(|lane| lane.preview));
-    }
-
-    #[test]
-    fn stacked_view_preview_lane_shifts_visible_window_as_committed() {
-        let mut app = App::new();
-        let transport = app.project.transport;
-        let trailing_clip_ids = {
-            let track = app.project.active_track_mut().unwrap();
-            track.clear_content();
-            track.recording_view = RecordingView::Stacked;
-            for index in 0..5 {
-                let start = index * 480;
-                track.commit_take(
-                    transport,
-                    RecordingTake::new(start).release(start + 240),
-                    None,
-                );
-            }
-            let trailing = vec![track.recording_clips[3].id, track.recording_clips[4].id];
-            track.recording_clip_scroll = 2;
-            track.active_take = Some(RecordingTake::new(2400));
-            trailing
-        };
-
-        let content_rect = Rect::new(0, 0, 49, 200);
-        assert_eq!(app.recording_lane_capacity(content_rect), 3);
-        let layouts = app.recording_lane_layouts(content_rect, app.project.active_track().unwrap());
-
-        assert_eq!(layouts.len(), 3);
-        assert_eq!(layouts[0].clip_id, Some(trailing_clip_ids[0]));
-        assert_eq!(layouts[1].clip_id, Some(trailing_clip_ids[1]));
-        assert!(layouts[2].preview);
-    }
-
-    #[test]
-    fn stacked_scrollbar_thumb_tracks_clip_window_position() {
-        let mut app = App::new();
-        let transport = app.project.transport;
-        {
-            let track = app.project.active_track_mut().unwrap();
-            track.clear_content();
-            track.recording_view = RecordingView::Stacked;
-            for index in 0..5 {
-                let start = index * 480;
-                track.commit_take(
-                    transport,
-                    RecordingTake::new(start).release(start + 240),
-                    None,
-                );
-            }
-            track.recording_clip_scroll = 0;
-        }
-
-        let timeline_bounds = Rect::new(0, 0, 1000, 420);
-        let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
-        let (_, thumb_before) = app
-            .recording_clip_scrollbar_rects(content_rect, app.project.active_track().unwrap())
-            .expect("scrollbar");
-
-        app.project
-            .active_track_mut()
-            .unwrap()
-            .recording_clip_scroll = 2;
-        let (_, thumb_after) = app
-            .recording_clip_scrollbar_rects(content_rect, app.project.active_track().unwrap())
-            .expect("scrollbar");
-
-        assert!(thumb_after.x > thumb_before.x);
     }
 
     #[test]
