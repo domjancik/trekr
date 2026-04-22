@@ -1,4 +1,5 @@
 use super::*;
+use super::shell_layout::page_tabs_layout;
 
 impl App {
     pub(super) fn handle_pointer_event(
