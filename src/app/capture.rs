@@ -1,12 +1,12 @@
 use crate::app::AppOverlay;
 use crate::pages::AppPage;
-use crate::project::{MidiNote, STORED_LOOP_SLOT_COUNT, Track};
+use crate::project::{MidiNote, Track, STORED_LOOP_SLOT_COUNT};
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
 
-use super::TransportChipSpec;
 use super::types::CaptureSpec;
+use super::TransportChipSpec;
 
 pub(super) fn chip_row_width(specs: &[TransportChipSpec]) -> u32 {
     if specs.is_empty() {
