@@ -59,8 +59,6 @@ mod types;
 use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
 };
-#[cfg(test)]
-pub(super) use input::pointer_down_position;
 pub(super) use input::rect_contains;
 use labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
@@ -6081,21 +6079,6 @@ mod tests {
     }
 
     #[test]
-    fn mappings_overlay_toggles_on_and_off() {
-        let mut app = App::new();
-        assert!(app.overlay_state.active.is_none());
-
-        app.apply_action(AppAction::ToggleMappingsOverlay);
-        assert_eq!(
-            app.overlay_state.active,
-            Some(AppOverlay::MappingsQuickView)
-        );
-
-        app.apply_action(AppAction::ToggleMappingsOverlay);
-        assert!(app.overlay_state.active.is_none());
-    }
-
-    #[test]
     fn discoverability_overlay_toggles_separately_from_quick_overlay() {
         let mut app = App::new();
 
@@ -6431,50 +6414,6 @@ mod tests {
         });
         assert_eq!(f8, Some(AppControl::Continue));
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
-    }
-
-    #[test]
-    fn direct_mapping_pointer_can_retarget_while_awaiting_input() {
-        let mut app = App::new();
-        let surface = crate::ui::surface_rect(app.viewport_size.0, app.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).expect("surface inset");
-        let (tabs_bounds, page_area_bounds) =
-            crate::ui::split_top_strip(inset, 28, 12).expect("page split");
-        let content_bounds = Rect::new(
-            page_area_bounds.x(),
-            page_area_bounds.y(),
-            page_area_bounds.width(),
-            page_area_bounds.height().saturating_sub(30),
-        );
-        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
-            action: AppAction::TogglePlayback,
-            target_label: "Play/Stop",
-            scope_label: "Global",
-            display_scope: Some("Global"),
-            hit_rect: Rect::new(0, 0, 10, 10),
-        });
-
-        let record_target = app
-            .direct_mapping_targets(content_bounds)
-            .into_iter()
-            .find(|target| target.target_label == "Record" && target.scope_label == "Armed/Active")
-            .expect("record target");
-        let point_x = record_target.hit_rect.x() + (record_target.hit_rect.width() / 2) as i32;
-        let point_y = record_target.hit_rect.y() + (record_target.hit_rect.height() / 2) as i32;
-
-        let control = app.handle_direct_mapping_pointer_down(
-            tabs_bounds,
-            content_bounds,
-            point_x,
-            point_y,
-            ActionSource::Pointer,
-        );
-
-        assert_eq!(control, Some(AppControl::Continue));
-        assert_eq!(
-            app.direct_mapping_state.mode,
-            DirectMappingMode::AwaitingInput(record_target)
-        );
     }
 
     #[test]
@@ -8846,59 +8785,6 @@ mod tests {
             STORED_LOOP_SLOT_COUNT
         );
         assert!(app.stored_loop_slot_rects(narrow).len() < STORED_LOOP_SLOT_COUNT);
-    }
-
-    #[test]
-    fn pointer_position_uses_render_coordinates_for_mouse() {
-        let event = sdl3::event::Event::MouseButtonDown {
-            timestamp: 0,
-            window_id: 1,
-            which: 0,
-            mouse_btn: sdl3::mouse::MouseButton::Left,
-            clicks: 1,
-            x: 512.5,
-            y: 288.25,
-        };
-
-        assert_eq!(
-            super::pointer_down_position(&event, (1280, 720)),
-            Some((512, 288, crate::actions::ActionSource::Pointer))
-        );
-    }
-
-    #[test]
-    fn page_frame_layout_matches_draw_content_height_contract() {
-        let app = App::new();
-        let surface = crate::ui::surface_rect(1280, 720);
-        let inset = crate::ui::inset_rect(surface, 24, 24).expect("inset");
-        let (_, content_bounds, footer_bounds) = app.page_frame_layout(inset).expect("layout");
-        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("page split");
-
-        assert_eq!(content_bounds.y, page_area_bounds.y);
-        assert_eq!(
-            footer_bounds.y + footer_bounds.height() as i32,
-            page_area_bounds.y + page_area_bounds.height() as i32
-        );
-        assert_eq!(content_bounds.height() + 22 + 8, page_area_bounds.height());
-    }
-
-    #[test]
-    fn pointer_position_uses_converted_render_coordinates_for_touch() {
-        let event = sdl3::event::Event::FingerDown {
-            timestamp: 0,
-            touch_id: 1,
-            finger_id: 1,
-            x: 0.5,
-            y: 0.5,
-            dx: 0.0,
-            dy: 0.0,
-            pressure: 1.0,
-        };
-
-        assert_eq!(
-            super::pointer_down_position(&event, (1280, 720)),
-            Some((640, 360, crate::actions::ActionSource::Touch))
-        );
     }
 
     #[test]

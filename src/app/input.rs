@@ -262,3 +262,89 @@ pub(crate) fn pointer_hover_position(
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pointer_position_uses_render_coordinates_for_mouse() {
+        let event = sdl3::event::Event::MouseButtonDown {
+            timestamp: 0,
+            window_id: 1,
+            which: 0,
+            mouse_btn: sdl3::mouse::MouseButton::Left,
+            clicks: 1,
+            x: 512.5,
+            y: 288.25,
+        };
+
+        assert_eq!(
+            pointer_down_position(&event, (1280, 720)),
+            Some((512, 288, crate::actions::ActionSource::Pointer))
+        );
+    }
+
+    #[test]
+    fn pointer_position_uses_converted_render_coordinates_for_touch() {
+        let event = sdl3::event::Event::FingerDown {
+            timestamp: 0,
+            touch_id: 1,
+            finger_id: 1,
+            x: 0.5,
+            y: 0.5,
+            dx: 0.0,
+            dy: 0.0,
+            pressure: 1.0,
+        };
+
+        assert_eq!(
+            pointer_down_position(&event, (1280, 720)),
+            Some((640, 360, crate::actions::ActionSource::Touch))
+        );
+    }
+
+    #[test]
+    fn direct_mapping_pointer_can_retarget_while_awaiting_input() {
+        let mut app = App::new();
+        let surface = crate::ui::surface_rect(app.viewport_size.0, app.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).expect("surface inset");
+        let (tabs_bounds, page_area_bounds) =
+            crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+        let content_bounds = Rect::new(
+            page_area_bounds.x(),
+            page_area_bounds.y(),
+            page_area_bounds.width(),
+            page_area_bounds.height().saturating_sub(30),
+        );
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let record_target = app
+            .direct_mapping_targets(content_bounds)
+            .into_iter()
+            .find(|target| target.target_label == "Record" && target.scope_label == "Armed/Active")
+            .expect("record target");
+        let point_x = record_target.hit_rect.x() + (record_target.hit_rect.width() / 2) as i32;
+        let point_y = record_target.hit_rect.y() + (record_target.hit_rect.height() / 2) as i32;
+
+        let control = app.handle_direct_mapping_pointer_down(
+            tabs_bounds,
+            content_bounds,
+            point_x,
+            point_y,
+            ActionSource::Pointer,
+        );
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(
+            app.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(record_target)
+        );
+    }
+}

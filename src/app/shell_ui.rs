@@ -1014,3 +1014,39 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mappings_overlay_toggles_on_and_off() {
+        let mut app = App::new();
+        assert!(app.overlay_state.active.is_none());
+
+        app.apply_action(AppAction::ToggleMappingsOverlay);
+        assert_eq!(
+            app.overlay_state.active,
+            Some(AppOverlay::MappingsQuickView)
+        );
+
+        app.apply_action(AppAction::ToggleMappingsOverlay);
+        assert!(app.overlay_state.active.is_none());
+    }
+
+    #[test]
+    fn page_frame_layout_matches_draw_content_height_contract() {
+        let app = App::new();
+        let surface = crate::ui::surface_rect(1280, 720);
+        let inset = crate::ui::inset_rect(surface, 24, 24).expect("inset");
+        let (_, content_bounds, footer_bounds) = app.page_frame_layout(inset).expect("layout");
+        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+
+        assert_eq!(content_bounds.y, page_area_bounds.y);
+        assert_eq!(
+            footer_bounds.y + footer_bounds.height() as i32,
+            page_area_bounds.y + page_area_bounds.height() as i32
+        );
+        assert_eq!(content_bounds.height() + 22 + 8, page_area_bounds.height());
+    }
+}
