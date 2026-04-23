@@ -128,7 +128,7 @@ mod tests {
         let (full_bounds, detail_bounds) = columns[1];
         let (_, body_detail_bounds) = app.track_column_body_bounds(full_bounds, detail_bounds);
         let detail_label_rect =
-            super::timeline_layout::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
+            super::timeline::layout::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
         let (_, slot_rect) = app.stored_loop_slot_rects(detail_label_rect)[0];
 
         let control = app.handle_timeline_pointer(

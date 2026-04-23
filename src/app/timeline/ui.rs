@@ -207,7 +207,7 @@ impl App {
         targets
     }
 
-    pub(super) fn track_discoverability_targets(
+    pub(crate) fn track_discoverability_targets(
         &self,
         layout: TimelineTrackLayout,
         track: &Track,
@@ -341,7 +341,7 @@ impl App {
         targets
     }
 
-    pub(super) fn visible_timeline_track_layouts(
+    pub(crate) fn visible_timeline_track_layouts(
         &self,
         timeline_bounds: Rect,
     ) -> Vec<TimelineTrackLayout> {

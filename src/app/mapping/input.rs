@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn midi_learn_label(event: &MidiInputEvent) -> String {
+pub(crate) fn midi_learn_label(event: &MidiInputEvent) -> String {
     match event.message {
         MidiInputMessage::NoteOn { pitch, .. } | MidiInputMessage::NoteOff { pitch } => {
             format!("Note {} Ch{}", midi_note_name(pitch), event.channel)
@@ -24,7 +24,7 @@ fn midi_note_label(pitch: u8) -> String {
     format!("Note {}", midi_note_name(pitch))
 }
 
-pub(super) fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> bool {
+pub(crate) fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInputEvent) -> bool {
     if !entry.enabled || entry.source_kind != MappingSourceKind::Midi {
         return false;
     }

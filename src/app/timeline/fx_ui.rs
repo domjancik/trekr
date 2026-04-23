@@ -2,7 +2,7 @@ use super::*;
 use crate::midi_fx::MidiFxInlineParam;
 
 impl App {
-    pub(super) fn timeline_fx_discoverability_targets_for_track(
+    pub(crate) fn timeline_fx_discoverability_targets_for_track(
         &self,
         track: &Track,
         context: TimelineContext,
@@ -111,7 +111,7 @@ impl App {
         targets
     }
 
-    pub(super) fn select_timeline_fx_row(&mut self, delta: i32) {
+    pub(crate) fn select_timeline_fx_row(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -124,7 +124,7 @@ impl App {
         self.set_selected_timeline_fx_row(chain_kind, next);
     }
 
-    pub(super) fn selected_timeline_fx_row(&self, chain_kind: MidiFxChainKind) -> usize {
+    pub(crate) fn selected_timeline_fx_row(&self, chain_kind: MidiFxChainKind) -> usize {
         let Some(track) = self.project.active_track() else {
             return 0;
         };
@@ -136,7 +136,7 @@ impl App {
         if len == 0 { 0 } else { stored.min(len - 1) }
     }
 
-    pub(super) fn set_selected_timeline_fx_row(
+    pub(crate) fn set_selected_timeline_fx_row(
         &mut self,
         chain_kind: MidiFxChainKind,
         row_index: usize,
@@ -151,7 +151,7 @@ impl App {
         }
     }
 
-    pub(super) fn active_timeline_fx_slot_indices(
+    pub(crate) fn active_timeline_fx_slot_indices(
         &self,
         chain_kind: MidiFxChainKind,
     ) -> Vec<usize> {
@@ -161,7 +161,7 @@ impl App {
         self.active_timeline_fx_slot_indices_for_track(track, chain_kind)
     }
 
-    pub(super) fn active_timeline_fx_slot_indices_for_track(
+    pub(crate) fn active_timeline_fx_slot_indices_for_track(
         &self,
         track: &Track,
         chain_kind: MidiFxChainKind,
@@ -173,7 +173,7 @@ impl App {
             .collect()
     }
 
-    pub(super) fn displayed_timeline_fx_slot_indices(
+    pub(crate) fn displayed_timeline_fx_slot_indices(
         &self,
         chain_kind: MidiFxChainKind,
     ) -> Vec<Option<usize>> {
@@ -183,7 +183,7 @@ impl App {
         self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind)
     }
 
-    pub(super) fn displayed_timeline_fx_slot_indices_for_track(
+    pub(crate) fn displayed_timeline_fx_slot_indices_for_track(
         &self,
         track: &Track,
         chain_kind: MidiFxChainKind,
@@ -202,7 +202,7 @@ impl App {
         rows
     }
 
-    pub(super) fn first_empty_timeline_fx_slot_index_for_track(
+    pub(crate) fn first_empty_timeline_fx_slot_index_for_track(
         &self,
         track: &Track,
         chain_kind: MidiFxChainKind,
@@ -213,7 +213,7 @@ impl App {
             .find_map(|(index, slot)| slot.is_none().then_some(index))
     }
 
-    pub(super) fn selected_timeline_fx_slot_index(
+    pub(crate) fn selected_timeline_fx_slot_index(
         &self,
         chain_kind: MidiFxChainKind,
     ) -> Option<usize> {
@@ -223,7 +223,7 @@ impl App {
             .flatten()
     }
 
-    pub(super) fn selected_timeline_fx_active_row_index(
+    pub(crate) fn selected_timeline_fx_active_row_index(
         &self,
         chain_kind: MidiFxChainKind,
     ) -> Option<usize> {
@@ -233,7 +233,7 @@ impl App {
             .position(|slot_index| *slot_index == selected_slot)
     }
 
-    pub(super) fn set_selected_timeline_fx_slot_index(
+    pub(crate) fn set_selected_timeline_fx_slot_index(
         &mut self,
         chain_kind: MidiFxChainKind,
         slot_index: usize,
@@ -246,7 +246,7 @@ impl App {
         self.set_selected_timeline_fx_row(chain_kind, row_index);
     }
 
-    pub(super) fn selected_timeline_fx_slot<'a>(
+    pub(crate) fn selected_timeline_fx_slot<'a>(
         &self,
         track: &'a Track,
         chain_kind: MidiFxChainKind,
@@ -256,7 +256,7 @@ impl App {
             .and_then(|slot| slot.as_ref())
     }
 
-    pub(super) fn selected_timeline_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
+    pub(crate) fn selected_timeline_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
         let Some(track) = self.project.active_track() else {
             return 0;
         };
@@ -270,7 +270,7 @@ impl App {
         windows.get(slot_index).copied().unwrap_or(0)
     }
 
-    pub(super) fn timeline_fx_param_window_for_slot(
+    pub(crate) fn timeline_fx_param_window_for_slot(
         &self,
         context: TimelineContext,
         slot_index: usize,
@@ -286,7 +286,7 @@ impl App {
         windows.get(slot_index).copied().unwrap_or(0)
     }
 
-    pub(super) fn set_selected_timeline_fx_param_window(
+    pub(crate) fn set_selected_timeline_fx_param_window(
         &mut self,
         chain_kind: MidiFxChainKind,
         start: usize,
@@ -305,7 +305,7 @@ impl App {
         }
     }
 
-    pub(super) fn normalize_timeline_fx_selection(&mut self) {
+    pub(crate) fn normalize_timeline_fx_selection(&mut self) {
         if let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() {
             let displayed = self.displayed_timeline_fx_slot_indices(chain_kind);
             if displayed.is_empty() {
@@ -316,7 +316,7 @@ impl App {
         }
     }
 
-    pub(super) fn adjust_timeline_context(&mut self, delta: i32) {
+    pub(crate) fn adjust_timeline_context(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -341,7 +341,7 @@ impl App {
         }
     }
 
-    pub(super) fn activate_timeline_context_item(&mut self) {
+    pub(crate) fn activate_timeline_context_item(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -352,7 +352,7 @@ impl App {
         self.page_state.selected_timeline_fx_field = self.page_state.selected_timeline_fx_field.next();
     }
 
-    pub(super) fn reverse_activate_timeline_context_item(&mut self) {
+    pub(crate) fn reverse_activate_timeline_context_item(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -364,7 +364,7 @@ impl App {
             self.page_state.selected_timeline_fx_field.previous();
     }
 
-    pub(super) fn toggle_selected_timeline_fx_enabled(&mut self) {
+    pub(crate) fn toggle_selected_timeline_fx_enabled(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -387,7 +387,7 @@ impl App {
         }
     }
 
-    pub(super) fn adjust_selected_timeline_fx_kind(&mut self, delta: i32) {
+    pub(crate) fn adjust_selected_timeline_fx_kind(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -415,7 +415,7 @@ impl App {
         }
     }
 
-    pub(super) fn add_selected_timeline_fx(&mut self) {
+    pub(crate) fn add_selected_timeline_fx(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -426,7 +426,7 @@ impl App {
         self.adjust_selected_timeline_fx_kind(1);
     }
 
-    pub(super) fn delete_selected_timeline_fx(&mut self) {
+    pub(crate) fn delete_selected_timeline_fx(&mut self) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -457,7 +457,7 @@ impl App {
         }
     }
 
-    pub(super) fn adjust_selected_timeline_fx_parameter(
+    pub(crate) fn adjust_selected_timeline_fx_parameter(
         &mut self,
         visible_offset: usize,
         delta: i32,
@@ -490,7 +490,7 @@ impl App {
         }
     }
 
-    pub(super) fn scroll_selected_timeline_fx_parameter_window(&mut self, delta: i32) {
+    pub(crate) fn scroll_selected_timeline_fx_parameter_window(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -507,7 +507,7 @@ impl App {
         self.set_selected_timeline_fx_param_window(chain_kind, next);
     }
 
-    pub(super) fn move_selected_timeline_fx(&mut self, delta: i32) {
+    pub(crate) fn move_selected_timeline_fx(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
         };
@@ -550,7 +550,7 @@ impl App {
         }
     }
 
-    pub(super) fn draw_timeline_fx_row<T: RenderTarget>(
+    pub(crate) fn draw_timeline_fx_row<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         context: TimelineContext,
@@ -681,7 +681,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn draw_timeline_fx_add_row<T: RenderTarget>(
+    pub(crate) fn draw_timeline_fx_add_row<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         context: TimelineContext,
@@ -878,7 +878,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn timeline_fx_hit(
+    pub(crate) fn timeline_fx_hit(
         &self,
         context: TimelineContext,
         band_rect: Rect,
@@ -908,7 +908,7 @@ impl App {
             })
     }
 
-    pub(super) fn handle_timeline_fx_pointer_hit(
+    pub(crate) fn handle_timeline_fx_pointer_hit(
         &mut self,
         hit: TimelineFxRowRef,
         x: i32,
@@ -959,7 +959,7 @@ impl App {
         Some(AppControl::Continue)
     }
 
-    pub(super) fn timeline_fx_band_heights(&self) -> (i32, i32) {
+    pub(crate) fn timeline_fx_band_heights(&self) -> (i32, i32) {
         let input = self
             .project
             .tracks
@@ -977,7 +977,7 @@ impl App {
         (input, output)
     }
 
-    pub(super) fn draw_track_fx_bands<T: RenderTarget>(
+    pub(crate) fn draw_track_fx_bands<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         layout: TimelineTrackLayout,
@@ -1061,7 +1061,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn timeline_fx_row_layouts(
+    pub(crate) fn timeline_fx_row_layouts(
         &self,
         band_rect: Rect,
         displayed_rows: &[Option<usize>],
@@ -1244,7 +1244,7 @@ impl App {
             .collect()
     }
 
-    pub(super) fn timeline_fx_footer_content(&self) -> Option<(String, String)> {
+    pub(crate) fn timeline_fx_footer_content(&self) -> Option<(String, String)> {
         if self.page_state.current_page != AppPage::Timeline {
             return None;
         }
@@ -1272,7 +1272,7 @@ impl App {
     }
 }
 
-pub(super) fn timeline_fx_enabled_chip_label(
+pub(crate) fn timeline_fx_enabled_chip_label(
     slot: &MidiFxSlot,
     show_kind_title: bool,
 ) -> &'static str {
@@ -1283,7 +1283,7 @@ pub(super) fn timeline_fx_enabled_chip_label(
     }
 }
 
-pub(super) fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
+pub(crate) fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'static str {
     if width >= 20 {
         slot.effect.kind().short_label()
     } else {
@@ -1291,7 +1291,7 @@ pub(super) fn timeline_fx_kind_display(slot: &MidiFxSlot, width: u32) -> &'stati
     }
 }
 
-pub(super) fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -> u32 {
+pub(crate) fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -> u32 {
     let label = if available >= 72 {
         slot.effect.kind().short_label()
     } else {
@@ -1302,7 +1302,7 @@ pub(super) fn timeline_fx_kind_target_width(slot: &MidiFxSlot, available: u32) -
     (label.len() as u32 * glyph_width + padding).clamp(20, 28)
 }
 
-pub(super) fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String {
+pub(crate) fn timeline_fx_overflow_label(param_count: usize, window_start: usize) -> String {
     if param_count <= 2 {
         "--".to_string()
     } else {

@@ -165,7 +165,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn timeline_context_indicator_rect_for_layout(
+    pub(crate) fn timeline_context_indicator_rect_for_layout(
         &self,
         layout: TimelineTrackLayout,
     ) -> Option<Rect> {
@@ -180,7 +180,7 @@ impl App {
     }
 
     #[cfg(test)]
-    pub(super) fn timeline_context_indicator_rect(
+    pub(crate) fn timeline_context_indicator_rect(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
@@ -419,7 +419,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
+    pub(crate) fn global_loop_reset_button_rect(&self, header_bounds: Rect) -> Rect {
         let width = crate::ui::text_width("Reset Song Loop", 1) + 18;
         Rect::new(
             header_bounds.x + header_bounds.width() as i32 - width as i32 - 8,
@@ -429,7 +429,7 @@ impl App {
         )
     }
 
-    pub(super) fn focused_track_view_button_rect(&self, header_bounds: Rect) -> Rect {
+    pub(crate) fn focused_track_view_button_rect(&self, header_bounds: Rect) -> Rect {
         let width = crate::ui::text_width("Track All", 1) + 18;
         Rect::new(
             header_bounds.x + header_bounds.width() as i32 - 240,
@@ -439,7 +439,7 @@ impl App {
         )
     }
 
-    pub(super) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
+    pub(crate) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;

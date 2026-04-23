@@ -1,7 +1,7 @@
 use super::*;
 
 impl App {
-    pub(super) fn visible_track_columns(&self, timeline_bounds: Rect) -> Vec<(usize, Rect, Rect)> {
+    pub(crate) fn visible_track_columns(&self, timeline_bounds: Rect) -> Vec<(usize, Rect, Rect)> {
         if self.project.tracks.is_empty() {
             return Vec::new();
         }
@@ -23,7 +23,7 @@ impl App {
             .collect()
     }
 
-    pub(super) fn timeline_track_layout(
+    pub(crate) fn timeline_track_layout(
         &self,
         track_index: usize,
         full_bounds: Rect,
@@ -62,7 +62,7 @@ impl App {
         }
     }
 
-    pub(super) fn active_track_full_bounds(&self) -> Option<Rect> {
+    pub(crate) fn active_track_full_bounds(&self) -> Option<Rect> {
         let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (_, content_bounds) = crate::ui::split_top_strip(inset, 28, 12).ok()?;
@@ -75,7 +75,7 @@ impl App {
             .map(|(_, full_bounds, _)| full_bounds)
     }
 
-    pub(super) fn track_column_body_bounds(
+    pub(crate) fn track_column_body_bounds(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
@@ -108,7 +108,7 @@ impl App {
         (full, detail)
     }
 
-    pub(super) fn track_fx_band_rects(
+    pub(crate) fn track_fx_band_rects(
         &self,
         full_bounds: Rect,
         detail_bounds: Rect,
@@ -136,25 +136,25 @@ impl App {
     }
 }
 
-pub(super) fn loop_regions_intersect(
+pub(crate) fn loop_regions_intersect(
     a: crate::timeline::LoopRegion,
     b: crate::timeline::LoopRegion,
 ) -> bool {
     a.start_ticks < b.end_ticks() && a.end_ticks() > b.start_ticks
 }
 
-pub(super) fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
+pub(crate) fn interlaced_color_at(colors: &[Color], pixel_index: usize) -> Option<Color> {
     (!colors.is_empty()).then_some(colors[pixel_index % colors.len()])
 }
 
-pub(super) fn rects_overlap(a: Rect, b: Rect) -> bool {
+pub(crate) fn rects_overlap(a: Rect, b: Rect) -> bool {
     a.x < b.x + b.width() as i32
         && a.x + a.width() as i32 > b.x
         && a.y < b.y + b.height() as i32
         && a.y + a.height() as i32 > b.y
 }
 
-pub(super) fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
+pub(crate) fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
     let line_height = 8_i32;
     let line_gap = 2_i32;
     let vertical_padding = 4_i32;
@@ -164,14 +164,14 @@ pub(super) fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i3
     vertical_padding + line_count * line_height + (line_count - 1) * line_gap
 }
 
-pub(super) fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+pub(crate) fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 24),
         TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height().saturating_sub(14)),
     }
 }
 
-pub(super) fn timeline_subcolumn_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+pub(crate) fn timeline_subcolumn_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(
             lane.x,

@@ -39,59 +39,26 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-#[path = "app/capture.rs"]
 mod capture;
-#[path = "app/direct_mapping_ui.rs"]
 mod direct_mapping_ui;
-#[path = "app/discoverability_ui.rs"]
 mod discoverability_ui;
-#[path = "app/input.rs"]
 mod input;
-#[path = "app/io_helpers.rs"]
 mod io_helpers;
-#[path = "app/labels.rs"]
 mod labels;
-#[path = "app/mapping_ui.rs"]
-mod mapping_ui;
-#[path = "app/mapping_page.rs"]
-mod mapping_page;
-#[path = "app/mapping_lookup.rs"]
-mod mapping_lookup;
-#[path = "app/mapping_input.rs"]
-mod mapping_input;
-#[path = "app/page_actions.rs"]
+mod mapping;
 mod page_actions;
-#[path = "app/note_runtime.rs"]
 mod note_runtime;
-#[path = "app/midi_io_page.rs"]
 mod midi_io_page;
-#[path = "app/routing_ui.rs"]
 mod routing_ui;
-#[path = "app/shell_ui.rs"]
-mod shell_ui;
-#[path = "app/shell_layout.rs"]
-mod shell_layout;
-#[path = "app/shell_scaling.rs"]
-mod shell_scaling;
-#[path = "app/stored_loops.rs"]
+mod shell;
 mod stored_loops;
-#[path = "app/timeline_fx_ui.rs"]
-mod timeline_fx_ui;
-#[path = "app/timeline_layout.rs"]
-mod timeline_layout;
-#[path = "app/timeline_page.rs"]
-mod timeline_page;
-#[path = "app/timeline_recording.rs"]
-mod timeline_recording;
-#[path = "app/timeline_track_ui.rs"]
-mod timeline_track_ui;
-#[path = "app/timeline_ui.rs"]
-mod timeline_ui;
-#[path = "app/types.rs"]
+mod timeline;
 mod types;
-#[path = "app/ui_helpers.rs"]
 mod ui_helpers;
 
+use mapping::input as mapping_input;
+use mapping::lookup as mapping_lookup;
+use mapping::ui as mapping_ui;
 use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
 };
@@ -109,15 +76,15 @@ use mapping_lookup::mapping_target_lookup_input;
 use discoverability_ui::track_indicator_target;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 use mapping_input::{midi_learn_label, midi_mapping_matches_event};
-pub(super) use shell_ui::{transport_strip_height, TransportChipSpec};
-use shell_scaling::{
+pub(super) use shell::ui::{transport_strip_height, TransportChipSpec};
+use shell::scaling::{
     active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
 };
 use stored_loops::{
     clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
     stored_loop_slot_color, stored_loop_slot_recall_action,
 };
-use timeline_layout::{
+use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
 use ui_helpers::{centered_text_rect, contrasting_text_color};
