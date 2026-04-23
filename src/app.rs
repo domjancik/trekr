@@ -53,6 +53,8 @@ mod io_helpers;
 mod labels;
 #[path = "app/mapping_ui.rs"]
 mod mapping_ui;
+#[path = "app/mapping_page.rs"]
+mod mapping_page;
 #[path = "app/mapping_lookup.rs"]
 mod mapping_lookup;
 #[path = "app/mapping_input.rs"]
