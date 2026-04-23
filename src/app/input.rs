@@ -2,6 +2,191 @@ use super::*;
 use super::shell_layout::page_tabs_layout;
 
 impl App {
+    pub(super) fn poll_midi_input(&mut self) {
+        let events = self.midi_input.drain_events();
+        for event in events {
+            self.handle_midi_input_event(event);
+        }
+    }
+
+    pub(super) fn handle_midi_input_event(&mut self, event: MidiInputEvent) {
+        if self.capture_direct_mapping_input(&event) {
+            return;
+        }
+
+        if self.capture_mapping_midi_learn(&event) {
+            return;
+        }
+
+        let mapping_actions = self.resolve_midi_mapping_actions(&event);
+        for action in mapping_actions {
+            let _ = self.apply_action_with_source(action, ActionSource::Midi);
+        }
+
+        let matching_tracks: Vec<usize> = self
+            .project
+            .tracks
+            .iter()
+            .enumerate()
+            .filter(|(_, track)| {
+                track.routing.input_port.as_ref() == Some(&event.port)
+                    && match track.routing.input_channel {
+                        MidiChannelFilter::Omni => true,
+                        MidiChannelFilter::Channel(channel) => channel == event.channel,
+                    }
+            })
+            .map(|(index, _)| index)
+            .collect();
+
+        for index in matching_tracks {
+            let input_ticks = self
+                .project
+                .tracks
+                .get(index)
+                .map(|track| self.live_input_event_ticks(track))
+                .unwrap_or(self.playhead_ticks);
+
+            let Some(track_view) = self.project.tracks.get(index) else {
+                continue;
+            };
+
+            let (
+                record_mode,
+                monitor_input_fx,
+                passthrough,
+                output_port,
+                output_channel,
+                input_chain,
+                output_chain,
+            ) = (
+                track_view.midi_fx.record_input_fx_mode,
+                track_view.midi_fx.monitor_input_fx,
+                track_view.state.passthrough,
+                track_view.routing.output_port.clone(),
+                track_view.routing.output_channel,
+                track_view.midi_fx.input_fx.clone(),
+                track_view.midi_fx.output_fx.clone(),
+            );
+
+            match event.message {
+                MidiInputMessage::NoteOn { pitch, velocity } => {
+                    let raw_event = LiveMidiFxEvent::NoteOn { pitch, velocity };
+                    let (post_input_events, monitor_source_events) = self.monitor_source_events(
+                        index,
+                        raw_event,
+                        &input_chain,
+                        monitor_input_fx,
+                        input_ticks,
+                    );
+                    if let Some(track) = self.project.tracks.get_mut(index) {
+                        if track.active_take.is_some() {
+                            let record_events =
+                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
+                                    post_input_events.clone()
+                                } else {
+                                    vec![LiveMidiFxEvent::NoteOn { pitch, velocity }]
+                                };
+                            for record_event in record_events {
+                                if let LiveMidiFxEvent::NoteOn { pitch, velocity } = record_event {
+                                    track.record_note_on(pitch, velocity, input_ticks);
+                                }
+                            }
+                        }
+                    }
+                    self.propagate_live_clone_events(index, &post_input_events);
+                    if passthrough {
+                        self.send_live_monitor_events(
+                            index,
+                            &output_chain,
+                            output_port.as_ref(),
+                            output_channel,
+                            monitor_source_events,
+                            input_ticks,
+                        );
+                    }
+                }
+                MidiInputMessage::NoteOff { pitch } => {
+                    let raw_event = LiveMidiFxEvent::NoteOff { pitch };
+                    let (post_input_events, monitor_source_events) = self.monitor_source_events(
+                        index,
+                        raw_event,
+                        &input_chain,
+                        monitor_input_fx,
+                        input_ticks,
+                    );
+                    if let Some(track) = self.project.tracks.get_mut(index) {
+                        if track.active_take.is_some() {
+                            let record_events =
+                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
+                                    post_input_events.clone()
+                                } else {
+                                    vec![LiveMidiFxEvent::NoteOff { pitch }]
+                                };
+                            for record_event in record_events {
+                                if let LiveMidiFxEvent::NoteOff { pitch } = record_event {
+                                    track.record_note_off(pitch, input_ticks);
+                                }
+                            }
+                        }
+                    }
+                    self.propagate_live_clone_events(index, &post_input_events);
+                    if passthrough {
+                        self.send_live_monitor_events(
+                            index,
+                            &output_chain,
+                            output_port.as_ref(),
+                            output_channel,
+                            monitor_source_events,
+                            input_ticks,
+                        );
+                    }
+                }
+                MidiInputMessage::ControlChange { .. } => {}
+            }
+        }
+    }
+
+    pub(super) fn capture_mapping_midi_learn(&mut self, event: &MidiInputEvent) -> bool {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+            || !self.page_state.mapping_midi_learn_armed
+        {
+            return false;
+        }
+
+        let index = self.page_state.selected_mapping_index;
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return false;
+        };
+
+        entry.source_kind = MappingSourceKind::Midi;
+        entry.source_device_label = event.port.name.clone();
+        entry.source_label = midi_learn_label(event);
+        entry.enabled = true;
+        self.page_state.mapping_midi_learn_armed = false;
+        true
+    }
+
+    pub(super) fn resolve_midi_mapping_actions(&self, event: &MidiInputEvent) -> Vec<AppAction> {
+        self.mappings
+            .iter()
+            .filter(|entry| midi_mapping_matches_event(entry, event))
+            .flat_map(|entry| mapping_entry_to_actions(entry, event))
+            .collect()
+    }
+
+    pub(super) fn resolve_key_mapping_actions(&self, source_label: &str) -> Vec<AppAction> {
+        self.mappings
+            .iter()
+            .filter(|entry| {
+                entry.enabled
+                    && entry.source_kind == MappingSourceKind::Key
+                    && entry.source_label == source_label
+            })
+            .flat_map(mapping_entry_key_actions)
+            .collect()
+    }
+
     pub(super) fn handle_pointer_event(
         &mut self,
         event: &sdl3::event::Event,
