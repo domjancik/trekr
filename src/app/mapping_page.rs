@@ -627,6 +627,230 @@ impl App {
     }
 }
 
+impl App {
+    pub(super) fn adjust_mapping_field(&mut self, delta: i32) {
+        let index = self.page_state.selected_mapping_index;
+        let field = self.page_state.selected_mapping_field;
+        let track_count = self.project.tracks.len();
+        let mapping_device_names = self
+            .midi_devices
+            .inputs
+            .iter()
+            .map(|port| port.name.clone())
+            .collect::<Vec<_>>();
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return;
+        };
+
+        self.page_state.mapping_midi_learn_armed = false;
+        match field {
+            MappingField::SourceKind => {
+                entry.source_kind = cycle_mapping_source_kind(entry.source_kind, delta);
+                if entry.source_kind != MappingSourceKind::Midi {
+                    entry.source_device_label = default_mapping_source_device();
+                }
+                entry.source_label = default_source_label(entry.source_kind).to_string();
+                self.normalize_selected_mapping_field();
+            }
+            MappingField::SourceDevice => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    entry.source_device_label = cycle_mapping_source_device_label(
+                        &entry.source_device_label,
+                        &mapping_device_names,
+                        delta,
+                    );
+                }
+            }
+            MappingField::SourceValue => {
+                entry.source_label =
+                    cycle_mapping_source_label(entry.source_kind, &entry.source_label, delta)
+                        .to_string();
+            }
+            MappingField::Target => {
+                entry.target_label =
+                    cycle_mapping_target_label(&entry.target_label, delta).to_string();
+                if !mapping_scope_valid_for_target(
+                    &entry.target_label,
+                    &entry.scope_label,
+                    track_count,
+                ) {
+                    entry.scope_label = default_scope_label(&entry.target_label, track_count);
+                }
+            }
+            MappingField::Scope => {
+                entry.scope_label = cycle_mapping_scope_value(
+                    &entry.scope_label,
+                    delta,
+                    &entry.target_label,
+                    track_count,
+                );
+            }
+            MappingField::Enabled => {
+                entry.enabled = delta > 0;
+            }
+        }
+    }
+
+    pub(super) fn reverse_activate_page_item(&mut self) {
+        match self.page_state.current_page {
+            AppPage::Timeline => self.reverse_activate_timeline_context_item(),
+            _ => self.activate_page_item(),
+        }
+    }
+
+    pub(super) fn activate_mapping_field(&mut self) {
+        let index = self.page_state.selected_mapping_index;
+        let field = self.page_state.selected_mapping_field;
+
+        if field == MappingField::Target {
+            self.open_mapping_target_lookup();
+            return;
+        }
+
+        let track_count = self.project.tracks.len();
+        let Some(entry) = self.mappings.get_mut(index) else {
+            return;
+        };
+
+        match field {
+            MappingField::SourceKind => {
+                entry.source_kind = cycle_mapping_source_kind(entry.source_kind, 1);
+                if entry.source_kind != MappingSourceKind::Midi {
+                    entry.source_device_label = default_mapping_source_device();
+                }
+                entry.source_label = default_source_label(entry.source_kind).to_string();
+                self.page_state.mapping_midi_learn_armed = false;
+                self.normalize_selected_mapping_field();
+            }
+            MappingField::SourceDevice => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    let mapping_device_names = self
+                        .midi_devices
+                        .inputs
+                        .iter()
+                        .map(|port| port.name.clone())
+                        .collect::<Vec<_>>();
+                    entry.source_device_label = cycle_mapping_source_device_label(
+                        &entry.source_device_label,
+                        &mapping_device_names,
+                        1,
+                    );
+                }
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::SourceValue => {
+                if entry.source_kind == MappingSourceKind::Midi {
+                    self.page_state.mapping_midi_learn_armed =
+                        !self.page_state.mapping_midi_learn_armed;
+                    self.sync_midi_inputs();
+                } else {
+                    entry.source_label =
+                        cycle_mapping_source_label(entry.source_kind, &entry.source_label, 1)
+                            .to_string();
+                }
+            }
+            MappingField::Target => {}
+            MappingField::Scope => {
+                entry.scope_label = cycle_mapping_scope_value(
+                    &entry.scope_label,
+                    1,
+                    &entry.target_label,
+                    track_count,
+                );
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+            MappingField::Enabled => {
+                entry.enabled = !entry.enabled;
+                self.page_state.mapping_midi_learn_armed = false;
+            }
+        }
+    }
+
+    pub(super) fn add_mapping_row(&mut self) {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+        {
+            return;
+        }
+
+        self.clear_mapping_target_lookup();
+        let insert_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len());
+        let mut entry = self
+            .mappings
+            .get(insert_index)
+            .cloned()
+            .unwrap_or_else(MappingEntry::default_new);
+        entry.enabled = false;
+        entry.scope_label = default_scope_label(&entry.target_label, self.project.tracks.len());
+        self.mappings
+            .insert(insert_index + usize::from(!self.mappings.is_empty()), entry);
+        self.page_state.selected_mapping_index =
+            (insert_index + usize::from(!self.mappings.is_empty())).min(self.mappings.len() - 1);
+        self.normalize_selected_mapping_field();
+        self.page_state.mapping_midi_learn_armed = false;
+    }
+
+    pub(super) fn remove_selected_mapping(&mut self) {
+        if self.page_state.current_page != AppPage::Mappings
+            || self.page_state.mapping_mode != MappingPageMode::Write
+            || self.mappings.is_empty()
+        {
+            return;
+        }
+
+        self.clear_mapping_target_lookup();
+        self.mappings.remove(self.page_state.selected_mapping_index);
+        if self.mappings.is_empty() {
+            self.mappings.push(MappingEntry::default_new());
+        }
+        self.page_state.selected_mapping_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        self.normalize_selected_mapping_field();
+        self.page_state.mapping_midi_learn_armed = false;
+    }
+
+    pub(super) fn next_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+        let mut field = start;
+        for _ in 0..MappingField::ALL.len() {
+            field = field.next();
+            if self.mapping_field_enabled(field) {
+                return field;
+            }
+        }
+        start
+    }
+
+    pub(super) fn previous_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+        let mut field = start;
+        for _ in 0..MappingField::ALL.len() {
+            field = field.previous();
+            if self.mapping_field_enabled(field) {
+                return field;
+            }
+        }
+        start
+    }
+
+    pub(super) fn normalize_selected_mapping_field(&mut self) {
+        if !self.mapping_field_enabled(self.page_state.selected_mapping_field) {
+            self.page_state.selected_mapping_field =
+                self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
+        }
+    }
+
+    pub(super) fn mapping_field_enabled(&self, field: MappingField) -> bool {
+        let Some(entry) = self.mappings.get(self.page_state.selected_mapping_index) else {
+            return field != MappingField::SourceDevice;
+        };
+        !matches!(field, MappingField::SourceDevice) || entry.source_kind == MappingSourceKind::Midi
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
