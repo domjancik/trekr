@@ -823,4 +823,400 @@ mod tests {
         app.apply_action(AppAction::ToggleMappingsOverlay);
         assert!(app.overlay_state.active.is_none());
     }
+
+    #[test]
+    fn mappings_page_is_read_only() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        let before = app.mappings[0].enabled;
+
+        app.apply_action(AppAction::ActivatePageItem);
+        assert_eq!(app.mappings[0].enabled, before);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_can_edit_enabled_state() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        let before = app.mappings[0].enabled;
+
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Enabled;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert_ne!(app.mappings[0].enabled, before);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_cycles_selected_field() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        assert_eq!(app.page_state.mapping_mode, MappingPageMode::Write);
+        assert_eq!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceValue
+        );
+
+        app.apply_action(AppAction::SelectNextPageField);
+        assert_eq!(app.page_state.selected_mapping_field, MappingField::Target);
+    }
+
+    #[test]
+    fn mappings_page_write_mode_can_add_and_remove_rows() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        let original_len = app.mappings.len();
+        let selected_index = app.page_state.selected_mapping_index;
+
+        app.apply_action(AppAction::AddMappingRow);
+
+        assert_eq!(app.mappings.len(), original_len + 1);
+        assert_eq!(app.page_state.selected_mapping_index, selected_index + 1);
+        assert!(!app.mappings[app.page_state.selected_mapping_index].enabled);
+
+        app.apply_action(AppAction::RemoveSelectedMapping);
+
+        assert_eq!(app.mappings.len(), original_len);
+        assert!(app.page_state.selected_mapping_index < app.mappings.len());
+    }
+
+    #[test]
+    fn mappings_target_lookup_opens_and_commits_filtered_result() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.mappings[0].target_label = "Play/Stop".to_string();
+        app.mappings[0].scope_label = "Global".to_string();
+
+        app.apply_action(AppAction::ActivatePageItem);
+        assert!(app.target_lookup_state.active.is_some());
+
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::A),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::R),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::M),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Return),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
+        assert!(app.target_lookup_state.active.is_none());
+    }
+
+    #[test]
+    fn mappings_target_lookup_resets_invalid_scope_and_escape_cancels() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::Target;
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Track 3".to_string();
+
+        app.apply_action(AppAction::ActivatePageItem);
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::P),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::L),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::A),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Y),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Return),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Play/Stop");
+        assert_eq!(app.mappings[0].scope_label, "Global");
+
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Track 3".to_string();
+        app.apply_action(AppAction::ActivatePageItem);
+        let _ = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            which: 0,
+            scancode: None,
+            keycode: Some(sdl3::keyboard::Keycode::Escape),
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            raw: 0,
+        });
+
+        assert_eq!(app.mappings[0].target_label, "Track Arm");
+        assert_eq!(app.mappings[0].scope_label, "Track 3");
+        assert!(app.target_lookup_state.active.is_none());
+        assert_eq!(
+            app.status_state
+                .last_action
+                .as_ref()
+                .map(|status| status.action),
+            Some(AppAction::CancelCurrentMode)
+        );
+    }
+
+    #[test]
+    fn mappings_page_scope_cycles_into_absolute_track_targets() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_index = 0;
+        app.page_state.selected_mapping_field = MappingField::Target;
+
+        app.mappings[0].target_label = "Track Arm".to_string();
+        app.mappings[0].scope_label = "Active Track".to_string();
+        app.apply_action(AppAction::SelectNextPageField);
+        app.apply_action(AppAction::AdjustPageItemForward);
+        assert_eq!(app.mappings[0].scope_label, "Track 1");
+
+        app.apply_action(AppAction::AdjustPageItemBackward);
+        assert_eq!(app.mappings[0].scope_label, "Active Track");
+    }
+
+    #[test]
+    fn mappings_page_skips_device_field_for_non_midi_rows() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Key;
+        app.page_state.selected_mapping_field = MappingField::SourceKind;
+
+        app.apply_action(AppAction::SelectNextPageField);
+
+        assert_eq!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceValue
+        );
+    }
+
+    #[test]
+    fn switching_away_from_midi_disables_device_field() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.mappings[0].source_device_label = "Port A".to_string();
+        app.page_state.selected_mapping_field = MappingField::SourceDevice;
+
+        app.page_state.selected_mapping_field = MappingField::SourceKind;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        assert_ne!(app.mappings[0].source_kind, MappingSourceKind::Midi);
+        assert_eq!(
+            app.mappings[0].source_device_label,
+            default_mapping_source_device()
+        );
+        assert_ne!(
+            app.page_state.selected_mapping_field,
+            MappingField::SourceDevice
+        );
+    }
+
+    #[test]
+    fn mapping_row_cells_match_field_order_for_device_and_source() {
+        let app = App::new();
+        let cells = app.mapping_row_cells(Rect::new(0, 0, 400, 18));
+
+        assert!(
+            cells[mapping_field_index(MappingField::SourceDevice)].x
+                < cells[mapping_field_index(MappingField::SourceValue)].x
+        );
+    }
+
+    #[test]
+    fn midi_learn_updates_selected_mapping_source() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.page_state.selected_mapping_field = MappingField::SourceValue;
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.apply_action(AppAction::ActivatePageItem);
+        assert!(app.page_state.mapping_midi_learn_armed);
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 3,
+            message: MidiInputMessage::ControlChange {
+                controller: 24,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.mappings[0].source_label, "CC24 Ch3");
+        assert_eq!(app.mappings[0].source_device_label, "In A");
+        assert!(!app.page_state.mapping_midi_learn_armed);
+    }
+
+    #[test]
+    fn mappings_page_syncs_all_inputs_for_midi_learn() {
+        let mut app = App::new();
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
+        for track in &mut app.project.tracks {
+            track.routing.input_port = None;
+        }
+
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleMappingsWriteMode);
+        app.mappings[0].source_kind = MappingSourceKind::Midi;
+        app.page_state.selected_mapping_field = MappingField::SourceValue;
+        app.apply_action(AppAction::ActivatePageItem);
+
+        let connected = app.midi_input.requested_port_names();
+        assert!(app.page_state.mapping_midi_learn_armed);
+        assert_eq!(connected, vec!["In A".to_string(), "In B".to_string()]);
+    }
+
+    #[test]
+    fn midi_mapping_triggers_action_for_matching_device() {
+        let mut app = App::new();
+        app.project.select_track(1);
+        app.project.tracks[1].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Port A".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert!(app.project.tracks[1].state.armed);
+    }
+
+    #[test]
+    fn midi_mapping_ignores_non_matching_device() {
+        let mut app = App::new();
+        app.project.select_track(1);
+        app.project.tracks[1].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Port A".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Active Track".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port B"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert!(!app.project.tracks[1].state.armed);
+    }
+
+    #[test]
+    fn midi_mapping_can_target_absolute_track_scope() {
+        let mut app = App::new();
+        app.project.select_track(0);
+        app.project.tracks[2].state.armed = false;
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Midi,
+            source_device_label: "Any MIDI".to_string(),
+            source_label: "CC20".to_string(),
+            target_label: "Track Arm".to_string(),
+            scope_label: "Track 3".to_string(),
+            enabled: true,
+        }];
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        });
+
+        assert_eq!(app.project.active_track_index, 2);
+        assert!(app.project.tracks[2].state.armed);
+    }
 }
