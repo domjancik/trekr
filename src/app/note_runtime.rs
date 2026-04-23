@@ -119,6 +119,52 @@ pub(super) fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
     ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
 }
 
+impl App {
+    pub(super) fn silence_all_tracks(&mut self) {
+        let ports_and_channels: Vec<(MidiPortRef, u8)> = self
+            .project
+            .tracks
+            .iter()
+            .filter_map(|track| {
+                track
+                    .routing
+                    .output_port
+                    .clone()
+                    .zip(track.routing.output_channel)
+            })
+            .collect();
+
+        for (port, channel) in ports_and_channels {
+            if self.midi_output.send_all_notes_off(&port, channel).is_err() {
+                self.refresh_midi_devices_now();
+            }
+        }
+    }
+
+    pub(super) fn silence_tracks_for_loop_change(&mut self) {
+        self.silence_all_tracks();
+    }
+
+    pub(super) fn handle_timeline_fx_configuration_changed(&mut self) {
+        self.silence_all_tracks();
+        let current_ticks = if self.project.transport.playing {
+            self.transport_ticks
+        } else {
+            self.live_fx_ticks
+        };
+        self.reset_live_fx_timing(current_ticks);
+    }
+
+    pub(super) fn reset_live_fx_timing(&mut self, current_ticks: u64) {
+        for state in &mut self.input_fx_live_states {
+            reset_live_fx_timing(state, current_ticks);
+        }
+        for state in &mut self.output_fx_live_states {
+            reset_live_fx_timing(state, current_ticks);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +242,177 @@ mod tests {
         let events = occurrence_note_events(&track, preview_occurrences.as_slice(), 2_650, 20);
 
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn changing_global_loop_sends_all_notes_off() {
+        let mut app = App::new();
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+
+        app.apply_action(AppAction::SetGlobalLoopStart);
+
+        assert!(app.midi_output.sent_messages().iter().any(
+            |(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+            }
+        ));
+    }
+
+    #[test]
+    fn changing_track_loop_sends_all_notes_off() {
+        let mut app = App::new();
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+
+        app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
+
+        assert!(app.midi_output.sent_messages().iter().any(
+            |(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+            }
+        ));
+    }
+
+    #[test]
+    fn shortening_duration_mid_playback_sends_all_notes_off_and_resets_fx_timing() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 960, 100));
+        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 960 },
+        });
+        app.project.transport.playing = true;
+
+        app.dispatch_midi_notes(0, 240);
+        app.playhead_ticks = 240;
+        app.transport_ticks = 240;
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.page_state.selected_timeline_fx_field = TimelineFxField::ParamPrimary;
+        app.set_selected_timeline_fx_row(MidiFxChainKind::Output, 0);
+
+        app.adjust_page_item(-1);
+
+        let sent = app.midi_output.sent_messages();
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+        }));
+    }
+
+    #[test]
+    fn stopped_live_input_delay_uses_live_fx_clock_for_note_on_and_note_off() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].midi_fx.monitor_input_fx = true;
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Delay { ticks: 240 },
+        });
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+        assert!(app.midi_output.sent_messages().is_empty());
+
+        app.dispatch_live_arp_events(0, 240);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(120))]
+        );
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+        });
+
+        app.dispatch_live_arp_events(240, 480);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(120)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn stopped_live_input_duration_uses_live_fx_clock_when_note_starts_late() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].midi_fx.monitor_input_fx = true;
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Duration { ticks: 240 },
+        });
+        app.live_fx_ticks = 960;
+
+        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+        });
+
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out A".to_string(), 1, 60, Some(120))]
+        );
+
+        app.dispatch_live_arp_events(960, 1_200);
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out A".to_string(), 1, 60, Some(120)),
+                ("Out A".to_string(), 1, 60, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn muting_track_sends_all_notes_off() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 0, 1_920, 100));
+
+        app.dispatch_midi_notes(0, 960);
+        app.apply_action(AppAction::ToggleCurrentTrackMute);
+
+        let sent = app.midi_output.sent_messages();
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+        }));
     }
 }

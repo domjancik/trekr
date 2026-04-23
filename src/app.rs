@@ -2241,50 +2241,6 @@ impl App {
         }
     }
 
-    fn silence_all_tracks(&mut self) {
-        let ports_and_channels: Vec<(MidiPortRef, u8)> = self
-            .project
-            .tracks
-            .iter()
-            .filter_map(|track| {
-                track
-                    .routing
-                    .output_port
-                    .clone()
-                    .zip(track.routing.output_channel)
-            })
-            .collect();
-
-        for (port, channel) in ports_and_channels {
-            if self.midi_output.send_all_notes_off(&port, channel).is_err() {
-                self.refresh_midi_devices_now();
-            }
-        }
-    }
-
-    fn silence_tracks_for_loop_change(&mut self) {
-        self.silence_all_tracks();
-    }
-
-    fn handle_timeline_fx_configuration_changed(&mut self) {
-        self.silence_all_tracks();
-        let current_ticks = if self.project.transport.playing {
-            self.transport_ticks
-        } else {
-            self.live_fx_ticks
-        };
-        self.reset_live_fx_timing(current_ticks);
-    }
-
-    fn reset_live_fx_timing(&mut self, current_ticks: u64) {
-        for state in &mut self.input_fx_live_states {
-            reset_live_fx_timing(state, current_ticks);
-        }
-        for state in &mut self.output_fx_live_states {
-            reset_live_fx_timing(state, current_ticks);
-        }
-    }
-
     pub(crate) fn handle_mappings_pointer(
         &mut self,
         content_bounds: Rect,
@@ -2420,12 +2376,10 @@ mod tests {
     use super::{App, AppControl, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
-    use crate::midi_fx::{MidiFx, MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT};
+    use crate::midi_fx::{MidiFx, MidiFxSlot, MIDI_FX_SLOT_COUNT};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
-    use crate::pages::AppPage;
     use crate::project::MidiNote;
     use crate::routing::MidiChannelFilter;
-    use crate::timeline_fx::{TimelineContext, TimelineFxField};
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
     use std::time::Duration;
@@ -2752,32 +2706,6 @@ mod tests {
 
         assert_eq!(app.project.loop_region, app.project.full_song_range());
         assert!(app.project.transport.loop_enabled);
-    }
-
-    #[test]
-    fn changing_global_loop_sends_all_notes_off() {
-        let mut app = App::new();
-        let baseline = app.midi_output.sent_all_notes_off_count();
-
-        app.apply_action(AppAction::SetGlobalLoopStart);
-
-        assert_eq!(
-            app.midi_output.sent_all_notes_off_count(),
-            baseline + app.project.tracks.len()
-        );
-    }
-
-    #[test]
-    fn changing_track_loop_sends_all_notes_off() {
-        let mut app = App::new();
-        let baseline = app.midi_output.sent_all_notes_off_count();
-
-        app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
-
-        assert_eq!(
-            app.midi_output.sent_all_notes_off_count(),
-            baseline + app.project.tracks.len()
-        );
     }
 
     #[test]
@@ -3227,198 +3155,6 @@ mod tests {
                 ("Out A".to_string(), 1, 60, None),
             ]
         );
-    }
-
-    #[test]
-    fn shortening_duration_mid_playback_sends_all_notes_off_and_resets_fx_timing() {
-        let mut app = App::new();
-        app.project.clear_all_track_content();
-        app.project.transport.playing = true;
-        app.transport_ticks = 0;
-        app.playhead_ticks = 0;
-        app.project.select_track(0);
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
-        app.project.tracks[0].routing.output_channel = Some(1);
-        app.project.tracks[0]
-            .midi_notes
-            .push(MidiNote::new(60, 0, 60, 100));
-        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[0].midi_fx.output_fx[0] = Some(MidiFxSlot {
-            enabled: true,
-            effect: MidiFx::Duration { ticks: 240 },
-        });
-        app.page_state.current_page = AppPage::Timeline;
-        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
-        app.page_state.selected_timeline_fx_field = TimelineFxField::ParamPrimary;
-        app.set_selected_timeline_fx_slot_index(MidiFxChainKind::Output, 0);
-
-        app.dispatch_midi_notes(0, 60);
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-        let baseline_all_notes_off = app.midi_output.sent_all_notes_off_count();
-
-        app.adjust_selected_timeline_fx_parameter(0, -1);
-
-        assert!(app.midi_output.sent_all_notes_off_count() > baseline_all_notes_off);
-        assert!(app
-            .midi_output
-            .sent_messages()
-            .contains(&("Out A".to_string(), 1, 123, None)));
-    }
-
-    #[test]
-    fn stopped_live_input_delay_uses_live_fx_clock_for_note_on_and_note_off() {
-        let mut app = App::new();
-        app.project.clear_all_track_content();
-        app.project.transport.playing = false;
-        app.transport_ticks = 0;
-        app.playhead_ticks = 0;
-        app.live_fx_ticks = 0;
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
-        app.project.tracks[0].state.passthrough = true;
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
-        app.project.tracks[0].routing.output_channel = Some(1);
-        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
-            enabled: true,
-            effect: MidiFx::Delay { ticks: 240 },
-        });
-
-        app.advance_stopped_live_fx(Duration::from_millis(1_000), None);
-        assert!(app.midi_output.sent_messages().is_empty());
-
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
-            port: input_port.clone(),
-            channel: 1,
-            message: MidiInputMessage::NoteOn {
-                pitch: 60,
-                velocity: 100,
-            },
-        });
-        assert!(app.midi_output.sent_messages().is_empty());
-
-        let note_on_tick = app.live_fx_ticks;
-        app.dispatch_live_arp_events(note_on_tick, note_on_tick + 239);
-        app.live_fx_ticks = note_on_tick + 239;
-        assert!(app.midi_output.sent_messages().is_empty());
-
-        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 240);
-        app.live_fx_ticks = note_on_tick + 240;
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-
-        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 720);
-        app.live_fx_ticks = note_on_tick + 720;
-        app.handle_midi_input_event(MidiInputEvent {
-            port: input_port,
-            channel: 1,
-            message: MidiInputMessage::NoteOff { pitch: 60 },
-        });
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-
-        let note_off_tick = app.live_fx_ticks;
-        app.dispatch_live_arp_events(note_off_tick, note_off_tick + 239);
-        app.live_fx_ticks = note_off_tick + 239;
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-
-        app.dispatch_live_arp_events(app.live_fx_ticks, note_off_tick + 240);
-        app.live_fx_ticks = note_off_tick + 240;
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![
-                ("Out A".to_string(), 1, 60, Some(100)),
-                ("Out A".to_string(), 1, 60, None),
-            ]
-        );
-    }
-
-    #[test]
-    fn stopped_live_input_duration_uses_live_fx_clock_when_note_starts_late() {
-        let mut app = App::new();
-        app.project.clear_all_track_content();
-        app.project.transport.playing = false;
-        app.transport_ticks = 0;
-        app.playhead_ticks = 0;
-        app.live_fx_ticks = 0;
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
-        app.project.tracks[0].state.passthrough = true;
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
-        app.project.tracks[0].routing.output_channel = Some(1);
-        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
-        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
-            enabled: true,
-            effect: MidiFx::Duration { ticks: 240 },
-        });
-
-        app.advance_stopped_live_fx(Duration::from_millis(1_000), None);
-
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
-            port: input_port,
-            channel: 1,
-            message: MidiInputMessage::NoteOn {
-                pitch: 60,
-                velocity: 100,
-            },
-        });
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-
-        let note_on_tick = app.live_fx_ticks;
-        app.dispatch_live_arp_events(note_on_tick, note_on_tick + 239);
-        app.live_fx_ticks = note_on_tick + 239;
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(100))]
-        );
-
-        app.dispatch_live_arp_events(app.live_fx_ticks, note_on_tick + 240);
-        app.live_fx_ticks = note_on_tick + 240;
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![
-                ("Out A".to_string(), 1, 60, Some(100)),
-                ("Out A".to_string(), 1, 60, None),
-            ]
-        );
-    }
-
-    #[test]
-    fn muting_track_sends_all_notes_off() {
-        let mut app = App::new();
-        app.project.clear_all_track_content();
-        app.project.select_track(0);
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
-        app.project.tracks[0].routing.output_channel = Some(1);
-        app.project.tracks[0]
-            .midi_notes
-            .push(MidiNote::new(60, 0, 1_920, 100));
-
-        app.dispatch_midi_notes(0, 960);
-        app.apply_action(AppAction::ToggleCurrentTrackMute);
-
-        let sent = app.midi_output.sent_messages();
-        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
-            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
-        }));
-        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
-            port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
-        }));
     }
 
     #[test]
