@@ -2,6 +2,445 @@ use super::*;
 use crate::midi_fx::MidiFxInlineParam;
 
 impl App {
+    pub(super) fn select_timeline_fx_row(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let displayed_rows = self.displayed_timeline_fx_slot_indices(chain_kind);
+        if displayed_rows.is_empty() {
+            return;
+        }
+        let current = self.selected_timeline_fx_row(chain_kind) as i32;
+        let next = (current + delta).rem_euclid(displayed_rows.len() as i32) as usize;
+        self.set_selected_timeline_fx_row(chain_kind, next);
+    }
+
+    pub(super) fn selected_timeline_fx_row(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let stored = match chain_kind {
+            MidiFxChainKind::Input => track.midi_fx.timeline_ui.input_selected_row,
+            MidiFxChainKind::Output => track.midi_fx.timeline_ui.output_selected_row,
+        };
+        let len = self.displayed_timeline_fx_slot_indices(chain_kind).len();
+        if len == 0 { 0 } else { stored.min(len - 1) }
+    }
+
+    pub(super) fn set_selected_timeline_fx_row(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        row_index: usize,
+    ) {
+        let len = self.displayed_timeline_fx_slot_indices(chain_kind).len();
+        let clamped = if len == 0 { 0 } else { row_index.min(len - 1) };
+        if let Some(track) = self.project.active_track_mut() {
+            match chain_kind {
+                MidiFxChainKind::Input => track.midi_fx.timeline_ui.input_selected_row = clamped,
+                MidiFxChainKind::Output => track.midi_fx.timeline_ui.output_selected_row = clamped,
+            }
+        }
+    }
+
+    pub(super) fn active_timeline_fx_slot_indices(
+        &self,
+        chain_kind: MidiFxChainKind,
+    ) -> Vec<usize> {
+        let Some(track) = self.project.active_track() else {
+            return Vec::new();
+        };
+        self.active_timeline_fx_slot_indices_for_track(track, chain_kind)
+    }
+
+    pub(super) fn active_timeline_fx_slot_indices_for_track(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Vec<usize> {
+        self.fx_chain(track, chain_kind)
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| slot.as_ref().map(|_| index))
+            .collect()
+    }
+
+    pub(super) fn displayed_timeline_fx_slot_indices(
+        &self,
+        chain_kind: MidiFxChainKind,
+    ) -> Vec<Option<usize>> {
+        let Some(track) = self.project.active_track() else {
+            return Vec::new();
+        };
+        self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind)
+    }
+
+    pub(super) fn displayed_timeline_fx_slot_indices_for_track(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Vec<Option<usize>> {
+        let mut rows = self
+            .active_timeline_fx_slot_indices_for_track(track, chain_kind)
+            .into_iter()
+            .map(Some)
+            .collect::<Vec<_>>();
+        if self
+            .first_empty_timeline_fx_slot_index_for_track(track, chain_kind)
+            .is_some()
+        {
+            rows.push(None);
+        }
+        rows
+    }
+
+    pub(super) fn first_empty_timeline_fx_slot_index_for_track(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<usize> {
+        self.fx_chain(track, chain_kind)
+            .iter()
+            .enumerate()
+            .find_map(|(index, slot)| slot.is_none().then_some(index))
+    }
+
+    pub(super) fn selected_timeline_fx_slot_index(
+        &self,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<usize> {
+        self.displayed_timeline_fx_slot_indices(chain_kind)
+            .get(self.selected_timeline_fx_row(chain_kind))
+            .copied()
+            .flatten()
+    }
+
+    pub(super) fn selected_timeline_fx_active_row_index(
+        &self,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<usize> {
+        let selected_slot = self.selected_timeline_fx_slot_index(chain_kind)?;
+        self.active_timeline_fx_slot_indices(chain_kind)
+            .iter()
+            .position(|slot_index| *slot_index == selected_slot)
+    }
+
+    pub(super) fn set_selected_timeline_fx_slot_index(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        slot_index: usize,
+    ) {
+        let row_index = self
+            .displayed_timeline_fx_slot_indices(chain_kind)
+            .iter()
+            .position(|candidate| *candidate == Some(slot_index))
+            .unwrap_or(0);
+        self.set_selected_timeline_fx_row(chain_kind, row_index);
+    }
+
+    pub(super) fn selected_timeline_fx_slot<'a>(
+        &self,
+        track: &'a Track,
+        chain_kind: MidiFxChainKind,
+    ) -> Option<&'a MidiFxSlot> {
+        self.selected_timeline_fx_slot_index(chain_kind)
+            .and_then(|slot_index| self.fx_chain(track, chain_kind).get(slot_index))
+            .and_then(|slot| slot.as_ref())
+    }
+
+    pub(super) fn selected_timeline_fx_param_window(&self, chain_kind: MidiFxChainKind) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return 0;
+        };
+        let windows = match chain_kind {
+            MidiFxChainKind::Input => &track.midi_fx.timeline_ui.input_param_windows,
+            MidiFxChainKind::Output => &track.midi_fx.timeline_ui.output_param_windows,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    pub(super) fn timeline_fx_param_window_for_slot(
+        &self,
+        context: TimelineContext,
+        slot_index: usize,
+    ) -> usize {
+        let Some(track) = self.project.active_track() else {
+            return 0;
+        };
+        let windows = match context.chain_kind() {
+            Some(MidiFxChainKind::Input) => &track.midi_fx.timeline_ui.input_param_windows,
+            Some(MidiFxChainKind::Output) => &track.midi_fx.timeline_ui.output_param_windows,
+            None => return 0,
+        };
+        windows.get(slot_index).copied().unwrap_or(0)
+    }
+
+    pub(super) fn set_selected_timeline_fx_param_window(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        start: usize,
+    ) {
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        if let Some(track) = self.project.active_track_mut() {
+            let windows = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.timeline_ui.input_param_windows,
+                MidiFxChainKind::Output => &mut track.midi_fx.timeline_ui.output_param_windows,
+            };
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = start;
+            }
+        }
+    }
+
+    pub(super) fn normalize_timeline_fx_selection(&mut self) {
+        if let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() {
+            let displayed = self.displayed_timeline_fx_slot_indices(chain_kind);
+            if displayed.is_empty() {
+                self.set_selected_timeline_fx_row(chain_kind, 0);
+                return;
+            }
+            self.set_selected_timeline_fx_row(chain_kind, self.selected_timeline_fx_row(chain_kind));
+        }
+    }
+
+    pub(super) fn adjust_timeline_context(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.adjust_selected_timeline_fx_kind(delta);
+        } else {
+            match self.page_state.selected_timeline_fx_field {
+                TimelineFxField::Enabled => self.toggle_selected_timeline_fx_enabled(),
+                TimelineFxField::Kind => self.adjust_selected_timeline_fx_kind(delta),
+                TimelineFxField::ParamPrimary => self.adjust_selected_timeline_fx_parameter(0, delta),
+                TimelineFxField::ParamSecondary => self.adjust_selected_timeline_fx_parameter(1, delta),
+                TimelineFxField::Scroll => self.scroll_selected_timeline_fx_parameter_window(delta),
+                TimelineFxField::Move => self.move_selected_timeline_fx(delta),
+            }
+        }
+        self.normalize_timeline_fx_selection();
+        if self.page_state.selected_timeline_context.chain_kind() != Some(chain_kind) {
+            self.page_state.selected_timeline_context = match chain_kind {
+                MidiFxChainKind::Input => TimelineContext::InputFx,
+                MidiFxChainKind::Output => TimelineContext::OutputFx,
+            };
+        }
+    }
+
+    pub(super) fn activate_timeline_context_item(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.add_selected_timeline_fx();
+            return;
+        }
+        self.page_state.selected_timeline_fx_field = self.page_state.selected_timeline_fx_field.next();
+    }
+
+    pub(super) fn reverse_activate_timeline_context_item(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        if self.selected_timeline_fx_slot_index(chain_kind).is_none() {
+            self.activate_timeline_context_item();
+            return;
+        }
+        self.page_state.selected_timeline_fx_field =
+            self.page_state.selected_timeline_fx_field.previous();
+    }
+
+    pub(super) fn toggle_selected_timeline_fx_enabled(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            if let Some(Some(slot)) = chain.get_mut(slot_index) {
+                slot.enabled = !slot.enabled;
+                changed = true;
+            }
+        }
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
+    }
+
+    pub(super) fn adjust_selected_timeline_fx_kind(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let selected_slot_index = self.selected_timeline_fx_slot_index(chain_kind);
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            if let Some(slot_index) = selected_slot_index {
+                if let Some(Some(slot)) = chain.get_mut(slot_index) {
+                    *slot = cycle_existing_fx_kind(slot, delta);
+                    changed = true;
+                }
+            } else if let Some(empty_slot) = chain.iter().position(|slot| slot.is_none()) {
+                chain[empty_slot] = cycle_fx_kind(None, delta);
+                self.set_selected_timeline_fx_slot_index(chain_kind, empty_slot);
+                changed = true;
+            }
+        }
+        self.normalize_timeline_fx_selection();
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
+    }
+
+    pub(super) fn add_selected_timeline_fx(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let selected_slot_index = self.selected_timeline_fx_slot_index(chain_kind);
+        if selected_slot_index.is_some() {
+            return;
+        }
+        self.adjust_selected_timeline_fx_kind(1);
+    }
+
+    pub(super) fn delete_selected_timeline_fx(&mut self) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let (chain, windows) = match chain_kind {
+                MidiFxChainKind::Input => (
+                    &mut track.midi_fx.input_fx,
+                    &mut track.midi_fx.timeline_ui.input_param_windows,
+                ),
+                MidiFxChainKind::Output => (
+                    &mut track.midi_fx.output_fx,
+                    &mut track.midi_fx.timeline_ui.output_param_windows,
+                ),
+            };
+            chain[slot_index] = None;
+            if let Some(window) = windows.get_mut(slot_index) {
+                *window = 0;
+            }
+            changed = true;
+        }
+        self.normalize_timeline_fx_selection();
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
+    }
+
+    pub(super) fn adjust_selected_timeline_fx_parameter(
+        &mut self,
+        visible_offset: usize,
+        delta: i32,
+    ) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(slot_index) = self.selected_timeline_fx_slot_index(chain_kind) else {
+            return;
+        };
+        let track_count = self.project.tracks.len();
+        let ppqn = self.project.transport.ppqn;
+        let window_start = self.selected_timeline_fx_param_window(chain_kind);
+        let parameter_index = window_start + visible_offset;
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let chain = match chain_kind {
+                MidiFxChainKind::Input => &mut track.midi_fx.input_fx,
+                MidiFxChainKind::Output => &mut track.midi_fx.output_fx,
+            };
+            let Some(Some(slot)) = chain.get_mut(slot_index) else {
+                return;
+            };
+            slot.effect
+                .adjust_inline_parameter(parameter_index, delta, track_count, ppqn);
+            changed = true;
+        }
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
+    }
+
+    pub(super) fn scroll_selected_timeline_fx_parameter_window(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let Some(track) = self.project.active_track() else {
+            return;
+        };
+        let Some(slot) = self.selected_timeline_fx_slot(track, chain_kind) else {
+            return;
+        };
+        let param_count = slot.effect.inline_parameters().len();
+        let max_start = param_count.saturating_sub(2);
+        let current = self.selected_timeline_fx_param_window(chain_kind);
+        let next = (current as i32 + delta).clamp(0, max_start as i32) as usize;
+        self.set_selected_timeline_fx_param_window(chain_kind, next);
+    }
+
+    pub(super) fn move_selected_timeline_fx(&mut self, delta: i32) {
+        let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
+            return;
+        };
+        let active_slots = self.active_timeline_fx_slot_indices(chain_kind);
+        if active_slots.len() < 2 {
+            return;
+        }
+        let Some(row_index) = self.selected_timeline_fx_active_row_index(chain_kind) else {
+            return;
+        };
+        let target_row = if delta < 0 {
+            row_index.saturating_sub(1)
+        } else {
+            (row_index + 1).min(active_slots.len() - 1)
+        };
+        if row_index == target_row {
+            return;
+        }
+        let source_slot = active_slots[row_index];
+        let target_slot = active_slots[target_row];
+        let mut changed = false;
+        if let Some(track) = self.project.active_track_mut() {
+            let (chain, windows) = match chain_kind {
+                MidiFxChainKind::Input => (
+                    &mut track.midi_fx.input_fx,
+                    &mut track.midi_fx.timeline_ui.input_param_windows,
+                ),
+                MidiFxChainKind::Output => (
+                    &mut track.midi_fx.output_fx,
+                    &mut track.midi_fx.timeline_ui.output_param_windows,
+                ),
+            };
+            chain.swap(source_slot, target_slot);
+            windows.swap(source_slot, target_slot);
+            changed = true;
+        }
+        self.set_selected_timeline_fx_row(chain_kind, target_row);
+        if changed {
+            self.handle_timeline_fx_configuration_changed();
+        }
+    }
+
     pub(super) fn draw_timeline_fx_row<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
