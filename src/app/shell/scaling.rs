@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u32) {
+pub(crate) fn logical_viewport_size(output_size: (u32, u32), display_scale: f32) -> (u32, u32) {
     let scale = display_scale.max(1.0);
     (
         ((output_size.0 as f32) / scale).round().max(1.0) as u32,
@@ -8,7 +8,7 @@ pub(super) fn logical_viewport_size(output_size: (u32, u32), display_scale: f32)
     )
 }
 
-pub(super) fn active_draw_size(
+pub(crate) fn active_draw_size(
     canvas_output_size: (u32, u32),
     viewport_size: (u32, u32),
 ) -> (u32, u32) {
@@ -19,11 +19,11 @@ pub(super) fn active_draw_size(
     }
 }
 
-pub(super) fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
+pub(crate) fn effective_ui_scale(display_scale: f32, override_scale: Option<f32>) -> f32 {
     override_scale.unwrap_or(display_scale).max(1.0)
 }
 
-pub(super) fn should_interpolate_window_scale(
+pub(crate) fn should_interpolate_window_scale(
     mode: UiScalingMode,
     scale_x: f32,
     scale_y: f32,

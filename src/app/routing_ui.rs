@@ -740,7 +740,7 @@ impl App {
 
     pub(super) fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
         let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
-        timeline_fx_ui::timeline_fx_overflow_label(param_count, window_start)
+        super::timeline::fx_ui::timeline_fx_overflow_label(param_count, window_start)
     }
 
     fn adjust_fx_slot_index(&mut self, chain_kind: MidiFxChainKind, delta: i32) {

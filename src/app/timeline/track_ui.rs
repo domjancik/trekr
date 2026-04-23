@@ -1,8 +1,8 @@
 use super::*;
-use super::timeline_layout::{interlaced_color_at, loop_regions_intersect, rects_overlap};
+use super::layout::{interlaced_color_at, loop_regions_intersect, rects_overlap};
 
 impl App {
-    pub(super) fn draw_track_subcolumn<T: RenderTarget>(
+    pub(crate) fn draw_track_subcolumn<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         bounds: Rect,

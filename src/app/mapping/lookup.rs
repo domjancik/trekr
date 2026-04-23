@@ -3,7 +3,7 @@ use crate::mapping::search_mapping_targets;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 
-pub(super) fn mapping_target_lookup_input(event: &Event) -> Option<String> {
+pub(crate) fn mapping_target_lookup_input(event: &Event) -> Option<String> {
     let Event::KeyDown {
         keycode: Some(keycode),
         keymod,
@@ -67,14 +67,14 @@ pub(super) fn mapping_target_lookup_input(event: &Event) -> Option<String> {
 }
 
 impl App {
-    pub(super) fn mapping_target_lookup_results(&self) -> Vec<&'static str> {
+    pub(crate) fn mapping_target_lookup_results(&self) -> Vec<&'static str> {
         let Some(lookup) = self.target_lookup_state.active.as_ref() else {
             return Vec::new();
         };
         search_mapping_targets(&lookup.query)
     }
 
-    pub(super) fn mapping_target_lookup_highlighted_label(&self) -> Option<&'static str> {
+    pub(crate) fn mapping_target_lookup_highlighted_label(&self) -> Option<&'static str> {
         let results = self.mapping_target_lookup_results();
         let lookup = self.target_lookup_state.active.as_ref()?;
         if results.is_empty() {
@@ -88,11 +88,11 @@ impl App {
         }
     }
 
-    pub(super) fn clear_mapping_target_lookup(&mut self) {
+    pub(crate) fn clear_mapping_target_lookup(&mut self) {
         self.target_lookup_state.active = None;
     }
 
-    pub(super) fn open_mapping_target_lookup(&mut self) {
+    pub(crate) fn open_mapping_target_lookup(&mut self) {
         if self.page_state.current_page != AppPage::Mappings
             || self.page_state.mapping_mode != MappingPageMode::Write
             || self.page_state.selected_mapping_field != MappingField::Target
@@ -113,7 +113,7 @@ impl App {
         });
     }
 
-    pub(super) fn cancel_mapping_target_lookup(&mut self) {
+    pub(crate) fn cancel_mapping_target_lookup(&mut self) {
         let Some(lookup) = self.target_lookup_state.active.take() else {
             return;
         };
@@ -124,11 +124,11 @@ impl App {
         entry.scope_label = lookup.original_scope_label;
     }
 
-    pub(super) fn mapping_target_lookup_is_active(&self) -> bool {
+    pub(crate) fn mapping_target_lookup_is_active(&self) -> bool {
         self.target_lookup_state.active.is_some()
     }
 
-    pub(super) fn move_mapping_target_lookup_highlight(&mut self, delta: i32) {
+    pub(crate) fn move_mapping_target_lookup_highlight(&mut self, delta: i32) {
         let results = self.mapping_target_lookup_results();
         let Some(lookup) = self.target_lookup_state.active.as_mut() else {
             return;
@@ -144,7 +144,7 @@ impl App {
         lookup.highlighted_index = (current + delta).clamp(0, max_index) as usize;
     }
 
-    pub(super) fn append_mapping_target_lookup_text(&mut self, text: &str) {
+    pub(crate) fn append_mapping_target_lookup_text(&mut self, text: &str) {
         let Some(lookup) = self.target_lookup_state.active.as_mut() else {
             return;
         };
@@ -155,7 +155,7 @@ impl App {
         lookup.highlighted_index = 0;
     }
 
-    pub(super) fn backspace_mapping_target_lookup(&mut self) {
+    pub(crate) fn backspace_mapping_target_lookup(&mut self) {
         let Some(lookup) = self.target_lookup_state.active.as_mut() else {
             return;
         };
@@ -163,7 +163,7 @@ impl App {
         lookup.highlighted_index = 0;
     }
 
-    pub(super) fn commit_mapping_target_lookup_label(&mut self, target_label: &'static str) {
+    pub(crate) fn commit_mapping_target_lookup_label(&mut self, target_label: &'static str) {
         let Some(entry) = self.mappings.get_mut(self.page_state.selected_mapping_index) else {
             self.clear_mapping_target_lookup();
             return;
@@ -190,13 +190,13 @@ impl App {
         });
     }
 
-    pub(super) fn commit_mapping_target_lookup(&mut self) {
+    pub(crate) fn commit_mapping_target_lookup(&mut self) {
         if let Some(target_label) = self.mapping_target_lookup_highlighted_label() {
             self.commit_mapping_target_lookup_label(target_label);
         }
     }
 
-    pub(super) fn mapping_target_lookup_layout(
+    pub(crate) fn mapping_target_lookup_layout(
         &self,
         content_bounds: Rect,
     ) -> Option<MappingTargetLookupLayout> {
@@ -265,7 +265,7 @@ impl App {
         })
     }
 
-    pub(super) fn draw_mapping_target_lookup<T: RenderTarget>(
+    pub(crate) fn draw_mapping_target_lookup<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_bounds: Rect,

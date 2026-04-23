@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
+pub(crate) fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
     let branding_width = preferred_branding_width(bounds.width());
     if branding_width == 0 {
         return (Rect::new(bounds.x, bounds.y, 0, bounds.height()), bounds);
@@ -22,7 +22,7 @@ pub(super) fn page_tabs_layout(bounds: Rect) -> (Rect, Rect) {
     )
 }
 
-pub(super) fn preferred_branding_width(bounds_width: u32) -> u32 {
+pub(crate) fn preferred_branding_width(bounds_width: u32) -> u32 {
     let desired = 220_u32;
     let minimum_tabs_width = 360_u32;
     if bounds_width <= desired + minimum_tabs_width {

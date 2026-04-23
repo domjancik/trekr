@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn indexed_notes(
+pub(crate) fn indexed_notes(
     track: &Track,
     recording_clip_id: Option<u64>,
 ) -> Vec<(usize, crate::project::MidiNote)> {
@@ -16,12 +16,12 @@ pub(super) fn indexed_notes(
         .collect()
 }
 
-pub(super) fn indexed_all_notes(track: &Track) -> Vec<(usize, crate::project::MidiNote)> {
+pub(crate) fn indexed_all_notes(track: &Track) -> Vec<(usize, crate::project::MidiNote)> {
     track.midi_notes.iter().copied().enumerate().collect()
 }
 
 impl App {
-    pub(super) fn record_head_ticks(&self, track: &Track) -> u64 {
+    pub(crate) fn record_head_ticks(&self, track: &Track) -> u64 {
         if track.state.loop_enabled {
             self.effective_track_playhead(track)
         } else {
@@ -29,7 +29,7 @@ impl App {
         }
     }
 
-    pub(super) fn record_capture_ticks(&self, track: &Track) -> u64 {
+    pub(crate) fn record_capture_ticks(&self, track: &Track) -> u64 {
         if self.record_context(track).is_some() {
             self.transport_ticks
         } else {
@@ -37,7 +37,7 @@ impl App {
         }
     }
 
-    pub(super) fn live_input_event_ticks(&self, track: &Track) -> u64 {
+    pub(crate) fn live_input_event_ticks(&self, track: &Track) -> u64 {
         if self.project.transport.playing {
             self.record_capture_ticks(track)
         } else {
@@ -45,7 +45,7 @@ impl App {
         }
     }
 
-    pub(super) fn record_context(&self, track: &Track) -> Option<crate::project::RecordContext> {
+    pub(crate) fn record_context(&self, track: &Track) -> Option<crate::project::RecordContext> {
         if track.state.loop_enabled {
             Some(crate::project::RecordContext {
                 range: track.loop_region,
@@ -63,13 +63,13 @@ impl App {
         }
     }
 
-    pub(super) fn detail_loop_range(&self, track: &Track) -> crate::timeline::LoopRegion {
+    pub(crate) fn detail_loop_range(&self, track: &Track) -> crate::timeline::LoopRegion {
         self.record_context(track)
             .map(|context| context.range)
             .unwrap_or(track.loop_region)
     }
 
-    pub(super) fn begin_recording(&mut self) {
+    pub(crate) fn begin_recording(&mut self) {
         let target_indices = self.record_target_indices();
         if target_indices.is_empty() {
             return;
@@ -91,7 +91,7 @@ impl App {
         self.project.transport.playing = true;
     }
 
-    pub(super) fn finish_recording(&mut self) {
+    pub(crate) fn finish_recording(&mut self) {
         let transport = self.project.transport;
         let track_count = self.project.tracks.len();
 
@@ -118,7 +118,7 @@ impl App {
         self.sync_active_track_recording_clip_scroll();
     }
 
-    pub(super) fn record_target_indices(&self) -> Vec<usize> {
+    pub(crate) fn record_target_indices(&self) -> Vec<usize> {
         let armed: Vec<usize> = self
             .project
             .tracks
@@ -133,7 +133,7 @@ impl App {
         }
     }
 
-    pub(super) fn draw_recording_view_controls<T: RenderTarget>(
+    pub(crate) fn draw_recording_view_controls<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         label_rect: Rect,
@@ -271,7 +271,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn draw_track_recording_content<T: RenderTarget>(
+    pub(crate) fn draw_track_recording_content<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_rect: Rect,
@@ -528,7 +528,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn recording_lane_layouts(
+    pub(crate) fn recording_lane_layouts(
         &self,
         content_rect: Rect,
         track: &Track,
@@ -571,7 +571,7 @@ impl App {
         layouts
     }
 
-    pub(super) fn recording_lane_hit_clip(
+    pub(crate) fn recording_lane_hit_clip(
         &self,
         content_rect: Rect,
         track: &Track,
@@ -587,7 +587,7 @@ impl App {
             })
     }
 
-    pub(super) fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
+    pub(crate) fn recording_lane_capacity(&self, content_rect: Rect) -> usize {
         match self.timeline_flow {
             TimelineFlow::DownwardColumns => {
                 let min_lane_width = 15_i32;
@@ -602,13 +602,13 @@ impl App {
         }
     }
 
-    pub(super) fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
+    pub(crate) fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
         let top_y = label_rect.y + label_rect.height() as i32 - 10;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         Rect::new(right - 26, top_y, 26, 8)
     }
 
-    pub(super) fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
+    pub(crate) fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
         Rect::new(
             label_rect.x + 4,
             label_rect.y + 3,
@@ -629,7 +629,7 @@ impl App {
         (((available + gap) / (slot_w + gap)).max(0) as usize).min(STORED_LOOP_SLOT_COUNT)
     }
 
-    pub(super) fn stored_loop_slot_rects(&self, label_rect: Rect) -> Vec<(usize, Rect)> {
+    pub(crate) fn stored_loop_slot_rects(&self, label_rect: Rect) -> Vec<(usize, Rect)> {
         let visible_slots = self
             .stored_loop_visible_slot_count(label_rect)
             .min(STORED_LOOP_SLOT_COUNT);
@@ -651,7 +651,7 @@ impl App {
         rects
     }
 
-    pub(super) fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
+    pub(crate) fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
         let top_y = label_rect.y + label_rect.height() as i32 - 10;
         let view_rect = self.recording_view_chip_rect(label_rect);
         let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 8);
@@ -680,7 +680,7 @@ impl App {
             .unwrap_or(false)
     }
 
-    pub(super) fn sync_active_track_recording_clip_scroll(&mut self) {
+    pub(crate) fn sync_active_track_recording_clip_scroll(&mut self) {
         let Some(full_bounds) = self.active_track_full_bounds() else {
             return;
         };
@@ -721,7 +721,7 @@ impl App {
         }
     }
 
-    pub(super) fn recording_clip_scroll_control_hit(
+    pub(crate) fn recording_clip_scroll_control_hit(
         &self,
         label_rect: Rect,
         track: &Track,
@@ -741,7 +741,7 @@ impl App {
         None
     }
 
-    pub(super) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
+    pub(crate) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
         let top_y = label_rect.y + 3;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         (
@@ -750,7 +750,7 @@ impl App {
         )
     }
 
-    pub(super) fn recording_clip_scrollbar_rects(
+    pub(crate) fn recording_clip_scrollbar_rects(
         &self,
         content_rect: Rect,
         track: &Track,
@@ -791,7 +791,7 @@ impl App {
         Some((rail, thumb))
     }
 
-    pub(super) fn draw_recording_clip_scrollbar<T: RenderTarget>(
+    pub(crate) fn draw_recording_clip_scrollbar<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         content_rect: Rect,

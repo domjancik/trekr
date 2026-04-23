@@ -3,7 +3,7 @@ use crate::theme::{app_chrome, mappings as mappings_theme};
 
 impl App {
 
-    pub(super) fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
+    pub(crate) fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
         let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
         let source_rect = Rect::new(
             type_rect.x + type_rect.width() as i32 + 6,
@@ -482,7 +482,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn draw_mappings_overlay<T: RenderTarget>(
+    pub(crate) fn draw_mappings_overlay<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
         bounds: Rect,
@@ -628,7 +628,7 @@ impl App {
 }
 
 impl App {
-    pub(super) fn adjust_mapping_field(&mut self, delta: i32) {
+    pub(crate) fn adjust_mapping_field(&mut self, delta: i32) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
         let track_count = self.project.tracks.len();
@@ -691,14 +691,14 @@ impl App {
         }
     }
 
-    pub(super) fn reverse_activate_page_item(&mut self) {
+    pub(crate) fn reverse_activate_page_item(&mut self) {
         match self.page_state.current_page {
             AppPage::Timeline => self.reverse_activate_timeline_context_item(),
             _ => self.activate_page_item(),
         }
     }
 
-    pub(super) fn activate_mapping_field(&mut self) {
+    pub(crate) fn activate_mapping_field(&mut self) {
         let index = self.page_state.selected_mapping_index;
         let field = self.page_state.selected_mapping_field;
 
@@ -766,7 +766,7 @@ impl App {
         }
     }
 
-    pub(super) fn add_mapping_row(&mut self) {
+    pub(crate) fn add_mapping_row(&mut self) {
         if self.page_state.current_page != AppPage::Mappings
             || self.page_state.mapping_mode != MappingPageMode::Write
         {
@@ -793,7 +793,7 @@ impl App {
         self.page_state.mapping_midi_learn_armed = false;
     }
 
-    pub(super) fn remove_selected_mapping(&mut self) {
+    pub(crate) fn remove_selected_mapping(&mut self) {
         if self.page_state.current_page != AppPage::Mappings
             || self.page_state.mapping_mode != MappingPageMode::Write
             || self.mappings.is_empty()
@@ -814,7 +814,7 @@ impl App {
         self.page_state.mapping_midi_learn_armed = false;
     }
 
-    pub(super) fn next_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+    pub(crate) fn next_enabled_mapping_field(&self, start: MappingField) -> MappingField {
         let mut field = start;
         for _ in 0..MappingField::ALL.len() {
             field = field.next();
@@ -825,7 +825,7 @@ impl App {
         start
     }
 
-    pub(super) fn previous_enabled_mapping_field(&self, start: MappingField) -> MappingField {
+    pub(crate) fn previous_enabled_mapping_field(&self, start: MappingField) -> MappingField {
         let mut field = start;
         for _ in 0..MappingField::ALL.len() {
             field = field.previous();
@@ -836,14 +836,14 @@ impl App {
         start
     }
 
-    pub(super) fn normalize_selected_mapping_field(&mut self) {
+    pub(crate) fn normalize_selected_mapping_field(&mut self) {
         if !self.mapping_field_enabled(self.page_state.selected_mapping_field) {
             self.page_state.selected_mapping_field =
                 self.next_enabled_mapping_field(self.page_state.selected_mapping_field);
         }
     }
 
-    pub(super) fn mapping_field_enabled(&self, field: MappingField) -> bool {
+    pub(crate) fn mapping_field_enabled(&self, field: MappingField) -> bool {
         let Some(entry) = self.mappings.get(self.page_state.selected_mapping_index) else {
             return field != MappingField::SourceDevice;
         };

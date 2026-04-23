@@ -6,24 +6,24 @@ use sdl3::rect::Rect;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AppOverlay {
+pub(crate) enum AppOverlay {
     MappingsQuickView,
     Discoverability,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(super) struct OverlayState {
+pub(crate) struct OverlayState {
     pub active: Option<AppOverlay>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(super) struct StatusState {
+pub(crate) struct StatusState {
     pub hovered_target: Option<DiscoverabilityTarget>,
     pub last_action: Option<LastActionStatus>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct TimelineFxRowRef {
+pub(crate) struct TimelineFxRowRef {
     pub context: TimelineContext,
     pub row_index: usize,
     pub slot_index: Option<usize>,
@@ -31,7 +31,7 @@ pub(super) struct TimelineFxRowRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct TimelineFxRowLayout {
+pub(crate) struct TimelineFxRowLayout {
     pub row: Rect,
     pub enabled: Rect,
     pub kind: Rect,
@@ -44,7 +44,7 @@ pub(super) struct TimelineFxRowLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct TimelineTrackLayout {
+pub(crate) struct TimelineTrackLayout {
     pub track_index: usize,
     pub full_bounds: Rect,
     pub detail_bounds: Rect,
@@ -73,19 +73,19 @@ impl TimelineTrackLayout {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct DirectMappingState {
+pub(crate) struct DirectMappingState {
     pub mode: DirectMappingMode,
     pub origin: DirectMappingOrigin,
     pub status_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct MappingTargetLookupState {
+pub(crate) struct MappingTargetLookupState {
     pub active: Option<ActiveMappingTargetLookup>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ActiveMappingTargetLookup {
+pub(crate) struct ActiveMappingTargetLookup {
     pub original_target_label: String,
     pub original_scope_label: String,
     pub query: String,
@@ -93,7 +93,7 @@ pub(super) struct ActiveMappingTargetLookup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct MappingTargetLookupLayout {
+pub(crate) struct MappingTargetLookupLayout {
     pub target_cell: Rect,
     pub results_panel: Rect,
     pub start_index: usize,
@@ -101,7 +101,7 @@ pub(super) struct MappingTargetLookupLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) enum DirectMappingMode {
+pub(crate) enum DirectMappingMode {
     #[default]
     Inactive,
     Targeting,
@@ -109,14 +109,14 @@ pub(super) enum DirectMappingMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) enum DirectMappingOrigin {
+pub(crate) enum DirectMappingOrigin {
     #[default]
     InPlace,
     MappingsPage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct DirectMappingTarget {
+pub(crate) struct DirectMappingTarget {
     pub action: AppAction,
     pub target_label: &'static str,
     pub scope_label: &'static str,
@@ -125,7 +125,7 @@ pub(super) struct DirectMappingTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct LastActionStatus {
+pub(crate) struct LastActionStatus {
     pub action: AppAction,
     pub source: ActionSource,
 }
@@ -139,21 +139,21 @@ pub(crate) struct DiscoverabilityTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ActionDiscoverabilitySummary {
+pub(crate) struct ActionDiscoverabilitySummary {
     pub title: String,
     pub badges: Vec<MappingBadge>,
     pub total_bindings: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct MappingBadge {
+pub(crate) struct MappingBadge {
     pub text: String,
     pub source_kind: MappingSourceKind,
     pub built_in: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RecordingLaneLayout {
+pub(crate) struct RecordingLaneLayout {
     pub clip_id: Option<u64>,
     pub rect: Rect,
     pub selected: bool,
@@ -162,7 +162,7 @@ pub(super) struct RecordingLaneLayout {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct RecordingLaneWindow {
+pub(crate) struct RecordingLaneWindow {
     pub start: usize,
     pub visible_total: usize,
     pub committed_start: usize,
@@ -198,7 +198,7 @@ pub struct RunOptions {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct CaptureSpec {
+pub(crate) struct CaptureSpec {
     pub page: AppPage,
     pub overlay: Option<AppOverlay>,
     pub focused_track_view: bool,

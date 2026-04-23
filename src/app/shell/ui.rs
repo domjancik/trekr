@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::*;
-use super::shell_layout::{page_tabs_layout, preferred_branding_width};
+use super::layout::{page_tabs_layout, preferred_branding_width};
 
 pub(crate) struct TransportChipSpec {
     pub(crate) label: String,
@@ -13,7 +13,7 @@ pub(crate) struct TransportChipSpec {
 }
 
 impl App {
-    pub(super) fn draw_frame_surface(
+    pub(crate) fn draw_frame_surface(
         &self,
         pixel_format: PixelFormat,
     ) -> Result<sdl3::surface::Surface<'static>, Box<dyn std::error::Error>> {
@@ -25,7 +25,7 @@ impl App {
         Ok(canvas.into_surface())
     }
 
-    pub(super) fn draw<T: RenderTarget>(
+    pub(crate) fn draw<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -34,7 +34,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn page_frame_layout(
+    pub(crate) fn page_frame_layout(
         &self,
         inset: Rect,
     ) -> Result<(Rect, Rect, Rect), Box<dyn std::error::Error>> {
@@ -97,7 +97,7 @@ impl App {
         branding::draw_frame_brand_fallback(canvas, surface)
     }
 
-    pub(super) fn configure_window_canvas(
+    pub(crate) fn configure_window_canvas(
         &mut self,
         canvas: &mut Canvas<sdl3::video::Window>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -108,7 +108,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn draw_window(
+    pub(crate) fn draw_window(
         &self,
         canvas: &mut Canvas<sdl3::video::Window>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -215,7 +215,7 @@ impl App {
         branding::draw_branding(canvas, bounds, self.startup_started_at.elapsed())
     }
 
-    pub(super) fn draw_transport_chip<T: RenderTarget>(
+    pub(crate) fn draw_transport_chip<T: RenderTarget>(
         canvas: &mut Canvas<T>,
         chip: Rect,
         spec: &TransportChipSpec,
@@ -232,7 +232,7 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
                 label: format!("Play {}", on_off(self.project.transport.playing)),
@@ -260,7 +260,7 @@ impl App {
         ]
     }
 
-    pub(super) fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
                 label: format!(
@@ -305,7 +305,7 @@ impl App {
         ]
     }
 
-    pub(super) fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
                 label: format!("Link {}", on_off(self.project.transport.link_enabled)),
@@ -327,7 +327,7 @@ impl App {
         ]
     }
 
-    pub(super) fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
         vec![
             TransportChipSpec {
                 label: format!(
@@ -362,7 +362,7 @@ impl App {
         ]
     }
 
-    pub(super) fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
+    pub(crate) fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
         let top_row = chip_row_width(&self.transport_link_chip_specs())
             .saturating_add(96)
             .saturating_add(12);
