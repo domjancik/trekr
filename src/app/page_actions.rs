@@ -167,3 +167,19 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_actions_cycle_between_views() {
+        let mut app = App::new();
+
+        app.apply_action(AppAction::ShowNextPage);
+        assert_eq!(app.page_state.current_page, AppPage::Mappings);
+
+        app.apply_action(AppAction::ShowPreviousPage);
+        assert_eq!(app.page_state.current_page, AppPage::Timeline);
+    }
+}
