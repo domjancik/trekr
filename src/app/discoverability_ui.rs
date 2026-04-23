@@ -34,6 +34,22 @@ pub(super) fn track_indicator_target(
 }
 
 impl App {
+    pub(super) fn discoverability_target_at(&self, x: i32, y: i32) -> Option<DiscoverabilityTarget> {
+        if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
+            return None;
+        }
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (_, content_bounds, _) = self.page_frame_layout(inset).ok()?;
+
+        let targets =
+            page_discoverability_targets(self.page_state.current_page, self, content_bounds);
+
+        targets
+            .into_iter()
+            .find_map(|(rect, target)| rect_contains(rect, x, y).then_some(target))
+    }
+
     pub(super) fn direct_mapping_footer_content(
         &self,
     ) -> Option<(String, String, Vec<MappingBadge>)> {

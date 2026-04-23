@@ -207,6 +207,140 @@ impl App {
         targets
     }
 
+    pub(super) fn track_discoverability_targets(
+        &self,
+        layout: TimelineTrackLayout,
+        track: &Track,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let mut targets = Vec::new();
+        let status_rect = layout.status_rect;
+        let label_rect = layout.full_label_rect;
+        let detail_label_rect = layout.detail_label_rect;
+        if track.recording_view == RecordingView::Stacked {
+            let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
+            targets.push((
+                left_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::SelectPreviousRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                right_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::SelectNextRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
+        targets.push((
+            self.recording_view_chip_rect(label_rect),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackRecordingView,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+        if track.selected_recording_clip().is_some() {
+            let (mute_rect, delete_rect) = self.recording_clip_control_rects(label_rect);
+            targets.push((
+                mute_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleSelectedRecordingClipMute,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                delete_rect,
+                DiscoverabilityTarget {
+                    action: AppAction::DeleteSelectedRecordingClip,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
+        for content_rect in [layout.full_content_rect, layout.detail_content_rect] {
+            for lane in self.recording_lane_layouts(content_rect, track) {
+                if let Some(clip_id) = lane.clip_id {
+                    targets.push((
+                        lane.rect,
+                        DiscoverabilityTarget {
+                            action: AppAction::SelectRecordingClip(clip_id),
+                            display_scope: Some("Active Track"),
+                            allowed_mapping_scopes: &["Active Track"],
+                            overlay_slot: None,
+                        },
+                    ));
+                }
+            }
+        }
+        for indicator in crate::ui::track_indicators(status_rect) {
+            if let Some(target) = track_indicator_target(indicator.kind, Some(indicator.rect)) {
+                targets.push((
+                    Rect::new(
+                        indicator.rect.x - 2,
+                        indicator.rect.y - 2,
+                        indicator.rect.width().saturating_add(4),
+                        indicator.rect.height().saturating_add(4),
+                    ),
+                    target,
+                ));
+            }
+        }
+
+        targets.push((
+            self.track_passthrough_button_rect(label_rect),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackPassthrough,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+        targets.extend(self.timeline_fx_discoverability_targets_for_track(
+            track,
+            TimelineContext::OutputFx,
+            layout.output_fx_rect,
+        ));
+        targets.extend(self.timeline_fx_discoverability_targets_for_track(
+            track,
+            TimelineContext::InputFx,
+            layout.input_fx_rect,
+        ));
+        for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
+            if let Some(action) = stored_loop_slot_recall_action(slot_index) {
+                targets.push((
+                    slot_rect,
+                    DiscoverabilityTarget {
+                        action,
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot: Some(slot_rect),
+                    },
+                ));
+            }
+        }
+        targets.push((
+            crate::ui::detail_badge_rect(detail_label_rect),
+            DiscoverabilityTarget {
+                action: AppAction::ToggleCurrentTrackLoop,
+                display_scope: Some("Active Track"),
+                allowed_mapping_scopes: &["Active Track"],
+                overlay_slot: None,
+            },
+        ));
+
+        targets
+    }
+
     pub(super) fn visible_timeline_track_layouts(
         &self,
         timeline_bounds: Rect,

@@ -2,6 +2,115 @@ use super::*;
 use crate::midi_fx::MidiFxInlineParam;
 
 impl App {
+    pub(super) fn timeline_fx_discoverability_targets_for_track(
+        &self,
+        track: &Track,
+        context: TimelineContext,
+        band_rect: Rect,
+    ) -> Vec<(Rect, DiscoverabilityTarget)> {
+        let Some(chain_kind) = context.chain_kind() else {
+            return Vec::new();
+        };
+        let displayed_rows = self.displayed_timeline_fx_slot_indices_for_track(track, chain_kind);
+        let selected_row = (self
+            .project
+            .active_track()
+            .is_some_and(|active| std::ptr::eq(active, track))
+            && self.page_state.selected_timeline_context == context)
+            .then(|| self.selected_timeline_fx_row(chain_kind));
+        let chain = self.fx_chain(track, chain_kind);
+        let layouts = self.timeline_fx_row_layouts(band_rect, &displayed_rows, chain, selected_row);
+        let rows = displayed_rows;
+        let mut targets = Vec::new();
+        for (row, layout) in rows.iter().zip(layouts.into_iter()) {
+            if row.is_none() {
+                targets.push((
+                    layout.row,
+                    DiscoverabilityTarget {
+                        action: AppAction::AddSelectedTimelineFx,
+                        display_scope: Some("Active Track"),
+                        allowed_mapping_scopes: &["Active Track"],
+                        overlay_slot: None,
+                    },
+                ));
+                continue;
+            }
+            targets.push((
+                layout.enabled,
+                DiscoverabilityTarget {
+                    action: AppAction::ToggleSelectedTimelineFx,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.kind,
+                DiscoverabilityTarget {
+                    action: AppAction::CycleSelectedTimelineFxKind,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.param_primary,
+                DiscoverabilityTarget {
+                    action: AppAction::AdjustSelectedTimelineFxPrimary,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.param_secondary,
+                DiscoverabilityTarget {
+                    action: AppAction::AdjustSelectedTimelineFxSecondary,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.overflow,
+                DiscoverabilityTarget {
+                    action: AppAction::ScrollSelectedTimelineFxWindow,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.move_up,
+                DiscoverabilityTarget {
+                    action: AppAction::MoveSelectedTimelineFxUp,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.move_down,
+                DiscoverabilityTarget {
+                    action: AppAction::MoveSelectedTimelineFxDown,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+            targets.push((
+                layout.delete,
+                DiscoverabilityTarget {
+                    action: AppAction::DeleteSelectedTimelineFx,
+                    display_scope: Some("Active Track"),
+                    allowed_mapping_scopes: &["Active Track"],
+                    overlay_slot: None,
+                },
+            ));
+        }
+        targets
+    }
+
     pub(super) fn select_timeline_fx_row(&mut self, delta: i32) {
         let Some(chain_kind) = self.page_state.selected_timeline_context.chain_kind() else {
             return;
@@ -1906,5 +2015,23 @@ mod tests {
         assert!(app
             .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
             .is_some());
+    }
+
+    #[test]
+    fn timeline_kind_adjust_keeps_existing_row_visible() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Timeline;
+        app.page_state.selected_timeline_context = TimelineContext::OutputFx;
+        app.page_state.selected_timeline_fx_field = TimelineFxField::Kind;
+
+        for _ in 0..16 {
+            app.adjust_page_item(-1);
+            assert!(app
+                .selected_timeline_fx_slot(
+                    app.project.active_track().unwrap(),
+                    MidiFxChainKind::Output
+                )
+                .is_some());
+        }
     }
 }
