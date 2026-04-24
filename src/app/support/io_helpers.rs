@@ -1,10 +1,10 @@
 use super::*;
 
-pub(super) fn port_name(port: Option<&MidiPortRef>) -> &str {
+pub(crate) fn port_name(port: Option<&MidiPortRef>) -> &str {
     port.map(|value| value.name.as_str()).unwrap_or("none")
 }
 
-pub(super) fn resolve_port_by_name(
+pub(crate) fn resolve_port_by_name(
     ports: &[MidiPortRef],
     preferred_name: Option<&str>,
 ) -> Option<usize> {
@@ -12,7 +12,7 @@ pub(super) fn resolve_port_by_name(
     ports.iter().position(|port| port.name == preferred_name)
 }
 
-pub(super) fn clamp_index(index: usize, len: usize) -> usize {
+pub(crate) fn clamp_index(index: usize, len: usize) -> usize {
     if len == 0 {
         0
     } else {

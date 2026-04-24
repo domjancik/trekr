@@ -7,7 +7,7 @@ use sdl3::pixels::Color;
 
 use super::types::MappingBadge;
 
-pub(super) fn mapping_source_label(source: MappingSourceKind) -> &'static str {
+pub(crate) fn mapping_source_label(source: MappingSourceKind) -> &'static str {
     match source {
         MappingSourceKind::Key => "Key",
         MappingSourceKind::Midi => "MIDI",
@@ -15,7 +15,7 @@ pub(super) fn mapping_source_label(source: MappingSourceKind) -> &'static str {
     }
 }
 
-pub(super) fn compact_scope_label(scope: &str) -> &str {
+pub(crate) fn compact_scope_label(scope: &str) -> &str {
     match scope {
         "Active Track" => "Act Track",
         "Armed/Active" => "Armed/Act",
@@ -26,7 +26,7 @@ pub(super) fn compact_scope_label(scope: &str) -> &str {
     }
 }
 
-pub(super) fn quantize_label(quantize: QuantizeMode) -> &'static str {
+pub(crate) fn quantize_label(quantize: QuantizeMode) -> &'static str {
     match quantize {
         QuantizeMode::Off => "Off",
         QuantizeMode::Pulse => "Pulse",
@@ -37,7 +37,7 @@ pub(super) fn quantize_label(quantize: QuantizeMode) -> &'static str {
     }
 }
 
-pub(super) fn launch_quantize_label(quantize: LaunchQuantizeMode) -> &'static str {
+pub(crate) fn launch_quantize_label(quantize: LaunchQuantizeMode) -> &'static str {
     match quantize {
         LaunchQuantizeMode::Off => "Off",
         LaunchQuantizeMode::Sixteenth => "1/16",
@@ -48,7 +48,7 @@ pub(super) fn launch_quantize_label(quantize: LaunchQuantizeMode) -> &'static st
     }
 }
 
-pub(super) fn action_source_label(source: ActionSource) -> &'static str {
+pub(crate) fn action_source_label(source: ActionSource) -> &'static str {
     match source {
         ActionSource::Keyboard => "Keyboard",
         ActionSource::Pointer => "Pointer",
@@ -59,7 +59,7 @@ pub(super) fn action_source_label(source: ActionSource) -> &'static str {
     }
 }
 
-pub(super) fn mapping_source_sort_key(source_kind: MappingSourceKind) -> usize {
+pub(crate) fn mapping_source_sort_key(source_kind: MappingSourceKind) -> usize {
     match source_kind {
         MappingSourceKind::Key => 0,
         MappingSourceKind::Midi => 1,
@@ -67,7 +67,7 @@ pub(super) fn mapping_source_sort_key(source_kind: MappingSourceKind) -> usize {
     }
 }
 
-pub(super) fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str {
+pub(crate) fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str {
     match source_kind {
         MappingSourceKind::Key => "K",
         MappingSourceKind::Midi => "M",
@@ -75,7 +75,7 @@ pub(super) fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str 
     }
 }
 
-pub(super) fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
+pub(crate) fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
     match (badge.built_in, badge.source_kind) {
         (true, MappingSourceKind::Key) => (Color::RGB(64, 84, 126), Color::RGB(244, 244, 236)),
         (true, MappingSourceKind::Midi) => (Color::RGB(88, 94, 116), Color::RGB(236, 240, 246)),
@@ -86,7 +86,7 @@ pub(super) fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
     }
 }
 
-pub(super) fn compact_badge_text(text: &str, max_len: usize) -> String {
+pub(crate) fn compact_badge_text(text: &str, max_len: usize) -> String {
     let compact = text
         .replace("Shift+", "S+")
         .replace("Space", "Spc")
@@ -100,7 +100,7 @@ pub(super) fn compact_badge_text(text: &str, max_len: usize) -> String {
     }
 }
 
-pub(super) fn mapping_field_index(field: MappingField) -> usize {
+pub(crate) fn mapping_field_index(field: MappingField) -> usize {
     match field {
         MappingField::SourceKind => 0,
         MappingField::SourceDevice => 1,
@@ -111,20 +111,20 @@ pub(super) fn mapping_field_index(field: MappingField) -> usize {
     }
 }
 
-pub(super) fn input_channel_label(channel: MidiChannelFilter) -> String {
+pub(crate) fn input_channel_label(channel: MidiChannelFilter) -> String {
     match channel {
         MidiChannelFilter::Omni => "all".to_string(),
         MidiChannelFilter::Channel(value) => value.to_string(),
     }
 }
 
-pub(super) fn output_channel_label(channel: Option<u8>) -> String {
+pub(crate) fn output_channel_label(channel: Option<u8>) -> String {
     channel
         .map(|value| value.to_string())
         .unwrap_or_else(|| "none".to_string())
 }
 
-pub(super) fn on_off(value: bool) -> &'static str {
+pub(crate) fn on_off(value: bool) -> &'static str {
     if value {
         "on"
     } else {
