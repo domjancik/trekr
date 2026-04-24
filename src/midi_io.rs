@@ -59,6 +59,14 @@ impl MidiDeviceCatalog {
         Self::scan_internal(false)
     }
 
+    #[cfg(test)]
+    fn scan_internal(_allow_demo_fallback: bool) -> Self {
+        // Unit tests should never touch live WinMM/WinRT device discovery because
+        // opening real MIDI backends on Windows can crash inside `midir`.
+        Self::demo()
+    }
+
+    #[cfg(not(test))]
     fn scan_internal(allow_demo_fallback: bool) -> Self {
         let inputs: Vec<MidiPortRef> = match MidiInput::new("trekr-midi-inputs") {
             Ok(midi_in) => midi_in
@@ -168,6 +176,7 @@ fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> 
         .or_else(|| (!ports.is_empty()).then_some(0))
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
     #[cfg(test)]
@@ -176,6 +185,7 @@ pub struct MidiOutputRuntime {
     sent_messages: Arc<Mutex<Vec<(String, u8, u8, Option<u8>)>>>,
 }
 
+#[cfg_attr(test, allow(dead_code))]
 pub struct MidiInputRuntime {
     app_name: &'static str,
     sender: Sender<MidiInputEvent>,
@@ -273,12 +283,36 @@ impl MidiOutputRuntime {
             pitch,
             velocity,
         };
+        self.send_note_on_internal(port, channel, pitch, velocity, command)
+    }
+
+    #[cfg(not(test))]
+    fn send_note_on_internal(
+        &mut self,
+        _port: &MidiPortRef,
+        _channel: u8,
+        _pitch: u8,
+        _velocity: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
         self.record_command_for_test(&command);
-        #[cfg(test)]
+        self.sender.send(command).map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    fn send_note_on_internal(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
+        self.record_command_for_test(&command);
         if let Ok(mut sent) = self.sent_messages.lock() {
             sent.push((port.name.clone(), channel, pitch, Some(velocity)));
         }
-        self.sender.send(command).map_err(|error| error.to_string())
+        Ok(())
     }
 
     pub fn send_note_off(
@@ -292,12 +326,34 @@ impl MidiOutputRuntime {
             channel,
             pitch,
         };
+        self.send_note_off_internal(port, channel, pitch, command)
+    }
+
+    #[cfg(not(test))]
+    fn send_note_off_internal(
+        &mut self,
+        _port: &MidiPortRef,
+        _channel: u8,
+        _pitch: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
         self.record_command_for_test(&command);
-        #[cfg(test)]
+        self.sender.send(command).map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    fn send_note_off_internal(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
+        self.record_command_for_test(&command);
         if let Ok(mut sent) = self.sent_messages.lock() {
             sent.push((port.name.clone(), channel, pitch, None));
         }
-        self.sender.send(command).map_err(|error| error.to_string())
+        Ok(())
     }
 
     pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
@@ -305,12 +361,32 @@ impl MidiOutputRuntime {
             port: port.clone(),
             channel,
         };
+        self.send_all_notes_off_internal(port, channel, command)
+    }
+
+    #[cfg(not(test))]
+    fn send_all_notes_off_internal(
+        &mut self,
+        _port: &MidiPortRef,
+        _channel: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
         self.record_command_for_test(&command);
-        #[cfg(test)]
+        self.sender.send(command).map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    fn send_all_notes_off_internal(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        command: MidiOutputCommand,
+    ) -> Result<(), String> {
+        self.record_command_for_test(&command);
         if let Ok(mut sent) = self.sent_messages.lock() {
             sent.push((port.name.clone(), channel, 123, None));
         }
-        self.sender.send(command).map_err(|error| error.to_string())
+        Ok(())
     }
 
     #[cfg(test)]
@@ -348,10 +424,17 @@ impl MidiOutputRuntime {
 impl MidiInputRuntime {
     pub fn sync_ports(&mut self, ports: &[MidiPortRef]) {
         let wanted: Vec<String> = ports.iter().map(|port| port.name.clone()).collect();
-        #[cfg(test)]
-        {
-            self.requested_ports = wanted.clone();
-        }
+        self.sync_ports_internal(&wanted, ports);
+    }
+
+    #[cfg(test)]
+    fn sync_ports_internal(&mut self, wanted: &[String], _ports: &[MidiPortRef]) {
+        self.requested_ports = wanted.to_vec();
+        self.connections.clear();
+    }
+
+    #[cfg(not(test))]
+    fn sync_ports_internal(&mut self, wanted: &[String], ports: &[MidiPortRef]) {
         self.connections
             .retain(|name, _| wanted.iter().any(|wanted_name| wanted_name == name));
 
@@ -448,6 +531,7 @@ fn connect_output_by_name(
         .map_err(|error| error.to_string())
 }
 
+#[cfg_attr(test, allow(dead_code))]
 fn connect_input_by_name(
     app_name: &str,
     target_name: &str,
@@ -565,5 +649,12 @@ mod tests {
                 value: 127,
             }
         );
+    }
+
+    #[test]
+    fn test_scan_uses_deterministic_demo_catalog() {
+        let catalog = MidiDeviceCatalog::scan();
+
+        assert_eq!(catalog, MidiDeviceCatalog::demo());
     }
 }
