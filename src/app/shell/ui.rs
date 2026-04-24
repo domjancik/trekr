@@ -237,7 +237,7 @@ impl App {
         canvas.fill_rect(chip)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(chip)?;
-        let label_rect = crate::app::support::ui_helpers::chrome_text_rect(chip);
+        let label_rect = crate::app::support::ui_helpers::chrome_compact_text_rect(chip);
         crate::ui::draw_text_fitted(
             canvas,
             &spec.label,
@@ -435,7 +435,7 @@ impl App {
                 theme.app_chrome.footer_chip_inactive
             });
             canvas.fill_rect(chip)?;
-            let label_rect = crate::app::support::ui_helpers::chrome_text_rect(chip);
+            let label_rect = crate::app::support::ui_helpers::chrome_compact_text_rect(chip);
             crate::ui::draw_text_fitted(
                 canvas,
                 label,
