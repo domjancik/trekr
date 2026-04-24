@@ -191,10 +191,16 @@ impl App {
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
+            let label_rect = crate::app::support::ui_helpers::chrome_text_rect(Rect::new(
+                tab.x + 29,
+                tab.y + 1,
+                tab.width().saturating_sub(31),
+                tab.height().saturating_sub(2),
+            ));
             crate::ui::draw_text_fitted(
                 canvas,
                 page.label(),
-                Rect::new(tab.x + 30, tab.y + 8, tab.width().saturating_sub(36), 8),
+                label_rect,
                 1,
                 if active {
                     theme.app_chrome.tab_text_active
@@ -231,10 +237,11 @@ impl App {
         canvas.fill_rect(chip)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(chip)?;
+        let label_rect = crate::app::support::ui_helpers::chrome_text_rect(chip);
         crate::ui::draw_text_fitted(
             canvas,
             &spec.label,
-            Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+            label_rect,
             1,
             contrasting_text_color(spec.fill, theme),
         )?;
@@ -428,10 +435,11 @@ impl App {
                 theme.app_chrome.footer_chip_inactive
             });
             canvas.fill_rect(chip)?;
+            let label_rect = crate::app::support::ui_helpers::chrome_text_rect(chip);
             crate::ui::draw_text_fitted(
                 canvas,
                 label,
-                Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
+                label_rect,
                 1,
                 if active {
                     theme.app_chrome.footer_text_active

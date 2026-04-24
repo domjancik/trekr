@@ -9,6 +9,19 @@ pub(crate) fn centered_text_rect(rect: Rect) -> Rect {
     )
 }
 
+pub(crate) fn inset_rect_1(rect: Rect) -> Rect {
+    Rect::new(
+        rect.x + 1,
+        rect.y + 1,
+        rect.width().saturating_sub(2),
+        rect.height().saturating_sub(2),
+    )
+}
+
+pub(crate) fn chrome_text_rect(rect: Rect) -> Rect {
+    centered_text_rect(inset_rect_1(rect))
+}
+
 pub(crate) fn contrasting_text_color(fill: Color, theme: &crate::theme::Theme) -> Color {
     theme.text_on_fill(fill)
 }
