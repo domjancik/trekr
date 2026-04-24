@@ -116,12 +116,14 @@ impl App {
         for (rect, color, label) in meta_badges {
             canvas.set_draw_color(color);
             canvas.fill_rect(rect)?;
+            canvas.set_draw_color(theme.io_pages.routing_header_border);
+            canvas.draw_rect(rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &label,
                 Rect::new(rect.x + 6, rect.y + 4, rect.width().saturating_sub(12), 8),
                 1,
-                theme.io_pages.routing_meta_text,
+                contrasting_text_color(color, theme),
             )?;
         }
         let state_badge = Rect::new(
@@ -132,6 +134,8 @@ impl App {
         );
         canvas.set_draw_color(theme.io_pages.routing_state_badge_fill);
         canvas.fill_rect(state_badge)?;
+        canvas.set_draw_color(theme.io_pages.routing_header_border);
+        canvas.draw_rect(state_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Tap value",
@@ -142,7 +146,7 @@ impl App {
                 8,
             ),
             1,
-            theme.io_pages.routing_state_badge_text,
+            contrasting_text_color(theme.io_pages.routing_state_badge_fill, theme),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -314,7 +318,11 @@ impl App {
                 &field_label,
                 centered_text_rect(label_text_rect),
                 1,
-                theme.io_pages.routing_field_label,
+                if selected {
+                    contrasting_text_color(theme.io_pages.routing_row_selected_fill, theme)
+                } else {
+                    theme.io_pages.routing_field_label
+                },
             )?;
             if is_toggle_field {
                 let bool_chip = Rect::new(
@@ -327,11 +335,12 @@ impl App {
                     self.routing_field_value(active_track, field).as_str(),
                     "on" | "Post FX"
                 );
-                canvas.set_draw_color(if toggled_on {
+                let toggle_fill = if toggled_on {
                     theme.io_pages.routing_toggle_on_fill
                 } else {
                     theme.io_pages.routing_toggle_off_fill
-                });
+                };
+                canvas.set_draw_color(toggle_fill);
                 canvas.fill_rect(bool_chip)?;
                 canvas.set_draw_color(if toggled_on {
                     theme.io_pages.routing_toggle_on_border
@@ -349,7 +358,7 @@ impl App {
                         8,
                     ),
                     1,
-                    theme.io_pages.routing_toggle_text,
+                    contrasting_text_color(toggle_fill, theme),
                 )?;
             } else {
                 crate::ui::draw_text_fitted(
@@ -405,7 +414,11 @@ impl App {
                     8,
                 ),
                 1,
-                theme.io_pages.routing_affordance_text,
+                if selected {
+                    contrasting_text_color(theme.io_pages.routing_affordance_selected_fill, theme)
+                } else {
+                    contrasting_text_color(theme.io_pages.routing_affordance_idle_fill, theme)
+                },
             )?;
         }
 
