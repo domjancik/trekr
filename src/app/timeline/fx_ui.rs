@@ -1400,7 +1400,7 @@ impl App {
                 let gap = 1;
                 let available = row.width() as i32;
                 let enabled_width = available.clamp(10, 14);
-                let delete_width = available.clamp(5, 6);
+                let delete_width = available.clamp(7, 8);
                 let param_min_width = if available >= 72 { 18 } else { 12 };
                 let move_width = if available >= 132 { 6 } else { 0 };
                 let (kind_width, visible_param_count, total_param_count) = displayed_rows
