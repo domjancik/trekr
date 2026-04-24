@@ -6,28 +6,29 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
         let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
         let (transport_bounds, timeline_bounds) =
             crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
         let focus_button = self.focused_track_view_button_rect(header_bounds);
-        canvas.set_draw_color(Color::RGB(34, 44, 64));
+        canvas.set_draw_color(theme.app_chrome.surface_fill);
         canvas.fill_rect(header_bounds)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(header_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Timeline",
             Rect::new(header_bounds.x + 8, header_bounds.y + 8, 84, 8),
             1,
-            Color::RGB(192, 206, 222),
+            theme.app_chrome.action_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Vertical",
             Rect::new(header_bounds.x + 96, header_bounds.y + 8, 54, 8),
             1,
-            Color::RGB(212, 220, 230),
+            theme.app_chrome.detail_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -38,15 +39,15 @@ impl App {
             },
             Rect::new(header_bounds.x + 212, header_bounds.y + 8, 180, 8),
             1,
-            Color::RGB(190, 198, 210),
+            theme.app_chrome.detail_text,
         )?;
         canvas.set_draw_color(if self.focused_track_view {
-            Color::RGB(76, 108, 142)
+            theme.app_chrome.tab_active_fill
         } else {
-            Color::RGB(66, 76, 96)
+            theme.app_chrome.tab_inactive_fill
         });
         canvas.fill_rect(focus_button)?;
-        canvas.set_draw_color(Color::RGB(206, 220, 232));
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(focus_button)?;
         let focus_label = if self.focused_track_view {
             format!("Track T{}", self.project.active_track_index + 1)
@@ -63,11 +64,11 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(248, 244, 236),
+            theme.app_chrome.action_text,
         )?;
-        canvas.set_draw_color(Color::RGB(122, 84, 52));
+        canvas.set_draw_color(theme.transport.song_loop);
         canvas.fill_rect(reset_button)?;
-        canvas.set_draw_color(Color::RGB(244, 232, 146));
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(reset_button)?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -79,7 +80,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(248, 244, 212),
+            theme.app_chrome.action_text,
         )?;
         self.draw_transport_strip(canvas, transport_bounds)?;
 
@@ -104,21 +105,22 @@ impl App {
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let detail_range = self.detail_loop_range(track);
+        let theme = self.theme();
         let full_accent = if track.state.armed {
-            Color::RGB(148, 54, 54)
+            theme.transport.record_active
         } else if is_active {
-            Color::RGB(42, 90, 168)
+            theme.app_chrome.tab_accent_timeline
         } else {
-            Color::RGB(36, 58, 92)
+            theme.app_chrome.tab_inactive_fill
         };
         let detail_accent = if detail_range != track.loop_region {
-            Color::RGB(170, 120, 44)
+            theme.app_chrome.tab_accent_mappings
         } else if track.state.loop_enabled && self.project.transport.loop_enabled {
-            Color::RGB(178, 104, 34)
+            theme.transport.song_loop
         } else if is_active {
-            Color::RGB(124, 82, 46)
+            theme.app_chrome.footer_chip_mappings
         } else {
-            Color::RGB(74, 54, 40)
+            theme.app_chrome.footer_chip_inactive
         };
         self.draw_track_subcolumn(
             canvas,
@@ -159,7 +161,7 @@ impl App {
             return Ok(());
         }
         if let Some(rect) = self.timeline_context_indicator_rect_for_layout(layout) {
-            canvas.set_draw_color(Color::RGB(244, 232, 146));
+            canvas.set_draw_color(self.theme().mappings.page_title);
             canvas.fill_rect(rect)?;
         }
         Ok(())
@@ -202,12 +204,13 @@ impl App {
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(26, 34, 52));
+        let theme = self.theme();
+        canvas.set_draw_color(theme.app_chrome.surface_fill);
         canvas.fill_rect(status_rect)?;
         canvas.set_draw_color(if is_active {
-            Color::RGB(98, 110, 136)
+            theme.app_chrome.surface_border
         } else {
-            Color::RGB(68, 78, 98)
+            theme.app_chrome.overlay_row_idle_border
         });
         canvas.draw_rect(status_rect)?;
 
@@ -215,8 +218,8 @@ impl App {
             let (enabled, fill, border, label) = match indicator.kind {
                 crate::ui::TrackIndicatorKind::Armed => (
                     track.state.armed,
-                    Color::RGB(188, 72, 72),
-                    Color::RGB(238, 138, 138),
+                    theme.transport.record_active,
+                    theme.transport.record_active,
                     if indicator.rect.width() >= 24 {
                         "ARM"
                     } else {
@@ -225,8 +228,8 @@ impl App {
                 ),
                 crate::ui::TrackIndicatorKind::Recording => (
                     track.active_take.is_some(),
-                    Color::RGB(214, 64, 64),
-                    Color::RGB(248, 132, 132),
+                    theme.transport.record_active,
+                    theme.transport.record_active,
                     if indicator.rect.width() >= 24 {
                         "REC"
                     } else {
@@ -235,8 +238,8 @@ impl App {
                 ),
                 crate::ui::TrackIndicatorKind::Muted => (
                     track.state.muted,
-                    Color::RGB(114, 120, 132),
-                    Color::RGB(180, 186, 198),
+                    theme.app_chrome.footer_chip_inactive,
+                    theme.app_chrome.surface_border,
                     if indicator.rect.width() >= 24 {
                         "MUT"
                     } else {
@@ -245,8 +248,8 @@ impl App {
                 ),
                 crate::ui::TrackIndicatorKind::Solo => (
                     track.state.soloed,
-                    Color::RGB(82, 162, 92),
-                    Color::RGB(144, 224, 154),
+                    theme.transport.play_active,
+                    theme.transport.play_active,
                     if indicator.rect.width() >= 24 {
                         "SOL"
                     } else {
@@ -257,15 +260,15 @@ impl App {
             canvas.set_draw_color(if enabled {
                 fill
             } else if is_active {
-                Color::RGB(44, 52, 68)
+                theme.app_chrome.tab_inactive_fill
             } else {
-                Color::RGB(34, 42, 56)
+                theme.app_chrome.footer_chip_inactive
             });
             canvas.fill_rect(indicator.rect)?;
             canvas.set_draw_color(if enabled {
                 border
             } else {
-                Color::RGB(76, 86, 104)
+                theme.app_chrome.overlay_row_idle_border
             });
             canvas.draw_rect(indicator.rect)?;
             crate::ui::draw_text_fitted(
@@ -279,9 +282,9 @@ impl App {
                 ),
                 1,
                 if enabled {
-                    Color::RGB(248, 244, 236)
+                    theme.app_chrome.action_text
                 } else {
-                    Color::RGB(160, 170, 186)
+                    theme.app_chrome.detail_text
                 },
             )?;
         }
@@ -294,9 +297,10 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(28, 36, 52));
+        let theme = self.theme();
+        canvas.set_draw_color(theme.app_chrome.surface_fill);
         canvas.fill_rect(bounds)?;
-        canvas.set_draw_color(Color::RGB(88, 96, 120));
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
         let top_y = bounds.y + 4;
@@ -338,16 +342,16 @@ impl App {
             cursor_x += chip.width() as i32 + 6;
         }
 
-        canvas.set_draw_color(Color::RGB(44, 54, 74));
+        canvas.set_draw_color(theme.app_chrome.overlay_panel_fill);
         canvas.fill_rect(right_panel)?;
-        canvas.set_draw_color(Color::RGB(86, 96, 114));
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(right_panel)?;
         crate::ui::draw_text_fitted(
             canvas,
             "LINK",
             Rect::new(right_panel.x + 6, right_panel.y + 3, 28, 8),
             1,
-            Color::RGB(164, 178, 196),
+            theme.app_chrome.detail_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -359,7 +363,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(126, 138, 156),
+            theme.app_chrome.detail_text,
         )?;
 
         cursor_x = right_panel.x + 6;
@@ -385,7 +389,7 @@ impl App {
                     chip_height.saturating_sub(2),
                 ),
                 1,
-                Color::RGB(194, 204, 220),
+                theme.app_chrome.detail_text,
             )?;
         }
 
@@ -412,7 +416,7 @@ impl App {
                     chip_height.saturating_sub(2),
                 ),
                 1,
-                Color::RGB(194, 204, 220),
+                theme.app_chrome.detail_text,
             )?;
         }
 

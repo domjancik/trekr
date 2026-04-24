@@ -14,22 +14,43 @@ impl App {
         detail: bool,
         track: &Track,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(if track.state.muted {
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let track_bg = if high_contrast {
+            if track.state.muted {
+                Color::RGB(228, 228, 228)
+            } else {
+                Color::RGB(250, 250, 250)
+            }
+        } else if track.state.muted {
             Color::RGB(16, 18, 24)
         } else {
             Color::RGB(20, 27, 40)
-        });
+        };
+        canvas.set_draw_color(track_bg);
         canvas.fill_rect(bounds)?;
         canvas.set_draw_color(if track.state.soloed {
-            Color::RGB(124, 214, 132)
+            theme.transport.play_active
         } else if is_active {
-            Color::RGB(240, 222, 116)
+            if high_contrast {
+                theme.app_chrome.surface_border
+            } else {
+                Color::RGB(240, 222, 116)
+            }
         } else {
-            Color::RGB(88, 96, 120)
+            if high_contrast {
+                Color::RGB(96, 96, 96)
+            } else {
+                Color::RGB(88, 96, 120)
+            }
         });
         canvas.draw_rect(bounds)?;
         if track.state.passthrough {
-            canvas.set_draw_color(Color::RGB(74, 210, 214));
+            canvas.set_draw_color(if high_contrast {
+                theme.app_chrome.tab_accent_midi_io
+            } else {
+                Color::RGB(74, 210, 214)
+            });
             canvas.fill_rect(Rect::new(
                 bounds.x + 1,
                 bounds.y + 1,
@@ -53,15 +74,27 @@ impl App {
                 track.loop_region,
             );
             canvas.set_draw_color(if is_active {
-                Color::RGB(88, 72, 24)
+                if high_contrast {
+                    Color::RGB(232, 232, 232)
+                } else {
+                    Color::RGB(88, 72, 24)
+                }
             } else {
-                Color::RGB(54, 48, 28)
+                if high_contrast {
+                    Color::RGB(240, 240, 240)
+                } else {
+                    Color::RGB(54, 48, 28)
+                }
             });
             canvas.fill_rect(loop_highlight)?;
         }
 
         for guide in crate::ui::timeline_guides(content_rect, self.timeline_flow) {
-            canvas.set_draw_color(Color::RGB(52, 62, 84));
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(196, 196, 196)
+            } else {
+                Color::RGB(52, 62, 84)
+            });
             canvas.fill_rect(guide)?;
         }
         let top_row_y = label_rect.y + 3;
@@ -82,22 +115,27 @@ impl App {
                 let filled = track.stored_loop_slot(*slot_index).is_some();
                 let active = active_slot == Some(*slot_index);
                 let queued = queued_slot == Some(*slot_index);
-                canvas.set_draw_color(if active {
-                    Color::RGB(238, 186, 112)
+                let slot_fill = if active {
+                    theme.transport.song_loop
                 } else if queued {
-                    Color::RGB(104, 146, 172)
+                    theme.app_chrome.tab_accent_midi_io
                 } else if filled {
-                    Color::RGB(132, 118, 98)
+                    stored_loop_slot_color(*slot_index, theme)
                 } else {
-                    Color::RGB(72, 70, 68)
-                });
+                    if high_contrast {
+                        Color::RGB(255, 255, 255)
+                    } else {
+                        Color::RGB(72, 70, 68)
+                    }
+                };
+                canvas.set_draw_color(slot_fill);
                 canvas.fill_rect(*slot_rect)?;
-                canvas.set_draw_color(if active {
-                    Color::RGB(252, 228, 164)
+                canvas.set_draw_color(if active || queued || filled {
+                    theme.app_chrome.surface_border
                 } else if queued {
-                    Color::RGB(176, 222, 246)
-                } else if filled {
-                    Color::RGB(184, 168, 138)
+                    theme.app_chrome.surface_border
+                } else if high_contrast {
+                    Color::RGB(128, 128, 128)
                 } else {
                     Color::RGB(122, 120, 116)
                 });
@@ -112,12 +150,10 @@ impl App {
                         slot_rect.height().saturating_sub(2),
                     ),
                     1,
-                    if active {
-                        Color::RGB(26, 20, 16)
-                    } else if queued {
-                        Color::RGB(16, 26, 34)
-                    } else if filled {
-                        Color::RGB(38, 34, 28)
+                    if active || queued || filled {
+                        contrasting_text_color(slot_fill, theme)
+                    } else if high_contrast {
+                        Color::RGB(0, 0, 0)
                     } else {
                         Color::RGB(180, 178, 172)
                     },
@@ -136,7 +172,11 @@ impl App {
                             7,
                         ),
                         1,
-                        Color::RGB(210, 194, 160),
+                        if high_contrast {
+                            Color::RGB(0, 0, 0)
+                        } else {
+                            Color::RGB(210, 194, 160)
+                        },
                     )?;
                 }
             }
@@ -146,16 +186,33 @@ impl App {
                 .unwrap_or(label_rect.x + 4)
         } else {
             let passthrough_button = self.track_passthrough_button_rect(label_rect);
-            canvas.set_draw_color(if track.state.passthrough {
-                Color::RGB(74, 210, 214)
+            let passthrough_fill = if track.state.passthrough {
+                if high_contrast {
+                    theme.app_chrome.tab_accent_midi_io
+                } else {
+                    Color::RGB(74, 210, 214)
+                }
             } else {
-                Color::RGB(44, 70, 94)
-            });
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(44, 70, 94)
+                }
+            };
+            canvas.set_draw_color(passthrough_fill);
             canvas.fill_rect(passthrough_button)?;
             canvas.set_draw_color(if track.state.passthrough {
-                Color::RGB(210, 246, 248)
+                if high_contrast {
+                    theme.app_chrome.surface_border
+                } else {
+                    Color::RGB(210, 246, 248)
+                }
             } else {
-                Color::RGB(144, 170, 194)
+                if high_contrast {
+                    theme.app_chrome.surface_border
+                } else {
+                    Color::RGB(144, 170, 194)
+                }
             });
             canvas.draw_rect(passthrough_button)?;
             crate::ui::draw_text_fitted(
@@ -168,11 +225,7 @@ impl App {
                     passthrough_button.height().saturating_sub(2),
                 ),
                 1,
-                if track.state.passthrough {
-                    Color::RGB(10, 28, 34)
-                } else {
-                    Color::RGB(230, 236, 240)
-                },
+                contrasting_text_color(passthrough_fill, theme),
             )?;
             passthrough_button.x + passthrough_button.width() as i32 + 4
         };
@@ -186,7 +239,11 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(244, 244, 236),
+            if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(244, 244, 236)
+            },
         )?;
 
         let role_badge = if detail {
@@ -199,20 +256,33 @@ impl App {
                 8,
             )
         };
-        canvas.set_draw_color(if detail {
+        let role_badge_fill = if detail {
             if track.state.loop_enabled && self.project.transport.loop_enabled {
-                Color::RGB(252, 192, 104)
+                theme.transport.song_loop
             } else {
-                Color::RGB(88, 82, 76)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(88, 82, 76)
+                }
             }
         } else {
-            Color::RGB(38, 58, 90)
-        });
+            if high_contrast {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(38, 58, 90)
+            }
+        };
+        canvas.set_draw_color(role_badge_fill);
         canvas.fill_rect(role_badge)?;
-        canvas.set_draw_color(if detail {
-            Color::RGB(238, 214, 172)
+        canvas.set_draw_color(if high_contrast {
+            theme.app_chrome.surface_border
         } else {
-            Color::RGB(188, 204, 226)
+            if detail {
+                Color::RGB(238, 214, 172)
+            } else {
+                Color::RGB(188, 204, 226)
+            }
         });
         canvas.draw_rect(role_badge)?;
         crate::ui::draw_text_fitted(
@@ -225,11 +295,7 @@ impl App {
                 role_badge.height().saturating_sub(2),
             ),
             1,
-            if detail {
-                Color::RGB(28, 22, 18)
-            } else {
-                Color::RGB(244, 244, 236)
-            },
+            contrasting_text_color(role_badge_fill, theme),
         )?;
         if !detail {
             self.draw_recording_view_controls(
@@ -312,22 +378,42 @@ impl App {
         )?;
         if !detail && track.recording_view == RecordingView::Stacked && is_active {
             canvas.set_draw_color(if self.project.transport.playing {
-                Color::RGB(248, 240, 132)
+                if high_contrast {
+                    theme.app_chrome.surface_border
+                } else {
+                    Color::RGB(248, 240, 132)
+                }
             } else {
-                Color::RGB(140, 150, 162)
+                if high_contrast {
+                    Color::RGB(96, 96, 96)
+                } else {
+                    Color::RGB(140, 150, 162)
+                }
             });
             canvas.fill_rect(playhead)?;
             self.draw_recording_clip_scrollbar(canvas, content_rect, track)?;
         } else {
             canvas.set_draw_color(if self.project.transport.playing {
-                Color::RGB(248, 240, 132)
+                if high_contrast {
+                    theme.app_chrome.surface_border
+                } else {
+                    Color::RGB(248, 240, 132)
+                }
             } else {
-                Color::RGB(140, 150, 162)
+                if high_contrast {
+                    Color::RGB(96, 96, 96)
+                } else {
+                    Color::RGB(140, 150, 162)
+                }
             });
             canvas.fill_rect(playhead)?;
         }
         for tick in crate::ui::timeline_ruler_ticks(content_rect, self.timeline_flow) {
-            canvas.set_draw_color(Color::RGB(166, 178, 198));
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(96, 96, 96)
+            } else {
+                Color::RGB(166, 178, 198)
+            });
             canvas.fill_rect(tick)?;
         }
 
@@ -377,9 +463,13 @@ impl App {
                 range: track.loop_region,
                 label: "L".to_string(),
                 color: if track.state.loop_enabled {
-                    Color::RGB(242, 190, 112)
+                    self.theme().transport.song_loop
                 } else {
-                    Color::RGB(128, 122, 112)
+                    if self.theme().preset == ThemePreset::HighContrastLight {
+                        Color::RGB(96, 96, 96)
+                    } else {
+                        Color::RGB(128, 122, 112)
+                    }
                 },
                 emphasized: true,
                 queued: false,
@@ -421,11 +511,30 @@ impl App {
         }
 
         let side_thickness = 4_i32;
-        let primary_tick = Color::RGB(252, 238, 194);
-        let queued_tick = Color::RGB(184, 226, 248);
-        let secondary_tick = Color::RGB(218, 224, 232);
+        let theme = self.theme();
+        let primary_tick = if theme.preset == ThemePreset::HighContrastLight {
+            theme.app_chrome.surface_border
+        } else {
+            Color::RGB(252, 238, 194)
+        };
+        let queued_tick = if theme.preset == ThemePreset::HighContrastLight {
+            theme.app_chrome.tab_accent_midi_io
+        } else {
+            Color::RGB(184, 226, 248)
+        };
+        let secondary_tick = if theme.preset == ThemePreset::HighContrastLight {
+            Color::RGB(96, 96, 96)
+        } else {
+            Color::RGB(218, 224, 232)
+        };
         let side_major = side_thickness.max(1) as u32;
-        let content_bg = if track.state.muted {
+        let content_bg = if theme.preset == ThemePreset::HighContrastLight {
+            if track.state.muted {
+                Color::RGB(228, 228, 228)
+            } else {
+                Color::RGB(250, 250, 250)
+            }
+        } else if track.state.muted {
             Color::RGB(16, 18, 24)
         } else {
             Color::RGB(20, 27, 40)

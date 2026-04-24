@@ -238,14 +238,19 @@ impl App {
         self.ui_scaling_mode = mode;
     }
 
+    pub fn set_theme_preset(&mut self, preset: ThemePreset) {
+        self.theme_preset = preset;
+    }
+
     pub fn bootstrap_summary(&self) -> String {
         format!(
-            "trekr bootstrap: project='{}', tracks={}, active_track={}, page={}, layout={:?}, sample_rate={}, song_ticks={}, playing={}, loop_enabled={}, midi_inputs={}, midi_outputs={}",
+            "trekr bootstrap: project='{}', tracks={}, active_track={}, page={}, layout={:?}, theme={}, sample_rate={}, song_ticks={}, playing={}, loop_enabled={}, midi_inputs={}, midi_outputs={}",
             self.project.name,
             self.project.tracks.len(),
             self.project.active_track_index + 1,
             self.page_state.current_page.label(),
             self.layout_mode,
+            self.theme_preset.label(),
             self.engine_config.sample_rate_hz,
             self.project.full_song_range().length_ticks,
             self.project.transport.playing,

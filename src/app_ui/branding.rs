@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::theme::{Theme, ThemePreset};
 use sdl3::pixels::Color;
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
@@ -94,20 +95,21 @@ fn startup_logo_reveal_step(index: usize) -> u64 {
 pub fn draw_frame_brand_fallback<T: RenderTarget>(
     canvas: &mut Canvas<T>,
     surface: Rect,
+    active_theme: &Theme,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::ui::draw_text_fitted(
         canvas,
         BRAND_NAME,
         Rect::new(surface.x + 8, surface.y + 8, 42, 8),
         1,
-        Color::RGB(200, 210, 224),
+        active_theme.app_chrome.action_text,
     )?;
     crate::ui::draw_text_fitted(
         canvas,
         &brand_fallback_badge(),
         Rect::new(surface.x + 56, surface.y + 8, 132, 8),
         1,
-        Color::RGB(120, 132, 150),
+        active_theme.app_chrome.detail_text,
     )?;
     Ok(())
 }
@@ -116,12 +118,12 @@ pub fn draw_branding<T: RenderTarget>(
     canvas: &mut Canvas<T>,
     bounds: Rect,
     elapsed: Duration,
+    active_theme: &Theme,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if bounds.width() == 0 {
         return Ok(());
     }
-
-    draw_brand_name(canvas, bounds, elapsed)?;
+    draw_brand_name(canvas, bounds, elapsed, active_theme)?;
     if let Some(date) = brand_build_date() {
         crate::ui::draw_text_fitted(
             canvas,
@@ -133,7 +135,7 @@ pub fn draw_branding<T: RenderTarget>(
                 8,
             ),
             1,
-            Color::RGB(120, 132, 150),
+            active_theme.app_chrome.detail_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -145,7 +147,7 @@ pub fn draw_branding<T: RenderTarget>(
                 8,
             ),
             1,
-            Color::RGB(136, 146, 164),
+            active_theme.app_chrome.detail_text,
         )?;
     } else {
         crate::ui::draw_text_fitted(
@@ -158,7 +160,7 @@ pub fn draw_branding<T: RenderTarget>(
                 8,
             ),
             1,
-            Color::RGB(120, 132, 150),
+            active_theme.app_chrome.detail_text,
         )?;
     }
     crate::ui::draw_text_fitted(
@@ -166,7 +168,7 @@ pub fn draw_branding<T: RenderTarget>(
         BRAND_SITE,
         Rect::new(bounds.x + 2, bounds.y + 18, 64, 8),
         1,
-        Color::RGB(146, 156, 172),
+        active_theme.app_chrome.detail_text,
     )?;
 
     let divider = Rect::new(
@@ -175,7 +177,7 @@ pub fn draw_branding<T: RenderTarget>(
         1,
         bounds.height().saturating_sub(4),
     );
-    canvas.set_draw_color(Color::RGB(72, 82, 100));
+    canvas.set_draw_color(active_theme.app_chrome.surface_border);
     canvas.fill_rect(divider)?;
     Ok(())
 }
@@ -184,21 +186,32 @@ fn draw_brand_name<T: RenderTarget>(
     canvas: &mut Canvas<T>,
     bounds: Rect,
     elapsed: Duration,
+    active_theme: &Theme,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let step = crate::ui::text_width("T", 2) as i32;
     let y = bounds.y + 2;
     for (index, letter) in ['T', 'R', 'E', 'K', 'R'].iter().enumerate() {
         let intensity = startup_logo_intensity(elapsed, index);
-        let color = if intensity > 0.85 {
-            Color::RGB(255, 255, 246)
-        } else if intensity > 0.6 {
-            Color::RGB(236, 226, 198)
-        } else if intensity > 0.35 {
-            Color::RGB(210, 198, 166)
-        } else if elapsed < startup_logo_animation_duration() {
-            Color::RGB(184, 174, 146)
+        let color = if active_theme.preset == ThemePreset::HighContrastLight {
+            if intensity > 0.35 {
+                active_theme.app_chrome.tab_text_inactive
+            } else if elapsed < startup_logo_animation_duration() {
+                active_theme.app_chrome.detail_text
+            } else {
+                active_theme.app_chrome.tab_text_inactive
+            }
         } else {
-            Color::RGB(244, 238, 210)
+            if intensity > 0.85 {
+                Color::RGB(255, 255, 246)
+            } else if intensity > 0.6 {
+                Color::RGB(236, 226, 198)
+            } else if intensity > 0.35 {
+                Color::RGB(210, 198, 166)
+            } else if elapsed < startup_logo_animation_duration() {
+                Color::RGB(184, 174, 146)
+            } else {
+                Color::RGB(244, 238, 210)
+            }
         };
         crate::ui::draw_text(
             canvas,

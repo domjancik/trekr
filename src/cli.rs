@@ -1,5 +1,6 @@
 use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 use crate::state;
+use crate::theme::ThemePreset;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
@@ -17,6 +18,7 @@ pub struct LaunchOptions {
     pub state_file: PathBuf,
     pub ui_scale: Option<f32>,
     pub ui_scaling_mode: UiScalingMode,
+    pub theme_preset: Option<ThemePreset>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +154,7 @@ impl Default for LaunchOptions {
             state_file: PathBuf::from(DEFAULT_STATE_FILE),
             ui_scale: None,
             ui_scaling_mode: UiScalingMode::Auto,
+            theme_preset: None,
         }
     }
 }
@@ -187,6 +190,9 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
     };
     app.set_ui_scale_override(options.ui_scale);
     app.set_ui_scaling_mode(options.ui_scaling_mode);
+    if let Some(theme_preset) = options.theme_preset {
+        app.set_theme_preset(theme_preset);
+    }
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
         LaunchMode::Interactive(run_options) => {
@@ -236,6 +242,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
         writer,
         "  --ui-scaling <auto|nearest|linear>   default: auto"
     )?;
+    writeln!(writer, "  --theme <default-dark|high-contrast-light>")?;
     writeln!(
         writer,
         "  --video-mode <windowed|fullscreen|kmsdrm-console>   run only"
@@ -367,6 +374,10 @@ pub fn launch_command_args(options: &LaunchOptions) -> Vec<String> {
         args.push("--ui-scaling".to_owned());
         args.push(ui_scaling_mode_label(options.ui_scaling_mode).to_owned());
     }
+    if let Some(theme_preset) = options.theme_preset {
+        args.push("--theme".to_owned());
+        args.push(theme_preset.label().to_owned());
+    }
 
     args
 }
@@ -422,6 +433,12 @@ where
                     .next()
                     .ok_or_else(|| "--ui-scaling requires auto|nearest|linear".to_owned())?;
                 options.ui_scaling_mode = parse_ui_scaling_mode(&value)?;
+            }
+            "--theme" => {
+                let value = args.next().ok_or_else(|| {
+                    "--theme requires default-dark|high-contrast-light".to_owned()
+                })?;
+                options.theme_preset = Some(parse_theme_preset(&value)?);
             }
             "--video-mode" => {
                 let value = args.next().ok_or_else(|| {
@@ -490,6 +507,7 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         state_file,
         ui_scale,
         ui_scaling_mode,
+        theme_preset: None,
     })
 }
 
@@ -685,10 +703,15 @@ fn parse_state_mode(value: &str) -> Result<StateMode, String> {
     }
 }
 
+fn parse_theme_preset(value: &str) -> Result<ThemePreset, String> {
+    ThemePreset::from_name(value).ok_or_else(|| format!("unknown theme: {value}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AppCommand, LaunchMode, StateMode, parse_app_command_from};
     use crate::app::{UiScalingMode, VideoMode};
+    use crate::theme::ThemePreset;
     use std::path::PathBuf;
 
     #[test]
@@ -800,5 +823,19 @@ mod tests {
             panic!("expected launch command");
         };
         assert_eq!(options.ui_scaling_mode, UiScalingMode::Auto);
+    }
+
+    #[test]
+    fn run_subcommand_accepts_theme() {
+        let command = parse_app_command_from(vec![
+            "run".to_owned(),
+            "--theme".to_owned(),
+            "high-contrast-light".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        assert_eq!(options.theme_preset, Some(ThemePreset::HighContrastLight));
     }
 }
