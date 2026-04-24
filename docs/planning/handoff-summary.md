@@ -80,71 +80,6 @@
 - robust hot-plug refresh/reconnect UX
 - final low-jitter engine timing path outside UI-frame polling
 
-## Refactor Outcome And Merge Guidance
-
-The app-layer refactor is now landed on `vk/67d9-refactor-modular` and any feature branch based on the older flat app layout must adjust to the new ownership model before merging.
-
-### Current app structure
-
-- app root and integration shell:
-  - `src/app/mod.rs`
-- app families:
-  - `src/app/mapping/`
-  - `src/app/timeline/`
-  - `src/app/shell/`
-  - `src/app/support/`
-- app-top-level modules still intentionally visible:
-  - `src/app/input.rs`
-  - `src/app/routing_ui.rs`
-  - `src/app/midi_io_page.rs`
-  - `src/app/note_runtime.rs`
-  - `src/app/stored_loops.rs`
-  - `src/app/direct_mapping_ui.rs`
-  - `src/app/discoverability_ui.rs`
-  - `src/app/capture.rs`
-  - `src/app/types.rs`
-
-### Principles future agents must follow
-
-- do not reintroduce page-family logic into `app/mod.rs`; keep it as the app integration shell
-- keep canonical action routing intact:
-  - keyboard, MIDI mappings, pointer, and touch still converge on `AppAction`
-- move behavior to the owning family, not to generic helper buckets
-- keep page-specific tests near the owning module unless the test is truly cross-app integration coverage
-- do not add presenter-driven or app/core split work to app-layer cleanup; that belongs to Phase 3
-- prefer light structural polish over new abstraction layers
-- preserve `vendor/ableton-link` and do not touch submodule references during refactors
-
-### How to adjust older in-flight branches
-
-If your branch was developed before this refactor merged:
-
-1. rebase onto the latest `main` first
-2. map old flat module ownership to the new structure before resolving conflicts:
-   - old `src/app.rs` page/mapping/timeline/shell code now usually belongs in one of the app family folders
-   - old helper-only files may now live under `src/app/support/`
-3. when conflict resolution is ambiguous, choose the module that owns the behavior rather than the module that merely calls it
-4. do not copy old helper implementations back into `app/mod.rs`; re-home them in the correct family and delete the duplicate
-5. after every extraction or conflict resolution, grep the moved function names to confirm there is one owner only
-6. preserve test coverage by relocating tests instead of dropping them
-7. rerun screenshot capture if any UI surface changed and keep tracked screenshots unchanged unless the visual change is intentional
-
-### Practical ownership heuristics
-
-- mapping page / lookup / MIDI learn / direct mapping -> `src/app/mapping/` or direct/discoverability modules
-- timeline layout / recording / FX / track rendering -> `src/app/timeline/`
-- shell chrome / tabs / scaling -> `src/app/shell/`
-- small app-only label/rect/index helpers -> `src/app/support/`
-- runtime note playback and live-FX timing -> `src/app/note_runtime.rs`
-- routing page behavior -> `src/app/routing_ui.rs`
-- MIDI I/O page behavior -> `src/app/midi_io_page.rs`
-
-### Validation baseline after the refactor
-
-- `cargo test` passes with `274` tests
-- tracked screenshots remain unchanged through the refactor
-- CI formatting issues were resolved with `cargo fmt --all`
-
 ## Important Files
 
 - Product/docs:
@@ -154,7 +89,7 @@ If your branch was developed before this refactor merged:
   - `docs/planning/implementation-plan.md`
   - `docs/dev/current-mappings.md`
 - Core code:
-  - `src/app/mod.rs`
+  - `src/app.rs`
   - `src/actions.rs`
   - `src/mapping.rs`
   - `src/midi_fx.rs`
@@ -230,7 +165,7 @@ If your branch was developed before this refactor merged:
 
 Recent completed checks before this handoff:
 
-- `cargo test` passed with `274` tests
+- `cargo test` passed with `102` tests
 - `cargo run -- --capture-ui --capture-dir artifacts/screenshots --state-mode demo` passed
 - latest renderer-owned screenshots exist in `artifacts/screenshots/`
 
@@ -260,7 +195,7 @@ Recent completed checks before this handoff:
 
 Current local branch state when this summary was refreshed:
 
-- branch: `vk/67d9-refactor-modular`
+- branch: `vk/9b67-feature-spec-mid`
 - status: clean worktree
 - divergence vs remote branch at refresh time:
   - `ahead 74`

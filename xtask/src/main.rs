@@ -43,20 +43,6 @@ fn run() -> Result<ExitCode, String> {
             ensure_submodule()?;
             spawn_cargo(["check"], args)
         }
-        "coverage" => {
-            ensure_submodule()?;
-            spawn_cargo(
-                [
-                    "llvm-cov",
-                    "--workspace",
-                    "--all-targets",
-                    "--html",
-                    "--output-dir",
-                    "coverage/html",
-                ],
-                args,
-            )
-        }
         "fmt" => spawn_cargo(["fmt"], args),
         "capture-ui" => {
             ensure_submodule()?;
@@ -157,7 +143,7 @@ fn run_command(mut command: Command) -> Result<ExitCode, String> {
 }
 
 fn print_usage() {
-    let lines: [OsString; 11] = [
+    let lines: [OsString; 10] = [
         "usage: cargo xtask <command> [extra args]".into(),
         "".into(),
         "commands:".into(),
@@ -166,7 +152,6 @@ fn print_usage() {
         "  run-demo    initialize submodule if needed, then cargo run -- --state-mode demo".into(),
         "  run-empty   initialize submodule if needed, then cargo run -- --state-mode empty".into(),
         "  check       initialize submodule if needed, then cargo check".into(),
-        "  coverage    initialize submodule if needed, then cargo llvm-cov --workspace --all-targets --html --output-dir coverage/html".into(),
         "  capture-ui  initialize submodule if needed, then run screenshot capture".into(),
         "  ui-review   initialize submodule if needed, then run screenshot capture + review".into(),
     ];
