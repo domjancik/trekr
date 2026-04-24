@@ -95,6 +95,8 @@ Launch state:
 - `cargo run -- --video-mode fullscreen` requests fullscreen rendering on the active SDL video backend
 - `cargo run -- --video-mode kmsdrm-console` requests SDL's `kmsdrm` backend for direct fullscreen rendering from a Linux console session without X11/Wayland
 - `cargo run -- capture-ui --state-mode demo --capture-dir artifacts/screenshots` renders deterministic screenshots without opening the interactive app
+- `cargo run -- run --theme high-contrast-dark` launches a darker high-contrast theme tuned for strong black-background separation
+- `cargo run -- run --theme high-contrast-light` launches the light high-contrast theme
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
 - `cargo run --bin trekr-tui` opens a terminal menu for selecting launch mode, state, video mode, scale, and capture path
 - committed fixture state lives in `state-fixtures/ui-looped.json`
