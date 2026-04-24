@@ -46,6 +46,12 @@ impl App {
         } else {
             theme.app_chrome.tab_inactive_fill
         });
+        let focus_fill = if self.focused_track_view {
+            theme.app_chrome.tab_active_fill
+        } else {
+            theme.app_chrome.tab_inactive_fill
+        };
+        canvas.set_draw_color(focus_fill);
         canvas.fill_rect(focus_button)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(focus_button)?;
@@ -64,9 +70,10 @@ impl App {
                 8,
             ),
             1,
-            theme.app_chrome.action_text,
+            contrasting_text_color(focus_fill, theme),
         )?;
-        canvas.set_draw_color(theme.transport.song_loop);
+        let reset_fill = theme.transport.song_loop;
+        canvas.set_draw_color(reset_fill);
         canvas.fill_rect(reset_button)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(reset_button)?;
@@ -80,7 +87,7 @@ impl App {
                 8,
             ),
             1,
-            theme.app_chrome.action_text,
+            contrasting_text_color(reset_fill, theme),
         )?;
         self.draw_transport_strip(canvas, transport_bounds)?;
 

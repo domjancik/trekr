@@ -226,14 +226,17 @@ impl App {
         chip: Rect,
         spec: &TransportChipSpec,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
         canvas.set_draw_color(spec.fill);
         canvas.fill_rect(chip)?;
+        canvas.set_draw_color(theme.app_chrome.surface_border);
+        canvas.draw_rect(chip)?;
         crate::ui::draw_text_fitted(
             canvas,
             &spec.label,
             Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
             1,
-            self.theme().app_chrome.action_text,
+            contrasting_text_color(spec.fill, theme),
         )?;
         Ok(())
     }
@@ -483,7 +486,7 @@ impl App {
                 &summary.title,
                 label_rect,
                 1,
-                theme.app_chrome.action_text,
+                theme.app_chrome.footer_text_inactive,
             )?;
             let badges_left = label_rect.x + label_rect.width() as i32 + 8;
             let badges_width = (right_edge - badges_left).max(0) as u32;
