@@ -590,6 +590,7 @@ pub fn track_indicators(status_rect: Rect) -> [TrackIndicator; 4] {
     let height = status_rect
         .height()
         .saturating_sub((inset_y * 2) as u32)
+        .saturating_add(1)
         .max(6);
     let y = status_rect.y + inset_y;
     let segment_rect = |index: i32| {
