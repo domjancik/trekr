@@ -1,5 +1,4 @@
 use super::*;
-use crate::theme::{app_chrome, mappings as mappings_theme};
 
 impl App {
     pub(crate) fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
@@ -49,47 +48,48 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(mappings_theme::PAGE_BG);
+        let theme = self.theme();
+        canvas.set_draw_color(theme.mappings.page_bg);
         canvas.fill_rect(content_bounds)?;
-        canvas.set_draw_color(app_chrome::SURFACE_BORDER);
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(content_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Mappings",
             Rect::new(content_bounds.x + 8, content_bounds.y + 8, 180, 14),
             2,
-            mappings_theme::PAGE_TITLE,
+            theme.mappings.page_title,
         )?;
         let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
         canvas.set_draw_color(if self.page_state.mapping_mode == MappingPageMode::Write {
-            mappings_theme::WRITE_MODE_ACTIVE
+            theme.mappings.write_mode_active
         } else {
-            mappings_theme::WRITE_MODE_INACTIVE
+            theme.mappings.write_mode_inactive
         });
         canvas.fill_rect(overview_badge)?;
-        canvas.set_draw_color(mappings_theme::PAGE_TITLE);
+        canvas.set_draw_color(theme.mappings.page_title);
         canvas.draw_rect(overview_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
             &format!("Tap Mode: {}", self.page_state.mapping_mode.label()),
             Rect::new(content_bounds.x + 208, content_bounds.y + 12, 170, 8),
             1,
-            mappings_theme::OVERVIEW_TEXT,
+            theme.mappings.overview_text,
         )?;
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
         canvas.set_draw_color(if self.page_state.mapping_midi_learn_armed {
-            mappings_theme::LEARN_ARMED
+            theme.mappings.learn_armed
         } else {
-            mappings_theme::LEARN_IDLE
+            theme.mappings.learn_idle
         });
         canvas.fill_rect(learn_badge)?;
         canvas.set_draw_color(
             if self.page_state.selected_mapping_field == MappingField::SourceValue
                 && self.page_state.mapping_mode == MappingPageMode::Write
             {
-                mappings_theme::LEARN_SELECTED_BORDER
+                theme.mappings.learn_selected_border
             } else {
-                mappings_theme::LEARN_IDLE_BORDER
+                theme.mappings.learn_idle_border
             },
         );
         canvas.draw_rect(learn_badge)?;
@@ -102,22 +102,22 @@ impl App {
             },
             Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
-            mappings_theme::LEARN_TEXT,
+            theme.mappings.learn_text,
         )?;
         let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
         canvas.set_draw_color(
             if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
-                mappings_theme::DIRECT_BADGE_IDLE_FILL
+                theme.mappings.direct_badge_idle_fill
             } else {
-                mappings_theme::DIRECT_ARMED_FILL
+                theme.mappings.direct_armed_fill
             },
         );
         canvas.fill_rect(direct_badge)?;
         canvas.set_draw_color(
             if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
-                mappings_theme::DIRECT_IDLE_BORDER
+                theme.mappings.direct_idle_border
             } else {
-                mappings_theme::DIRECT_ARMED_BORDER
+                theme.mappings.direct_armed_border
             },
         );
         canvas.draw_rect(direct_badge)?;
@@ -130,7 +130,7 @@ impl App {
             },
             Rect::new(direct_badge.x + 8, direct_badge.y + 4, 138, 8),
             1,
-            mappings_theme::DIRECT_TEXT,
+            theme.mappings.direct_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -149,7 +149,7 @@ impl App {
                 8,
             ),
             1,
-            mappings_theme::META_TEXT,
+            theme.mappings.meta_text,
         )?;
 
         let footer_bounds = Rect::new(
@@ -220,33 +220,33 @@ impl App {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
             canvas.set_draw_color(if selected {
-                mappings_theme::ROW_SELECTED_FILL
+                theme.mappings.row_selected_fill
             } else {
-                mappings_theme::ROW_IDLE_FILL
+                theme.mappings.row_idle_fill
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if selected {
-                mappings_theme::PAGE_TITLE
+                theme.mappings.page_title
             } else {
-                mappings_theme::ROW_IDLE_BORDER
+                theme.mappings.row_idle_border
             });
             canvas.draw_rect(row)?;
 
             let cells = self.mapping_row_cells(row);
             let source_rect = Rect::new(cells[0].x, cells[0].y, 14, cells[0].height());
             let source_color = match entry.source_kind {
-                MappingSourceKind::Key => mappings_theme::SOURCE_KIND_KEY,
-                MappingSourceKind::Midi => mappings_theme::SOURCE_KIND_MIDI,
-                MappingSourceKind::Osc => mappings_theme::SOURCE_KIND_OSC,
+                MappingSourceKind::Key => theme.mappings.source_kind_key,
+                MappingSourceKind::Midi => theme.mappings.source_kind_midi,
+                MappingSourceKind::Osc => theme.mappings.source_kind_osc,
             };
             canvas.set_draw_color(source_color);
             canvas.fill_rect(source_rect)?;
 
             let enabled_rect = Rect::new(cells[5].x + 6, cells[5].y, 14, cells[5].height());
             canvas.set_draw_color(if entry.enabled {
-                mappings_theme::ENABLED_FILL_ON
+                theme.mappings.enabled_fill_on
             } else {
-                mappings_theme::ENABLED_FILL_OFF
+                theme.mappings.enabled_fill_off
             });
             canvas.fill_rect(enabled_rect)?;
 
@@ -256,20 +256,20 @@ impl App {
             let target_rect = cells[3];
             let scope_rect = cells[4];
             canvas.set_draw_color(if selected {
-                mappings_theme::FIELD_FILL_SELECTED
+                theme.mappings.field_fill_selected
             } else {
-                mappings_theme::FIELD_FILL_IDLE
+                theme.mappings.field_fill_idle
             });
             canvas.fill_rect(kind_rect)?;
             canvas.fill_rect(trigger_rect)?;
             canvas.fill_rect(device_rect)?;
             canvas.set_draw_color(if entry.enabled {
-                mappings_theme::TARGET_FILL_ENABLED
+                theme.mappings.target_fill_enabled
             } else {
-                mappings_theme::TARGET_FILL_DISABLED
+                theme.mappings.target_fill_disabled
             });
             canvas.fill_rect(target_rect)?;
-            canvas.set_draw_color(mappings_theme::SCOPE_FILL);
+            canvas.set_draw_color(theme.mappings.scope_fill);
             canvas.fill_rect(scope_rect)?;
             canvas.fill_rect(cells[5])?;
             if selected && self.page_state.mapping_mode == MappingPageMode::Write {
@@ -278,9 +278,9 @@ impl App {
                     if self.page_state.mapping_midi_learn_armed
                         && self.page_state.selected_mapping_field == MappingField::SourceValue
                     {
-                        mappings_theme::WRITE_FIELD_LEARN
+                        theme.mappings.write_field_learn
                     } else {
-                        mappings_theme::WRITE_FIELD_ACTIVE
+                        theme.mappings.write_field_active
                     },
                 );
                 canvas.fill_rect(field_rect)?;
@@ -295,7 +295,7 @@ impl App {
                     8,
                 ),
                 1,
-                app_chrome::ACTION_TEXT,
+                theme.app_chrome.action_text,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -307,7 +307,7 @@ impl App {
                     8,
                 ),
                 1,
-                app_chrome::ACTION_TEXT,
+                theme.app_chrome.action_text,
             )?;
             let mapping_device_label = if entry.source_kind == MappingSourceKind::Midi {
                 if entry.source_device_label != default_mapping_source_device()
@@ -331,9 +331,9 @@ impl App {
                 ),
                 1,
                 if entry.source_kind == MappingSourceKind::Midi {
-                    mappings_theme::DEVICE_TEXT_ACTIVE
+                    theme.mappings.device_text_active
                 } else {
-                    mappings_theme::DEVICE_TEXT_INACTIVE
+                    theme.mappings.device_text_inactive
                 },
             )?;
             crate::ui::draw_text_fitted(
@@ -364,7 +364,7 @@ impl App {
                     8,
                 ),
                 1,
-                mappings_theme::TARGET_TEXT,
+                theme.mappings.target_text,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -376,7 +376,7 @@ impl App {
                     8,
                 ),
                 1,
-                mappings_theme::SCOPE_TEXT,
+                theme.mappings.scope_text,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -388,7 +388,7 @@ impl App {
                     8,
                 ),
                 1,
-                mappings_theme::SCOPE_TEXT,
+                theme.mappings.scope_text,
             )?;
 
             if selected && self.page_state.mapping_mode == MappingPageMode::Write {
@@ -397,14 +397,14 @@ impl App {
                     if self.page_state.mapping_midi_learn_armed
                         && self.page_state.selected_mapping_field == MappingField::SourceValue
                     {
-                        mappings_theme::WRITE_FIELD_BORDER_LEARN
+                        theme.mappings.write_field_border_learn
                     } else {
-                        mappings_theme::WRITE_FIELD_BORDER
+                        theme.mappings.write_field_border
                     },
                 );
                 canvas.draw_rect(field_rect)?;
                 let tap_tag = Rect::new(row.x + row.width() as i32 - 68, row.y + 3, 34, 12);
-                canvas.set_draw_color(mappings_theme::TAP_BADGE_FILL);
+                canvas.set_draw_color(theme.mappings.tap_badge_fill);
                 canvas.fill_rect(tap_tag)?;
                 crate::ui::draw_text_fitted(
                     canvas,
@@ -416,23 +416,23 @@ impl App {
                         8,
                     ),
                     1,
-                    app_chrome::ACTION_TEXT,
+                    theme.app_chrome.action_text,
                 )?;
             }
         }
 
         self.draw_mapping_target_lookup(canvas, content_bounds)?;
 
-        canvas.set_draw_color(mappings_theme::FOOTER_BG);
+        canvas.set_draw_color(theme.mappings.footer_bg);
         canvas.fill_rect(footer_bounds)?;
         let footer_tokens = [
-            ("Tap row", mappings_theme::FOOTER_TOKEN_ROW),
-            ("Tap field", mappings_theme::FOOTER_TOKEN_FIELD),
-            ("Tap again act", mappings_theme::FOOTER_TOKEN_ACT),
-            ("W Write", mappings_theme::FOOTER_TOKEN_WRITE),
-            ("F8 Direct", mappings_theme::FOOTER_TOKEN_DIRECT),
-            ("N New", mappings_theme::FOOTER_TOKEN_NEW),
-            ("Del/Bsp Remove", mappings_theme::FOOTER_TOKEN_REMOVE),
+            ("Tap row", theme.mappings.footer_token_row),
+            ("Tap field", theme.mappings.footer_token_field),
+            ("Tap again act", theme.mappings.footer_token_act),
+            ("W Write", theme.mappings.footer_token_write),
+            ("F8 Direct", theme.mappings.footer_token_direct),
+            ("N New", theme.mappings.footer_token_new),
+            ("Del/Bsp Remove", theme.mappings.footer_token_remove),
         ];
         let mut footer_x = footer_bounds.x + 6;
         for (label, fill) in footer_tokens {
@@ -454,7 +454,7 @@ impl App {
                     8,
                 ),
                 1,
-                app_chrome::ACTION_TEXT,
+                theme.app_chrome.action_text,
             )?;
             footer_x += token.width() as i32 + 6;
         }
@@ -475,7 +475,7 @@ impl App {
                 8,
             ),
             1,
-            mappings_theme::META_TEXT,
+            theme.mappings.meta_text,
         )?;
 
         Ok(())
@@ -486,7 +486,8 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(app_chrome::OVERLAY_BACKDROP);
+        let theme = self.theme();
+        canvas.set_draw_color(theme.app_chrome.overlay_backdrop);
         canvas.fill_rect(bounds)?;
 
         let panel = Rect::new(
@@ -495,9 +496,9 @@ impl App {
             bounds.width() - 168,
             bounds.height() - 88,
         );
-        canvas.set_draw_color(app_chrome::OVERLAY_PANEL_FILL);
+        canvas.set_draw_color(theme.app_chrome.overlay_panel_fill);
         canvas.fill_rect(panel)?;
-        canvas.set_draw_color(mappings_theme::PAGE_TITLE);
+        canvas.set_draw_color(theme.mappings.page_title);
         canvas.draw_rect(panel)?;
         let title_bounds = Rect::new(panel.x + 12, panel.y + 12, 220, 14);
         crate::ui::draw_text_fitted(
@@ -505,42 +506,42 @@ impl App {
             "Mappings Overlay",
             title_bounds,
             2,
-            mappings_theme::PAGE_TITLE,
+            theme.mappings.page_title,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "F5 Close",
             Rect::new(panel.x + 12, panel.y + 32, 58, 8),
             1,
-            app_chrome::DETAIL_TEXT,
+            theme.app_chrome.detail_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "W Write",
             Rect::new(panel.x + 80, panel.y + 32, 52, 8),
             1,
-            app_chrome::DETAIL_TEXT,
+            theme.app_chrome.detail_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Trigger",
             Rect::new(panel.x + 12, panel.y + 46, 56, 8),
             1,
-            app_chrome::OVERLAY_HEADER_TEXT,
+            theme.app_chrome.overlay_header_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Action",
             Rect::new(panel.x + 146, panel.y + 46, 48, 8),
             1,
-            app_chrome::OVERLAY_HEADER_TEXT,
+            theme.app_chrome.overlay_header_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Scope",
             Rect::new(panel.x + panel.width() as i32 - 126, panel.y + 46, 44, 8),
             1,
-            app_chrome::OVERLAY_HEADER_TEXT,
+            theme.app_chrome.overlay_header_text,
         )?;
 
         let list_bounds = crate::ui::inset_rect(panel, 12, 66)?;
@@ -574,15 +575,15 @@ impl App {
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;
             canvas.set_draw_color(if selected {
-                app_chrome::OVERLAY_ROW_SELECTED_FILL
+                theme.app_chrome.overlay_row_selected_fill
             } else {
-                app_chrome::OVERLAY_ROW_IDLE_FILL
+                theme.app_chrome.overlay_row_idle_fill
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if selected {
-                mappings_theme::PAGE_TITLE
+                theme.mappings.page_title
             } else {
-                app_chrome::OVERLAY_ROW_IDLE_BORDER
+                theme.app_chrome.overlay_row_idle_border
             });
             canvas.draw_rect(row)?;
 
@@ -591,21 +592,21 @@ impl App {
                 &entry.source_label,
                 Rect::new(row.x + 8, row.y + 5, 126, 8),
                 1,
-                app_chrome::ACTION_TEXT,
+                theme.app_chrome.action_text,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &entry.target_label,
                 Rect::new(row.x + 146, row.y + 5, 210, 8),
                 1,
-                app_chrome::OVERLAY_TARGET_TEXT,
+                theme.app_chrome.overlay_target_text,
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
                 compact_scope_label(&entry.scope_label),
                 Rect::new(row.x + row.width() as i32 - 126, row.y + 5, 90, 8),
                 1,
-                app_chrome::OVERLAY_SCOPE_TEXT,
+                theme.app_chrome.overlay_scope_text,
             )?;
         }
 
@@ -619,7 +620,7 @@ impl App {
             ),
             Rect::new(panel.x + panel.width() as i32 - 116, panel.y + 34, 104, 8),
             1,
-            app_chrome::OVERLAY_META_TEXT,
+            theme.app_chrome.overlay_meta_text,
         )?;
 
         Ok(())

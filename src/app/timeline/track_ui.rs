@@ -366,7 +366,7 @@ impl App {
             markers.push(LoopMarker {
                 range: stored_loop.as_loop_region(),
                 label: (slot_index + 1).to_string(),
-                color: stored_loop_slot_color(slot_index),
+                color: stored_loop_slot_color(slot_index, self.theme()),
                 emphasized: active_slot == Some(slot_index),
                 queued: queued_slot == Some(slot_index),
             });

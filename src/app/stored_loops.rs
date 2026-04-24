@@ -56,17 +56,8 @@ pub(super) fn stored_loop_slot_recall_action(slot_index: usize) -> Option<AppAct
     }
 }
 
-pub(super) fn stored_loop_slot_color(slot_index: usize) -> Color {
-    match slot_index % STORED_LOOP_SLOT_COUNT {
-        0 => Color::RGB(214, 124, 118),
-        1 => Color::RGB(214, 176, 98),
-        2 => Color::RGB(184, 206, 108),
-        3 => Color::RGB(114, 198, 174),
-        4 => Color::RGB(114, 168, 214),
-        5 => Color::RGB(144, 138, 214),
-        6 => Color::RGB(204, 132, 206),
-        _ => Color::RGB(210, 144, 164),
-    }
+pub(super) fn stored_loop_slot_color(slot_index: usize, theme: &crate::theme::Theme) -> Color {
+    theme.stored_loop_slot(slot_index % STORED_LOOP_SLOT_COUNT)
 }
 
 #[cfg(test)]

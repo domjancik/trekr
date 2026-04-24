@@ -9,13 +9,8 @@ pub(crate) fn centered_text_rect(rect: Rect) -> Rect {
     )
 }
 
-pub(crate) fn contrasting_text_color(fill: Color) -> Color {
-    let brightness = u32::from(fill.r) * 299 + u32::from(fill.g) * 587 + u32::from(fill.b) * 114;
-    if brightness / 1000 < 140 {
-        Color::RGB(244, 244, 236)
-    } else {
-        Color::RGB(24, 28, 36)
-    }
+pub(crate) fn contrasting_text_color(fill: Color, theme: &crate::theme::Theme) -> Color {
+    theme.text_on_fill(fill)
 }
 
 #[cfg(test)]
@@ -25,11 +20,17 @@ mod tests {
     #[test]
     fn contrasting_text_color_tracks_fill_luminance() {
         assert_eq!(
-            contrasting_text_color(Color::RGB(40, 44, 52)),
+            contrasting_text_color(
+                Color::RGB(40, 44, 52),
+                crate::theme::theme(crate::theme::ThemePreset::DefaultDark)
+            ),
             Color::RGB(244, 244, 236)
         );
         assert_eq!(
-            contrasting_text_color(Color::RGB(240, 240, 240)),
+            contrasting_text_color(
+                Color::RGB(240, 240, 240),
+                crate::theme::theme(crate::theme::ThemePreset::DefaultDark)
+            ),
             Color::RGB(24, 28, 36)
         );
     }

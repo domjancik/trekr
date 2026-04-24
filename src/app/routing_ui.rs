@@ -1,6 +1,5 @@
 use super::*;
 use crate::midi_fx::MidiFxInlineParam;
-use crate::theme::io_pages as io_theme;
 
 impl App {
     pub(crate) fn routing_discoverability_targets(
@@ -56,23 +55,24 @@ impl App {
         canvas: &mut Canvas<T>,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(io_theme::PAGE_BG);
+        let theme = self.theme();
+        canvas.set_draw_color(theme.io_pages.page_bg);
         canvas.fill_rect(content_bounds)?;
-        canvas.set_draw_color(io_theme::PAGE_BORDER);
+        canvas.set_draw_color(theme.io_pages.page_border);
         canvas.draw_rect(content_bounds)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Routing",
             Rect::new(content_bounds.x + 8, content_bounds.y + 8, 140, 14),
             2,
-            io_theme::PAGE_TITLE,
+            theme.io_pages.page_title,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Active Track Routing",
             Rect::new(content_bounds.x + 184, content_bounds.y + 12, 180, 8),
             1,
-            io_theme::SUBTITLE,
+            theme.io_pages.subtitle,
         )?;
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
@@ -82,9 +82,9 @@ impl App {
             .active_track()
             .expect("demo project has tracks");
 
-        canvas.set_draw_color(Color::RGB(54, 70, 104));
+        canvas.set_draw_color(theme.io_pages.routing_header_fill);
         canvas.fill_rect(header)?;
-        canvas.set_draw_color(Color::RGB(244, 232, 146));
+        canvas.set_draw_color(theme.io_pages.routing_header_border);
         canvas.draw_rect(header)?;
 
         let meta_badges = [
@@ -95,7 +95,7 @@ impl App {
                     90,
                     header.height().saturating_sub(16),
                 ),
-                Color::RGB(220, 124, 100),
+                theme.io_pages.routing_meta_active_fill,
                 format!("Active T{}", self.project.active_track_index + 1),
             ),
             (
@@ -106,9 +106,9 @@ impl App {
                     header.height().saturating_sub(16),
                 ),
                 if active_track.state.passthrough {
-                    Color::RGB(72, 188, 180)
+                    theme.io_pages.routing_meta_thru_on_fill
                 } else {
-                    Color::RGB(92, 100, 112)
+                    theme.io_pages.routing_meta_thru_off_fill
                 },
                 format!("Thru {}", on_off(active_track.state.passthrough)),
             ),
@@ -121,7 +121,7 @@ impl App {
                 &label,
                 Rect::new(rect.x + 6, rect.y + 4, rect.width().saturating_sub(12), 8),
                 1,
-                Color::RGB(24, 28, 36),
+                theme.io_pages.routing_meta_text,
             )?;
         }
         let state_badge = Rect::new(
@@ -130,7 +130,7 @@ impl App {
             112,
             header.height().saturating_sub(16),
         );
-        canvas.set_draw_color(Color::RGB(70, 86, 118));
+        canvas.set_draw_color(theme.io_pages.routing_state_badge_fill);
         canvas.fill_rect(state_badge)?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -142,7 +142,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(244, 244, 236),
+            theme.io_pages.routing_state_badge_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -154,7 +154,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(244, 244, 236),
+            theme.io_pages.routing_track_name_text,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -166,7 +166,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(208, 216, 228),
+            theme.io_pages.routing_help_text,
         )?;
 
         let (signal_panel, input_fx_panel, rec_panel, output_fx_panel) =
@@ -176,28 +176,28 @@ impl App {
             signal_panel,
             "Signal",
             "Ports, channels, and thru",
-            Color::RGB(94, 186, 152),
+            theme.io_pages.routing_group_signal,
         )?;
         self.draw_routing_group_panel(
             canvas,
             input_fx_panel,
             "Input FX",
             "Clone and input-shaping chain",
-            Color::RGB(104, 152, 214),
+            theme.io_pages.routing_group_input_fx,
         )?;
         self.draw_routing_group_panel(
             canvas,
             rec_panel,
             "Rec/Mon",
             "Input recording and monitor mode",
-            Color::RGB(112, 188, 152),
+            theme.io_pages.routing_group_rec_mon,
         )?;
         self.draw_routing_group_panel(
             canvas,
             output_fx_panel,
             "Output FX",
             "Post-track playback shaping",
-            Color::RGB(198, 138, 186),
+            theme.io_pages.routing_group_output_fx,
         )?;
 
         for (field, row) in self.routing_field_rects(body) {
@@ -212,42 +212,42 @@ impl App {
             );
 
             canvas.set_draw_color(if selected {
-                Color::RGB(52, 64, 92)
+                theme.io_pages.routing_row_selected_fill
             } else {
-                Color::RGB(34, 40, 58)
+                theme.io_pages.routing_row_idle_fill
             });
             canvas.fill_rect(row)?;
             canvas.set_draw_color(if selected {
-                Color::RGB(244, 232, 146)
+                theme.io_pages.routing_row_selected_border
             } else {
-                Color::RGB(78, 88, 110)
+                theme.io_pages.routing_row_idle_border
             });
             canvas.draw_rect(row)?;
 
             let value_color = match field {
-                RoutingField::InputDevice => Color::RGB(94, 186, 152),
-                RoutingField::InputChannel => Color::RGB(106, 152, 218),
-                RoutingField::OutputDevice => Color::RGB(218, 142, 98),
-                RoutingField::OutputChannel => Color::RGB(208, 122, 160),
-                RoutingField::RecordInputFx => Color::RGB(112, 188, 152),
-                RoutingField::MonitorInputFx => Color::RGB(102, 182, 196),
+                RoutingField::InputDevice => theme.io_pages.routing_value_input_device,
+                RoutingField::InputChannel => theme.io_pages.routing_value_input_channel,
+                RoutingField::OutputDevice => theme.io_pages.routing_value_output_device,
+                RoutingField::OutputChannel => theme.io_pages.routing_value_output_channel,
+                RoutingField::RecordInputFx => theme.io_pages.routing_value_record_fx,
+                RoutingField::MonitorInputFx => theme.io_pages.routing_value_monitor_fx,
                 RoutingField::InputFxSlot
                 | RoutingField::InputFxKind
                 | RoutingField::InputFxEnabled
                 | RoutingField::InputFxParam1
                 | RoutingField::InputFxParam2
-                | RoutingField::InputFxMore => Color::RGB(120, 152, 214),
+                | RoutingField::InputFxMore => theme.io_pages.routing_value_input_fx,
                 RoutingField::OutputFxSlot
                 | RoutingField::OutputFxKind
                 | RoutingField::OutputFxEnabled
                 | RoutingField::OutputFxParam1
                 | RoutingField::OutputFxParam2
-                | RoutingField::OutputFxMore => Color::RGB(200, 138, 186),
+                | RoutingField::OutputFxMore => theme.io_pages.routing_value_output_fx,
                 RoutingField::Passthrough => {
                     if active_track.state.passthrough {
-                        Color::RGB(92, 220, 216)
+                        theme.io_pages.routing_value_passthrough_on
                     } else {
-                        Color::RGB(112, 118, 126)
+                        theme.io_pages.routing_value_passthrough_off
                     }
                 }
             };
@@ -293,20 +293,20 @@ impl App {
             canvas.set_draw_color(value_color);
             canvas.fill_rect(value)?;
             if !is_toggle_field {
-                canvas.set_draw_color(Color::RGB(34, 42, 56));
+                canvas.set_draw_color(theme.io_pages.routing_adjust_fill);
                 canvas.fill_rect(left_adjust)?;
                 canvas.fill_rect(right_adjust)?;
             }
             canvas.set_draw_color(if selected {
-                Color::RGB(244, 232, 146)
+                theme.io_pages.routing_affordance_selected_fill
             } else {
-                Color::RGB(96, 104, 122)
+                theme.io_pages.routing_affordance_idle_fill
             });
             canvas.fill_rect(affordance)?;
             canvas.set_draw_color(if selected {
-                Color::RGB(252, 244, 178)
+                theme.io_pages.routing_affordance_selected_border
             } else {
-                Color::RGB(124, 132, 146)
+                theme.io_pages.routing_affordance_idle_border
             });
             canvas.draw_rect(affordance)?;
             crate::ui::draw_text_fitted(
@@ -314,7 +314,7 @@ impl App {
                 &field_label,
                 centered_text_rect(label_text_rect),
                 1,
-                Color::RGB(244, 244, 236),
+                theme.io_pages.routing_field_label,
             )?;
             if is_toggle_field {
                 let bool_chip = Rect::new(
@@ -328,15 +328,15 @@ impl App {
                     "on" | "Post FX"
                 );
                 canvas.set_draw_color(if toggled_on {
-                    Color::RGB(48, 170, 108)
+                    theme.io_pages.routing_toggle_on_fill
                 } else {
-                    Color::RGB(82, 66, 74)
+                    theme.io_pages.routing_toggle_off_fill
                 });
                 canvas.fill_rect(bool_chip)?;
                 canvas.set_draw_color(if toggled_on {
-                    Color::RGB(192, 250, 206)
+                    theme.io_pages.routing_toggle_on_border
                 } else {
-                    Color::RGB(172, 128, 140)
+                    theme.io_pages.routing_toggle_off_border
                 });
                 canvas.draw_rect(bool_chip)?;
                 crate::ui::draw_text_fitted(
@@ -349,7 +349,7 @@ impl App {
                         8,
                     ),
                     1,
-                    Color::RGB(244, 244, 236),
+                    theme.io_pages.routing_toggle_text,
                 )?;
             } else {
                 crate::ui::draw_text_fitted(
@@ -362,7 +362,7 @@ impl App {
                         8,
                     ),
                     1,
-                    Color::RGB(222, 228, 236),
+                    theme.io_pages.routing_adjust_text,
                 )?;
                 crate::ui::draw_text_fitted(
                     canvas,
@@ -374,7 +374,7 @@ impl App {
                         8,
                     ),
                     1,
-                    Color::RGB(222, 228, 236),
+                    theme.io_pages.routing_adjust_text,
                 )?;
                 crate::ui::draw_text_fitted(
                     canvas,
@@ -386,7 +386,7 @@ impl App {
                         8,
                     ),
                     1,
-                    contrasting_text_color(value_color),
+                    contrasting_text_color(value_color, theme),
                 )?;
             }
             crate::ui::draw_text_fitted(
@@ -405,7 +405,7 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(24, 28, 36),
+                theme.io_pages.routing_affordance_text,
             )?;
         }
 

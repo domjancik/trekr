@@ -323,7 +323,7 @@ impl App {
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
-            Self::draw_transport_chip(canvas, chip, spec)?;
+            self.draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
 
@@ -334,7 +334,7 @@ impl App {
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
-            Self::draw_transport_chip(canvas, chip, spec)?;
+            self.draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
 
@@ -371,7 +371,7 @@ impl App {
                 truncated_link_row = true;
                 break;
             }
-            Self::draw_transport_chip(canvas, chip, spec)?;
+            self.draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
         if truncated_link_row {
@@ -398,7 +398,7 @@ impl App {
                 truncated_status_row = true;
                 break;
             }
-            Self::draw_transport_chip(canvas, chip, spec)?;
+            self.draw_transport_chip(canvas, chip, spec)?;
             cursor_x += chip.width() as i32 + 6;
         }
         if truncated_status_row {
