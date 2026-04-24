@@ -30,10 +30,10 @@ fn main() {
 }
 
 fn run(config: &Config) -> Result<(), String> {
-    let mut midi_in = MidiInput::new("trekr-midi-smoke-input").map_err(|error| error.to_string())?;
+    let mut midi_in =
+        MidiInput::new("trekr-midi-smoke-input").map_err(|error| error.to_string())?;
     midi_in.ignore(Ignore::None);
-    let midi_out =
-        MidiOutput::new("trekr-midi-smoke-output").map_err(|error| error.to_string())?;
+    let midi_out = MidiOutput::new("trekr-midi-smoke-output").map_err(|error| error.to_string())?;
 
     let input_ports = midi_in.ports();
     let output_ports = midi_out.ports();
@@ -79,7 +79,10 @@ fn run(config: &Config) -> Result<(), String> {
         connection
             .send(&[status_off, config.note, 0])
             .map_err(|error| format!("failed sending note-off: {error}"))?;
-        println!("sent note-off channel={} note={}", config.channel, config.note);
+        println!(
+            "sent note-off channel={} note={}",
+            config.channel, config.note
+        );
     }
 
     if config.input_name.is_some() || config.output_name.is_some() {
@@ -128,10 +131,7 @@ fn connect_output_by_name(
         .map_err(|error| error.to_string())
 }
 
-fn port_names<P: Clone>(
-    midi_io: &impl PortName<P>,
-    ports: &[P],
-) -> Result<Vec<String>, String> {
+fn port_names<P: Clone>(midi_io: &impl PortName<P>, ports: &[P]) -> Result<Vec<String>, String> {
     ports
         .iter()
         .map(|port| midi_io.port_name(port).map_err(|error| error.to_string()))
@@ -239,7 +239,9 @@ fn print_usage() {
     println!("Usage:");
     println!("  cargo run --bin trekr-midi-smoke -- --list-only");
     println!("  cargo run --bin trekr-midi-smoke -- --output-name <name> [options]");
-    println!("  cargo run --bin trekr-midi-smoke -- --input-name <name> [--output-name <name>] [options]");
+    println!(
+        "  cargo run --bin trekr-midi-smoke -- --input-name <name> [--output-name <name>] [options]"
+    );
     println!("Options:");
     println!("  --list-only                 Enumerate native MIDI ports and exit");
     println!("  --input-name <name>         Open a native MIDI input by exact port name");
