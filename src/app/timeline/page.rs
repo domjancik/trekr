@@ -306,22 +306,16 @@ impl App {
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
-        let top_y = bounds.y + 4;
-        let bottom_y = bounds.y + 18;
-        let right_top_y = bounds.y + 6;
-        let chip_height = 11;
-
         let top_specs = self.transport_top_chip_specs();
         let bottom_specs = self.transport_bottom_chip_specs();
         let link_specs = self.transport_link_chip_specs();
         let status_specs = self.transport_status_chip_specs();
-        let right_panel_width = self.transport_right_panel_width(bounds);
-        let right_panel = Rect::new(
-            bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
-            bounds.y + 3,
-            right_panel_width,
-            bounds.height().saturating_sub(6),
-        );
+        let layout = self.transport_strip_layout(bounds);
+        let top_y = layout.top_y;
+        let bottom_y = layout.bottom_y;
+        let right_top_y = layout.right_top_y;
+        let chip_height = layout.chip_height;
+        let right_panel = layout.right_panel;
         let left_max = right_panel.x - 12;
 
         let mut cursor_x = bounds.x + 6;
@@ -350,25 +344,27 @@ impl App {
         canvas.fill_rect(right_panel)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(right_panel)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "LINK",
-            Rect::new(right_panel.x + 6, right_panel.y + 4, 28, 8),
-            1,
-            theme.app_chrome.detail_text,
-        )?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            "F6 / SHIFT+F6",
-            Rect::new(
-                right_panel.x + right_panel.width() as i32 - 86,
-                right_panel.y + 4,
-                80,
-                8,
-            ),
-            1,
-            theme.app_chrome.detail_text,
-        )?;
+        if !layout.compact {
+            crate::ui::draw_text_fitted(
+                canvas,
+                "LINK",
+                Rect::new(right_panel.x + 6, layout.right_header_y, 28, 8),
+                1,
+                theme.app_chrome.detail_text,
+            )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                "F6 / SHIFT+F6",
+                Rect::new(
+                    right_panel.x + right_panel.width() as i32 - 86,
+                    layout.right_header_y,
+                    80,
+                    8,
+                ),
+                1,
+                theme.app_chrome.detail_text,
+            )?;
+        }
 
         cursor_x = right_panel.x + 6;
         let mut truncated_link_row = false;
@@ -449,13 +445,13 @@ impl App {
 
     pub(crate) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
-        let top_y = bounds.y + 4;
-        let bottom_y = bounds.y + 18;
-        let right_top_y = bounds.y + 6;
-        let chip_height = 11;
-        let right_panel_width = self.transport_right_panel_width(bounds);
-        let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
-        let right_panel_right = right_panel_x + right_panel_width as i32 - 6;
+        let layout = self.transport_strip_layout(bounds);
+        let top_y = layout.top_y;
+        let bottom_y = layout.bottom_y;
+        let right_top_y = layout.right_top_y;
+        let chip_height = layout.chip_height;
+        let right_panel_x = layout.right_panel.x;
+        let right_panel_right = layout.right_panel.x + layout.right_panel.width() as i32 - 6;
         let left_max = right_panel_x - 12;
 
         let mut cursor_x = bounds.x + 6;
@@ -512,6 +508,46 @@ impl App {
 
         rects
     }
+
+    fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
+        let compact = bounds.height() < 30;
+        let chip_height = if compact { 8 } else { 11 };
+        let top_y = bounds.y + 4;
+        let bottom_y = bounds.y + bounds.height() as i32 - chip_height as i32 - 4;
+        let right_panel_width = self.transport_right_panel_width(bounds);
+        let right_panel = Rect::new(
+            bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
+            bounds.y + 3,
+            right_panel_width,
+            bounds.height().saturating_sub(6),
+        );
+        let right_header_y = if compact {
+            right_panel.y + 2
+        } else {
+            right_panel.y + 4
+        };
+        let right_top_y = if compact { top_y } else { bounds.y + 6 };
+        TransportStripLayout {
+            top_y,
+            bottom_y,
+            right_top_y,
+            right_header_y,
+            chip_height,
+            right_panel,
+            compact,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TransportStripLayout {
+    top_y: i32,
+    bottom_y: i32,
+    right_top_y: i32,
+    right_header_y: i32,
+    chip_height: u32,
+    right_panel: Rect,
+    compact: bool,
 }
 
 #[cfg(test)]
@@ -582,5 +618,19 @@ mod tests {
         assert_eq!(indicator.height(), context_rect.height());
         assert_eq!(indicator.y, context_rect.y);
         assert_eq!(indicator.x + indicator.width() as i32 + 1, context_rect.x);
+    }
+
+    #[test]
+    fn tiny_density_transport_actions_stay_inside_strip_bounds() {
+        let mut app = App::new();
+        app.set_ui_density_preset(crate::ui_density::UiDensityPreset::Tiny);
+        let bounds = Rect::new(40, 40, 1200, transport_strip_height(app.ui_metrics()));
+
+        for (rect, _) in app.transport_chip_actions(bounds) {
+            assert!(rect.x >= bounds.x);
+            assert!(rect.y >= bounds.y);
+            assert!(rect.x + rect.width() as i32 <= bounds.x + bounds.width() as i32);
+            assert!(rect.y + rect.height() as i32 <= bounds.y + bounds.height() as i32);
+        }
     }
 }
