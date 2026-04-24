@@ -55,6 +55,8 @@ pub struct UiUndoState {
     pub overlay_state: UndoOverlayState,
     pub focused_track_view: bool,
     pub direct_mapping_active: bool,
+    pub preferred_default_input_name: Option<String>,
+    pub preferred_default_output_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,6 +259,8 @@ mod tests {
             overlay_state: UndoOverlayState::None,
             focused_track_view: false,
             direct_mapping_active: false,
+            preferred_default_input_name: None,
+            preferred_default_output_name: None,
         };
         let mut after = before.clone();
         after.focused_track_view = true;
@@ -282,6 +286,8 @@ mod tests {
                     overlay_state: UndoOverlayState::None,
                     focused_track_view: false,
                     direct_mapping_active: false,
+                    preferred_default_input_name: None,
+                    preferred_default_output_name: None,
                 }),
                 after: UndoSnapshot::Ui(UiUndoState {
                     page_state: AppPageState::default(),
@@ -289,6 +295,8 @@ mod tests {
                     overlay_state: UndoOverlayState::None,
                     focused_track_view: false,
                     direct_mapping_active: false,
+                    preferred_default_input_name: None,
+                    preferred_default_output_name: None,
                 }),
             }],
         );
