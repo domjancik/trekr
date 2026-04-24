@@ -398,6 +398,7 @@ The repo includes a scripted screenshot-and-review loop for visual QA:
 
 - `scripts/capture-ui-screens.ps1`: asks `trekr` itself to render `timeline`, `timeline-focused`, `mappings`, `midi-io`, and `routing` screenshots into `artifacts/screenshots`
   - capture explicitly uses `--state-mode demo` so screenshots stay deterministic instead of depending on the last persisted interactive state
+  - capture also forces the demo MIDI device catalog so `MIDI I/O` does not depend on the local machine's live device list
 - `scripts/review-ui-screens.ps1`: calls `codex exec` with those screenshots attached and writes findings to `artifacts/reviews/ui-findings.md`
 - `scripts/run-ui-review.ps1`: runs both steps in sequence and archives the results under `artifacts/archive/<git-commit>/`
 
@@ -439,6 +440,32 @@ Fixture examples:
 cargo run -- --state-mode persisted --state-file state-fixtures/ui-looped.json
 powershell -ExecutionPolicy Bypass -File .\scripts\run-ui-review.ps1 -StateMode persisted -StateFile state-fixtures/ui-looped.json
 ```
+
+### Pixel-exact screenshot regression
+
+For default-density parity work, use the renderer-owned screenshots as an exact regression gate instead of a visual approximation.
+
+Requirements for deterministic captures:
+
+- use `--state-mode demo`
+- capture both baseline and candidate on the same machine/toolchain
+- blank the build branding vars before each build so the Git SHA/date do not render:
+  - `TREKR_BUILD_HASH`
+  - `TREKR_BUILD_DATE`
+
+Example workflow against `origin/main`:
+
+```powershell
+$env:TREKR_BUILD_HASH=''
+$env:TREKR_BUILD_DATE=''
+git worktree add ..\trekr-main origin/main
+powershell -ExecutionPolicy Bypass -File .\scripts\capture-ui-screens.ps1 -StateMode demo -OutputDir artifacts\archive\candidate
+powershell -ExecutionPolicy Bypass -File ..\trekr-main\scripts\capture-ui-screens.ps1 -StateMode demo -OutputDir artifacts\archive\baseline-main
+powershell -ExecutionPolicy Bypass -File .\scripts\compare-ui-screens.ps1 -BaselineDir artifacts\archive\baseline-main -CandidateDir artifacts\archive\candidate -DiffOutputDir artifacts\archive\pixel-diff
+git worktree remove ..\trekr-main
+```
+
+`scripts/compare-ui-screens.ps1` fails on any nonzero pixel difference and can emit per-page red/black diff images when `-DiffOutputDir` is provided.
 
 ## Pi Camera Debug Review
 
