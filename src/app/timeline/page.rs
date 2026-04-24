@@ -283,11 +283,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 label,
-                crate::app::support::ui_helpers::horizontally_center_text_rect(
-                    label,
-                    crate::app::support::ui_helpers::chrome_compact_text_rect(indicator.rect),
-                    1,
-                ),
+                crate::app::support::ui_helpers::chrome_compact_text_rect(indicator.rect),
                 1,
                 if enabled {
                     contrasting_text_color(fill, theme)
