@@ -585,7 +585,7 @@ pub struct TrackIndicator {
 pub fn track_indicators(status_rect: Rect) -> [TrackIndicator; 4] {
     let inset_x = 2_i32;
     let top_inset_y = 2_i32;
-    let bottom_inset_y = 1_i32;
+    let bottom_inset_y = 2_i32;
     let gap = 2_i32;
     let inner_width = (status_rect.width() as i32 - inset_x * 2).max(4);
     let height = status_rect
@@ -844,11 +844,11 @@ mod tests {
         let label = track_label_rect(lane, TimelineFlow::DownwardColumns);
         let content = track_content_rect(lane, TimelineFlow::DownwardColumns);
 
-        assert_eq!(status.height(), 14);
-        assert_eq!(label.y, 34);
+        assert_eq!(status.height(), 15);
+        assert_eq!(label.y, 35);
         assert_eq!(label.height(), 24);
-        assert_eq!(content.y, 58);
-        assert_eq!(content.height(), 202);
+        assert_eq!(content.y, 59);
+        assert_eq!(content.height(), 201);
     }
 
     #[test]
