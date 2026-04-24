@@ -309,6 +309,7 @@ impl App {
 
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;
+        let right_top_y = bounds.y + 5;
         let chip_height = 11;
 
         let top_specs = self.transport_top_chip_specs();
@@ -327,7 +328,7 @@ impl App {
         let mut cursor_x = bounds.x + 6;
         for spec in &top_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
@@ -388,7 +389,7 @@ impl App {
                 "(...)",
                 Rect::new(
                     right_panel.x + right_panel.width() as i32 - 32,
-                    top_y + 1,
+                    right_top_y + 1,
                     28,
                     chip_height.saturating_sub(2),
                 ),
@@ -451,6 +452,7 @@ impl App {
         let mut rects = Vec::new();
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;
+        let right_top_y = bounds.y + 5;
         let chip_height = 11;
         let right_panel_width = self.transport_right_panel_width(bounds);
         let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
@@ -460,7 +462,7 @@ impl App {
         let mut cursor_x = bounds.x + 6;
         for chip_spec in self.transport_top_chip_specs() {
             let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
