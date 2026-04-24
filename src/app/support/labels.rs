@@ -75,15 +75,19 @@ pub(crate) fn badge_kind_prefix(source_kind: MappingSourceKind) -> &'static str 
     }
 }
 
-pub(crate) fn mapping_badge_palette(badge: &MappingBadge) -> (Color, Color) {
-    match (badge.built_in, badge.source_kind) {
-        (true, MappingSourceKind::Key) => (Color::RGB(64, 84, 126), Color::RGB(244, 244, 236)),
-        (true, MappingSourceKind::Midi) => (Color::RGB(88, 94, 116), Color::RGB(236, 240, 246)),
-        (true, MappingSourceKind::Osc) => (Color::RGB(84, 90, 112), Color::RGB(236, 240, 246)),
-        (false, MappingSourceKind::Key) => (Color::RGB(88, 128, 76), Color::RGB(246, 248, 232)),
-        (false, MappingSourceKind::Midi) => (Color::RGB(170, 104, 62), Color::RGB(250, 242, 228)),
-        (false, MappingSourceKind::Osc) => (Color::RGB(148, 82, 104), Color::RGB(248, 238, 244)),
-    }
+pub(crate) fn mapping_badge_palette(
+    badge: &MappingBadge,
+    theme: &crate::theme::Theme,
+) -> (Color, Color) {
+    let colors = match (badge.built_in, badge.source_kind) {
+        (true, MappingSourceKind::Key) => theme.built_in_key_badge,
+        (true, MappingSourceKind::Midi) => theme.built_in_midi_badge,
+        (true, MappingSourceKind::Osc) => theme.built_in_osc_badge,
+        (false, MappingSourceKind::Key) => theme.user_key_badge,
+        (false, MappingSourceKind::Midi) => theme.user_midi_badge,
+        (false, MappingSourceKind::Osc) => theme.user_osc_badge,
+    };
+    (colors.fill, colors.text)
 }
 
 pub(crate) fn compact_badge_text(text: &str, max_len: usize) -> String {

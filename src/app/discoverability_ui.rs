@@ -1,5 +1,4 @@
 use super::*;
-use crate::theme::discoverability as discoverability_theme;
 
 pub(super) fn track_indicator_target(
     kind: crate::ui::TrackIndicatorKind,
@@ -189,6 +188,7 @@ impl App {
         max_badges: usize,
         max_label_width: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
         let mut cursor_x = bounds.x;
         let visible = badges.len().min(max_badges);
         for badge in badges.iter().take(visible) {
@@ -204,7 +204,7 @@ impl App {
                 width,
                 bounds.height().saturating_sub(4),
             );
-            let (fill, text) = mapping_badge_palette(badge);
+            let (fill, text) = mapping_badge_palette(badge, theme);
             canvas.set_draw_color(fill);
             canvas.fill_rect(chip)?;
             crate::ui::draw_text_fitted(
@@ -228,14 +228,14 @@ impl App {
                     width,
                     bounds.height().saturating_sub(4),
                 );
-                canvas.set_draw_color(discoverability_theme::BADGE_OVERFLOW_FILL);
+                canvas.set_draw_color(theme.discoverability.badge_overflow_fill);
                 canvas.fill_rect(chip)?;
                 crate::ui::draw_text_fitted(
                     canvas,
                     &draw_label,
                     Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
                     1,
-                    discoverability_theme::BADGE_OVERFLOW_TEXT,
+                    theme.discoverability.badge_overflow_text,
                 )?;
             }
         }
@@ -271,17 +271,18 @@ impl App {
         tabs_bounds: Rect,
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
         if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
             return Ok(());
         }
 
         for page in self.direct_mapping_tab_targets(tabs_bounds) {
-            canvas.set_draw_color(discoverability_theme::DIRECT_TAB_TARGET);
+            canvas.set_draw_color(theme.discoverability.direct_tab_target);
             canvas.draw_rect(page.hit_rect)?;
         }
 
         for target in self.direct_mapping_targets(content_bounds) {
-            canvas.set_draw_color(discoverability_theme::DIRECT_TARGET_BORDER);
+            canvas.set_draw_color(theme.discoverability.direct_target_border);
             canvas.draw_rect(Rect::new(
                 target.hit_rect.x - 1,
                 target.hit_rect.y - 1,
@@ -289,7 +290,7 @@ impl App {
                 target.hit_rect.height().saturating_add(2),
             ))?;
             if self.direct_mapping_state.mode == DirectMappingMode::AwaitingInput(target) {
-                canvas.set_draw_color(discoverability_theme::DIRECT_TARGET_ACTIVE_BORDER);
+                canvas.set_draw_color(theme.discoverability.direct_target_active_border);
                 canvas.draw_rect(Rect::new(
                     target.hit_rect.x - 3,
                     target.hit_rect.y - 3,
@@ -351,6 +352,7 @@ impl App {
         slot: Rect,
         summary: &ActionDiscoverabilitySummary,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
         let built_in_count = summary.badges.iter().filter(|badge| badge.built_in).count();
         let user_count = summary
             .badges
@@ -361,9 +363,9 @@ impl App {
         if built_in_count > 0 && user_count > 0 {
             let left_width = (slot.width() / 2).max(1);
             let right_width = slot.width().saturating_sub(left_width);
-            canvas.set_draw_color(discoverability_theme::SLOT_BUILT_IN_FILL);
+            canvas.set_draw_color(theme.discoverability.slot_built_in_fill);
             canvas.fill_rect(Rect::new(slot.x, slot.y, left_width, slot.height()))?;
-            canvas.set_draw_color(discoverability_theme::SLOT_USER_FILL);
+            canvas.set_draw_color(theme.discoverability.slot_user_fill);
             canvas.fill_rect(Rect::new(
                 slot.x + left_width as i32,
                 slot.y,
@@ -371,10 +373,10 @@ impl App {
                 slot.height(),
             ))?;
         } else if user_count > 0 {
-            canvas.set_draw_color(discoverability_theme::SLOT_USER_FILL);
+            canvas.set_draw_color(theme.discoverability.slot_user_fill);
             canvas.fill_rect(slot)?;
         } else {
-            canvas.set_draw_color(discoverability_theme::SLOT_BUILT_IN_FILL);
+            canvas.set_draw_color(theme.discoverability.slot_built_in_fill);
             canvas.fill_rect(slot)?;
         }
 
@@ -393,7 +395,7 @@ impl App {
                 slot.height().saturating_sub(2),
             ),
             1,
-            discoverability_theme::SLOT_COUNT_TEXT,
+            theme.discoverability.slot_count_text,
         )?;
 
         Ok(())

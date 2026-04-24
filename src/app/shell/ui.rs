@@ -1,7 +1,4 @@
-use crate::{
-    present::window_present_plan,
-    theme::{app_chrome, mappings as mappings_theme, transport as transport_theme},
-};
+use crate::present::window_present_plan;
 
 use super::layout::{page_tabs_layout, preferred_branding_width};
 use super::*;
@@ -67,13 +64,14 @@ impl App {
         let surface = crate::ui::surface_rect(width, height);
         let inset = crate::ui::inset_rect(surface, 24, 24)?;
         let (tabs_bounds, content_bounds, footer_bounds) = self.page_frame_layout(inset)?;
+        let theme = self.theme();
 
-        canvas.set_draw_color(app_chrome::WINDOW_CLEAR);
+        canvas.set_draw_color(theme.app_chrome.window_clear);
         canvas.clear();
 
-        canvas.set_draw_color(app_chrome::SURFACE_FILL);
+        canvas.set_draw_color(theme.app_chrome.surface_fill);
         canvas.fill_rect(surface)?;
-        canvas.set_draw_color(app_chrome::SURFACE_BORDER);
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(surface)?;
 
         if preferred_branding_width(tabs_bounds.width()) == 0 {
@@ -118,7 +116,8 @@ impl App {
         }
 
         let output_size = canvas.output_size()?;
-        let present_plan = window_present_plan(output_size, true, app_chrome::WINDOW_CLEAR);
+        let present_plan =
+            window_present_plan(output_size, true, self.theme().app_chrome.window_clear);
         let logical_size = self.viewport_size;
         let texture_creator = canvas.texture_creator();
         let mut frame = texture_creator.create_texture_target(
@@ -164,30 +163,31 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (branding_bounds, tabs_bounds) = page_tabs_layout(bounds);
         self.draw_branding(canvas, branding_bounds)?;
+        let theme = self.theme();
 
         let tabs = crate::ui::equal_columns(tabs_bounds, AppPage::ALL.len(), 10);
         for (index, page) in AppPage::ALL.iter().copied().enumerate() {
             let tab = tabs[index];
             let active = page == self.page_state.current_page;
             canvas.set_draw_color(if active {
-                app_chrome::TAB_ACTIVE_FILL
+                theme.app_chrome.tab_active_fill
             } else {
-                app_chrome::TAB_INACTIVE_FILL
+                theme.app_chrome.tab_inactive_fill
             });
             canvas.fill_rect(tab)?;
             canvas.set_draw_color(if active {
-                app_chrome::TAB_ACTIVE_BORDER
+                theme.app_chrome.tab_active_border
             } else {
-                app_chrome::TAB_INACTIVE_BORDER
+                theme.app_chrome.tab_inactive_border
             });
             canvas.draw_rect(tab)?;
 
             let accent = Rect::new(tab.x + 6, tab.y + 6, 18, tab.height().saturating_sub(12));
             let color = match page {
-                AppPage::Timeline => app_chrome::TAB_ACCENT_TIMELINE,
-                AppPage::Mappings => app_chrome::TAB_ACCENT_MAPPINGS,
-                AppPage::MidiIo => app_chrome::TAB_ACCENT_MIDI_IO,
-                AppPage::Routing => app_chrome::TAB_ACCENT_ROUTING,
+                AppPage::Timeline => theme.app_chrome.tab_accent_timeline,
+                AppPage::Mappings => theme.app_chrome.tab_accent_mappings,
+                AppPage::MidiIo => theme.app_chrome.tab_accent_midi_io,
+                AppPage::Routing => theme.app_chrome.tab_accent_routing,
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
@@ -197,9 +197,9 @@ impl App {
                 Rect::new(tab.x + 30, tab.y + 8, tab.width().saturating_sub(36), 8),
                 1,
                 if active {
-                    app_chrome::TAB_TEXT_ACTIVE
+                    theme.app_chrome.tab_text_active
                 } else {
-                    app_chrome::TAB_TEXT_INACTIVE
+                    theme.app_chrome.tab_text_inactive
                 },
             )?;
         }
@@ -216,6 +216,7 @@ impl App {
     }
 
     pub(crate) fn draw_transport_chip<T: RenderTarget>(
+        &self,
         canvas: &mut Canvas<T>,
         chip: Rect,
         spec: &TransportChipSpec,
@@ -227,40 +228,42 @@ impl App {
             &spec.label,
             Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
             1,
-            app_chrome::ACTION_TEXT,
+            self.theme().app_chrome.action_text,
         )?;
         Ok(())
     }
 
     pub(crate) fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
+        let theme = self.theme();
         vec![
             TransportChipSpec {
                 label: format!("Play {}", on_off(self.project.transport.playing)),
                 action: Some(AppAction::TogglePlayback),
                 fill: if self.project.transport.playing {
-                    transport_theme::PLAY_ACTIVE
+                    theme.transport.play_active
                 } else {
-                    transport_theme::PLAY_IDLE
+                    theme.transport.play_idle
                 },
             },
             TransportChipSpec {
                 label: format!("Record {}", on_off(self.project.transport.recording)),
                 action: Some(AppAction::ToggleRecording),
                 fill: if self.project.transport.recording {
-                    transport_theme::RECORD_ACTIVE
+                    theme.transport.record_active
                 } else {
-                    transport_theme::RECORD_IDLE
+                    theme.transport.record_idle
                 },
             },
             TransportChipSpec {
                 label: format!("Mode {}", self.project.transport.record_mode.label()),
                 action: Some(AppAction::CycleRecordMode),
-                fill: transport_theme::RECORD_MODE,
+                fill: theme.transport.record_mode,
             },
         ]
     }
 
     pub(crate) fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
+        let theme = self.theme();
         vec![
             TransportChipSpec {
                 label: format!(
@@ -273,47 +276,48 @@ impl App {
                 ),
                 action: Some(AppAction::ToggleLoopRecordingExtension),
                 fill: if self.project.transport.loop_recording_extends_clip {
-                    transport_theme::LOOP_WRAP_EXTEND
+                    theme.transport.loop_wrap_extend
                 } else {
-                    transport_theme::LOOP_WRAP_CLAMP
+                    theme.transport.loop_wrap_clamp
                 },
             },
             TransportChipSpec {
                 label: format!("Song Loop {}", on_off(self.project.transport.loop_enabled)),
                 action: Some(AppAction::ToggleGlobalLoop),
-                fill: transport_theme::SONG_LOOP,
+                fill: theme.transport.song_loop,
             },
             TransportChipSpec {
                 label: format!("Tempo {}", self.project.transport.tempo_bpm),
                 action: None,
-                fill: transport_theme::TEMPO,
+                fill: theme.transport.tempo,
             },
             TransportChipSpec {
                 label: format!("Harmony {}", note_name(self.project.global_harmony.root)),
                 action: Some(AppAction::CycleGlobalHarmonyRoot),
-                fill: transport_theme::HARMONY,
+                fill: theme.transport.harmony,
             },
             TransportChipSpec {
                 label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
                 action: None,
                 fill: if self.note_additive_select_held {
-                    transport_theme::NOTE_ADD_HELD
+                    theme.transport.note_add_held
                 } else {
-                    transport_theme::NOTE_ADD_IDLE
+                    theme.transport.note_add_idle
                 },
             },
         ]
     }
 
     pub(crate) fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
+        let theme = self.theme();
         vec![
             TransportChipSpec {
                 label: format!("Link {}", on_off(self.project.transport.link_enabled)),
                 action: Some(AppAction::ToggleLinkEnabled),
                 fill: if self.project.transport.link_enabled {
-                    transport_theme::LINK_ACTIVE
+                    theme.transport.link_active
                 } else {
-                    transport_theme::LINK_IDLE
+                    theme.transport.link_idle
                 },
             },
             TransportChipSpec {
@@ -322,12 +326,13 @@ impl App {
                     on_off(self.project.transport.link_start_stop_sync)
                 ),
                 action: Some(AppAction::ToggleLinkStartStopSync),
-                fill: transport_theme::LINK_START_STOP,
+                fill: theme.transport.link_start_stop,
             },
         ]
     }
 
     pub(crate) fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
+        let theme = self.theme();
         vec![
             TransportChipSpec {
                 label: format!(
@@ -336,9 +341,9 @@ impl App {
                 ),
                 action: Some(AppAction::ToggleStoredLoopRecallQuantize),
                 fill: if self.project.transport.stored_loop_recall_quantized {
-                    transport_theme::LAUNCH_QUANTIZE_ENABLED
+                    theme.transport.launch_quantize_enabled
                 } else {
-                    transport_theme::LAUNCH_QUANTIZE_DISABLED
+                    theme.transport.launch_quantize_disabled
                 },
             },
             TransportChipSpec {
@@ -347,17 +352,17 @@ impl App {
                     launch_quantize_label(self.project.transport.stored_loop_launch_quantize)
                 ),
                 action: Some(AppAction::CycleStoredLoopLaunchQuantize),
-                fill: transport_theme::LAUNCH_QUANTIZE_MODE,
+                fill: theme.transport.launch_quantize_mode,
             },
             TransportChipSpec {
                 label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
                 action: None,
-                fill: transport_theme::QUANTIZE,
+                fill: theme.transport.quantize,
             },
             TransportChipSpec {
                 label: format!("Peers {}", self.link_snapshot.peers),
                 action: None,
-                fill: transport_theme::PEERS,
+                fill: theme.transport.peers,
             },
         ]
     }
@@ -377,26 +382,27 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(app_chrome::FOOTER_BG);
+        let theme = self.theme();
+        canvas.set_draw_color(theme.app_chrome.footer_bg);
         canvas.fill_rect(bounds)?;
-        canvas.set_draw_color(app_chrome::SURFACE_BORDER);
+        canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
         let overlay_chips = [
             (
                 "F5 Mappings",
                 self.overlay_state.active == Some(AppOverlay::MappingsQuickView),
-                app_chrome::FOOTER_CHIP_MAPPINGS,
+                theme.app_chrome.footer_chip_mappings,
             ),
             (
                 "F7 Discover",
                 self.overlay_state.active == Some(AppOverlay::Discoverability),
-                app_chrome::FOOTER_CHIP_DISCOVER,
+                theme.app_chrome.footer_chip_discover,
             ),
             (
                 "F8 Direct",
                 self.direct_mapping_state.mode != DirectMappingMode::Inactive,
-                app_chrome::FOOTER_CHIP_DIRECT,
+                theme.app_chrome.footer_chip_direct,
             ),
         ];
         let mut right_edge = bounds.x + bounds.width() as i32 - 6;
@@ -411,7 +417,7 @@ impl App {
             canvas.set_draw_color(if active {
                 color
             } else {
-                app_chrome::FOOTER_CHIP_INACTIVE
+                theme.app_chrome.footer_chip_inactive
             });
             canvas.fill_rect(chip)?;
             crate::ui::draw_text_fitted(
@@ -420,9 +426,9 @@ impl App {
                 Rect::new(chip.x + 5, chip.y + 2, chip.width().saturating_sub(10), 8),
                 1,
                 if active {
-                    app_chrome::FOOTER_TEXT_ACTIVE
+                    theme.app_chrome.footer_text_active
                 } else {
-                    app_chrome::FOOTER_TEXT_INACTIVE
+                    theme.app_chrome.footer_text_inactive
                 },
             )?;
             right_edge = chip.x - 6;
@@ -436,7 +442,7 @@ impl App {
                 &title,
                 label_rect,
                 1,
-                app_chrome::FOOTER_TITLE_DIRECT,
+                theme.app_chrome.footer_title_direct,
             )?;
             let detail_left = label_rect.x + label_rect.width() as i32 + 8;
             let detail_width = (right_edge - detail_left).max(0) as u32;
@@ -460,7 +466,7 @@ impl App {
                     &detail,
                     Rect::new(detail_left, bounds.y + 7, detail_width, 8),
                     1,
-                    app_chrome::FOOTER_DETAIL_DIRECT,
+                    theme.app_chrome.footer_detail_direct,
                 )?;
             }
         } else if let Some(target) = self.status_state.hovered_target {
@@ -472,7 +478,7 @@ impl App {
                 &summary.title,
                 label_rect,
                 1,
-                app_chrome::ACTION_TEXT,
+                theme.app_chrome.action_text,
             )?;
             let badges_left = label_rect.x + label_rect.width() as i32 + 8;
             let badges_width = (right_edge - badges_left).max(0) as u32;
@@ -482,7 +488,7 @@ impl App {
                     "No mappings",
                     Rect::new(badges_left, bounds.y + 7, badges_width, 8),
                     1,
-                    app_chrome::FOOTER_EMPTY_MAPPING,
+                    theme.app_chrome.footer_empty_mapping,
                 )?;
             } else {
                 self.draw_mapping_badges(
@@ -502,7 +508,7 @@ impl App {
         } else if let Some((title, detail)) = self.timeline_fx_footer_content() {
             let label_width = crate::ui::text_width(&title, 1) + 4;
             let label_rect = Rect::new(bounds.x + 8, bounds.y + 7, label_width, 8);
-            crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, mappings_theme::PAGE_TITLE)?;
+            crate::ui::draw_text_fitted(canvas, &title, label_rect, 1, theme.mappings.page_title)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &detail,
@@ -513,7 +519,7 @@ impl App {
                     8,
                 ),
                 1,
-                app_chrome::DETAIL_TEXT,
+                theme.app_chrome.detail_text,
             )?;
         } else {
             let last_action = self
@@ -540,7 +546,7 @@ impl App {
                     8,
                 ),
                 1,
-                app_chrome::DETAIL_TEXT,
+                theme.app_chrome.detail_text,
             )?;
         }
 

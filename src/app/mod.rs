@@ -28,6 +28,7 @@ use crate::pages::{
 use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
+use crate::theme::{Theme, ThemePreset};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
 use crate::undo::UndoHistory;
@@ -117,6 +118,7 @@ pub struct App {
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     ui_scaling_mode: UiScalingMode,
+    theme_preset: ThemePreset,
     transport_ticks: u64,
     playhead_ticks: u64,
     live_fx_ticks: u64,
@@ -174,6 +176,10 @@ impl App {
         }
     }
 
+    pub(crate) fn theme(&self) -> &'static Theme {
+        crate::theme::theme(self.theme_preset)
+    }
+
     fn with_project(
         project: Project,
         mappings: Vec<MappingEntry>,
@@ -210,6 +216,7 @@ impl App {
             viewport_size: (1280, 720),
             ui_scale_override: None,
             ui_scaling_mode: UiScalingMode::Auto,
+            theme_preset: ThemePreset::from_env(),
             transport_ticks: 0,
             playhead_ticks: 0,
             live_fx_ticks: 0,

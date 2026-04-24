@@ -4,155 +4,788 @@ pub const fn rgb(r: u8, g: u8, b: u8) -> Color {
     Color::RGB(r, g, b)
 }
 
-pub mod app_chrome {
-    use super::rgb;
-    use sdl3::pixels::Color;
-
-    pub const WINDOW_CLEAR: Color = rgb(18, 24, 38);
-    pub const SURFACE_FILL: Color = rgb(28, 34, 50);
-    pub const SURFACE_BORDER: Color = rgb(88, 96, 120);
-    pub const TAB_ACTIVE_FILL: Color = rgb(72, 96, 142);
-    pub const TAB_INACTIVE_FILL: Color = rgb(34, 44, 64);
-    pub const TAB_ACTIVE_BORDER: Color = rgb(248, 236, 162);
-    pub const TAB_INACTIVE_BORDER: Color = rgb(92, 100, 120);
-    pub const TAB_TEXT_ACTIVE: Color = rgb(248, 244, 212);
-    pub const TAB_TEXT_INACTIVE: Color = rgb(188, 194, 206);
-    pub const FOOTER_BG: Color = rgb(20, 26, 38);
-    pub const FOOTER_CHIP_INACTIVE: Color = rgb(56, 66, 84);
-    pub const FOOTER_TEXT_ACTIVE: Color = rgb(248, 244, 214);
-    pub const FOOTER_TEXT_INACTIVE: Color = rgb(180, 190, 204);
-    pub const DETAIL_TEXT: Color = rgb(188, 198, 212);
-    pub const ACTION_TEXT: Color = rgb(244, 244, 236);
-    pub const BRAND_FALLBACK: Color = rgb(244, 232, 146);
-    pub const TAB_ACCENT_TIMELINE: Color = rgb(84, 144, 220);
-    pub const TAB_ACCENT_MAPPINGS: Color = rgb(212, 168, 84);
-    pub const TAB_ACCENT_MIDI_IO: Color = rgb(96, 200, 164);
-    pub const TAB_ACCENT_ROUTING: Color = rgb(224, 112, 112);
-    pub const FOOTER_CHIP_MAPPINGS: Color = rgb(156, 122, 68);
-    pub const FOOTER_CHIP_DISCOVER: Color = rgb(72, 136, 166);
-    pub const FOOTER_CHIP_DIRECT: Color = rgb(188, 82, 82);
-    pub const FOOTER_TITLE_DIRECT: Color = rgb(248, 228, 208);
-    pub const FOOTER_DETAIL_DIRECT: Color = rgb(214, 200, 188);
-    pub const FOOTER_EMPTY_MAPPING: Color = rgb(168, 178, 194);
-    pub const OVERLAY_BACKDROP: Color = Color::RGBA(10, 14, 24, 220);
-    pub const OVERLAY_PANEL_FILL: Color = rgb(24, 30, 44);
-    pub const OVERLAY_HEADER_TEXT: Color = rgb(150, 162, 180);
-    pub const OVERLAY_ROW_SELECTED_FILL: Color = rgb(58, 72, 102);
-    pub const OVERLAY_ROW_IDLE_FILL: Color = rgb(34, 42, 60);
-    pub const OVERLAY_ROW_IDLE_BORDER: Color = rgb(82, 92, 114);
-    pub const OVERLAY_TARGET_TEXT: Color = rgb(208, 220, 236);
-    pub const OVERLAY_SCOPE_TEXT: Color = rgb(182, 192, 210);
-    pub const OVERLAY_META_TEXT: Color = rgb(160, 170, 184);
+pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Color {
+    Color::RGBA(r, g, b, a)
 }
 
-pub mod mappings {
-    use super::rgb;
-    use sdl3::pixels::Color;
-
-    pub const PAGE_BG: Color = rgb(22, 28, 42);
-    pub const PAGE_BORDER: Color = rgb(88, 96, 120);
-    pub const PAGE_TITLE: Color = rgb(244, 232, 146);
-    pub const WRITE_MODE_ACTIVE: Color = rgb(74, 96, 138);
-    pub const WRITE_MODE_INACTIVE: Color = rgb(50, 62, 88);
-    pub const LEARN_ARMED: Color = rgb(146, 62, 62);
-    pub const LEARN_IDLE: Color = rgb(44, 56, 78);
-    pub const DIRECT_IDLE_FILL: Color = rgb(84, 58, 58);
-    pub const DIRECT_ARMED_FILL: Color = rgb(140, 74, 74);
-    pub const DIRECT_IDLE_BORDER: Color = rgb(108, 118, 138);
-    pub const DIRECT_ARMED_BORDER: Color = rgb(252, 214, 194);
-    pub const ROW_SELECTED_FILL: Color = rgb(52, 64, 92);
-    pub const ROW_IDLE_FILL: Color = rgb(30, 36, 52);
-    pub const ROW_SELECTED_BORDER: Color = rgb(244, 232, 146);
-    pub const ROW_IDLE_BORDER: Color = rgb(78, 88, 110);
-    pub const OVERVIEW_TEXT: Color = rgb(236, 242, 248);
-    pub const LEARN_SELECTED_BORDER: Color = rgb(252, 232, 146);
-    pub const LEARN_IDLE_BORDER: Color = rgb(96, 108, 132);
-    pub const LEARN_TEXT: Color = rgb(236, 240, 246);
-    pub const DIRECT_BADGE_IDLE_FILL: Color = rgb(54, 62, 82);
-    pub const DIRECT_TEXT: Color = rgb(242, 238, 234);
-    pub const META_TEXT: Color = rgb(154, 166, 182);
-    pub const FIELD_FILL_SELECTED: Color = rgb(66, 80, 112);
-    pub const FIELD_FILL_IDLE: Color = rgb(42, 50, 70);
-    pub const TARGET_FILL_ENABLED: Color = rgb(182, 194, 212);
-    pub const TARGET_FILL_DISABLED: Color = rgb(104, 112, 124);
-    pub const SCOPE_FILL: Color = rgb(66, 74, 88);
-    pub const ENABLED_FILL_ON: Color = rgb(132, 220, 120);
-    pub const ENABLED_FILL_OFF: Color = rgb(92, 96, 102);
-    pub const SOURCE_KIND_KEY: Color = rgb(98, 148, 232);
-    pub const SOURCE_KIND_MIDI: Color = rgb(96, 202, 146);
-    pub const SOURCE_KIND_OSC: Color = rgb(220, 154, 88);
-    pub const WRITE_FIELD_ACTIVE: Color = rgb(92, 98, 64);
-    pub const WRITE_FIELD_LEARN: Color = rgb(120, 42, 42);
-    pub const DEVICE_TEXT_ACTIVE: Color = rgb(226, 234, 244);
-    pub const DEVICE_TEXT_INACTIVE: Color = rgb(124, 132, 146);
-    pub const TARGET_TEXT: Color = rgb(24, 28, 36);
-    pub const SCOPE_TEXT: Color = rgb(236, 238, 242);
-    pub const WRITE_FIELD_BORDER: Color = rgb(252, 232, 146);
-    pub const WRITE_FIELD_BORDER_LEARN: Color = rgb(252, 126, 126);
-    pub const TAP_BADGE_FILL: Color = rgb(86, 98, 124);
-    pub const FOOTER_BG: Color = rgb(26, 32, 46);
-    pub const FOOTER_TOKEN_ROW: Color = rgb(62, 78, 106);
-    pub const FOOTER_TOKEN_FIELD: Color = rgb(74, 88, 118);
-    pub const FOOTER_TOKEN_ACT: Color = rgb(82, 100, 136);
-    pub const FOOTER_TOKEN_WRITE: Color = rgb(96, 82, 52);
-    pub const FOOTER_TOKEN_DIRECT: Color = rgb(128, 78, 78);
-    pub const FOOTER_TOKEN_NEW: Color = rgb(66, 96, 84);
-    pub const FOOTER_TOKEN_REMOVE: Color = rgb(110, 74, 74);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemePreset {
+    DefaultDark,
+    HighContrastLight,
 }
 
-pub mod io_pages {
-    use super::rgb;
-    use sdl3::pixels::Color;
+impl ThemePreset {
+    pub fn from_name(value: &str) -> Option<Self> {
+        if value.eq_ignore_ascii_case("default")
+            || value.eq_ignore_ascii_case("dark")
+            || value.eq_ignore_ascii_case("default-dark")
+        {
+            Some(Self::DefaultDark)
+        } else if value.eq_ignore_ascii_case("high-contrast-light")
+            || value.eq_ignore_ascii_case("high-contrast")
+            || value.eq_ignore_ascii_case("bw-light")
+            || value.eq_ignore_ascii_case("black-on-white")
+        {
+            Some(Self::HighContrastLight)
+        } else {
+            None
+        }
+    }
 
-    pub const PAGE_BG: Color = rgb(22, 28, 42);
-    pub const PAGE_BORDER: Color = rgb(88, 96, 120);
-    pub const PAGE_TITLE: Color = rgb(244, 232, 146);
-    pub const SUBTITLE: Color = rgb(184, 194, 206);
-    pub const PANEL_BG: Color = rgb(28, 34, 50);
-    pub const ROW_IDLE_BG: Color = rgb(28, 34, 50);
-    pub const ROW_SELECTED_BG: Color = rgb(56, 70, 100);
-    pub const ROW_IDLE_BORDER: Color = rgb(70, 80, 102);
-    pub const ROW_SELECTED_BORDER: Color = rgb(244, 232, 146);
-    pub const FOCUS_BORDER: Color = rgb(242, 232, 150);
-    pub const LABEL_TEXT: Color = rgb(230, 236, 244);
+    pub fn from_env() -> Self {
+        std::env::var("TREKR_THEME")
+            .ok()
+            .as_deref()
+            .and_then(Self::from_name)
+            .unwrap_or(Self::DefaultDark)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DefaultDark => "default-dark",
+            Self::HighContrastLight => "high-contrast-light",
+        }
+    }
 }
 
-pub mod transport {
-    use super::rgb;
-    use sdl3::pixels::Color;
-
-    pub const PLAY_ACTIVE: Color = rgb(96, 162, 122);
-    pub const PLAY_IDLE: Color = rgb(74, 84, 102);
-    pub const RECORD_ACTIVE: Color = rgb(180, 76, 76);
-    pub const RECORD_IDLE: Color = rgb(88, 78, 82);
-    pub const RECORD_MODE: Color = rgb(76, 94, 136);
-    pub const LOOP_WRAP_EXTEND: Color = rgb(126, 106, 60);
-    pub const LOOP_WRAP_CLAMP: Color = rgb(96, 82, 70);
-    pub const SONG_LOOP: Color = rgb(116, 96, 54);
-    pub const TEMPO: Color = rgb(70, 100, 120);
-    pub const HARMONY: Color = rgb(88, 82, 124);
-    pub const NOTE_ADD_HELD: Color = rgb(88, 130, 176);
-    pub const NOTE_ADD_IDLE: Color = rgb(62, 76, 94);
-    pub const LINK_ACTIVE: Color = rgb(74, 122, 144);
-    pub const LINK_IDLE: Color = rgb(68, 76, 92);
-    pub const LINK_START_STOP: Color = rgb(82, 98, 130);
-    pub const LAUNCH_QUANTIZE_ENABLED: Color = rgb(102, 124, 86);
-    pub const LAUNCH_QUANTIZE_DISABLED: Color = rgb(72, 88, 110);
-    pub const LAUNCH_QUANTIZE_MODE: Color = rgb(78, 96, 122);
-    pub const QUANTIZE: Color = rgb(70, 86, 108);
-    pub const PEERS: Color = rgb(66, 80, 102);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BadgeColors {
+    pub fill: Color,
+    pub text: Color,
 }
 
-pub mod discoverability {
-    use super::rgb;
-    use sdl3::pixels::Color;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AppChromeTheme {
+    pub window_clear: Color,
+    pub surface_fill: Color,
+    pub surface_border: Color,
+    pub tab_active_fill: Color,
+    pub tab_inactive_fill: Color,
+    pub tab_active_border: Color,
+    pub tab_inactive_border: Color,
+    pub tab_text_active: Color,
+    pub tab_text_inactive: Color,
+    pub footer_bg: Color,
+    pub footer_chip_inactive: Color,
+    pub footer_text_active: Color,
+    pub footer_text_inactive: Color,
+    pub detail_text: Color,
+    pub action_text: Color,
+    pub brand_fallback: Color,
+    pub tab_accent_timeline: Color,
+    pub tab_accent_mappings: Color,
+    pub tab_accent_midi_io: Color,
+    pub tab_accent_routing: Color,
+    pub footer_chip_mappings: Color,
+    pub footer_chip_discover: Color,
+    pub footer_chip_direct: Color,
+    pub footer_title_direct: Color,
+    pub footer_detail_direct: Color,
+    pub footer_empty_mapping: Color,
+    pub overlay_backdrop: Color,
+    pub overlay_panel_fill: Color,
+    pub overlay_header_text: Color,
+    pub overlay_row_selected_fill: Color,
+    pub overlay_row_idle_fill: Color,
+    pub overlay_row_idle_border: Color,
+    pub overlay_target_text: Color,
+    pub overlay_scope_text: Color,
+    pub overlay_meta_text: Color,
+}
 
-    pub const BADGE_OVERFLOW_FILL: Color = rgb(56, 64, 80);
-    pub const BADGE_OVERFLOW_TEXT: Color = rgb(228, 232, 238);
-    pub const DIRECT_TAB_TARGET: Color = rgb(132, 84, 84);
-    pub const DIRECT_TARGET_BORDER: Color = rgb(176, 116, 72);
-    pub const DIRECT_TARGET_ACTIVE_BORDER: Color = rgb(252, 146, 126);
-    pub const SLOT_BUILT_IN_FILL: Color = rgb(64, 84, 126);
-    pub const SLOT_USER_FILL: Color = rgb(88, 128, 76);
-    pub const SLOT_COUNT_TEXT: Color = rgb(244, 244, 236);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MappingsTheme {
+    pub page_bg: Color,
+    pub page_border: Color,
+    pub page_title: Color,
+    pub write_mode_active: Color,
+    pub write_mode_inactive: Color,
+    pub learn_armed: Color,
+    pub learn_idle: Color,
+    pub direct_idle_fill: Color,
+    pub direct_armed_fill: Color,
+    pub direct_idle_border: Color,
+    pub direct_armed_border: Color,
+    pub row_selected_fill: Color,
+    pub row_idle_fill: Color,
+    pub row_selected_border: Color,
+    pub row_idle_border: Color,
+    pub overview_text: Color,
+    pub learn_selected_border: Color,
+    pub learn_idle_border: Color,
+    pub learn_text: Color,
+    pub direct_badge_idle_fill: Color,
+    pub direct_text: Color,
+    pub meta_text: Color,
+    pub field_fill_selected: Color,
+    pub field_fill_idle: Color,
+    pub target_fill_enabled: Color,
+    pub target_fill_disabled: Color,
+    pub scope_fill: Color,
+    pub enabled_fill_on: Color,
+    pub enabled_fill_off: Color,
+    pub source_kind_key: Color,
+    pub source_kind_midi: Color,
+    pub source_kind_osc: Color,
+    pub write_field_active: Color,
+    pub write_field_learn: Color,
+    pub device_text_active: Color,
+    pub device_text_inactive: Color,
+    pub target_text: Color,
+    pub scope_text: Color,
+    pub write_field_border: Color,
+    pub write_field_border_learn: Color,
+    pub tap_badge_fill: Color,
+    pub footer_bg: Color,
+    pub footer_token_row: Color,
+    pub footer_token_field: Color,
+    pub footer_token_act: Color,
+    pub footer_token_write: Color,
+    pub footer_token_direct: Color,
+    pub footer_token_new: Color,
+    pub footer_token_remove: Color,
+    pub lookup_target_border: Color,
+    pub lookup_panel_fill: Color,
+    pub lookup_query_placeholder: Color,
+    pub lookup_query_active: Color,
+    pub lookup_row_highlighted: Color,
+    pub lookup_row_idle: Color,
+    pub lookup_row_text_highlighted: Color,
+    pub lookup_row_text_idle: Color,
+    pub lookup_panel_border: Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IoPagesTheme {
+    pub page_bg: Color,
+    pub page_border: Color,
+    pub page_title: Color,
+    pub subtitle: Color,
+    pub panel_bg: Color,
+    pub row_idle_bg: Color,
+    pub row_selected_bg: Color,
+    pub row_idle_border: Color,
+    pub row_selected_border: Color,
+    pub focus_border: Color,
+    pub label_text: Color,
+    pub warning_text: Color,
+    pub inputs_title: Color,
+    pub outputs_title: Color,
+    pub device_status_idle: Color,
+    pub device_body_selected: Color,
+    pub device_body_idle: Color,
+    pub default_badge_text: Color,
+    pub selected_badge_fill: Color,
+    pub selected_badge_text: Color,
+    pub routing_header_fill: Color,
+    pub routing_header_border: Color,
+    pub routing_meta_active_fill: Color,
+    pub routing_meta_thru_on_fill: Color,
+    pub routing_meta_thru_off_fill: Color,
+    pub routing_meta_text: Color,
+    pub routing_state_badge_fill: Color,
+    pub routing_state_badge_text: Color,
+    pub routing_track_name_text: Color,
+    pub routing_help_text: Color,
+    pub routing_group_signal: Color,
+    pub routing_group_input_fx: Color,
+    pub routing_group_rec_mon: Color,
+    pub routing_group_output_fx: Color,
+    pub routing_row_selected_fill: Color,
+    pub routing_row_idle_fill: Color,
+    pub routing_row_selected_border: Color,
+    pub routing_row_idle_border: Color,
+    pub routing_value_input_device: Color,
+    pub routing_value_input_channel: Color,
+    pub routing_value_output_device: Color,
+    pub routing_value_output_channel: Color,
+    pub routing_value_record_fx: Color,
+    pub routing_value_monitor_fx: Color,
+    pub routing_value_input_fx: Color,
+    pub routing_value_output_fx: Color,
+    pub routing_value_passthrough_on: Color,
+    pub routing_value_passthrough_off: Color,
+    pub routing_adjust_fill: Color,
+    pub routing_affordance_selected_fill: Color,
+    pub routing_affordance_idle_fill: Color,
+    pub routing_affordance_selected_border: Color,
+    pub routing_affordance_idle_border: Color,
+    pub routing_field_label: Color,
+    pub routing_toggle_on_fill: Color,
+    pub routing_toggle_off_fill: Color,
+    pub routing_toggle_on_border: Color,
+    pub routing_toggle_off_border: Color,
+    pub routing_toggle_text: Color,
+    pub routing_adjust_text: Color,
+    pub routing_affordance_text: Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportTheme {
+    pub play_active: Color,
+    pub play_idle: Color,
+    pub record_active: Color,
+    pub record_idle: Color,
+    pub record_mode: Color,
+    pub loop_wrap_extend: Color,
+    pub loop_wrap_clamp: Color,
+    pub song_loop: Color,
+    pub tempo: Color,
+    pub harmony: Color,
+    pub note_add_held: Color,
+    pub note_add_idle: Color,
+    pub link_active: Color,
+    pub link_idle: Color,
+    pub link_start_stop: Color,
+    pub launch_quantize_enabled: Color,
+    pub launch_quantize_disabled: Color,
+    pub launch_quantize_mode: Color,
+    pub quantize: Color,
+    pub peers: Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiscoverabilityTheme {
+    pub badge_overflow_fill: Color,
+    pub badge_overflow_text: Color,
+    pub direct_tab_target: Color,
+    pub direct_target_border: Color,
+    pub direct_target_active_border: Color,
+    pub slot_built_in_fill: Color,
+    pub slot_user_fill: Color,
+    pub slot_count_text: Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Theme {
+    pub preset: ThemePreset,
+    pub app_chrome: AppChromeTheme,
+    pub mappings: MappingsTheme,
+    pub io_pages: IoPagesTheme,
+    pub transport: TransportTheme,
+    pub discoverability: DiscoverabilityTheme,
+    pub text_on_dark: Color,
+    pub text_on_light: Color,
+    pub built_in_key_badge: BadgeColors,
+    pub built_in_midi_badge: BadgeColors,
+    pub built_in_osc_badge: BadgeColors,
+    pub user_key_badge: BadgeColors,
+    pub user_midi_badge: BadgeColors,
+    pub user_osc_badge: BadgeColors,
+    pub stored_loop_slots: [Color; 8],
+}
+
+impl Theme {
+    pub fn text_on_fill(&self, fill: Color) -> Color {
+        let brightness =
+            u32::from(fill.r) * 299 + u32::from(fill.g) * 587 + u32::from(fill.b) * 114;
+        if brightness / 1000 < 140 {
+            self.text_on_dark
+        } else {
+            self.text_on_light
+        }
+    }
+
+    pub fn stored_loop_slot(&self, slot_index: usize) -> Color {
+        self.stored_loop_slots[slot_index % self.stored_loop_slots.len()]
+    }
+}
+
+pub fn theme(preset: ThemePreset) -> &'static Theme {
+    match preset {
+        ThemePreset::DefaultDark => &DEFAULT_DARK,
+        ThemePreset::HighContrastLight => &HIGH_CONTRAST_LIGHT,
+    }
+}
+
+const DEFAULT_DARK: Theme = Theme {
+    preset: ThemePreset::DefaultDark,
+    app_chrome: AppChromeTheme {
+        window_clear: rgb(18, 24, 38),
+        surface_fill: rgb(28, 34, 50),
+        surface_border: rgb(88, 96, 120),
+        tab_active_fill: rgb(72, 96, 142),
+        tab_inactive_fill: rgb(34, 44, 64),
+        tab_active_border: rgb(248, 236, 162),
+        tab_inactive_border: rgb(92, 100, 120),
+        tab_text_active: rgb(248, 244, 212),
+        tab_text_inactive: rgb(188, 194, 206),
+        footer_bg: rgb(20, 26, 38),
+        footer_chip_inactive: rgb(56, 66, 84),
+        footer_text_active: rgb(248, 244, 214),
+        footer_text_inactive: rgb(180, 190, 204),
+        detail_text: rgb(188, 198, 212),
+        action_text: rgb(244, 244, 236),
+        brand_fallback: rgb(244, 232, 146),
+        tab_accent_timeline: rgb(84, 144, 220),
+        tab_accent_mappings: rgb(212, 168, 84),
+        tab_accent_midi_io: rgb(96, 200, 164),
+        tab_accent_routing: rgb(224, 112, 112),
+        footer_chip_mappings: rgb(156, 122, 68),
+        footer_chip_discover: rgb(72, 136, 166),
+        footer_chip_direct: rgb(188, 82, 82),
+        footer_title_direct: rgb(248, 228, 208),
+        footer_detail_direct: rgb(214, 200, 188),
+        footer_empty_mapping: rgb(168, 178, 194),
+        overlay_backdrop: rgba(10, 14, 24, 220),
+        overlay_panel_fill: rgb(24, 30, 44),
+        overlay_header_text: rgb(150, 162, 180),
+        overlay_row_selected_fill: rgb(58, 72, 102),
+        overlay_row_idle_fill: rgb(34, 42, 60),
+        overlay_row_idle_border: rgb(82, 92, 114),
+        overlay_target_text: rgb(208, 220, 236),
+        overlay_scope_text: rgb(182, 192, 210),
+        overlay_meta_text: rgb(160, 170, 184),
+    },
+    mappings: MappingsTheme {
+        page_bg: rgb(22, 28, 42),
+        page_border: rgb(88, 96, 120),
+        page_title: rgb(244, 232, 146),
+        write_mode_active: rgb(74, 96, 138),
+        write_mode_inactive: rgb(50, 62, 88),
+        learn_armed: rgb(146, 62, 62),
+        learn_idle: rgb(44, 56, 78),
+        direct_idle_fill: rgb(84, 58, 58),
+        direct_armed_fill: rgb(140, 74, 74),
+        direct_idle_border: rgb(108, 118, 138),
+        direct_armed_border: rgb(252, 214, 194),
+        row_selected_fill: rgb(52, 64, 92),
+        row_idle_fill: rgb(30, 36, 52),
+        row_selected_border: rgb(244, 232, 146),
+        row_idle_border: rgb(78, 88, 110),
+        overview_text: rgb(236, 242, 248),
+        learn_selected_border: rgb(252, 232, 146),
+        learn_idle_border: rgb(96, 108, 132),
+        learn_text: rgb(236, 240, 246),
+        direct_badge_idle_fill: rgb(54, 62, 82),
+        direct_text: rgb(242, 238, 234),
+        meta_text: rgb(154, 166, 182),
+        field_fill_selected: rgb(66, 80, 112),
+        field_fill_idle: rgb(42, 50, 70),
+        target_fill_enabled: rgb(182, 194, 212),
+        target_fill_disabled: rgb(104, 112, 124),
+        scope_fill: rgb(66, 74, 88),
+        enabled_fill_on: rgb(132, 220, 120),
+        enabled_fill_off: rgb(92, 96, 102),
+        source_kind_key: rgb(98, 148, 232),
+        source_kind_midi: rgb(96, 202, 146),
+        source_kind_osc: rgb(220, 154, 88),
+        write_field_active: rgb(92, 98, 64),
+        write_field_learn: rgb(120, 42, 42),
+        device_text_active: rgb(226, 234, 244),
+        device_text_inactive: rgb(124, 132, 146),
+        target_text: rgb(24, 28, 36),
+        scope_text: rgb(236, 238, 242),
+        write_field_border: rgb(252, 232, 146),
+        write_field_border_learn: rgb(252, 126, 126),
+        tap_badge_fill: rgb(86, 98, 124),
+        footer_bg: rgb(26, 32, 46),
+        footer_token_row: rgb(62, 78, 106),
+        footer_token_field: rgb(74, 88, 118),
+        footer_token_act: rgb(82, 100, 136),
+        footer_token_write: rgb(96, 82, 52),
+        footer_token_direct: rgb(128, 78, 78),
+        footer_token_new: rgb(66, 96, 84),
+        footer_token_remove: rgb(110, 74, 74),
+        lookup_target_border: rgb(108, 84, 52),
+        lookup_panel_fill: rgb(28, 32, 44),
+        lookup_query_placeholder: rgb(152, 162, 176),
+        lookup_query_active: rgb(242, 238, 228),
+        lookup_row_highlighted: rgb(88, 98, 132),
+        lookup_row_idle: rgb(40, 46, 62),
+        lookup_row_text_highlighted: rgb(248, 244, 232),
+        lookup_row_text_idle: rgb(210, 216, 224),
+        lookup_panel_border: rgb(164, 142, 96),
+    },
+    io_pages: IoPagesTheme {
+        page_bg: rgb(22, 28, 42),
+        page_border: rgb(88, 96, 120),
+        page_title: rgb(244, 232, 146),
+        subtitle: rgb(184, 194, 206),
+        panel_bg: rgb(28, 34, 50),
+        row_idle_bg: rgb(28, 34, 50),
+        row_selected_bg: rgb(56, 70, 100),
+        row_idle_border: rgb(70, 80, 102),
+        row_selected_border: rgb(244, 232, 146),
+        focus_border: rgb(242, 232, 150),
+        label_text: rgb(230, 236, 244),
+        warning_text: rgb(248, 182, 124),
+        inputs_title: rgb(214, 242, 220),
+        outputs_title: rgb(246, 212, 194),
+        device_status_idle: rgb(72, 76, 84),
+        device_body_selected: rgb(216, 224, 238),
+        device_body_idle: rgb(182, 194, 212),
+        default_badge_text: rgb(22, 28, 36),
+        selected_badge_fill: rgb(244, 232, 146),
+        selected_badge_text: rgb(24, 28, 36),
+        routing_header_fill: rgb(54, 70, 104),
+        routing_header_border: rgb(244, 232, 146),
+        routing_meta_active_fill: rgb(220, 124, 100),
+        routing_meta_thru_on_fill: rgb(72, 188, 180),
+        routing_meta_thru_off_fill: rgb(92, 100, 112),
+        routing_meta_text: rgb(24, 28, 36),
+        routing_state_badge_fill: rgb(70, 86, 118),
+        routing_state_badge_text: rgb(244, 244, 236),
+        routing_track_name_text: rgb(244, 244, 236),
+        routing_help_text: rgb(208, 216, 228),
+        routing_group_signal: rgb(94, 186, 152),
+        routing_group_input_fx: rgb(104, 152, 214),
+        routing_group_rec_mon: rgb(112, 188, 152),
+        routing_group_output_fx: rgb(198, 138, 186),
+        routing_row_selected_fill: rgb(52, 64, 92),
+        routing_row_idle_fill: rgb(34, 40, 58),
+        routing_row_selected_border: rgb(244, 232, 146),
+        routing_row_idle_border: rgb(78, 88, 110),
+        routing_value_input_device: rgb(94, 186, 152),
+        routing_value_input_channel: rgb(106, 152, 218),
+        routing_value_output_device: rgb(218, 142, 98),
+        routing_value_output_channel: rgb(208, 122, 160),
+        routing_value_record_fx: rgb(112, 188, 152),
+        routing_value_monitor_fx: rgb(102, 182, 196),
+        routing_value_input_fx: rgb(120, 152, 214),
+        routing_value_output_fx: rgb(200, 138, 186),
+        routing_value_passthrough_on: rgb(92, 220, 216),
+        routing_value_passthrough_off: rgb(112, 118, 126),
+        routing_adjust_fill: rgb(34, 42, 56),
+        routing_affordance_selected_fill: rgb(244, 232, 146),
+        routing_affordance_idle_fill: rgb(96, 104, 122),
+        routing_affordance_selected_border: rgb(252, 244, 178),
+        routing_affordance_idle_border: rgb(124, 132, 146),
+        routing_field_label: rgb(244, 244, 236),
+        routing_toggle_on_fill: rgb(48, 170, 108),
+        routing_toggle_off_fill: rgb(82, 66, 74),
+        routing_toggle_on_border: rgb(192, 250, 206),
+        routing_toggle_off_border: rgb(172, 128, 140),
+        routing_toggle_text: rgb(244, 244, 236),
+        routing_adjust_text: rgb(222, 228, 236),
+        routing_affordance_text: rgb(24, 28, 36),
+    },
+    transport: TransportTheme {
+        play_active: rgb(96, 162, 122),
+        play_idle: rgb(74, 84, 102),
+        record_active: rgb(180, 76, 76),
+        record_idle: rgb(88, 78, 82),
+        record_mode: rgb(76, 94, 136),
+        loop_wrap_extend: rgb(126, 106, 60),
+        loop_wrap_clamp: rgb(96, 82, 70),
+        song_loop: rgb(116, 96, 54),
+        tempo: rgb(70, 100, 120),
+        harmony: rgb(88, 82, 124),
+        note_add_held: rgb(88, 130, 176),
+        note_add_idle: rgb(62, 76, 94),
+        link_active: rgb(74, 122, 144),
+        link_idle: rgb(68, 76, 92),
+        link_start_stop: rgb(82, 98, 130),
+        launch_quantize_enabled: rgb(102, 124, 86),
+        launch_quantize_disabled: rgb(72, 88, 110),
+        launch_quantize_mode: rgb(78, 96, 122),
+        quantize: rgb(70, 86, 108),
+        peers: rgb(66, 80, 102),
+    },
+    discoverability: DiscoverabilityTheme {
+        badge_overflow_fill: rgb(56, 64, 80),
+        badge_overflow_text: rgb(228, 232, 238),
+        direct_tab_target: rgb(132, 84, 84),
+        direct_target_border: rgb(176, 116, 72),
+        direct_target_active_border: rgb(252, 146, 126),
+        slot_built_in_fill: rgb(64, 84, 126),
+        slot_user_fill: rgb(88, 128, 76),
+        slot_count_text: rgb(244, 244, 236),
+    },
+    text_on_dark: rgb(244, 244, 236),
+    text_on_light: rgb(24, 28, 36),
+    built_in_key_badge: BadgeColors {
+        fill: rgb(64, 84, 126),
+        text: rgb(244, 244, 236),
+    },
+    built_in_midi_badge: BadgeColors {
+        fill: rgb(88, 94, 116),
+        text: rgb(236, 240, 246),
+    },
+    built_in_osc_badge: BadgeColors {
+        fill: rgb(84, 90, 112),
+        text: rgb(236, 240, 246),
+    },
+    user_key_badge: BadgeColors {
+        fill: rgb(88, 128, 76),
+        text: rgb(246, 248, 232),
+    },
+    user_midi_badge: BadgeColors {
+        fill: rgb(170, 104, 62),
+        text: rgb(250, 242, 228),
+    },
+    user_osc_badge: BadgeColors {
+        fill: rgb(148, 82, 104),
+        text: rgb(248, 238, 244),
+    },
+    stored_loop_slots: [
+        rgb(214, 124, 118),
+        rgb(214, 176, 98),
+        rgb(184, 206, 108),
+        rgb(114, 198, 174),
+        rgb(114, 168, 214),
+        rgb(144, 138, 214),
+        rgb(204, 132, 206),
+        rgb(210, 144, 164),
+    ],
+};
+
+const HIGH_CONTRAST_LIGHT: Theme = Theme {
+    preset: ThemePreset::HighContrastLight,
+    app_chrome: AppChromeTheme {
+        window_clear: rgb(255, 255, 255),
+        surface_fill: rgb(255, 255, 255),
+        surface_border: rgb(0, 0, 0),
+        tab_active_fill: rgb(0, 0, 0),
+        tab_inactive_fill: rgb(255, 255, 255),
+        tab_active_border: rgb(0, 0, 0),
+        tab_inactive_border: rgb(0, 0, 0),
+        tab_text_active: rgb(255, 255, 255),
+        tab_text_inactive: rgb(0, 0, 0),
+        footer_bg: rgb(255, 255, 255),
+        footer_chip_inactive: rgb(255, 255, 255),
+        footer_text_active: rgb(255, 255, 255),
+        footer_text_inactive: rgb(0, 0, 0),
+        detail_text: rgb(32, 32, 32),
+        action_text: rgb(255, 255, 255),
+        brand_fallback: rgb(0, 0, 0),
+        tab_accent_timeline: rgb(0, 0, 0),
+        tab_accent_mappings: rgb(194, 138, 0),
+        tab_accent_midi_io: rgb(0, 128, 96),
+        tab_accent_routing: rgb(160, 32, 32),
+        footer_chip_mappings: rgb(194, 138, 0),
+        footer_chip_discover: rgb(0, 92, 160),
+        footer_chip_direct: rgb(160, 32, 32),
+        footer_title_direct: rgb(0, 0, 0),
+        footer_detail_direct: rgb(32, 32, 32),
+        footer_empty_mapping: rgb(64, 64, 64),
+        overlay_backdrop: rgba(255, 255, 255, 228),
+        overlay_panel_fill: rgb(255, 255, 255),
+        overlay_header_text: rgb(0, 0, 0),
+        overlay_row_selected_fill: rgb(0, 0, 0),
+        overlay_row_idle_fill: rgb(255, 255, 255),
+        overlay_row_idle_border: rgb(0, 0, 0),
+        overlay_target_text: rgb(255, 255, 255),
+        overlay_scope_text: rgb(255, 255, 255),
+        overlay_meta_text: rgb(0, 0, 0),
+    },
+    mappings: MappingsTheme {
+        page_bg: rgb(255, 255, 255),
+        page_border: rgb(0, 0, 0),
+        page_title: rgb(0, 0, 0),
+        write_mode_active: rgb(194, 138, 0),
+        write_mode_inactive: rgb(255, 255, 255),
+        learn_armed: rgb(196, 40, 40),
+        learn_idle: rgb(255, 255, 255),
+        direct_idle_fill: rgb(255, 255, 255),
+        direct_armed_fill: rgb(196, 40, 40),
+        direct_idle_border: rgb(0, 0, 0),
+        direct_armed_border: rgb(0, 0, 0),
+        row_selected_fill: rgb(0, 0, 0),
+        row_idle_fill: rgb(255, 255, 255),
+        row_selected_border: rgb(0, 0, 0),
+        row_idle_border: rgb(0, 0, 0),
+        overview_text: rgb(0, 0, 0),
+        learn_selected_border: rgb(0, 0, 0),
+        learn_idle_border: rgb(0, 0, 0),
+        learn_text: rgb(0, 0, 0),
+        direct_badge_idle_fill: rgb(255, 255, 255),
+        direct_text: rgb(0, 0, 0),
+        meta_text: rgb(32, 32, 32),
+        field_fill_selected: rgb(0, 0, 0),
+        field_fill_idle: rgb(255, 255, 255),
+        target_fill_enabled: rgb(255, 255, 255),
+        target_fill_disabled: rgb(216, 216, 216),
+        scope_fill: rgb(255, 255, 255),
+        enabled_fill_on: rgb(0, 128, 96),
+        enabled_fill_off: rgb(96, 96, 96),
+        source_kind_key: rgb(0, 92, 160),
+        source_kind_midi: rgb(0, 128, 96),
+        source_kind_osc: rgb(194, 138, 0),
+        write_field_active: rgb(194, 138, 0),
+        write_field_learn: rgb(196, 40, 40),
+        device_text_active: rgb(255, 255, 255),
+        device_text_inactive: rgb(64, 64, 64),
+        target_text: rgb(0, 0, 0),
+        scope_text: rgb(0, 0, 0),
+        write_field_border: rgb(0, 0, 0),
+        write_field_border_learn: rgb(0, 0, 0),
+        tap_badge_fill: rgb(255, 255, 255),
+        footer_bg: rgb(255, 255, 255),
+        footer_token_row: rgb(255, 255, 255),
+        footer_token_field: rgb(255, 255, 255),
+        footer_token_act: rgb(255, 255, 255),
+        footer_token_write: rgb(194, 138, 0),
+        footer_token_direct: rgb(196, 40, 40),
+        footer_token_new: rgb(0, 128, 96),
+        footer_token_remove: rgb(96, 96, 96),
+        lookup_target_border: rgb(0, 0, 0),
+        lookup_panel_fill: rgb(255, 255, 255),
+        lookup_query_placeholder: rgb(96, 96, 96),
+        lookup_query_active: rgb(0, 0, 0),
+        lookup_row_highlighted: rgb(0, 0, 0),
+        lookup_row_idle: rgb(255, 255, 255),
+        lookup_row_text_highlighted: rgb(255, 255, 255),
+        lookup_row_text_idle: rgb(0, 0, 0),
+        lookup_panel_border: rgb(0, 0, 0),
+    },
+    io_pages: IoPagesTheme {
+        page_bg: rgb(255, 255, 255),
+        page_border: rgb(0, 0, 0),
+        page_title: rgb(0, 0, 0),
+        subtitle: rgb(32, 32, 32),
+        panel_bg: rgb(255, 255, 255),
+        row_idle_bg: rgb(255, 255, 255),
+        row_selected_bg: rgb(0, 0, 0),
+        row_idle_border: rgb(0, 0, 0),
+        row_selected_border: rgb(0, 0, 0),
+        focus_border: rgb(0, 0, 0),
+        label_text: rgb(0, 0, 0),
+        warning_text: rgb(160, 32, 32),
+        inputs_title: rgb(0, 128, 96),
+        outputs_title: rgb(194, 138, 0),
+        device_status_idle: rgb(96, 96, 96),
+        device_body_selected: rgb(255, 255, 255),
+        device_body_idle: rgb(232, 232, 232),
+        default_badge_text: rgb(0, 0, 0),
+        selected_badge_fill: rgb(194, 138, 0),
+        selected_badge_text: rgb(0, 0, 0),
+        routing_header_fill: rgb(255, 255, 255),
+        routing_header_border: rgb(0, 0, 0),
+        routing_meta_active_fill: rgb(194, 138, 0),
+        routing_meta_thru_on_fill: rgb(0, 128, 96),
+        routing_meta_thru_off_fill: rgb(96, 96, 96),
+        routing_meta_text: rgb(0, 0, 0),
+        routing_state_badge_fill: rgb(255, 255, 255),
+        routing_state_badge_text: rgb(0, 0, 0),
+        routing_track_name_text: rgb(0, 0, 0),
+        routing_help_text: rgb(32, 32, 32),
+        routing_group_signal: rgb(0, 128, 96),
+        routing_group_input_fx: rgb(0, 92, 160),
+        routing_group_rec_mon: rgb(0, 128, 96),
+        routing_group_output_fx: rgb(160, 32, 96),
+        routing_row_selected_fill: rgb(0, 0, 0),
+        routing_row_idle_fill: rgb(255, 255, 255),
+        routing_row_selected_border: rgb(0, 0, 0),
+        routing_row_idle_border: rgb(0, 0, 0),
+        routing_value_input_device: rgb(0, 128, 96),
+        routing_value_input_channel: rgb(0, 92, 160),
+        routing_value_output_device: rgb(194, 138, 0),
+        routing_value_output_channel: rgb(160, 32, 96),
+        routing_value_record_fx: rgb(0, 128, 96),
+        routing_value_monitor_fx: rgb(0, 92, 160),
+        routing_value_input_fx: rgb(0, 92, 160),
+        routing_value_output_fx: rgb(160, 32, 96),
+        routing_value_passthrough_on: rgb(0, 128, 96),
+        routing_value_passthrough_off: rgb(96, 96, 96),
+        routing_adjust_fill: rgb(255, 255, 255),
+        routing_affordance_selected_fill: rgb(194, 138, 0),
+        routing_affordance_idle_fill: rgb(255, 255, 255),
+        routing_affordance_selected_border: rgb(0, 0, 0),
+        routing_affordance_idle_border: rgb(0, 0, 0),
+        routing_field_label: rgb(255, 255, 255),
+        routing_toggle_on_fill: rgb(0, 128, 96),
+        routing_toggle_off_fill: rgb(96, 96, 96),
+        routing_toggle_on_border: rgb(0, 0, 0),
+        routing_toggle_off_border: rgb(0, 0, 0),
+        routing_toggle_text: rgb(255, 255, 255),
+        routing_adjust_text: rgb(0, 0, 0),
+        routing_affordance_text: rgb(0, 0, 0),
+    },
+    transport: TransportTheme {
+        play_active: rgb(0, 128, 96),
+        play_idle: rgb(255, 255, 255),
+        record_active: rgb(196, 40, 40),
+        record_idle: rgb(255, 255, 255),
+        record_mode: rgb(194, 138, 0),
+        loop_wrap_extend: rgb(194, 138, 0),
+        loop_wrap_clamp: rgb(255, 255, 255),
+        song_loop: rgb(194, 138, 0),
+        tempo: rgb(255, 255, 255),
+        harmony: rgb(160, 32, 96),
+        note_add_held: rgb(0, 92, 160),
+        note_add_idle: rgb(255, 255, 255),
+        link_active: rgb(0, 92, 160),
+        link_idle: rgb(255, 255, 255),
+        link_start_stop: rgb(0, 92, 160),
+        launch_quantize_enabled: rgb(0, 128, 96),
+        launch_quantize_disabled: rgb(255, 255, 255),
+        launch_quantize_mode: rgb(194, 138, 0),
+        quantize: rgb(255, 255, 255),
+        peers: rgb(255, 255, 255),
+    },
+    discoverability: DiscoverabilityTheme {
+        badge_overflow_fill: rgb(255, 255, 255),
+        badge_overflow_text: rgb(0, 0, 0),
+        direct_tab_target: rgb(160, 32, 32),
+        direct_target_border: rgb(194, 138, 0),
+        direct_target_active_border: rgb(0, 0, 0),
+        slot_built_in_fill: rgb(0, 92, 160),
+        slot_user_fill: rgb(0, 128, 96),
+        slot_count_text: rgb(255, 255, 255),
+    },
+    text_on_dark: rgb(255, 255, 255),
+    text_on_light: rgb(0, 0, 0),
+    built_in_key_badge: BadgeColors {
+        fill: rgb(0, 92, 160),
+        text: rgb(255, 255, 255),
+    },
+    built_in_midi_badge: BadgeColors {
+        fill: rgb(255, 255, 255),
+        text: rgb(0, 0, 0),
+    },
+    built_in_osc_badge: BadgeColors {
+        fill: rgb(255, 255, 255),
+        text: rgb(0, 0, 0),
+    },
+    user_key_badge: BadgeColors {
+        fill: rgb(0, 128, 96),
+        text: rgb(255, 255, 255),
+    },
+    user_midi_badge: BadgeColors {
+        fill: rgb(194, 138, 0),
+        text: rgb(0, 0, 0),
+    },
+    user_osc_badge: BadgeColors {
+        fill: rgb(160, 32, 96),
+        text: rgb(255, 255, 255),
+    },
+    stored_loop_slots: [
+        rgb(160, 32, 32),
+        rgb(194, 138, 0),
+        rgb(0, 128, 96),
+        rgb(0, 92, 160),
+        rgb(96, 64, 176),
+        rgb(160, 32, 96),
+        rgb(96, 96, 96),
+        rgb(0, 0, 0),
+    ],
+};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn theme_preset_aliases_parse_expected_names() {
+        assert_eq!(
+            ThemePreset::from_name("high-contrast-light"),
+            Some(ThemePreset::HighContrastLight)
+        );
+        assert_eq!(
+            ThemePreset::from_name("black-on-white"),
+            Some(ThemePreset::HighContrastLight)
+        );
+        assert_eq!(
+            ThemePreset::from_name("default-dark"),
+            Some(ThemePreset::DefaultDark)
+        );
+    }
+
+    #[test]
+    fn high_contrast_theme_uses_black_text_on_light_fill() {
+        let theme = theme(ThemePreset::HighContrastLight);
+        assert_eq!(theme.text_on_fill(rgb(255, 255, 255)), rgb(0, 0, 0));
+        assert_eq!(theme.text_on_fill(rgb(0, 0, 0)), rgb(255, 255, 255));
+    }
 }
