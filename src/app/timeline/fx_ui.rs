@@ -1095,7 +1095,11 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "X",
-            centered_text_rect(rect),
+            crate::app::support::ui_helpers::horizontally_center_text_rect(
+                "X",
+                centered_text_rect(rect),
+                1,
+            ),
             1,
             if high_contrast_dark {
                 Color::RGB(0, 0, 0)
