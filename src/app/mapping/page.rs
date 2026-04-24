@@ -20,7 +20,9 @@ impl App {
         let footer_height = metrics.mapping_footer_height_px;
         let footer_bounds = Rect::new(
             content_bounds.x + side_inset,
-            content_bounds.y + content_bounds.height() as i32 - footer_height as i32 - side_inset,
+            content_bounds.y + content_bounds.height() as i32
+                - footer_height as i32
+                - metrics.mapping_footer_bottom_inset_px,
             content_bounds
                 .width()
                 .saturating_sub((side_inset * 2).max(0) as u32),
@@ -32,10 +34,10 @@ impl App {
             content_bounds
                 .width()
                 .saturating_sub((side_inset * 2).max(0) as u32),
-            footer_bounds
-                .y
-                .saturating_sub(content_bounds.y + metrics.mapping_list_y_px + side_inset)
-                .max(0) as u32,
+            content_bounds
+                .height()
+                .saturating_sub(metrics.mapping_list_y_px.max(0) as u32)
+                .saturating_sub(metrics.mapping_list_bottom_inset_px.max(0) as u32),
         );
         MappingsPageLayout {
             overview_badge: Rect::new(
@@ -1212,6 +1214,21 @@ mod tests {
             cells[mapping_field_index(MappingField::SourceDevice)].x
                 < cells[mapping_field_index(MappingField::SourceValue)].x
         );
+    }
+
+    #[test]
+    fn mappings_page_layout_matches_origin_main_at_default_density() {
+        let app = App::new();
+        let layout = app.mappings_page_layout(Rect::new(0, 0, 800, 600));
+
+        assert_eq!(layout.overview_badge, Rect::new(200, 8, 188, 16));
+        assert_eq!(layout.learn_badge, Rect::new(392, 8, 136, 16));
+        assert_eq!(layout.direct_badge, Rect::new(532, 8, 154, 16));
+        assert_eq!(layout.header_row, Rect::new(8, 30, 784, 10));
+        assert_eq!(layout.list_bounds, Rect::new(8, 44, 784, 532));
+        assert_eq!(layout.footer_bounds, Rect::new(8, 580, 784, 12));
+        assert_eq!(layout.row_height, 18);
+        assert_eq!(layout.row_gap, 3);
     }
 
     #[test]

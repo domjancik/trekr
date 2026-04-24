@@ -32,28 +32,28 @@ impl App {
             output_bounds.width(),
             metrics.midi_panel_header_height_px,
         );
-        let list_top_gap = metrics.panel_gap_px - 2;
-        let list_bottom_gap = metrics.panel_gap_px + metrics.midi_list_inset_px;
         Ok(MidiIoPageLayout {
             header_bounds,
             input_header,
             output_header,
             input_list: Rect::new(
                 input_bounds.x,
-                input_header.y + input_header.height() as i32 + list_top_gap,
+                input_header.y + input_header.height() as i32 + metrics.midi_list_top_gap_px,
                 input_bounds.width(),
-                input_bounds
-                    .height()
-                    .saturating_sub(input_header.height().saturating_add(list_bottom_gap as u32)),
+                input_bounds.height().saturating_sub(
+                    input_header
+                        .height()
+                        .saturating_add(metrics.midi_list_bottom_gap_px.max(0) as u32),
+                ),
             ),
             output_list: Rect::new(
                 output_bounds.x,
-                output_header.y + output_header.height() as i32 + list_top_gap,
+                output_header.y + output_header.height() as i32 + metrics.midi_list_top_gap_px,
                 output_bounds.width(),
                 output_bounds.height().saturating_sub(
                     output_header
                         .height()
-                        .saturating_add(list_bottom_gap as u32),
+                        .saturating_add(metrics.midi_list_bottom_gap_px.max(0) as u32),
                 ),
             ),
         })
@@ -377,5 +377,17 @@ mod tests {
 
         app.apply_action(AppAction::AdjustPageItemForward);
         assert_eq!(app.page_state.midi_io.focus, MidiIoListFocus::Outputs);
+    }
+
+    #[test]
+    fn midi_io_layout_matches_origin_main_at_default_density() {
+        let app = App::new();
+        let layout = app.midi_io_page_layout(Rect::new(0, 0, 800, 600)).unwrap();
+
+        assert_eq!(layout.header_bounds, Rect::new(0, 0, 800, 28));
+        assert_eq!(layout.input_header, Rect::new(0, 38, 393, 22));
+        assert_eq!(layout.output_header, Rect::new(407, 38, 393, 22));
+        assert_eq!(layout.input_list, Rect::new(0, 66, 393, 512));
+        assert_eq!(layout.output_list, Rect::new(407, 66, 393, 512));
     }
 }
