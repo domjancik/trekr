@@ -1,6 +1,7 @@
 use crate::mapping::MappingEntry;
 use crate::pages::{AppPageState, MappingField};
 use crate::project::Project;
+use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::TimelineFlow;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +35,10 @@ pub enum UndoOverlayState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimelineUndoState {
     pub project: Project,
+    pub selected_timeline_context: TimelineContext,
+    pub selected_timeline_fx_field: TimelineFxField,
+    pub selected_input_fx_row: usize,
+    pub selected_output_fx_row: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
