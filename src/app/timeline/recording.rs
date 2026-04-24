@@ -320,7 +320,14 @@ impl App {
                     RecordingView::Overlay => "OVR",
                     RecordingView::Stacked => "STK",
                 },
-                crate::app::support::ui_helpers::compact_label_rect(view_rect),
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    match track.recording_view {
+                        RecordingView::Overlay => "OVR",
+                        RecordingView::Stacked => "STK",
+                    },
+                    crate::app::support::ui_helpers::compact_label_rect(view_rect),
+                    1,
+                ),
                 1,
                 contrasting_text_color(view_fill, theme),
             )?;
@@ -356,7 +363,11 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 if selected_clip.muted { "ON" } else { "M" },
-                crate::app::support::ui_helpers::compact_label_rect(mute_rect),
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    if selected_clip.muted { "ON" } else { "M" },
+                    crate::app::support::ui_helpers::compact_label_rect(mute_rect),
+                    1,
+                ),
                 1,
                 contrasting_text_color(mute_fill, theme),
             )?;
@@ -379,7 +390,11 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 "X",
-                crate::app::support::ui_helpers::compact_label_rect(delete_rect),
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    "X",
+                    crate::app::support::ui_helpers::compact_label_rect(delete_rect),
+                    1,
+                ),
                 1,
                 contrasting_text_color(delete_fill, theme),
             )?;
@@ -875,17 +890,17 @@ impl App {
     }
 
     pub(crate) fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
-        let top_y = label_rect.y + label_rect.height() as i32 - 12;
+        let top_y = label_rect.y + label_rect.height() as i32 - 13;
         let right = label_rect.x + label_rect.width() as i32 - 4;
-        Rect::new(right - 26, top_y, 26, 10)
+        Rect::new(right - 26, top_y, 26, 11)
     }
 
     pub(crate) fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
         Rect::new(
             label_rect.x + 4,
-            label_rect.y + 2,
+            label_rect.y + 1,
             label_rect.width().saturating_sub(8).min(30),
-            10,
+            11,
         )
     }
 
@@ -906,7 +921,7 @@ impl App {
             .stored_loop_visible_slot_count(label_rect)
             .min(STORED_LOOP_SLOT_COUNT);
         let slot_w = 10_u32;
-        let slot_h = 10_u32;
+        let slot_h = 11_u32;
         let gap = 2_i32;
         let mut rects = Vec::with_capacity(visible_slots);
         for slot_index in 0..visible_slots {
@@ -914,7 +929,7 @@ impl App {
                 slot_index,
                 Rect::new(
                     label_rect.x + 4 + slot_index as i32 * (slot_w as i32 + gap),
-                    label_rect.y + 0,
+                    label_rect.y,
                     slot_w,
                     slot_h,
                 ),
@@ -924,10 +939,10 @@ impl App {
     }
 
     pub(crate) fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let top_y = label_rect.y + label_rect.height() as i32 - 12;
+        let top_y = label_rect.y + label_rect.height() as i32 - 13;
         let view_rect = self.recording_view_chip_rect(label_rect);
-        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 10);
-        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 10);
+        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 11);
+        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 11);
         (left_rect, right_rect)
     }
 
@@ -1014,11 +1029,11 @@ impl App {
     }
 
     pub(crate) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let top_y = label_rect.y + 2;
+        let top_y = label_rect.y + 1;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         (
-            Rect::new(right - 28, top_y, 12, 10),
-            Rect::new(right - 12, top_y, 12, 10),
+            Rect::new(right - 28, top_y, 12, 11),
+            Rect::new(right - 12, top_y, 12, 11),
         )
     }
 
