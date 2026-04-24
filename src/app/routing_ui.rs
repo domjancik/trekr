@@ -321,7 +321,7 @@ impl App {
                 if selected {
                     contrasting_text_color(theme.io_pages.routing_row_selected_fill, theme)
                 } else {
-                    theme.io_pages.routing_field_label
+                    contrasting_text_color(theme.io_pages.routing_row_idle_fill, theme)
                 },
             )?;
             if is_toggle_field {
