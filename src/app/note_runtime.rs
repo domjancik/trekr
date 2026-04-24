@@ -232,10 +232,9 @@ impl App {
             let mut refresh_needed = false;
             for (_, note_on, pitch, velocity) in events {
                 let result = if note_on {
-                    self.midi_output
-                        .send_note_on(&port, channel, pitch, velocity)
+                    self.send_note_on_to_port(&port, channel, pitch, velocity)
                 } else {
-                    self.midi_output.send_note_off(&port, channel, pitch)
+                    self.send_note_off_to_port(&port, channel, pitch)
                 };
                 if result.is_err() {
                     refresh_needed = true;
@@ -262,7 +261,7 @@ impl App {
             .collect();
 
         for (port, channel) in ports_and_channels {
-            if self.midi_output.send_all_notes_off(&port, channel).is_err() {
+            if self.send_all_notes_off_to_port(&port, channel).is_err() {
                 self.refresh_midi_devices_now();
             }
         }

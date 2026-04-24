@@ -42,6 +42,7 @@ impl App {
 
         self.commit_direct_mapping_source(
             MappingSourceKind::Midi,
+            event.port.protocol,
             target,
             &event.port.name,
             &midi_learn_label(event),
@@ -52,6 +53,7 @@ impl App {
     pub(super) fn commit_direct_mapping_source(
         &mut self,
         source_kind: MappingSourceKind,
+        source_protocol: MidiTransportProtocol,
         target: DirectMappingTarget,
         source_device_label: &str,
         source_label: &str,
@@ -76,6 +78,7 @@ impl App {
         } else {
             let entry = MappingEntry {
                 source_kind,
+                source_protocol,
                 source_device_label: source_device_label.to_string(),
                 source_label: source_label.to_string(),
                 target_label: target.target_label.to_string(),
@@ -91,6 +94,7 @@ impl App {
         });
         if let Some(entry) = self.mappings.get_mut(index) {
             entry.source_kind = source_kind;
+            entry.source_protocol = source_protocol;
             entry.source_device_label = source_device_label.to_string();
             entry.source_label = source_label.to_string();
             entry.target_label = target.target_label.to_string();
@@ -229,6 +233,7 @@ mod tests {
         let mut app = App::new();
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Old Port".to_string(),
             source_label: "CC20 Ch1".to_string(),
             target_label: "Track Arm".to_string(),
@@ -266,6 +271,7 @@ mod tests {
         app.mappings = vec![
             MappingEntry {
                 source_kind: MappingSourceKind::Midi,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: "Port A".to_string(),
                 source_label: "CC20 Ch1".to_string(),
                 target_label: "Play/Stop".to_string(),
@@ -274,6 +280,7 @@ mod tests {
             },
             MappingEntry {
                 source_kind: MappingSourceKind::Midi,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: "Port B".to_string(),
                 source_label: "CC21 Ch1".to_string(),
                 target_label: "Track Arm".to_string(),

@@ -6,15 +6,61 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum MidiTransportProtocol {
+    #[default]
+    SystemMidi,
+    RtpMidiNative,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkMidiEndpoint {
+    pub key: String,
+    pub host: String,
+    pub control_port: u16,
+    pub data_port: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_name: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiPortRef {
     pub name: String,
+    #[serde(default)]
+    pub protocol: MidiTransportProtocol,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_endpoint: Option<NetworkMidiEndpoint>,
 }
 
 impl MidiPortRef {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
+            protocol: MidiTransportProtocol::SystemMidi,
+            network_endpoint: None,
+        }
+    }
+
+    pub fn rtp_midi(name: &str, endpoint: NetworkMidiEndpoint) -> Self {
+        Self {
+            name: name.to_string(),
+            protocol: MidiTransportProtocol::RtpMidiNative,
+            network_endpoint: Some(endpoint),
+        }
+    }
+
+    pub fn network_key(&self) -> Option<String> {
+        self.network_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.key.clone())
+    }
+
+    pub fn protocol_badge(&self) -> Option<&'static str> {
+        match self.protocol {
+            MidiTransportProtocol::SystemMidi => None,
+            MidiTransportProtocol::RtpMidiNative => Some("RTP"),
         }
     }
 }
@@ -65,7 +111,7 @@ impl MidiDeviceCatalog {
                 .ports()
                 .into_iter()
                 .filter_map(|port| midi_in.port_name(&port).ok())
-                .map(|name| MidiPortRef { name })
+                .map(|name| MidiPortRef::new(&name))
                 .collect(),
             Err(_) => Vec::new(),
         };
@@ -74,7 +120,7 @@ impl MidiDeviceCatalog {
                 .ports()
                 .into_iter()
                 .filter_map(|port| midi_out.port_name(&port).ok())
-                .map(|name| MidiPortRef { name })
+                .map(|name| MidiPortRef::new(&name))
                 .collect(),
             Err(_) => Vec::new(),
         };

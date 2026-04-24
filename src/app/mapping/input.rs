@@ -29,10 +29,13 @@ pub(crate) fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInput
         return false;
     }
 
-    if entry.source_device_label != default_mapping_source_device()
-        && entry.source_device_label != event.port.name
-    {
-        return false;
+    if entry.source_device_label != default_mapping_source_device() {
+        if entry.source_protocol != event.port.protocol {
+            return false;
+        }
+        if entry.source_device_label != event.port.name {
+            return false;
+        }
     }
 
     match event.message {
@@ -67,9 +70,7 @@ mod tests {
     fn midi_learn_label_formats_note_and_cc_values() {
         let note = MidiInputEvent {
             channel: 2,
-            port: MidiPortRef {
-                name: "Port".to_string(),
-            },
+            port: MidiPortRef::new("Port"),
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
@@ -79,9 +80,7 @@ mod tests {
 
         let cc = MidiInputEvent {
             channel: 4,
-            port: MidiPortRef {
-                name: "Port".to_string(),
-            },
+            port: MidiPortRef::new("Port"),
             message: MidiInputMessage::ControlChange {
                 controller: 74,
                 value: 64,
@@ -94,6 +93,7 @@ mod tests {
     fn midi_mapping_match_requires_release_capable_target_for_note_off() {
         let entry = MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Port".to_string(),
             source_label: "Note C4 Ch1".to_string(),
             target_label: "Record Hold".to_string(),
@@ -102,9 +102,7 @@ mod tests {
         };
         let note_off = MidiInputEvent {
             channel: 1,
-            port: MidiPortRef {
-                name: "Port".to_string(),
-            },
+            port: MidiPortRef::new("Port"),
             message: MidiInputMessage::NoteOff { pitch: 60 },
         };
         assert!(midi_mapping_matches_event(&entry, &note_off));

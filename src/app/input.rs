@@ -3,8 +3,15 @@ use super::*;
 
 impl App {
     pub(super) fn poll_midi_input(&mut self) {
+        if self.network_midi.poll_discovery() {
+            self.refresh_midi_devices_now();
+        }
         let events = self.midi_input.drain_events();
         for event in events {
+            self.handle_midi_input_event(event);
+        }
+        let network_events = self.network_midi.drain_events();
+        for event in network_events {
             self.handle_midi_input_event(event);
         }
     }
@@ -160,6 +167,7 @@ impl App {
         };
 
         entry.source_kind = MappingSourceKind::Midi;
+        entry.source_protocol = event.port.protocol;
         entry.source_device_label = event.port.name.clone();
         entry.source_label = midi_learn_label(event);
         entry.enabled = true;
@@ -268,6 +276,7 @@ impl App {
                 if let DirectMappingMode::AwaitingInput(target) = self.direct_mapping_state.mode {
                     self.commit_direct_mapping_source(
                         MappingSourceKind::Key,
+                        crate::mapping::default_mapping_source_protocol(),
                         target,
                         &default_mapping_source_device(),
                         &source_label,

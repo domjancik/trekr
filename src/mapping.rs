@@ -1,5 +1,5 @@
 use crate::actions::AppAction;
-use crate::midi_io::{MidiInputEvent, MidiInputMessage};
+use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiTransportProtocol};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +27,8 @@ pub enum MappingSourceKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MappingEntry {
     pub source_kind: MappingSourceKind,
+    #[serde(default = "default_mapping_source_protocol")]
+    pub source_protocol: MidiTransportProtocol,
     #[serde(default = "default_mapping_source_device")]
     pub source_device_label: String,
     pub source_label: String,
@@ -39,6 +41,7 @@ impl MappingEntry {
     pub fn default_new() -> Self {
         Self {
             source_kind: MappingSourceKind::Key,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: default_mapping_source_device(),
             source_label: default_source_label(MappingSourceKind::Key).to_string(),
             target_label: "Play/Stop".to_string(),
@@ -46,6 +49,10 @@ impl MappingEntry {
             enabled: false,
         }
     }
+}
+
+pub fn default_mapping_source_protocol() -> MidiTransportProtocol {
+    MidiTransportProtocol::SystemMidi
 }
 
 const KEY_SOURCE_OPTIONS: &[&str] = &[
@@ -1035,6 +1042,7 @@ fn entry(
 ) -> MappingEntry {
     MappingEntry {
         source_kind,
+        source_protocol: default_mapping_source_protocol(),
         source_device_label: default_mapping_source_device(),
         source_label: source_label.to_string(),
         target_label: target_label.to_string(),
@@ -1052,6 +1060,7 @@ fn midi_entry(
 ) -> MappingEntry {
     MappingEntry {
         source_kind: MappingSourceKind::Midi,
+        source_protocol: default_mapping_source_protocol(),
         source_device_label: source_device_label.to_string(),
         source_label: source_label.to_string(),
         target_label: target_label.to_string(),
@@ -1161,6 +1170,7 @@ mod tests {
     fn mapping_entries_expand_track_scopes_into_actions() {
         let entry = MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Port A".to_string(),
             source_label: "CC20".to_string(),
             target_label: "Track Arm".to_string(),
@@ -1191,6 +1201,7 @@ mod tests {
     fn stored_loop_targets_expand_with_track_scope() {
         let entry = MappingEntry {
             source_kind: MappingSourceKind::Key,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: default_mapping_source_device(),
             source_label: "Numpad2".to_string(),
             target_label: "Recall Stored Loop Slot 2".to_string(),
@@ -1246,6 +1257,7 @@ mod tests {
         for (target_label, action) in cases {
             let entry = MappingEntry {
                 source_kind: MappingSourceKind::Midi,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: "Port A".to_string(),
                 source_label: "CC20".to_string(),
                 target_label: target_label.to_string(),

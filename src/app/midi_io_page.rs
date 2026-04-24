@@ -25,7 +25,14 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            "Auto refresh: on",
+            &format!(
+                "Auto refresh: on | RTP peers: {}",
+                self.midi_devices
+                    .inputs
+                    .iter()
+                    .filter(|port| port.protocol == MidiTransportProtocol::RtpMidiNative)
+                    .count()
+            ),
             Rect::new(header_bounds.x + 188, header_bounds.y + 8, 220, 8),
             1,
             io_theme::SUBTITLE,
@@ -197,6 +204,18 @@ impl App {
                 1,
                 io_theme::LABEL_TEXT,
             )?;
+            if let Some(protocol_badge) = ports[index].protocol_badge() {
+                let badge = Rect::new(header_rect.x, row.y + row.height() as i32 - 16, 28, 8);
+                canvas.set_draw_color(Color::RGB(134, 108, 220));
+                canvas.fill_rect(badge)?;
+                crate::ui::draw_text_fitted(
+                    canvas,
+                    protocol_badge,
+                    Rect::new(badge.x + 3, badge.y, badge.width().saturating_sub(6), 8),
+                    1,
+                    Color::RGB(244, 244, 236),
+                )?;
+            }
             if is_active {
                 let active_badge = Rect::new(
                     row.x + row.width() as i32 - 12 - active_badge_width - selected_badge_width,

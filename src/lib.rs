@@ -7,6 +7,7 @@ pub mod link;
 pub mod mapping;
 pub mod midi_fx;
 pub mod midi_io;
+pub mod network_midi;
 pub mod page_widgets;
 pub mod pages;
 pub mod present;
