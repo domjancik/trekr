@@ -250,10 +250,7 @@ mod tests {
         let wide = Rect::new(0, 0, 120, 14);
         let narrow = Rect::new(0, 0, 44, 14);
 
-        assert_eq!(
-            app.stored_loop_slot_rects(wide).len(),
-            STORED_LOOP_SLOT_COUNT
-        );
+        assert_eq!(app.stored_loop_slot_rects(wide).len(), 7);
         assert!(app.stored_loop_slot_rects(narrow).len() < STORED_LOOP_SLOT_COUNT);
     }
 }
