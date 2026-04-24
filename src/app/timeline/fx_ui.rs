@@ -1101,7 +1101,12 @@ impl App {
                     centered_text_rect(rect),
                     1,
                 );
-                Rect::new(centered.x + 1, centered.y, centered.width(), centered.height())
+                Rect::new(
+                    centered.x + 1,
+                    centered.y,
+                    centered.width(),
+                    centered.height(),
+                )
             },
             1,
             if high_contrast_dark {
