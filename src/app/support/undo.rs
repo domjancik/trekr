@@ -232,6 +232,8 @@ impl App {
             },
             focused_track_view: self.focused_track_view,
             direct_mapping_active: self.direct_mapping_state.mode != DirectMappingMode::Inactive,
+            preferred_default_input_name: self.preferred_default_input_name.clone(),
+            preferred_default_output_name: self.preferred_default_output_name.clone(),
         }
     }
 
@@ -375,6 +377,28 @@ impl App {
                 };
                 self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
                 self.direct_mapping_state.status_message = None;
+                self.preferred_default_input_name = state.preferred_default_input_name.clone();
+                self.preferred_default_output_name = state.preferred_default_output_name.clone();
+                self.midi_devices.selected_input = self
+                    .preferred_default_input_name
+                    .as_deref()
+                    .and_then(|name| {
+                        self.midi_devices
+                            .inputs
+                            .iter()
+                            .position(|port| port.name == name)
+                    })
+                    .or_else(|| (!self.midi_devices.inputs.is_empty()).then_some(0));
+                self.midi_devices.selected_output = self
+                    .preferred_default_output_name
+                    .as_deref()
+                    .and_then(|name| {
+                        self.midi_devices
+                            .outputs
+                            .iter()
+                            .position(|port| port.name == name)
+                    })
+                    .or_else(|| (!self.midi_devices.outputs.is_empty()).then_some(0));
             }
         }
     }
@@ -467,5 +491,31 @@ mod tests {
 
         assert_eq!(app.page_state.current_page, original_page);
         assert_eq!(app.project.active_track_index, changed_track);
+    }
+
+    #[test]
+    fn undo_ui_restores_preferred_midi_defaults() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::MidiIo;
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
+        app.midi_devices.outputs = vec![MidiPortRef::new("Out A"), MidiPortRef::new("Out B")];
+        app.midi_devices.selected_input = Some(0);
+        app.midi_devices.selected_output = Some(0);
+        app.preferred_default_input_name = Some("In A".to_string());
+        app.preferred_default_output_name = Some("Out A".to_string());
+        app.page_state.midi_io.focus = MidiIoListFocus::Inputs;
+        app.page_state.midi_io.selected_input_index = 1;
+
+        app.apply_action(AppAction::ActivatePageItem);
+        assert_eq!(app.preferred_default_input_name.as_deref(), Some("In B"));
+
+        app.apply_action(AppAction::UndoUi);
+        assert_eq!(app.preferred_default_input_name.as_deref(), Some("In A"));
+        assert_eq!(
+            app.midi_devices
+                .selected_input_port()
+                .map(|port| port.name.as_str()),
+            Some("In A")
+        );
     }
 }
