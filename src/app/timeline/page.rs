@@ -63,12 +63,7 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             &focus_label,
-            Rect::new(
-                focus_button.x + 6,
-                focus_button.y + 8,
-                focus_button.width().saturating_sub(12),
-                8,
-            ),
+            crate::app::support::ui_helpers::chrome_text_rect(focus_button),
             1,
             contrasting_text_color(focus_fill, theme),
         )?;
@@ -80,12 +75,7 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "Reset Song Loop",
-            Rect::new(
-                reset_button.x + 8,
-                reset_button.y + 8,
-                reset_button.width().saturating_sub(16),
-                8,
-            ),
+            crate::app::support::ui_helpers::chrome_text_rect(reset_button),
             1,
             contrasting_text_color(reset_fill, theme),
         )?;
@@ -285,12 +275,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 label,
-                Rect::new(
-                    indicator.rect.x + 3,
-                    indicator.rect.y + 1,
-                    indicator.rect.width().saturating_sub(6),
-                    indicator.rect.height().saturating_sub(2),
-                ),
+                crate::app::support::ui_helpers::chrome_text_rect(indicator.rect),
                 1,
                 if enabled {
                     contrasting_text_color(fill, theme)
