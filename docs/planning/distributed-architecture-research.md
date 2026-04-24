@@ -99,6 +99,44 @@ This supports all requested variations:
 - multiple displays observing the same session
 - multiple operators sending input into one shared state
 
+## Per-Device UI State Must Be Explicit
+
+Each connected device should hold its own UI state unless a specific feature is intentionally shared.
+
+Recommended model:
+
+- one shared engine session
+- one per-device or per-client UI state object
+- optional explicitly shared editing scopes layered on top
+
+Per-device UI state should usually include:
+
+- current page
+- overlay visibility
+- focused row/field/widget
+- viewport size and density mode
+- theme and scaling preferences
+- local browse selection
+- playhead follow preference
+- local panel expansion/collapse state
+
+Why this matters:
+
+- a wall display may stay on Timeline while a tablet stays on Routing
+- one user may keep a discoverability overlay open while another wants a clean performance screen
+- accessibility, scale, and touch density can differ per device
+- a low-resolution device may need a different presentation state from a larger external monitor
+
+Important rule:
+
+- per-device UI state should not live inside the shared project document or the shared transport model
+
+Only promote UI-adjacent state into the shared session when collaboration truly depends on it, such as:
+
+- a lease-backed shared edit selection
+- a shared presentation mode intentionally mirrored to multiple screens
+- an operator-controlled “follow active track” mode for a specific linked display group
+
 ## Required Architectural Changes
 
 ### 1. Split app state from view state
@@ -108,10 +146,12 @@ Create a strict separation between:
 - **session/domain state**: project, transport, routing, mappings, Link-relevant transport state, record state, undoable edits
 - **engine runtime state**: clocks, active notes, live FX runtime, connected devices, per-client sessions
 - **client view state**: current page, overlays, pointer hover, local viewport size, local focus ring, local theme, local UI scale
+- **per-device UI session state**: persisted client-side navigation and presentation state for that specific connected device
 
 Important rule:
 
 - page selection, overlay visibility, and viewport-specific UI state should become **per-client state**, not global session state, unless deliberately shared
+- model this as **many simultaneous UI states**, one for each connected client, rather than one “current UI state” for the whole session
 
 If this is not separated, one user changing pages would unexpectedly move every connected screen.
 
@@ -208,6 +248,8 @@ Recommended **client-local state** by default:
 - UI scale and theme preference
 - temporary pointer hover/drag affordance
 - local selection focus for browsing
+- local widget focus and local page-specific cursor state
+- device-specific presentation/layout preferences
 
 Potentially shared only if explicitly enabled:
 
@@ -449,6 +491,7 @@ Likely also needed later:
 
 - `SessionPolicy` for role and lease configuration
 - `ClientLocalState` persisted per controller/display
+- `ClientUiState` for live per-device navigation/focus/layout state
 - `DeviceEndpoint` abstraction for local-vs-remote control surfaces
 
 ## Security And Safety
