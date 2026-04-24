@@ -249,7 +249,10 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
         writer,
         "  --ui-scaling <auto|nearest|linear>   default: auto"
     )?;
-    writeln!(writer, "  --theme <default-dark|high-contrast-light>")?;
+    writeln!(
+        writer,
+        "  --theme <default-dark|high-contrast-dark|high-contrast-light>"
+    )?;
     writeln!(
         writer,
         "  --video-mode <windowed|fullscreen|kmsdrm-console>   run only"
@@ -443,7 +446,8 @@ where
             }
             "--theme" => {
                 let value = args.next().ok_or_else(|| {
-                    "--theme requires default-dark|high-contrast-light".to_owned()
+                    "--theme requires default-dark|high-contrast-dark|high-contrast-light"
+                        .to_owned()
                 })?;
                 options.theme_preset = Some(parse_theme_preset(&value)?);
             }
