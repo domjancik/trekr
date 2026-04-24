@@ -510,8 +510,8 @@ fn status_byte(base: u8, channel: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_input_event, preserve_selection, status_byte, MidiDeviceCatalog, MidiInputMessage,
-        MidiPortRef,
+        MidiDeviceCatalog, MidiInputMessage, MidiPortRef, parse_input_event, preserve_selection,
+        status_byte,
     };
 
     #[test]

@@ -1619,18 +1619,24 @@ mod tests {
         assert_eq!(track.regions.len(), 2);
         assert_eq!(region_span(track.regions[0]), (1_920, 960));
         assert_eq!(region_span(track.regions[1]), (0, 960));
-        assert!(track
-            .midi_notes
-            .iter()
-            .any(|note| note.pitch == 64 && note.start_ticks == 1_920));
-        assert!(!track
-            .midi_notes
-            .iter()
-            .any(|note| note.pitch == 60 && note.start_ticks == 0));
-        assert!(track
-            .midi_notes
-            .iter()
-            .any(|note| note.pitch == 67 && note.start_ticks == 0));
+        assert!(
+            track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 64 && note.start_ticks == 1_920)
+        );
+        assert!(
+            !track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 60 && note.start_ticks == 0)
+        );
+        assert!(
+            track
+                .midi_notes
+                .iter()
+                .any(|note| note.pitch == 67 && note.start_ticks == 0)
+        );
     }
 
     #[test]

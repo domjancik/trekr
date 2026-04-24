@@ -117,7 +117,10 @@ impl App {
         let Some(lookup) = self.target_lookup_state.active.take() else {
             return;
         };
-        let Some(entry) = self.mappings.get_mut(self.page_state.selected_mapping_index) else {
+        let Some(entry) = self
+            .mappings
+            .get_mut(self.page_state.selected_mapping_index)
+        else {
             return;
         };
         entry.target_label = lookup.original_target_label;
@@ -164,7 +167,10 @@ impl App {
     }
 
     pub(crate) fn commit_mapping_target_lookup_label(&mut self, target_label: &'static str) {
-        let Some(entry) = self.mappings.get_mut(self.page_state.selected_mapping_index) else {
+        let Some(entry) = self
+            .mappings
+            .get_mut(self.page_state.selected_mapping_index)
+        else {
             self.clear_mapping_target_lookup();
             return;
         };

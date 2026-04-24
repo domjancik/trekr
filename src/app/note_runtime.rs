@@ -379,11 +379,14 @@ mod tests {
 
         app.apply_action(AppAction::SetGlobalLoopStart);
 
-        assert!(app.midi_output.sent_messages().iter().any(
-            |(port, channel, pitch, velocity)| {
-                port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
-            }
-        ));
+        assert!(
+            app.midi_output
+                .sent_messages()
+                .iter()
+                .any(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+                })
+        );
     }
 
     #[test]
@@ -394,11 +397,14 @@ mod tests {
 
         app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
 
-        assert!(app.midi_output.sent_messages().iter().any(
-            |(port, channel, pitch, velocity)| {
-                port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
-            }
-        ));
+        assert!(
+            app.midi_output
+                .sent_messages()
+                .iter()
+                .any(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 123 && velocity.is_none()
+                })
+        );
     }
 
     #[test]
@@ -579,18 +585,20 @@ mod tests {
         });
 
         let sent = app.midi_output.sent_messages();
-        assert!(sent
-            .iter()
-            .any(|(port, channel, pitch, velocity)| port == "Out B"
-                && *channel == 2
-                && *pitch == 72
-                && velocity.is_some()));
-        assert!(sent
-            .iter()
-            .any(|(port, channel, pitch, velocity)| port == "Out B"
-                && *channel == 2
-                && *pitch == 72
-                && velocity.is_none()));
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_some())
+        );
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_none())
+        );
     }
 
     #[test]
@@ -631,18 +639,21 @@ mod tests {
         });
 
         let sent = app.midi_output.sent_messages();
-        assert!(sent
-            .iter()
-            .any(|(port, channel, pitch, velocity)| port == "Out B"
-                && *channel == 2
-                && *pitch == 72
-                && velocity.is_some()));
-        assert!(!sent
-            .iter()
-            .any(|(port, channel, pitch, velocity)| port == "Out B"
-                && *channel == 2
-                && *pitch == 60
-                && velocity.is_some()));
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 72
+                    && velocity.is_some())
+        );
+        assert!(
+            !sent
+                .iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 60
+                    && velocity.is_some())
+        );
     }
 
     #[test]
@@ -765,12 +776,13 @@ mod tests {
         app.dispatch_midi_notes(1_920, 960);
 
         let sent = app.midi_output.sent_messages();
-        assert!(sent
-            .iter()
-            .any(|(port, channel, pitch, velocity)| port == "Out B"
-                && *channel == 2
-                && *pitch == 60
-                && velocity.is_some()));
+        assert!(
+            sent.iter()
+                .any(|(port, channel, pitch, velocity)| port == "Out B"
+                    && *channel == 2
+                    && *pitch == 60
+                    && velocity.is_some())
+        );
     }
 
     #[test]

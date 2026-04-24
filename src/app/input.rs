@@ -1,5 +1,5 @@
-use super::*;
 use super::shell::layout::page_tabs_layout;
+use super::*;
 
 impl App {
     pub(super) fn poll_midi_input(&mut self) {

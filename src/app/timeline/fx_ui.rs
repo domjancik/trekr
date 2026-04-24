@@ -312,7 +312,10 @@ impl App {
                 self.set_selected_timeline_fx_row(chain_kind, 0);
                 return;
             }
-            self.set_selected_timeline_fx_row(chain_kind, self.selected_timeline_fx_row(chain_kind));
+            self.set_selected_timeline_fx_row(
+                chain_kind,
+                self.selected_timeline_fx_row(chain_kind),
+            );
         }
     }
 
@@ -326,8 +329,12 @@ impl App {
             match self.page_state.selected_timeline_fx_field {
                 TimelineFxField::Enabled => self.toggle_selected_timeline_fx_enabled(),
                 TimelineFxField::Kind => self.adjust_selected_timeline_fx_kind(delta),
-                TimelineFxField::ParamPrimary => self.adjust_selected_timeline_fx_parameter(0, delta),
-                TimelineFxField::ParamSecondary => self.adjust_selected_timeline_fx_parameter(1, delta),
+                TimelineFxField::ParamPrimary => {
+                    self.adjust_selected_timeline_fx_parameter(0, delta)
+                }
+                TimelineFxField::ParamSecondary => {
+                    self.adjust_selected_timeline_fx_parameter(1, delta)
+                }
                 TimelineFxField::Scroll => self.scroll_selected_timeline_fx_parameter_window(delta),
                 TimelineFxField::Move => self.move_selected_timeline_fx(delta),
             }
@@ -349,7 +356,8 @@ impl App {
             self.add_selected_timeline_fx();
             return;
         }
-        self.page_state.selected_timeline_fx_field = self.page_state.selected_timeline_fx_field.next();
+        self.page_state.selected_timeline_fx_field =
+            self.page_state.selected_timeline_fx_field.next();
     }
 
     pub(crate) fn reverse_activate_timeline_context_item(&mut self) {
@@ -1126,11 +1134,7 @@ impl App {
                 let mut move_down_width = move_width;
                 let mut move_up_width = move_width;
                 let mut overflow_width = if total_param_count > 2 {
-                    if available >= 72 {
-                        10
-                    } else {
-                        8
-                    }
+                    if available >= 72 { 10 } else { 8 }
                 } else {
                     0
                 };
@@ -1822,15 +1826,16 @@ mod tests {
         let y = layout.output_fx_rect.y + layout.output_fx_rect.height() as i32 - 2;
 
         assert!(y > row.y + row.height() as i32);
-        assert!(app
-            .timeline_fx_hit(
+        assert!(
+            app.timeline_fx_hit(
                 TimelineContext::OutputFx,
                 layout.output_fx_rect,
                 &app.project.tracks[0],
                 x,
                 y,
             )
-            .is_none());
+            .is_none()
+        );
     }
 
     #[test]
@@ -2012,9 +2017,13 @@ mod tests {
         app.page_state.selected_timeline_fx_field = TimelineFxField::Move;
         app.adjust_page_item(1);
 
-        assert!(app
-            .selected_timeline_fx_slot(app.project.active_track().unwrap(), MidiFxChainKind::Output)
-            .is_some());
+        assert!(
+            app.selected_timeline_fx_slot(
+                app.project.active_track().unwrap(),
+                MidiFxChainKind::Output
+            )
+            .is_some()
+        );
     }
 
     #[test]
@@ -2026,12 +2035,13 @@ mod tests {
 
         for _ in 0..16 {
             app.adjust_page_item(-1);
-            assert!(app
-                .selected_timeline_fx_slot(
+            assert!(
+                app.selected_timeline_fx_slot(
                     app.project.active_track().unwrap(),
                     MidiFxChainKind::Output
                 )
-                .is_some());
+                .is_some()
+            );
         }
     }
 }

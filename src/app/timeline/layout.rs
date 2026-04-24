@@ -296,7 +296,10 @@ mod tests {
         };
 
         assert!(!intersects(layout.output_fx_rect, layout.full_content_rect));
-        assert!(!intersects(layout.output_fx_rect, layout.detail_content_rect));
+        assert!(!intersects(
+            layout.output_fx_rect,
+            layout.detail_content_rect
+        ));
     }
 
     #[test]

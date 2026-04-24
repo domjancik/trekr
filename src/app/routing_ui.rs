@@ -77,7 +77,10 @@ impl App {
 
         let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
         let (header, body) = crate::ui::split_top_strip(inner, 48, 10)?;
-        let active_track = self.project.active_track().expect("demo project has tracks");
+        let active_track = self
+            .project
+            .active_track()
+            .expect("demo project has tracks");
 
         canvas.set_draw_color(Color::RGB(54, 70, 104));
         canvas.fill_rect(header)?;
@@ -492,7 +495,11 @@ impl App {
         rects
     }
 
-    fn routing_group_rows(&self, panel: Rect, fields: &[RoutingField]) -> Vec<(RoutingField, Rect)> {
+    fn routing_group_rows(
+        &self,
+        panel: Rect,
+        fields: &[RoutingField],
+    ) -> Vec<(RoutingField, Rect)> {
         let inner = crate::ui::inset_rect(panel, 10, 10).unwrap_or(panel);
         let rows_bounds = Rect::new(
             inner.x,
@@ -550,7 +557,13 @@ impl App {
             panel.width().saturating_sub(16),
             12,
         );
-        crate::ui::draw_text_fitted(canvas, title, Rect::new(header.x, header.y, 74, 8), 1, accent)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            title,
+            Rect::new(header.x, header.y, 74, 8),
+            1,
+            accent,
+        )?;
         crate::ui::draw_text_fitted(
             canvas,
             subtitle,
@@ -598,7 +611,10 @@ impl App {
             RoutingField::RecordInputFx => track.midi_fx.record_input_fx_mode.label().to_string(),
             RoutingField::MonitorInputFx => on_off(track.midi_fx.monitor_input_fx).to_string(),
             RoutingField::InputFxSlot => {
-                format!("Slot {}", self.selected_fx_slot_index(MidiFxChainKind::Input) + 1)
+                format!(
+                    "Slot {}",
+                    self.selected_fx_slot_index(MidiFxChainKind::Input) + 1
+                )
             }
             RoutingField::InputFxKind => self
                 .selected_fx_slot(track, MidiFxChainKind::Input)
@@ -618,9 +634,14 @@ impl App {
                 .1
                 .map(|param| param.value)
                 .unwrap_or_else(|| "--".to_string()),
-            RoutingField::InputFxMore => self.selected_fx_overflow_label(track, MidiFxChainKind::Input),
+            RoutingField::InputFxMore => {
+                self.selected_fx_overflow_label(track, MidiFxChainKind::Input)
+            }
             RoutingField::OutputFxSlot => {
-                format!("Slot {}", self.selected_fx_slot_index(MidiFxChainKind::Output) + 1)
+                format!(
+                    "Slot {}",
+                    self.selected_fx_slot_index(MidiFxChainKind::Output) + 1
+                )
             }
             RoutingField::OutputFxKind => self
                 .selected_fx_slot(track, MidiFxChainKind::Output)
@@ -679,7 +700,11 @@ impl App {
         windows.get(slot_index).copied().unwrap_or(0)
     }
 
-    pub(super) fn set_selected_fx_param_window(&mut self, chain_kind: MidiFxChainKind, start: usize) {
+    pub(super) fn set_selected_fx_param_window(
+        &mut self,
+        chain_kind: MidiFxChainKind,
+        start: usize,
+    ) {
         let slot_index = self.selected_fx_slot_index(chain_kind);
         if let Some(track) = self.project.active_track_mut() {
             let windows = match chain_kind {
@@ -738,7 +763,11 @@ impl App {
         )
     }
 
-    pub(super) fn selected_fx_overflow_label(&self, track: &Track, chain_kind: MidiFxChainKind) -> String {
+    pub(super) fn selected_fx_overflow_label(
+        &self,
+        track: &Track,
+        chain_kind: MidiFxChainKind,
+    ) -> String {
         let (_, _, param_count, window_start) = self.selected_fx_visible_params(track, chain_kind);
         super::timeline::fx_ui::timeline_fx_overflow_label(param_count, window_start)
     }
@@ -989,7 +1018,11 @@ impl App {
                 control_height,
             );
             if rect_contains(value, x, y) {
-                let delta = if x < value.x + value.width() as i32 / 2 { -1 } else { 1 };
+                let delta = if x < value.x + value.width() as i32 / 2 {
+                    -1
+                } else {
+                    1
+                };
                 self.adjust_routing_field(delta);
             } else if rect_contains(affordance, x, y) {
                 self.adjust_routing_field(1);
@@ -1116,7 +1149,10 @@ mod tests {
         let before = app.project.active_track().unwrap().routing.output_channel;
         app.apply_action(AppAction::AdjustPageItemForward);
 
-        assert_ne!(app.project.active_track().unwrap().routing.output_channel, before);
+        assert_ne!(
+            app.project.active_track().unwrap().routing.output_channel,
+            before
+        );
     }
 
     #[test]
@@ -1163,9 +1199,14 @@ mod tests {
         assert!(input_slot.x < input_kind.x);
         assert!(input_on.x < input_p1.x);
         assert!(input_p2.x < input_more.x);
-        for rect in [input_slot, input_kind, input_on, input_p1, input_p2, input_more] {
+        for rect in [
+            input_slot, input_kind, input_on, input_p1, input_p2, input_more,
+        ] {
             assert!(input_panel.contains_point((rect.x, rect.y)));
-            assert!(input_panel.contains_point((rect.x + rect.width() as i32 - 1, rect.y + rect.height() as i32 - 1)));
+            assert!(input_panel.contains_point((
+                rect.x + rect.width() as i32 - 1,
+                rect.y + rect.height() as i32 - 1
+            )));
         }
 
         let output_slot = rects
@@ -1187,7 +1228,10 @@ mod tests {
     fn routing_field_short_labels_match_compact_fx_grid() {
         assert_eq!(routing_field_short_label(RoutingField::InputFxSlot), "Slot");
         assert_eq!(routing_field_short_label(RoutingField::InputFxKind), "Kind");
-        assert_eq!(routing_field_short_label(RoutingField::InputFxEnabled), "On");
+        assert_eq!(
+            routing_field_short_label(RoutingField::InputFxEnabled),
+            "On"
+        );
         assert_eq!(routing_field_short_label(RoutingField::InputFxParam1), "P1");
         assert_eq!(routing_field_short_label(RoutingField::InputFxParam2), "P2");
         assert_eq!(routing_field_short_label(RoutingField::InputFxMore), "More");

@@ -125,11 +125,7 @@ pub(crate) fn output_channel_label(channel: Option<u8>) -> String {
 }
 
 pub(crate) fn on_off(value: bool) -> &'static str {
-    if value {
-        "on"
-    } else {
-        "off"
-    }
+    if value { "on" } else { "off" }
 }
 
 #[cfg(test)]
