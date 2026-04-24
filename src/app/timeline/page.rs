@@ -307,8 +307,8 @@ impl App {
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
-        let top_y = bounds.y + 3;
-        let bottom_y = bounds.y + 17;
+        let top_y = bounds.y + 4;
+        let bottom_y = bounds.y + 18;
         let chip_height = 11;
 
         let top_specs = self.transport_top_chip_specs();
@@ -449,8 +449,8 @@ impl App {
 
     pub(crate) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
-        let top_y = bounds.y + 3;
-        let bottom_y = bounds.y + 17;
+        let top_y = bounds.y + 4;
+        let bottom_y = bounds.y + 18;
         let chip_height = 11;
         let right_panel_width = self.transport_right_panel_width(bounds);
         let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
