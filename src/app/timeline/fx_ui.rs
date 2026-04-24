@@ -1095,11 +1095,14 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "X",
-            crate::app::support::ui_helpers::horizontally_center_text_rect(
-                "X",
-                centered_text_rect(rect),
-                1,
-            ),
+            {
+                let centered = crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    "X",
+                    centered_text_rect(rect),
+                    1,
+                );
+                Rect::new(centered.x + 1, centered.y, centered.width(), centered.height())
+            },
             1,
             if high_contrast_dark {
                 Color::RGB(0, 0, 0)
