@@ -549,7 +549,7 @@ const HIGH_CONTRAST_LIGHT: Theme = Theme {
         detail_text: rgb(32, 32, 32),
         action_text: rgb(255, 255, 255),
         brand_fallback: rgb(0, 0, 0),
-        tab_accent_timeline: rgb(255, 255, 255),
+        tab_accent_timeline: rgb(160, 160, 160),
         tab_accent_mappings: rgb(194, 138, 0),
         tab_accent_midi_io: rgb(0, 128, 96),
         tab_accent_routing: rgb(160, 32, 32),
