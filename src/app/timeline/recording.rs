@@ -314,23 +314,23 @@ impl App {
             Color::RGB(232, 228, 208)
         });
         canvas.draw_rect(view_rect)?;
-            crate::ui::draw_text_fitted(
-                canvas,
+        crate::ui::draw_text_fitted(
+            canvas,
+            match track.recording_view {
+                RecordingView::Overlay => "OVR",
+                RecordingView::Stacked => "STK",
+            },
+            crate::app::support::ui_helpers::horizontally_center_text_rect(
                 match track.recording_view {
                     RecordingView::Overlay => "OVR",
                     RecordingView::Stacked => "STK",
                 },
-                crate::app::support::ui_helpers::horizontally_center_text_rect(
-                    match track.recording_view {
-                        RecordingView::Overlay => "OVR",
-                        RecordingView::Stacked => "STK",
-                    },
-                    crate::app::support::ui_helpers::compact_label_rect(view_rect),
-                    1,
-                ),
+                crate::app::support::ui_helpers::compact_label_rect(view_rect),
                 1,
-                contrasting_text_color(view_fill, theme),
-            )?;
+            ),
+            1,
+            contrasting_text_color(view_fill, theme),
+        )?;
 
         if let (Some(selected_clip), Some((mute_rect, delete_rect))) =
             (track.selected_recording_clip(), clip_controls)
