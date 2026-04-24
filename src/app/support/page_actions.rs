@@ -1,7 +1,7 @@
 use super::*;
 
 impl App {
-    pub(super) fn select_previous_page_item(&mut self) {
+    pub(crate) fn select_previous_page_item(&mut self) {
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(-1);
             return;
@@ -43,7 +43,7 @@ impl App {
         }
     }
 
-    pub(super) fn select_next_page_item(&mut self) {
+    pub(crate) fn select_next_page_item(&mut self) {
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(1);
             return;
@@ -84,7 +84,7 @@ impl App {
         }
     }
 
-    pub(super) fn select_previous_page_field(&mut self) {
+    pub(crate) fn select_previous_page_field(&mut self) {
         match self.page_state.current_page {
             AppPage::Timeline => self.select_previous_timeline_context(),
             AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
@@ -97,7 +97,7 @@ impl App {
         }
     }
 
-    pub(super) fn select_next_page_field(&mut self) {
+    pub(crate) fn select_next_page_field(&mut self) {
         match self.page_state.current_page {
             AppPage::Timeline => self.select_next_timeline_context(),
             AppPage::Mappings if self.page_state.mapping_mode == MappingPageMode::Write => {
@@ -110,7 +110,7 @@ impl App {
         }
     }
 
-    pub(super) fn adjust_page_item(&mut self, delta: i32) {
+    pub(crate) fn adjust_page_item(&mut self, delta: i32) {
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(delta);
             return;
@@ -132,7 +132,7 @@ impl App {
         }
     }
 
-    pub(super) fn activate_page_item(&mut self) {
+    pub(crate) fn activate_page_item(&mut self) {
         if self.mapping_target_lookup_is_active() {
             self.commit_mapping_target_lookup();
             return;

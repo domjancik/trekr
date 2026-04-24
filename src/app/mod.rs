@@ -43,10 +43,10 @@ mod capture;
 mod direct_mapping_ui;
 mod discoverability_ui;
 mod input;
-mod io_helpers;
-mod labels;
+mod support;
+
 mod mapping;
-mod page_actions;
+
 mod note_runtime;
 mod midi_io_page;
 mod routing_ui;
@@ -54,7 +54,7 @@ mod shell;
 mod stored_loops;
 mod timeline;
 mod types;
-mod ui_helpers;
+
 
 use mapping::input as mapping_input;
 use mapping::lookup as mapping_lookup;
@@ -63,8 +63,8 @@ use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
 };
 pub(super) use input::rect_contains;
-use io_helpers::{clamp_index, port_name, resolve_port_by_name};
-use labels::{
+use support::io_helpers::{clamp_index, port_name, resolve_port_by_name};
+use support::labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
@@ -87,7 +87,7 @@ use stored_loops::{
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
-use ui_helpers::{centered_text_rect, contrasting_text_color};
+use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,

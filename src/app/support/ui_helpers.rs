@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn centered_text_rect(rect: Rect) -> Rect {
+pub(crate) fn centered_text_rect(rect: Rect) -> Rect {
     Rect::new(
         rect.x,
         rect.y + ((rect.height() as i32 - 8) / 2).max(0),
@@ -9,7 +9,7 @@ pub(super) fn centered_text_rect(rect: Rect) -> Rect {
     )
 }
 
-pub(super) fn contrasting_text_color(fill: Color) -> Color {
+pub(crate) fn contrasting_text_color(fill: Color) -> Color {
     let brightness = u32::from(fill.r) * 299 + u32::from(fill.g) * 587 + u32::from(fill.b) * 114;
     if brightness / 1000 < 140 {
         Color::RGB(244, 244, 236)
