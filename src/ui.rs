@@ -584,7 +584,7 @@ pub struct TrackIndicator {
 
 pub fn track_indicators(status_rect: Rect) -> [TrackIndicator; 4] {
     let inset_x = 2_i32;
-    let inset_y = 1_i32;
+    let inset_y = 2_i32;
     let gap = 2_i32;
     let inner_width = (status_rect.width() as i32 - inset_x * 2).max(4);
     let height = status_rect
