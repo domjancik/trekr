@@ -7,6 +7,7 @@
 The strip is a read-first UX surface for the current undo system, not a new history engine. It should make the current global and per-channel undo behavior legible by showing:
 
 - recent transactions in chronological order
+- one always-visible global lane plus always-visible scoped lanes
 - undo domain ownership per transaction: `Timeline`, `Mappings`, `UI`
 - whether a transaction is currently applied or currently undone
 - the current global head and per-domain availability at a glance
@@ -77,7 +78,7 @@ The history strip should be treated as a new shell-level view over that existing
 
 ## Placement
 
-V1 places the strip in the bottom shell/footer area as a thin horizontal band above or integrated with the current footer text row.
+V1 places the strip in the bottom shell/footer area as a thin horizontal band above or integrated with the current footer text row. The default closed state should be extremely space-efficient vertically and behave more like a micro signal strip than a row of text-heavy chips.
 
 Requirements:
 
@@ -89,16 +90,52 @@ Requirements:
 Recommended layout:
 
 - footer text remains the lowest textual row
-- history strip sits directly above it as a thin row of compact event chips
+- history strip sits directly above it
+- default closed mode shows four ultra-thin aligned lanes
+- expanded mode shows the same lanes with optional labels and richer event rendering
 
 ## Visual Language
 
-Each visible transaction is rendered as a compact chip or segment with:
+The strip has two presentation states that share the same underlying lane alignment:
+
+### Closed Mode
+
+Closed mode is the default. It is a micro multi-lane signal strip rather than a textual event list.
+
+Structure:
+
+- one global lane
+- one `Timeline` lane
+- one `Mappings` lane
+- one `UI` lane
+- stable lane ordering so users can learn the layout without persistent labels
+
+Closed-mode geometry target:
+
+- approximately 1 px painted height per lane
+- approximately 1-2 px gap between lanes
+- minimal top/bottom padding
+- total vertical budget should stay near the smallest readable footprint the renderer can support
+
+Closed-mode events render as tiny ticks, blocks, or segments with:
 
 - domain color/family
-- short label
 - applied vs undone visual state
-- current-history-head boundary
+- shared horizontal chronology
+- one stronger current-history-head marker
+
+Closed mode should not require text labels to function.
+
+### Expanded Mode
+
+Expanded mode uses the same aligned lanes but adds readability:
+
+- optional lane labels
+- taller event rendering
+- short text labels where space allows
+- clearer hover/tap detail affordances
+
+Expanded mode is an explanation layer over the same layout, not a different history view.
 
 Recommended domain visual separation:
 
@@ -135,11 +172,13 @@ If horizontal space is tight:
 
 ## Scope Behavior
 
-The strip visualizes one chronological history, not three separate histories.
+The strip visualizes one chronological history through multiple aligned projections, not four unrelated histories.
 
 Base behavior:
 
-- all transactions appear in chronological order
+- the global lane is authoritative for chronology
+- all transactions appear in chronological order on the global lane
+- scoped lanes are filtered projections of that same history
 - each transaction shows its owning domain
 - multi-domain transactions, if present, render as mixed/compound markers rather than pretending to be single-domain
 
@@ -151,16 +190,15 @@ Because current scoped undo only applies to single-domain transactions, the stri
 
 V1 recommendation:
 
-- show one main chronological lane
-- optionally group by subtle domain tint within that lane
-- do not split into stacked lanes by default in V1
+- always show the global lane plus the three scoped lanes
+- keep lane heights extremely compact in closed mode
+- use expansion to add labels and readability rather than using expansion to reveal the existence of scoped lanes
 
-Optional expanded mode for later:
+This keeps the core mental model visible at all times:
 
-- show per-domain sublanes under the main lane
-- keep the main global lane authoritative
-
-This gives the future “multiple tracks depending on the channel” direction a clean upgrade path without forcing V1 into a taller shell.
+- global undo follows the global lane
+- scoped undo follows the matching scoped lane
+- all lanes still share one common time axis
 
 ## Interaction Model
 
@@ -182,12 +220,13 @@ Desktop affordances may include small inline affordances near the strip for:
 - scoped timeline undo/redo
 - scoped mappings undo/redo
 - scoped UI undo/redo
+- an expand/collapse toggle for label visibility
 
 However, V1 should prefer action reuse over bespoke strip-local controls. If buttons are shown, they must dispatch the existing `AppAction` variants rather than introduce new logic.
 
 ## Touch
 
-Touch must bias toward larger targets and fewer gestures.
+Touch must bias toward larger targets and fewer gestures. Because the closed strip is intentionally tiny, the visual rails and the interactive hitboxes do not need to be identical.
 
 V1 touch interactions:
 
@@ -199,6 +238,7 @@ V1 touch interactions:
 Because the strip is thin, touch hit targets may need:
 
 - slightly taller invisible hitboxes than the painted strip
+- a simple expand-on-tap affordance instead of relying on tiny per-event targets in closed mode
 - fallback detail text rather than tiny tooltips
 
 ## Keyboard And Mapping Reuse
@@ -340,12 +380,30 @@ Important rule:
 4. Redo tail disappears
 5. New `Mappings` chip appears at the head
 
+## Presentation States
+
+### Closed Mode
+
+- default visible state
+- always shows four aligned lanes
+- no required labels
+- optimized for minimal vertical footprint
+- sufficient to reason about global vs scoped undo by lane position and shared alignment alone
+
+### Expanded Mode
+
+- optional toggled state
+- preserves the same lane order and horizontal alignment
+- adds labels and clearer event detail
+- does not change undo semantics or history contents
+
 ## Acceptance Criteria
 
 ## Functional
 
 - a compact history strip is visible on all main pages
 - the strip renders from the existing undo history model
+- closed mode shows four aligned lanes with a very small vertical footprint
 - each rendered transaction communicates domain and applied/undone state
 - the current history head is visually obvious
 - the strip updates after global undo/redo
@@ -357,9 +415,10 @@ Important rule:
 ## Interaction
 
 - desktop hover reveals fuller detail without mutating history
-- desktop click/touch tap on a chip reveals detail without performing selective undo
+- desktop click/touch tap reveals detail or expansion without performing selective undo
 - if strip-local undo controls are included, they dispatch existing `AppAction` variants only
 - touch targets are usable without requiring pixel-precise taps on tiny painted geometry
+- expanded mode exposes labels without changing lane order or semantics
 
 ## Scope Clarity
 
