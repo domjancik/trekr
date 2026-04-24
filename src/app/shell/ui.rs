@@ -92,7 +92,7 @@ impl App {
         canvas: &mut Canvas<T>,
         surface: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        branding::draw_frame_brand_fallback(canvas, surface)
+        branding::draw_frame_brand_fallback(canvas, surface, self.theme())
     }
 
     pub(crate) fn configure_window_canvas(
@@ -212,7 +212,12 @@ impl App {
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        branding::draw_branding(canvas, bounds, self.startup_started_at.elapsed())
+        branding::draw_branding(
+            canvas,
+            bounds,
+            self.startup_started_at.elapsed(),
+            self.theme(),
+        )
     }
 
     pub(crate) fn draw_transport_chip<T: RenderTarget>(

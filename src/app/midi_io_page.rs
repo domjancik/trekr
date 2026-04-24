@@ -93,7 +93,7 @@ impl App {
             self.page_state.midi_io.selected_input_index,
             self.midi_devices.selected_input,
             self.page_state.midi_io.focus == MidiIoListFocus::Inputs,
-            Color::RGB(78, 196, 164),
+            theme.app_chrome.tab_accent_midi_io,
             "Input",
         )?;
         self.draw_device_list(
@@ -110,7 +110,7 @@ impl App {
             self.page_state.midi_io.selected_output_index,
             self.midi_devices.selected_output,
             self.page_state.midi_io.focus == MidiIoListFocus::Outputs,
-            Color::RGB(224, 132, 90),
+            theme.app_chrome.tab_accent_mappings,
             "Output",
         )?;
 
@@ -185,18 +185,23 @@ impl App {
                 row.width().saturating_sub(40),
                 row.height().saturating_sub(28),
             );
-            canvas.set_draw_color(if is_selected {
+            let body_fill = if is_selected {
                 theme.io_pages.device_body_selected
             } else {
                 theme.io_pages.device_body_idle
-            });
+            };
+            canvas.set_draw_color(body_fill);
             canvas.fill_rect(body_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &ports[index].name,
                 header_rect,
                 1,
-                theme.io_pages.label_text,
+                if is_selected {
+                    contrasting_text_color(theme.io_pages.row_selected_bg, theme)
+                } else {
+                    theme.io_pages.label_text
+                },
             )?;
             if is_active {
                 let active_badge = Rect::new(
@@ -217,7 +222,7 @@ impl App {
                         8,
                     ),
                     1,
-                    theme.io_pages.default_badge_text,
+                    contrasting_text_color(accent, theme),
                 )?;
             }
             if is_selected {
@@ -239,7 +244,7 @@ impl App {
                         8,
                     ),
                     1,
-                    theme.io_pages.selected_badge_text,
+                    contrasting_text_color(theme.io_pages.selected_badge_fill, theme),
                 )?;
             }
         }

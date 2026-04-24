@@ -547,7 +547,8 @@ impl App {
         subtitle: &str,
         accent: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        canvas.set_draw_color(Color::RGB(24, 30, 46));
+        let theme = self.theme();
+        canvas.set_draw_color(theme.io_pages.panel_bg);
         canvas.fill_rect(panel)?;
         canvas.set_draw_color(accent);
         canvas.draw_rect(panel)?;
@@ -574,7 +575,7 @@ impl App {
                 8,
             ),
             1,
-            Color::RGB(176, 186, 198),
+            theme.io_pages.subtitle,
         )?;
         Ok(())
     }
