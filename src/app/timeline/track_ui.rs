@@ -1,6 +1,14 @@
 use super::layout::{interlaced_color_at, loop_regions_intersect, rects_overlap};
 use super::*;
 
+fn is_high_contrast_light(theme: &Theme) -> bool {
+    theme.preset == ThemePreset::HighContrastLight
+}
+
+fn is_high_contrast_dark(theme: &Theme) -> bool {
+    theme.preset == ThemePreset::HighContrastDark
+}
+
 impl App {
     pub(crate) fn draw_track_subcolumn<T: RenderTarget>(
         &self,
@@ -15,12 +23,19 @@ impl App {
         track: &Track,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let high_contrast = is_high_contrast_light(theme);
+        let high_contrast_dark = is_high_contrast_dark(theme);
         let track_bg = if high_contrast {
             if track.state.muted {
                 Color::RGB(228, 228, 228)
             } else {
                 Color::RGB(250, 250, 250)
+            }
+        } else if high_contrast_dark {
+            if track.state.muted {
+                Color::RGB(12, 12, 12)
+            } else {
+                Color::RGB(4, 4, 4)
             }
         } else if track.state.muted {
             Color::RGB(16, 18, 24)
@@ -48,6 +63,8 @@ impl App {
         if track.state.passthrough {
             canvas.set_draw_color(if high_contrast {
                 theme.app_chrome.tab_accent_midi_io
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(74, 210, 214)
             });
@@ -76,12 +93,16 @@ impl App {
             canvas.set_draw_color(if is_active {
                 if high_contrast {
                     Color::RGB(232, 232, 232)
+                } else if high_contrast_dark {
+                    Color::RGB(36, 36, 36)
                 } else {
                     Color::RGB(88, 72, 24)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(240, 240, 240)
+                } else if high_contrast_dark {
+                    Color::RGB(18, 18, 18)
                 } else {
                     Color::RGB(54, 48, 28)
                 }
@@ -92,6 +113,8 @@ impl App {
         for guide in crate::ui::timeline_guides(content_rect, self.timeline_flow) {
             canvas.set_draw_color(if high_contrast {
                 Color::RGB(196, 196, 196)
+            } else if high_contrast_dark {
+                Color::RGB(72, 72, 72)
             } else {
                 Color::RGB(52, 62, 84)
             });
@@ -124,6 +147,8 @@ impl App {
                 } else {
                     if high_contrast {
                         Color::RGB(255, 255, 255)
+                    } else if high_contrast_dark {
+                        Color::RGB(12, 12, 12)
                     } else {
                         Color::RGB(72, 70, 68)
                     }
@@ -136,6 +161,8 @@ impl App {
                     theme.app_chrome.surface_border
                 } else if high_contrast {
                     Color::RGB(128, 128, 128)
+                } else if high_contrast_dark {
+                    Color::RGB(112, 112, 112)
                 } else {
                     Color::RGB(122, 120, 116)
                 });
@@ -154,6 +181,8 @@ impl App {
                         contrasting_text_color(slot_fill, theme)
                     } else if high_contrast {
                         Color::RGB(0, 0, 0)
+                    } else if high_contrast_dark {
+                        Color::RGB(255, 255, 255)
                     } else {
                         Color::RGB(180, 178, 172)
                     },
@@ -174,6 +203,8 @@ impl App {
                         1,
                         if high_contrast {
                             Color::RGB(0, 0, 0)
+                        } else if high_contrast_dark {
+                            Color::RGB(255, 255, 255)
                         } else {
                             Color::RGB(210, 194, 160)
                         },
@@ -189,12 +220,16 @@ impl App {
             let passthrough_fill = if track.state.passthrough {
                 if high_contrast {
                     theme.app_chrome.tab_accent_midi_io
+                } else if high_contrast_dark {
+                    Color::RGB(255, 255, 255)
                 } else {
                     Color::RGB(74, 210, 214)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(255, 255, 255)
+                } else if high_contrast_dark {
+                    Color::RGB(16, 16, 16)
                 } else {
                     Color::RGB(44, 70, 94)
                 }
@@ -241,6 +276,8 @@ impl App {
             1,
             if high_contrast {
                 Color::RGB(0, 0, 0)
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(244, 244, 236)
             },
@@ -262,6 +299,8 @@ impl App {
             } else {
                 if high_contrast {
                     Color::RGB(255, 255, 255)
+                } else if high_contrast_dark {
+                    Color::RGB(16, 16, 16)
                 } else {
                     Color::RGB(88, 82, 76)
                 }
@@ -269,6 +308,8 @@ impl App {
         } else {
             if high_contrast {
                 Color::RGB(255, 255, 255)
+            } else if high_contrast_dark {
+                Color::RGB(12, 12, 12)
             } else {
                 Color::RGB(38, 58, 90)
             }
@@ -467,6 +508,8 @@ impl App {
                 } else {
                     if self.theme().preset == ThemePreset::HighContrastLight {
                         Color::RGB(96, 96, 96)
+                    } else if self.theme().preset == ThemePreset::HighContrastDark {
+                        Color::RGB(160, 160, 160)
                     } else {
                         Color::RGB(128, 122, 112)
                     }
@@ -514,16 +557,22 @@ impl App {
         let theme = self.theme();
         let primary_tick = if theme.preset == ThemePreset::HighContrastLight {
             theme.app_chrome.surface_border
+        } else if theme.preset == ThemePreset::HighContrastDark {
+            Color::RGB(255, 255, 255)
         } else {
             Color::RGB(252, 238, 194)
         };
         let queued_tick = if theme.preset == ThemePreset::HighContrastLight {
             theme.app_chrome.tab_accent_midi_io
+        } else if theme.preset == ThemePreset::HighContrastDark {
+            Color::RGB(160, 160, 160)
         } else {
             Color::RGB(184, 226, 248)
         };
         let secondary_tick = if theme.preset == ThemePreset::HighContrastLight {
             Color::RGB(96, 96, 96)
+        } else if theme.preset == ThemePreset::HighContrastDark {
+            Color::RGB(160, 160, 160)
         } else {
             Color::RGB(218, 224, 232)
         };
@@ -533,6 +582,12 @@ impl App {
                 Color::RGB(228, 228, 228)
             } else {
                 Color::RGB(250, 250, 250)
+            }
+        } else if theme.preset == ThemePreset::HighContrastDark {
+            if track.state.muted {
+                Color::RGB(12, 12, 12)
+            } else {
+                Color::RGB(4, 4, 4)
             }
         } else if track.state.muted {
             Color::RGB(16, 18, 24)
