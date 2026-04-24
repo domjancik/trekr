@@ -411,7 +411,7 @@ impl App {
                     },
                 );
                 canvas.draw_rect(field_rect)?;
-                let tap_tag = Rect::new(row.x + row.width() as i32 - 68, row.y + 3, 34, 12);
+                let tap_tag = Rect::new(row.x + row.width() as i32 - 68, row.y + 3, 34, 13);
                 canvas.set_draw_color(theme.mappings.tap_badge_fill);
                 canvas.fill_rect(tap_tag)?;
                 crate::ui::draw_text_fitted(
@@ -448,7 +448,7 @@ impl App {
                 footer_x,
                 footer_bounds.y + 1,
                 crate::ui::text_width(label, 1) + 12,
-                footer_bounds.height().saturating_sub(2),
+                footer_bounds.height().saturating_sub(1),
             );
             canvas.set_draw_color(fill);
             canvas.fill_rect(token)?;
