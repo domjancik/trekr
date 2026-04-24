@@ -19,7 +19,7 @@ pub(crate) fn inset_rect_1(rect: Rect) -> Rect {
 }
 
 pub(crate) fn chrome_text_rect(rect: Rect) -> Rect {
-    centered_text_rect(inset_rect_1(rect))
+    inset_rect_1(rect)
 }
 
 pub(crate) fn contrasting_text_color(fill: Color, theme: &crate::theme::Theme) -> Color {
