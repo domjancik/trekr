@@ -1,7 +1,8 @@
 param(
     [string]$ScreenshotDir = "artifacts/screenshots",
     [string]$OutputFile = "artifacts/reviews/ui-findings.md",
-    [string]$Model = ""
+    [string]$Model = "",
+    [switch]$Recurse
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,7 +16,11 @@ if (-not (Test-Path $screensRoot)) {
     throw "Screenshot directory not found: $screensRoot"
 }
 
-$images = Get-ChildItem -Path $screensRoot -Filter *.png | Sort-Object Name
+$images = if ($Recurse) {
+    Get-ChildItem -Path $screensRoot -Filter *.png -Recurse | Sort-Object FullName
+} else {
+    Get-ChildItem -Path $screensRoot -Filter *.png | Sort-Object Name
+}
 if ($images.Count -eq 0) {
     throw "No screenshots found in $screensRoot"
 }

@@ -867,7 +867,8 @@ impl App {
 
     fn capture_region_rect(&self, page: AppPage, region_id: &str) -> Option<CaptureRect> {
         let content_bounds = self.capture_content_bounds().ok()?;
-        match region_id {
+        let normalized = region_id.replace('-', "_");
+        match normalized.as_str() {
             "timeline_transport" if page == AppPage::Timeline => {
                 let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
                 let (transport_bounds, _) =
@@ -909,6 +910,52 @@ impl App {
                     .find(|(index, _, _)| *index == self.project.active_track_index)?;
                 let header = crate::ui::track_header_rect(full_bounds, self.timeline_flow);
                 capture_rect_from_rect(header)
+            }
+            "transport_left" if page == AppPage::Timeline => {
+                let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+                let (transport_bounds, _) =
+                    crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+                let right_panel_width = self.transport_right_panel_width(transport_bounds);
+                let right_panel_x =
+                    transport_bounds.x + transport_bounds.width() as i32 - right_panel_width as i32 - 6;
+                capture_rect_from_rect(Rect::new(
+                    transport_bounds.x + 2,
+                    transport_bounds.y + 2,
+                    right_panel_x.saturating_sub(transport_bounds.x + 6) as u32,
+                    transport_bounds.height().saturating_sub(4),
+                ))
+            }
+            "transport_right" if page == AppPage::Timeline => {
+                let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+                let (transport_bounds, _) =
+                    crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+                let right_panel_width = self.transport_right_panel_width(transport_bounds);
+                capture_rect_from_rect(Rect::new(
+                    transport_bounds.x + transport_bounds.width() as i32 - right_panel_width as i32 - 6,
+                    transport_bounds.y + 3,
+                    right_panel_width,
+                    transport_bounds.height().saturating_sub(6),
+                ))
+            }
+            "status_strip" if page == AppPage::Timeline => {
+                let (_, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+                let (_, timeline_bounds) =
+                    crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+                let (_, full_bounds, detail_bounds) = self
+                    .visible_track_columns(timeline_bounds)
+                    .into_iter()
+                    .find(|(index, _, _)| *index == self.project.active_track_index)?;
+                capture_rect_from_rect(crate::ui::track_status_rect(
+                    crate::ui::union_rect(full_bounds, detail_bounds),
+                    self.timeline_flow,
+                ))
+            }
+            "timeline_header_controls" if page == AppPage::Timeline => {
+                let (header_bounds, _) = crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+                capture_rect_from_rect(crate::ui::union_rect(
+                    self.focused_track_view_button_rect(header_bounds),
+                    self.global_loop_reset_button_rect(header_bounds),
+                ))
             }
             "mappings_selected_row" if page == AppPage::Mappings => self
                 .mappings_selected_row_rect(content_bounds)
@@ -978,6 +1025,34 @@ impl App {
                     DirectMappingMode::AwaitingInput(target) => capture_rect_from_rect(target.hit_rect),
                     _ => None,
                 }
+            }
+            "fx_row" if page == AppPage::Routing => {
+                let inner = crate::ui::inset_rect(content_bounds, 12, 32).ok()?;
+                let (_, body) = crate::ui::split_top_strip(inner, 48, 10).ok()?;
+                let rows = crate::ui::stacked_rows(body, RoutingField::ALL.len(), 10);
+                let fx_fields = [
+                    RoutingField::RecordInputFx,
+                    RoutingField::MonitorInputFx,
+                    RoutingField::InputFxSlot,
+                    RoutingField::InputFxKind,
+                    RoutingField::InputFxEnabled,
+                    RoutingField::InputFxParam1,
+                    RoutingField::InputFxParam2,
+                    RoutingField::InputFxMore,
+                    RoutingField::OutputFxSlot,
+                    RoutingField::OutputFxKind,
+                    RoutingField::OutputFxEnabled,
+                    RoutingField::OutputFxParam1,
+                    RoutingField::OutputFxParam2,
+                    RoutingField::OutputFxMore,
+                ];
+                let field = if fx_fields.contains(&self.page_state.selected_routing_field) {
+                    self.page_state.selected_routing_field
+                } else {
+                    RoutingField::InputFxKind
+                };
+                let index = RoutingField::ALL.iter().position(|candidate| *candidate == field)?;
+                capture_rect_from_rect(rows[index])
             }
             "routing_channel_fanout_rows" if page == AppPage::Routing => {
                 let inner = crate::ui::inset_rect(content_bounds, 12, 32).ok()?;
@@ -1426,11 +1501,16 @@ fn capture_page_id(page: AppPage) -> &'static str {
 }
 
 fn capture_region_name(region_id: &str) -> Option<&'static str> {
-    match region_id {
+    let normalized = region_id.replace('-', "_");
+    match normalized.as_str() {
         "timeline_transport" => Some("Timeline transport strip"),
         "timeline_recwrap_quantize_strip" => Some("RecWrap and quantize row"),
         "timeline_link_status_strip" => Some("Link, sync, and peer status area"),
         "timeline_track_header_active" => Some("Active track header"),
+        "transport_left" => Some("Transport left controls"),
+        "transport_right" => Some("Transport right status panel"),
+        "status_strip" => Some("Active track status strip"),
+        "timeline_header_controls" => Some("Timeline header controls"),
         "timeline_stacked_clip_controls" => Some("Stacked clip mute and delete controls"),
         "timeline_direct_mapping_target" => Some("Timeline direct-mapping target highlight"),
         "mappings_selected_row" => Some("Selected mapping row"),
@@ -1440,6 +1520,7 @@ fn capture_region_name(region_id: &str) -> Option<&'static str> {
         "routing_passthrough_block" => Some("Routing passthrough block"),
         "routing_channel_fanout_rows" => Some("Routing channel fan-out rows"),
         "routing_direct_mapping_target" => Some("Routing direct-mapping target highlight"),
+        "fx_row" => Some("FX row hotspot"),
         "midi_io_selected_list" => Some("Selected MIDI I/O list"),
         "midi_io_inputs_list" => Some("MIDI input list"),
         "midi_io_outputs_list" => Some("MIDI output list"),
@@ -1901,4 +1982,34 @@ fn put_pixel_checked(image: &mut RgbaImage, x: u32, y: u32, color: [u8; 4]) {
     pixel[1] = color[1];
     pixel[2] = color[2];
     pixel[3] = color[3];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capture_region_name_supports_review_hotspot_aliases() {
+        assert_eq!(capture_region_name("transport-left"), Some("Transport left controls"));
+        assert_eq!(
+            capture_region_name("timeline-header-controls"),
+            Some("Timeline header controls")
+        );
+        assert_eq!(capture_region_name("fx-row"), Some("FX row hotspot"));
+    }
+
+    #[test]
+    fn review_hotspot_regions_resolve_for_timeline_and_routing_pages() {
+        let mut app = App::new_demo();
+        app.viewport_size = (1280, 720);
+        app.page_state.current_page = AppPage::Timeline;
+        assert!(app.capture_region_rect(AppPage::Timeline, "transport-left").is_some());
+        assert!(app.capture_region_rect(AppPage::Timeline, "transport-right").is_some());
+        assert!(app.capture_region_rect(AppPage::Timeline, "status-strip").is_some());
+        assert!(app.capture_region_rect(AppPage::Timeline, "timeline-header-controls").is_some());
+
+        app.page_state.current_page = AppPage::Routing;
+        app.page_state.selected_routing_field = RoutingField::InputFxKind;
+        assert!(app.capture_region_rect(AppPage::Routing, "fx-row").is_some());
+    }
 }
