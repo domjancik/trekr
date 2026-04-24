@@ -5,6 +5,8 @@ use sdl3::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::ui_density::UiMetrics;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutMode {
     FixedFit,
@@ -25,8 +27,8 @@ impl TimelineFlow {
     }
 }
 
-pub fn surface_rect(width: u32, height: u32) -> Rect {
-    let gutter = 18_i32;
+pub fn surface_rect(width: u32, height: u32, metrics: &UiMetrics) -> Rect {
+    let gutter = metrics.surface_gutter_px;
     let width = width as i32;
     let height = height as i32;
     Rect::new(
@@ -354,13 +356,17 @@ fn glyph_rows(character: char) -> [u8; 7] {
     }
 }
 
-pub fn track_column_pairs(bounds: Rect, track_count: usize) -> Vec<(Rect, Rect)> {
+pub fn track_column_pairs(
+    bounds: Rect,
+    track_count: usize,
+    metrics: &UiMetrics,
+) -> Vec<(Rect, Rect)> {
     if track_count == 0 {
         return Vec::new();
     }
 
-    let pair_gap = 14_i32;
-    let inner_gap = 6_i32;
+    let pair_gap = metrics.track_pair_gap_px;
+    let inner_gap = metrics.track_inner_gap_px;
     let total_pair_gap = pair_gap * (track_count.saturating_sub(1) as i32);
     let pair_width = ((bounds.width() as i32 - total_pair_gap) / track_count as i32).max(20);
     let sub_width = ((pair_width - inner_gap) / 2).max(8);
@@ -492,52 +498,82 @@ pub fn region_rects(
     rects
 }
 
-pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
+pub fn track_header_rect(lane: Rect, flow: TimelineFlow, metrics: &UiMetrics) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 34),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, lane.height()),
-    }
-}
-
-pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
-    match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y - 1, lane.width(), 15),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y - 1, 56, 15),
-    }
-}
-
-pub fn track_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
-    match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 15, lane.width(), 24),
-        TimelineFlow::AcrossRows => {
-            Rect::new(lane.x, lane.y + 15, 56, lane.height().saturating_sub(15))
+        TimelineFlow::DownwardColumns => {
+            Rect::new(lane.x, lane.y, lane.width(), metrics.track_header_height_px)
         }
-    }
-}
-
-pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
-    match flow {
-        TimelineFlow::DownwardColumns => Rect::new(
-            lane.x,
-            lane.y + 39,
-            lane.width(),
-            lane.height().saturating_sub(39),
-        ),
         TimelineFlow::AcrossRows => Rect::new(
-            lane.x + 56,
+            lane.x,
             lane.y,
-            lane.width().saturating_sub(56),
+            metrics.track_cross_axis_header_px,
             lane.height(),
         ),
     }
 }
 
-pub fn detail_badge_rect(header: Rect) -> Rect {
+pub fn track_status_rect(lane: Rect, flow: TimelineFlow, metrics: &UiMetrics) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + metrics.track_status_y_offset_px,
+            lane.width(),
+            metrics.track_status_height_px,
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x,
+            lane.y + metrics.track_status_y_offset_px,
+            metrics.track_cross_axis_header_px,
+            metrics.track_status_height_px,
+        ),
+    }
+}
+
+pub fn track_label_rect(lane: Rect, flow: TimelineFlow, metrics: &UiMetrics) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + metrics.track_status_height_px as i32,
+            lane.width(),
+            metrics.track_label_height_px,
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x,
+            lane.y + metrics.track_status_height_px as i32,
+            metrics.track_cross_axis_header_px,
+            lane.height().saturating_sub(metrics.track_status_height_px),
+        ),
+    }
+}
+
+pub fn track_content_rect(lane: Rect, flow: TimelineFlow, metrics: &UiMetrics) -> Rect {
+    match flow {
+        TimelineFlow::DownwardColumns => Rect::new(
+            lane.x,
+            lane.y + metrics.track_status_height_px as i32 + metrics.track_label_height_px as i32,
+            lane.width(),
+            lane.height()
+                .saturating_sub(metrics.track_status_height_px + metrics.track_label_height_px),
+        ),
+        TimelineFlow::AcrossRows => Rect::new(
+            lane.x + metrics.track_cross_axis_header_px as i32,
+            lane.y,
+            lane.width()
+                .saturating_sub(metrics.track_cross_axis_header_px),
+            lane.height(),
+        ),
+    }
+}
+
+pub fn detail_badge_rect(header: Rect, metrics: &UiMetrics) -> Rect {
     Rect::new(
-        header.x + 4,
-        header.y + header.height() as i32 - 12,
-        header.width().saturating_sub(8).min(28),
-        11,
+        header.x + metrics.detail_badge_inset_x_px,
+        header.y + header.height() as i32 - metrics.detail_badge_bottom_offset_px,
+        header
+            .width()
+            .saturating_sub((metrics.detail_badge_inset_x_px * 2).max(0) as u32)
+            .min(28),
+        metrics.detail_badge_height_px,
     )
 }
 
@@ -582,17 +618,18 @@ pub struct TrackIndicator {
     pub rect: Rect,
 }
 
-pub fn track_indicators(status_rect: Rect) -> [TrackIndicator; 4] {
-    let inset_x = 2_i32;
-    let top_inset_y = 2_i32;
-    let bottom_inset_y = 2_i32;
-    let gap = 2_i32;
+pub fn track_indicators(status_rect: Rect, metrics: &UiMetrics) -> [TrackIndicator; 4] {
+    let inset_x = metrics.track_inner_gap_px.min(2).max(1);
+    let inset_y = ((status_rect.height() as i32 - metrics.touch_target_min_px as i32).max(0) / 2)
+        .min(2)
+        .max(1);
+    let gap = metrics.track_inner_gap_px.min(2).max(1);
     let inner_width = (status_rect.width() as i32 - inset_x * 2).max(4);
     let height = status_rect
         .height()
-        .saturating_sub((top_inset_y + bottom_inset_y) as u32)
+        .saturating_sub((inset_y * 2) as u32)
         .max(6);
-    let y = status_rect.y + top_inset_y;
+    let y = status_rect.y + inset_y;
     let segment_rect = |index: i32| {
         let start = status_rect.x + inset_x + (inner_width * index) / 4;
         let end = status_rect.x + inset_x + (inner_width * (index + 1)) / 4;
@@ -752,11 +789,12 @@ mod tests {
     };
     use crate::project::MidiNote;
     use crate::timeline::LoopRegion;
+    use crate::ui_density::{UiDensityPreset, ui_metrics};
     use sdl3::rect::Rect;
 
     #[test]
     fn surface_rect_fills_window_with_margin() {
-        let surface = surface_rect(1280, 720);
+        let surface = surface_rect(1280, 720, ui_metrics(UiDensityPreset::Default));
 
         assert_eq!(surface.width(), 1244);
         assert_eq!(surface.height(), 684);
@@ -764,7 +802,11 @@ mod tests {
 
     #[test]
     fn track_column_pairs_build_full_detail_pairs() {
-        let pairs = track_column_pairs(Rect::new(0, 0, 1000, 400), 4);
+        let pairs = track_column_pairs(
+            Rect::new(0, 0, 1000, 400),
+            4,
+            ui_metrics(UiDensityPreset::Default),
+        );
         let (full, detail) = pairs[0];
 
         assert!(detail.x > full.x);
@@ -831,7 +873,11 @@ mod tests {
 
     #[test]
     fn downward_columns_use_top_headers() {
-        let header = track_header_rect(Rect::new(10, 20, 80, 240), TimelineFlow::DownwardColumns);
+        let header = track_header_rect(
+            Rect::new(10, 20, 80, 240),
+            TimelineFlow::DownwardColumns,
+            ui_metrics(UiDensityPreset::Default),
+        );
 
         assert_eq!(header.height(), 34);
         assert_eq!(header.width(), 80);
@@ -840,9 +886,21 @@ mod tests {
     #[test]
     fn track_chrome_reserves_status_and_content_bands() {
         let lane = Rect::new(10, 20, 80, 240);
-        let status = track_status_rect(lane, TimelineFlow::DownwardColumns);
-        let label = track_label_rect(lane, TimelineFlow::DownwardColumns);
-        let content = track_content_rect(lane, TimelineFlow::DownwardColumns);
+        let status = track_status_rect(
+            lane,
+            TimelineFlow::DownwardColumns,
+            ui_metrics(UiDensityPreset::Default),
+        );
+        let label = track_label_rect(
+            lane,
+            TimelineFlow::DownwardColumns,
+            ui_metrics(UiDensityPreset::Default),
+        );
+        let content = track_content_rect(
+            lane,
+            TimelineFlow::DownwardColumns,
+            ui_metrics(UiDensityPreset::Default),
+        );
 
         assert_eq!(status.height(), 15);
         assert_eq!(label.y, 35);
@@ -874,14 +932,20 @@ mod tests {
 
     #[test]
     fn detail_badge_uses_header_space() {
-        let badge = detail_badge_rect(Rect::new(20, 10, 40, 20));
+        let badge = detail_badge_rect(
+            Rect::new(20, 10, 40, 20),
+            ui_metrics(UiDensityPreset::Default),
+        );
         assert!(badge.x > 20);
         assert!(badge.width() > 0);
     }
 
     #[test]
     fn track_indicators_cover_arm_record_mute_and_solo() {
-        let indicators = track_indicators(Rect::new(10, 10, 80, 20));
+        let indicators = track_indicators(
+            Rect::new(10, 10, 80, 20),
+            ui_metrics(UiDensityPreset::Default),
+        );
         assert_eq!(indicators[0].kind, TrackIndicatorKind::Armed);
         assert_eq!(indicators[1].kind, TrackIndicatorKind::Recording);
         assert_eq!(indicators[3].kind, TrackIndicatorKind::Solo);

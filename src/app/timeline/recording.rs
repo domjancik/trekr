@@ -971,7 +971,8 @@ impl App {
         let Some(full_bounds) = self.active_track_full_bounds() else {
             return;
         };
-        let content_rect = crate::ui::track_content_rect(full_bounds, self.timeline_flow);
+        let content_rect =
+            crate::ui::track_content_rect(full_bounds, self.timeline_flow, self.ui_metrics());
         let total_capacity = self.recording_lane_capacity(content_rect).max(1);
         let Some(track) = self.project.active_track_mut() else {
             return;
@@ -1200,7 +1201,8 @@ mod tests {
         let app = App::new();
         let timeline_bounds = Rect::new(0, 0, 1000, 420);
         let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+        let content_rect =
+            crate::ui::track_content_rect(full_bounds, app.timeline_flow, app.ui_metrics());
 
         assert!(app.recording_lane_capacity(content_rect) >= 3);
     }
@@ -1222,7 +1224,8 @@ mod tests {
 
         let timeline_bounds = Rect::new(0, 0, 1000, 420);
         let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+        let content_rect =
+            crate::ui::track_content_rect(full_bounds, app.timeline_flow, app.ui_metrics());
         let layouts = app.recording_lane_layouts(content_rect, app.project.active_track().unwrap());
 
         assert_eq!(layouts.len(), 2);
@@ -1282,7 +1285,8 @@ mod tests {
 
         let timeline_bounds = Rect::new(0, 0, 1000, 420);
         let (_, full_bounds, _) = app.visible_track_columns(timeline_bounds)[0];
-        let content_rect = crate::ui::track_content_rect(full_bounds, app.timeline_flow);
+        let content_rect =
+            crate::ui::track_content_rect(full_bounds, app.timeline_flow, app.ui_metrics());
         let (_, thumb_before) = app
             .recording_clip_scrollbar_rects(content_rect, app.project.active_track().unwrap())
             .expect("scrollbar");

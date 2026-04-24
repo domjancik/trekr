@@ -35,9 +35,11 @@ impl App {
         &self,
         inset: Rect,
     ) -> Result<(Rect, Rect, Rect), Box<dyn std::error::Error>> {
-        let (tabs_bounds, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12)?;
-        let footer_height = 22_u32;
-        let footer_gap = 8_i32;
+        let metrics = self.ui_metrics();
+        let (tabs_bounds, page_area_bounds) =
+            crate::ui::split_top_strip(inset, metrics.tabs_height_px, metrics.tabs_gap_px)?;
+        let footer_height = metrics.footer_height_px;
+        let footer_gap = metrics.footer_gap_px;
         let footer_bounds = Rect::new(
             page_area_bounds.x,
             page_area_bounds.y + page_area_bounds.height() as i32 - footer_height as i32,
@@ -61,8 +63,10 @@ impl App {
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
-        let surface = crate::ui::surface_rect(width, height);
-        let inset = crate::ui::inset_rect(surface, 24, 24)?;
+        let metrics = self.ui_metrics();
+        let surface = crate::ui::surface_rect(width, height, metrics);
+        let inset =
+            crate::ui::inset_rect(surface, metrics.frame_inset_x_px, metrics.frame_inset_y_px)?;
         let (tabs_bounds, content_bounds, footer_bounds) = self.page_frame_layout(inset)?;
         let theme = self.theme();
 
@@ -165,7 +169,11 @@ impl App {
         self.draw_branding(canvas, branding_bounds)?;
         let theme = self.theme();
 
-        let tabs = crate::ui::equal_columns(tabs_bounds, AppPage::ALL.len(), 10);
+        let tabs = crate::ui::equal_columns(
+            tabs_bounds,
+            AppPage::ALL.len(),
+            self.ui_metrics().tabs_column_gap_px,
+        );
         for (index, page) in AppPage::ALL.iter().copied().enumerate() {
             let tab = tabs[index];
             let active = page == self.page_state.current_page;
@@ -572,8 +580,8 @@ impl App {
     }
 }
 
-pub(crate) fn transport_strip_height() -> u32 {
-    34
+pub(crate) fn transport_strip_height(metrics: &crate::ui_density::UiMetrics) -> u32 {
+    metrics.transport_strip_height_px
 }
 
 #[cfg(test)]
@@ -583,17 +591,32 @@ mod tests {
     #[test]
     fn page_frame_layout_matches_draw_content_height_contract() {
         let app = App::new();
-        let surface = crate::ui::surface_rect(1280, 720);
-        let inset = crate::ui::inset_rect(surface, 24, 24).expect("inset");
+        let surface = crate::ui::surface_rect(1280, 720, app.ui_metrics());
+        let inset = crate::ui::inset_rect(
+            surface,
+            app.ui_metrics().frame_inset_x_px,
+            app.ui_metrics().frame_inset_y_px,
+        )
+        .expect("inset");
         let (_, content_bounds, footer_bounds) = app.page_frame_layout(inset).expect("layout");
-        let (_, page_area_bounds) = crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+        let (_, page_area_bounds) = crate::ui::split_top_strip(
+            inset,
+            app.ui_metrics().tabs_height_px,
+            app.ui_metrics().tabs_gap_px,
+        )
+        .expect("page split");
 
         assert_eq!(content_bounds.y, page_area_bounds.y);
         assert_eq!(
             footer_bounds.y + footer_bounds.height() as i32,
             page_area_bounds.y + page_area_bounds.height() as i32
         );
-        assert_eq!(content_bounds.height() + 22 + 8, page_area_bounds.height());
+        assert_eq!(
+            content_bounds.height()
+                + app.ui_metrics().footer_height_px
+                + app.ui_metrics().footer_gap_px as u32,
+            page_area_bounds.height()
+        );
     }
 
     #[test]

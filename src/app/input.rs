@@ -299,8 +299,17 @@ impl App {
         y: i32,
         source: crate::actions::ActionSource,
     ) -> Option<AppControl> {
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let surface = crate::ui::surface_rect(
+            self.viewport_size.0,
+            self.viewport_size.1,
+            self.ui_metrics(),
+        );
+        let inset = crate::ui::inset_rect(
+            surface,
+            self.ui_metrics().frame_inset_x_px,
+            self.ui_metrics().frame_inset_y_px,
+        )
+        .ok()?;
         let (tabs_bounds, content_bounds, _) = self.page_frame_layout(inset).ok()?;
 
         if let Some(control) =
@@ -336,7 +345,7 @@ impl App {
         }
 
         if self.page_state.current_page == AppPage::Mappings {
-            let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+            let direct_badge = self.mappings_page_layout(content_bounds).direct_badge;
             if rect_contains(direct_badge, x, y) {
                 return Some(
                     self.apply_action_with_source(AppAction::ToggleDirectMappingMode, source),
@@ -402,7 +411,11 @@ impl App {
 
     pub(super) fn hit_page_tab(&self, bounds: Rect, x: i32, y: i32) -> Option<AppPage> {
         let (_, tabs_bounds) = page_tabs_layout(bounds);
-        let tabs = crate::ui::equal_columns(tabs_bounds, AppPage::ALL.len(), 10);
+        let tabs = crate::ui::equal_columns(
+            tabs_bounds,
+            AppPage::ALL.len(),
+            self.ui_metrics().tabs_column_gap_px,
+        );
         AppPage::ALL
             .iter()
             .copied()
@@ -493,10 +506,20 @@ mod tests {
     #[test]
     fn direct_mapping_pointer_can_retarget_while_awaiting_input() {
         let mut app = App::new();
-        let surface = crate::ui::surface_rect(app.viewport_size.0, app.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).expect("surface inset");
-        let (tabs_bounds, page_area_bounds) =
-            crate::ui::split_top_strip(inset, 28, 12).expect("page split");
+        let surface =
+            crate::ui::surface_rect(app.viewport_size.0, app.viewport_size.1, app.ui_metrics());
+        let inset = crate::ui::inset_rect(
+            surface,
+            app.ui_metrics().frame_inset_x_px,
+            app.ui_metrics().frame_inset_y_px,
+        )
+        .expect("surface inset");
+        let (tabs_bounds, page_area_bounds) = crate::ui::split_top_strip(
+            inset,
+            app.ui_metrics().tabs_height_px,
+            app.ui_metrics().tabs_gap_px,
+        )
+        .expect("page split");
         let content_bounds = Rect::new(
             page_area_bounds.x(),
             page_area_bounds.y(),

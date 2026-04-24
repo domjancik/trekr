@@ -283,7 +283,7 @@ impl App {
         )?;
 
         let role_badge = if detail {
-            crate::ui::detail_badge_rect(label_rect)
+            crate::ui::detail_badge_rect(label_rect, self.ui_metrics())
         } else {
             Rect::new(
                 label_rect.x + 4,
@@ -841,9 +841,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
         let label_rect = timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);
@@ -871,9 +875,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (body_full_bounds, _) = app.track_column_body_bounds(full_bounds, detail_bounds);
         let label_rect = timeline_subcolumn_label_rect(body_full_bounds, app.timeline_flow);

@@ -41,8 +41,17 @@ impl App {
         if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
             return None;
         }
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
-        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let surface = crate::ui::surface_rect(
+            self.viewport_size.0,
+            self.viewport_size.1,
+            self.ui_metrics(),
+        );
+        let inset = crate::ui::inset_rect(
+            surface,
+            self.ui_metrics().frame_inset_x_px,
+            self.ui_metrics().frame_inset_y_px,
+        )
+        .ok()?;
         let (_, content_bounds, _) = self.page_frame_layout(inset).ok()?;
 
         let targets =

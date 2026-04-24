@@ -125,9 +125,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[1];
         let (_, body_detail_bounds) = app.track_column_body_bounds(full_bounds, detail_bounds);
         let detail_label_rect = super::timeline::layout::timeline_subcolumn_label_rect(

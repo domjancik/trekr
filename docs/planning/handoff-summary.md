@@ -62,6 +62,12 @@
   - `empty`
   - `persisted`
   - fixture file via `--state-file`
+- app-global UI density presets:
+  - `default`
+  - `compact`
+  - `touch`
+  - `tiny`
+  - launchable via `--ui-density` or `TREKR_UI_DENSITY`
 - renderer-owned screenshot capture and Codex screenshot review flow
 - mouse/touch support for non-timeline controls:
   - tabs

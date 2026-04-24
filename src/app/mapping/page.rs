@@ -1,6 +1,100 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MappingsPageLayout {
+    pub(crate) overview_badge: Rect,
+    pub(crate) learn_badge: Rect,
+    pub(crate) direct_badge: Rect,
+    pub(crate) rows_meta: Rect,
+    pub(crate) header_row: Rect,
+    pub(crate) list_bounds: Rect,
+    pub(crate) footer_bounds: Rect,
+    pub(crate) row_height: i32,
+    pub(crate) row_gap: i32,
+}
+
 impl App {
+    pub(crate) fn mappings_page_layout(&self, content_bounds: Rect) -> MappingsPageLayout {
+        let metrics = self.ui_metrics();
+        let side_inset = metrics.mappings_side_inset_px;
+        let footer_height = metrics.mapping_footer_height_px;
+        let footer_bounds = Rect::new(
+            content_bounds.x + side_inset,
+            content_bounds.y + content_bounds.height() as i32 - footer_height as i32 - side_inset,
+            content_bounds
+                .width()
+                .saturating_sub((side_inset * 2).max(0) as u32),
+            footer_height,
+        );
+        let list_bounds = Rect::new(
+            content_bounds.x + side_inset,
+            content_bounds.y + metrics.mapping_list_y_px,
+            content_bounds
+                .width()
+                .saturating_sub((side_inset * 2).max(0) as u32),
+            footer_bounds
+                .y
+                .saturating_sub(content_bounds.y + metrics.mapping_list_y_px + side_inset)
+                .max(0) as u32,
+        );
+        MappingsPageLayout {
+            overview_badge: Rect::new(
+                content_bounds.x + 200,
+                content_bounds.y + 8,
+                188,
+                metrics.mapping_badge_height_px,
+            ),
+            learn_badge: Rect::new(
+                content_bounds.x + 392,
+                content_bounds.y + 8,
+                136,
+                metrics.mapping_badge_height_px,
+            ),
+            direct_badge: Rect::new(
+                content_bounds.x + 532,
+                content_bounds.y + 8,
+                154,
+                metrics.mapping_badge_height_px,
+            ),
+            rows_meta: Rect::new(
+                content_bounds.x + content_bounds.width() as i32 - 100,
+                content_bounds.y + 12,
+                92,
+                8,
+            ),
+            header_row: Rect::new(
+                content_bounds.x + side_inset,
+                content_bounds.y + metrics.mapping_header_y_px,
+                content_bounds
+                    .width()
+                    .saturating_sub((side_inset * 2).max(0) as u32),
+                10,
+            ),
+            list_bounds,
+            footer_bounds,
+            row_height: metrics.mapping_row_height_px as i32,
+            row_gap: metrics.mapping_row_gap_px,
+        }
+    }
+
+    pub(crate) fn mappings_visible_row_range(&self, layout: &MappingsPageLayout) -> (usize, usize) {
+        let stride = layout.row_height + layout.row_gap;
+        let visible_rows =
+            ((layout.list_bounds.height() as i32 + layout.row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+        (visible_rows, start_index)
+    }
+
     pub(crate) fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
         let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
         let source_rect = Rect::new(
@@ -60,7 +154,8 @@ impl App {
             2,
             theme.mappings.page_title,
         )?;
-        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
+        let layout = self.mappings_page_layout(content_bounds);
+        let overview_badge = layout.overview_badge;
         let overview_fill = if self.page_state.mapping_mode == MappingPageMode::Write {
             theme.mappings.write_mode_active
         } else {
@@ -77,7 +172,7 @@ impl App {
             1,
             contrasting_text_color(overview_fill, theme),
         )?;
-        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        let learn_badge = layout.learn_badge;
         let learn_fill = if self.page_state.mapping_midi_learn_armed {
             theme.mappings.learn_armed
         } else {
@@ -106,7 +201,7 @@ impl App {
             1,
             contrasting_text_color(learn_fill, theme),
         )?;
-        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+        let direct_badge = layout.direct_badge;
         let direct_fill = if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
             theme.mappings.direct_badge_idle_fill
         } else {
@@ -143,39 +238,18 @@ impl App {
                     .min(self.mappings.len()),
                 self.mappings.len()
             ),
-            Rect::new(
-                content_bounds.x + content_bounds.width() as i32 - 100,
-                content_bounds.y + 12,
-                92,
-                8,
-            ),
+            layout.rows_meta,
             1,
             theme.mappings.meta_text,
         )?;
-
-        let footer_bounds = Rect::new(
-            content_bounds.x + 8,
-            content_bounds.y + content_bounds.height() as i32 - 20,
-            content_bounds.width().saturating_sub(16),
-            12,
-        );
-        let list_bounds = Rect::new(
-            content_bounds.x + 8,
-            content_bounds.y + 44,
-            content_bounds.width().saturating_sub(16),
-            content_bounds.height().saturating_sub(68),
-        );
-        let header_row = Rect::new(
-            list_bounds.x,
-            content_bounds.y + 30,
-            list_bounds.width(),
-            10,
-        );
+        let footer_bounds = layout.footer_bounds;
+        let list_bounds = layout.list_bounds;
+        let header_row = layout.header_row;
         let header_cells = self.mapping_row_cells(Rect::new(
             header_row.x,
             header_row.y,
             header_row.width(),
-            18,
+            layout.row_height as u32,
         ));
         for (index, field) in MappingField::ALL.iter().enumerate() {
             crate::ui::draw_text_fitted(
@@ -191,21 +265,7 @@ impl App {
                 theme.mappings.meta_text,
             )?;
         }
-        let row_gap = 3_i32;
-        let row_height = 18_i32;
-        let stride = row_height + row_gap;
-        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
-        let selected_index = self
-            .page_state
-            .selected_mapping_index
-            .min(self.mappings.len().saturating_sub(1));
-        let start_index = if self.mappings.len() <= visible_rows {
-            0
-        } else {
-            selected_index
-                .saturating_sub(visible_rows / 2)
-                .min(self.mappings.len() - visible_rows)
-        };
+        let (visible_rows, start_index) = self.mappings_visible_row_range(&layout);
 
         for visible_index in 0..visible_rows {
             let index = start_index + visible_index;
@@ -214,9 +274,9 @@ impl App {
             }
             let row = Rect::new(
                 list_bounds.x,
-                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.y + visible_index as i32 * (layout.row_height + layout.row_gap),
                 list_bounds.width(),
-                row_height as u32,
+                layout.row_height as u32,
             );
             let entry = &self.mappings[index];
             let selected = index == self.page_state.selected_mapping_index;

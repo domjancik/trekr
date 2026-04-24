@@ -7,9 +7,8 @@ impl App {
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let (header_bounds, body_bounds) = crate::ui::split_top_strip(content_bounds, 28, 6)?;
-        let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)?;
+        let (header_bounds, transport_bounds, timeline_bounds) =
+            self.timeline_page_layout(content_bounds)?;
         let reset_button = self.global_loop_reset_button_rect(header_bounds);
         let focus_button = self.focused_track_view_button_rect(header_bounds);
         canvas.set_draw_color(theme.app_chrome.surface_fill);
@@ -219,7 +218,7 @@ impl App {
         });
         canvas.draw_rect(status_rect)?;
 
-        for indicator in crate::ui::track_indicators(status_rect) {
+        for indicator in crate::ui::track_indicators(status_rect, self.ui_metrics()) {
             let (enabled, fill, border, label) = match indicator.kind {
                 crate::ui::TrackIndicatorKind::Armed => (
                     track.state.armed,
@@ -563,12 +562,14 @@ mod tests {
         let mut app = App::new();
         app.page_state.selected_timeline_context = TimelineContext::TrackTimeline;
         let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (_, _, timeline_bounds) = app
+            .timeline_page_layout(content_bounds)
+            .expect("timeline content");
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let track = &app.project.tracks[0];
         let layout = app.timeline_track_layout(0, full_bounds, detail_bounds);
