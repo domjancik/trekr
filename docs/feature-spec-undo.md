@@ -71,6 +71,7 @@ This domain covers project-affecting state and timeline editor context:
 - active track
 - selected timeline sub-context such as `Input FX`, `Timeline`, `Output FX`
 - selected timeline FX row/field when it determines what timeline edit commands target
+- app-level default MIDI input/output selection when treated as routing-adjacent operator state
 - note selection and note focus/anchor state
 
 Rationale:

@@ -171,7 +171,7 @@ impl App {
             },
             AppAction::ActivatePageItem => match self.page_state.current_page {
                 AppPage::Mappings => vec![UndoDomain::Mappings, UndoDomain::Ui],
-                AppPage::MidiIo => vec![UndoDomain::Ui],
+                AppPage::MidiIo => vec![UndoDomain::Timeline],
                 AppPage::Routing => vec![UndoDomain::Timeline],
                 AppPage::Timeline => vec![UndoDomain::Timeline],
             },
@@ -210,6 +210,8 @@ impl App {
             selected_timeline_fx_field: self.page_state.selected_timeline_fx_field,
             selected_input_fx_row: self.page_state.selected_input_fx_slot,
             selected_output_fx_row: self.page_state.selected_output_fx_slot,
+            preferred_default_input_name: self.preferred_default_input_name.clone(),
+            preferred_default_output_name: self.preferred_default_output_name.clone(),
         }
     }
 
@@ -232,8 +234,6 @@ impl App {
             },
             focused_track_view: self.focused_track_view,
             direct_mapping_active: self.direct_mapping_state.mode != DirectMappingMode::Inactive,
-            preferred_default_input_name: self.preferred_default_input_name.clone(),
-            preferred_default_output_name: self.preferred_default_output_name.clone(),
         }
     }
 
@@ -351,6 +351,28 @@ impl App {
                 self.page_state.selected_timeline_fx_field = state.selected_timeline_fx_field;
                 self.page_state.selected_input_fx_slot = state.selected_input_fx_row;
                 self.page_state.selected_output_fx_slot = state.selected_output_fx_row;
+                self.preferred_default_input_name = state.preferred_default_input_name.clone();
+                self.preferred_default_output_name = state.preferred_default_output_name.clone();
+                self.midi_devices.selected_input = self
+                    .preferred_default_input_name
+                    .as_deref()
+                    .and_then(|name| {
+                        self.midi_devices
+                            .inputs
+                            .iter()
+                            .position(|port| port.name == name)
+                    })
+                    .or_else(|| (!self.midi_devices.inputs.is_empty()).then_some(0));
+                self.midi_devices.selected_output = self
+                    .preferred_default_output_name
+                    .as_deref()
+                    .and_then(|name| {
+                        self.midi_devices
+                            .outputs
+                            .iter()
+                            .position(|port| port.name == name)
+                    })
+                    .or_else(|| (!self.midi_devices.outputs.is_empty()).then_some(0));
                 self.normalize_timeline_fx_selection();
             }
             UndoSnapshot::Mappings(state) => {
@@ -377,28 +399,6 @@ impl App {
                 };
                 self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
                 self.direct_mapping_state.status_message = None;
-                self.preferred_default_input_name = state.preferred_default_input_name.clone();
-                self.preferred_default_output_name = state.preferred_default_output_name.clone();
-                self.midi_devices.selected_input = self
-                    .preferred_default_input_name
-                    .as_deref()
-                    .and_then(|name| {
-                        self.midi_devices
-                            .inputs
-                            .iter()
-                            .position(|port| port.name == name)
-                    })
-                    .or_else(|| (!self.midi_devices.inputs.is_empty()).then_some(0));
-                self.midi_devices.selected_output = self
-                    .preferred_default_output_name
-                    .as_deref()
-                    .and_then(|name| {
-                        self.midi_devices
-                            .outputs
-                            .iter()
-                            .position(|port| port.name == name)
-                    })
-                    .or_else(|| (!self.midi_devices.outputs.is_empty()).then_some(0));
             }
         }
     }
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn undo_ui_restores_preferred_midi_defaults() {
+    fn undo_timeline_restores_preferred_midi_defaults() {
         let mut app = App::new();
         app.page_state.current_page = AppPage::MidiIo;
         app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
@@ -509,7 +509,7 @@ mod tests {
         app.apply_action(AppAction::ActivatePageItem);
         assert_eq!(app.preferred_default_input_name.as_deref(), Some("In B"));
 
-        app.apply_action(AppAction::UndoUi);
+        app.apply_action(AppAction::UndoTimeline);
         assert_eq!(app.preferred_default_input_name.as_deref(), Some("In A"));
         assert_eq!(
             app.midi_devices
