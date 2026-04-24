@@ -1,6 +1,7 @@
 use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 use crate::state;
 use crate::theme::ThemePreset;
+use crate::ui_density::UiDensityPreset;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
@@ -19,6 +20,7 @@ pub struct LaunchOptions {
     pub ui_scale: Option<f32>,
     pub ui_scaling_mode: UiScalingMode,
     pub theme_preset: Option<ThemePreset>,
+    pub ui_density_preset: Option<UiDensityPreset>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -155,6 +157,7 @@ impl Default for LaunchOptions {
             ui_scale: None,
             ui_scaling_mode: UiScalingMode::Auto,
             theme_preset: None,
+            ui_density_preset: None,
         }
     }
 }
@@ -197,6 +200,9 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
     app.set_ui_scaling_mode(options.ui_scaling_mode);
     if let Some(theme_preset) = options.theme_preset {
         app.set_theme_preset(theme_preset);
+    }
+    if let Some(ui_density_preset) = options.ui_density_preset {
+        app.set_ui_density_preset(ui_density_preset);
     }
     println!("{}", app.bootstrap_summary());
     match options.run_mode {
@@ -252,6 +258,10 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(
         writer,
         "  --theme <default-dark|high-contrast-dark|high-contrast-light>"
+    )?;
+    writeln!(
+        writer,
+        "  --ui-density <default|compact|touch|tiny>   env fallback: TREKR_UI_DENSITY"
     )?;
     writeln!(
         writer,
@@ -388,6 +398,10 @@ pub fn launch_command_args(options: &LaunchOptions) -> Vec<String> {
         args.push("--theme".to_owned());
         args.push(theme_preset.label().to_owned());
     }
+    if let Some(ui_density_preset) = options.ui_density_preset {
+        args.push("--ui-density".to_owned());
+        args.push(ui_density_preset.label().to_owned());
+    }
 
     args
 }
@@ -450,6 +464,12 @@ where
                         .to_owned()
                 })?;
                 options.theme_preset = Some(parse_theme_preset(&value)?);
+            }
+            "--ui-density" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--ui-density requires default|compact|touch|tiny".to_owned())?;
+                options.ui_density_preset = Some(parse_ui_density_preset(&value)?);
             }
             "--video-mode" => {
                 let value = args.next().ok_or_else(|| {
@@ -519,6 +539,7 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         ui_scale,
         ui_scaling_mode,
         theme_preset: None,
+        ui_density_preset: None,
     })
 }
 
@@ -718,11 +739,16 @@ fn parse_theme_preset(value: &str) -> Result<ThemePreset, String> {
     ThemePreset::from_name(value).ok_or_else(|| format!("unknown theme: {value}"))
 }
 
+fn parse_ui_density_preset(value: &str) -> Result<UiDensityPreset, String> {
+    UiDensityPreset::from_name(value).ok_or_else(|| format!("unknown ui density: {value}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AppCommand, LaunchMode, StateMode, parse_app_command_from};
     use crate::app::{UiScalingMode, VideoMode};
     use crate::theme::ThemePreset;
+    use crate::ui_density::UiDensityPreset;
     use std::path::PathBuf;
 
     #[test]
@@ -848,5 +874,19 @@ mod tests {
             panic!("expected launch command");
         };
         assert_eq!(options.theme_preset, Some(ThemePreset::HighContrastLight));
+    }
+
+    #[test]
+    fn capture_subcommand_accepts_ui_density() {
+        let command = parse_app_command_from(vec![
+            "capture-ui".to_owned(),
+            "--ui-density".to_owned(),
+            "touch".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        assert_eq!(options.ui_density_preset, Some(UiDensityPreset::Touch));
     }
 }

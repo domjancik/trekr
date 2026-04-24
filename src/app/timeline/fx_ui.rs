@@ -1648,9 +1648,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -1725,9 +1729,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -1765,9 +1773,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -1806,9 +1818,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -1851,9 +1867,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -1927,9 +1947,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -2068,9 +2092,13 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[0];
         let (_, output_band) =
             app.track_fx_band_rects(full_bounds, detail_bounds, &app.project.tracks[0]);
@@ -2114,7 +2142,7 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
         let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
         let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);
@@ -2148,7 +2176,7 @@ mod tests {
         let (_, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
         let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(app.ui_metrics()), 8)
                 .expect("timeline body");
         let layout = app.visible_timeline_track_layouts(timeline_bounds)[0];
         let displayed = app.displayed_timeline_fx_slot_indices(MidiFxChainKind::Output);

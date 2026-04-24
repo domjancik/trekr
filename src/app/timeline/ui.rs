@@ -8,10 +8,8 @@ impl App {
         y: i32,
         source: crate::actions::ActionSource,
     ) -> Option<AppControl> {
-        let (header_bounds, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
-        let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+        let (header_bounds, transport_bounds, timeline_bounds) =
+            self.timeline_page_layout(content_bounds).ok()?;
         if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
             return Some(self.apply_action_with_source(AppAction::ToggleFocusedTrackView, source));
         }
@@ -31,7 +29,7 @@ impl App {
             let detail_label_rect = layout.detail_label_rect;
             let full_content_rect = layout.full_content_rect;
             let detail_content_rect = layout.detail_content_rect;
-            for indicator in crate::ui::track_indicators(layout.status_rect) {
+            for indicator in crate::ui::track_indicators(layout.status_rect, self.ui_metrics()) {
                 if !rect_contains(indicator.rect, x, y) {
                     continue;
                 }
@@ -153,11 +151,9 @@ impl App {
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         let mut targets = Vec::new();
-        let (header_bounds, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline layout");
-        let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline transport");
+        let (header_bounds, transport_bounds, timeline_bounds) = self
+            .timeline_page_layout(content_bounds)
+            .expect("timeline layout");
         targets.push((
             self.focused_track_view_button_rect(header_bounds),
             DiscoverabilityTarget {
@@ -282,7 +278,7 @@ impl App {
                 }
             }
         }
-        for indicator in crate::ui::track_indicators(status_rect) {
+        for indicator in crate::ui::track_indicators(status_rect, self.ui_metrics()) {
             if let Some(target) = track_indicator_target(indicator.kind, Some(indicator.rect)) {
                 targets.push((
                     Rect::new(
@@ -329,7 +325,7 @@ impl App {
             }
         }
         targets.push((
-            crate::ui::detail_badge_rect(detail_label_rect),
+            crate::ui::detail_badge_rect(detail_label_rect, self.ui_metrics()),
             DiscoverabilityTarget {
                 action: AppAction::ToggleCurrentTrackLoop,
                 display_scope: Some("Active Track"),
@@ -363,18 +359,21 @@ mod tests {
     fn timeline_track_arm_indicator_is_clickable() {
         let mut app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (_, _, timeline_bounds) = app
+            .timeline_page_layout(content_bounds)
+            .expect("timeline content");
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[1];
         let status_rect = crate::ui::track_status_rect(
             crate::ui::union_rect(full_bounds, detail_bounds),
             app.timeline_flow,
+            app.ui_metrics(),
         );
-        let arm_rect = crate::ui::track_indicators(status_rect)[0].rect;
+        let arm_rect = crate::ui::track_indicators(status_rect, app.ui_metrics())[0].rect;
 
         let control = app.handle_timeline_pointer(
             content_bounds,
@@ -392,18 +391,21 @@ mod tests {
     fn timeline_track_record_indicator_starts_recording_for_clicked_track() {
         let mut app = App::new();
         let content_bounds = Rect::new(40, 40, 1200, 620);
-        let (_, body_bounds) =
-            crate::ui::split_top_strip(content_bounds, 28, 6).expect("timeline content");
-        let (_, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8)
-                .expect("timeline body");
-        let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
+        let (_, _, timeline_bounds) = app
+            .timeline_page_layout(content_bounds)
+            .expect("timeline content");
+        let columns = crate::ui::track_column_pairs(
+            timeline_bounds,
+            app.project.tracks.len(),
+            app.ui_metrics(),
+        );
         let (full_bounds, detail_bounds) = columns[2];
         let status_rect = crate::ui::track_status_rect(
             crate::ui::union_rect(full_bounds, detail_bounds),
             app.timeline_flow,
+            app.ui_metrics(),
         );
-        let record_rect = crate::ui::track_indicators(status_rect)[1].rect;
+        let record_rect = crate::ui::track_indicators(status_rect, app.ui_metrics())[1].rect;
 
         let control = app.handle_timeline_pointer(
             content_bounds,

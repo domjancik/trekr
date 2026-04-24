@@ -1,6 +1,64 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+struct MidiIoPageLayout {
+    header_bounds: Rect,
+    input_header: Rect,
+    output_header: Rect,
+    input_list: Rect,
+    output_list: Rect,
+}
+
 impl App {
+    fn midi_io_page_layout(&self, content_bounds: Rect) -> Result<MidiIoPageLayout, String> {
+        let metrics = self.ui_metrics();
+        let (header_bounds, lists_bounds) = crate::ui::split_top_strip(
+            content_bounds,
+            metrics.midi_header_height_px,
+            metrics.midi_header_gap_px,
+        )?;
+        let columns = crate::ui::equal_columns(lists_bounds, 2, metrics.midi_column_gap_px);
+        let input_bounds = columns[0];
+        let output_bounds = columns[1];
+        let input_header = Rect::new(
+            input_bounds.x,
+            input_bounds.y,
+            input_bounds.width(),
+            metrics.midi_panel_header_height_px,
+        );
+        let output_header = Rect::new(
+            output_bounds.x,
+            output_bounds.y,
+            output_bounds.width(),
+            metrics.midi_panel_header_height_px,
+        );
+        let list_top_gap = metrics.panel_gap_px - 2;
+        let list_bottom_gap = metrics.panel_gap_px + metrics.midi_list_inset_px;
+        Ok(MidiIoPageLayout {
+            header_bounds,
+            input_header,
+            output_header,
+            input_list: Rect::new(
+                input_bounds.x,
+                input_header.y + input_header.height() as i32 + list_top_gap,
+                input_bounds.width(),
+                input_bounds
+                    .height()
+                    .saturating_sub(input_header.height().saturating_add(list_bottom_gap as u32)),
+            ),
+            output_list: Rect::new(
+                output_bounds.x,
+                output_header.y + output_header.height() as i32 + list_top_gap,
+                output_bounds.width(),
+                output_bounds.height().saturating_sub(
+                    output_header
+                        .height()
+                        .saturating_add(list_bottom_gap as u32),
+                ),
+            ),
+        })
+    }
+
     pub(crate) fn draw_midi_io_page<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -12,10 +70,8 @@ impl App {
         canvas.set_draw_color(theme.io_pages.page_border);
         canvas.draw_rect(content_bounds)?;
 
-        let (header_bounds, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10)?;
-        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
-        let input_bounds = columns[0];
-        let output_bounds = columns[1];
+        let layout = self.midi_io_page_layout(content_bounds)?;
+        let header_bounds = layout.header_bounds;
         crate::ui::draw_text_fitted(
             canvas,
             "MIDI I/O",
@@ -56,39 +112,35 @@ impl App {
             },
         )?;
 
-        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
-        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
         canvas.set_draw_color(theme.io_pages.panel_bg);
-        canvas.fill_rect(input_header)?;
-        canvas.fill_rect(output_header)?;
+        canvas.fill_rect(layout.input_header)?;
+        canvas.fill_rect(layout.output_header)?;
         canvas.set_draw_color(theme.io_pages.page_border);
-        canvas.draw_rect(input_header)?;
-        canvas.draw_rect(output_header)?;
+        canvas.draw_rect(layout.input_header)?;
+        canvas.draw_rect(layout.output_header)?;
         crate::ui::draw_text_fitted(
             canvas,
             "Inputs",
-            Rect::new(input_header.x + 8, input_header.y + 7, 96, 8),
+            Rect::new(layout.input_header.x + 8, layout.input_header.y + 7, 96, 8),
             2,
             theme.io_pages.inputs_title,
         )?;
         crate::ui::draw_text_fitted(
             canvas,
             "Outputs",
-            Rect::new(output_header.x + 8, output_header.y + 7, 96, 8),
+            Rect::new(
+                layout.output_header.x + 8,
+                layout.output_header.y + 7,
+                96,
+                8,
+            ),
             2,
             theme.io_pages.outputs_title,
         )?;
 
         self.draw_device_list(
             canvas,
-            Rect::new(
-                input_bounds.x,
-                input_header.y + input_header.height() as i32 + 6,
-                input_bounds.width(),
-                input_bounds
-                    .height()
-                    .saturating_sub(input_header.height().saturating_add(28)),
-            ),
+            layout.input_list,
             &self.midi_devices.inputs,
             self.page_state.midi_io.selected_input_index,
             self.midi_devices.selected_input,
@@ -98,14 +150,7 @@ impl App {
         )?;
         self.draw_device_list(
             canvas,
-            Rect::new(
-                output_bounds.x,
-                output_header.y + output_header.height() as i32 + 6,
-                output_bounds.width(),
-                output_bounds
-                    .height()
-                    .saturating_sub(output_header.height().saturating_add(28)),
-            ),
+            layout.output_list,
             &self.midi_devices.outputs,
             self.page_state.midi_io.selected_output_index,
             self.midi_devices.selected_output,
@@ -139,9 +184,13 @@ impl App {
         canvas.draw_rect(bounds)?;
 
         let rows = crate::ui::stacked_rows(
-            crate::ui::inset_rect(bounds, 10, 10)?,
+            crate::ui::inset_rect(
+                bounds,
+                self.ui_metrics().midi_list_inset_px,
+                self.ui_metrics().midi_list_inset_px,
+            )?,
             ports.len().max(1),
-            8,
+            self.ui_metrics().row_gap_px,
         );
         for (index, row) in rows.into_iter().enumerate().take(ports.len()) {
             let is_selected = index == selected_index;
@@ -259,41 +308,19 @@ impl App {
         y: i32,
         _source: crate::actions::ActionSource,
     ) -> Option<AppControl> {
-        let (_, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10).ok()?;
-        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
-        let input_bounds = columns[0];
-        let output_bounds = columns[1];
-        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
-        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
+        let layout = self.midi_io_page_layout(content_bounds).ok()?;
 
-        if rect_contains(input_header, x, y) {
+        if rect_contains(layout.input_header, x, y) {
             self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
             return Some(AppControl::Continue);
         }
-        if rect_contains(output_header, x, y) {
+        if rect_contains(layout.output_header, x, y) {
             self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
             return Some(AppControl::Continue);
         }
 
-        let input_list = Rect::new(
-            input_bounds.x,
-            input_header.y + input_header.height() as i32 + 6,
-            input_bounds.width(),
-            input_bounds
-                .height()
-                .saturating_sub(input_header.height().saturating_add(28)),
-        );
-        let output_list = Rect::new(
-            output_bounds.x,
-            output_header.y + output_header.height() as i32 + 6,
-            output_bounds.width(),
-            output_bounds
-                .height()
-                .saturating_sub(output_header.height().saturating_add(28)),
-        );
-
         if let Some(index) =
-            self.hit_device_list_row(input_list, self.midi_devices.inputs.len(), x, y)
+            self.hit_device_list_row(layout.input_list, self.midi_devices.inputs.len(), x, y)
         {
             self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
             self.page_state.midi_io.selected_input_index = index;
@@ -302,7 +329,7 @@ impl App {
         }
 
         if let Some(index) =
-            self.hit_device_list_row(output_list, self.midi_devices.outputs.len(), x, y)
+            self.hit_device_list_row(layout.output_list, self.midi_devices.outputs.len(), x, y)
         {
             self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
             self.page_state.midi_io.selected_output_index = index;
@@ -314,8 +341,16 @@ impl App {
     }
 
     fn hit_device_list_row(&self, bounds: Rect, count: usize, x: i32, y: i32) -> Option<usize> {
-        let rows =
-            crate::ui::stacked_rows(crate::ui::inset_rect(bounds, 10, 10).ok()?, count.max(1), 8);
+        let rows = crate::ui::stacked_rows(
+            crate::ui::inset_rect(
+                bounds,
+                self.ui_metrics().midi_list_inset_px,
+                self.ui_metrics().midi_list_inset_px,
+            )
+            .ok()?,
+            count.max(1),
+            self.ui_metrics().row_gap_px,
+        );
         rows.into_iter()
             .enumerate()
             .take(count)

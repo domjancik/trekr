@@ -1,14 +1,38 @@
 use super::*;
 use crate::midi_fx::MidiFxInlineParam;
 
+#[derive(Debug, Clone, Copy)]
+struct RoutingPageLayout {
+    header: Rect,
+    body: Rect,
+}
+
 impl App {
+    fn routing_page_layout(&self, content_bounds: Rect) -> Result<RoutingPageLayout, String> {
+        let metrics = self.ui_metrics();
+        let inner = crate::ui::inset_rect(
+            content_bounds,
+            metrics.routing_inset_x_px,
+            metrics.routing_inset_y_px,
+        )?;
+        let (header, body) = crate::ui::split_top_strip(
+            inner,
+            metrics.routing_header_height_px,
+            metrics.routing_header_gap_px,
+        )?;
+        Ok(RoutingPageLayout { header, body })
+    }
+
     pub(crate) fn routing_discoverability_targets(
         &self,
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         let mut targets = Vec::new();
-        let inner = crate::ui::inset_rect(content_bounds, 12, 32).expect("routing inner");
-        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).expect("routing layout");
+        let layout = self
+            .routing_page_layout(content_bounds)
+            .expect("routing layout");
+        let header = layout.header;
+        let body = layout.body;
         targets.push((
             Rect::new(
                 header.x + 106,
@@ -75,8 +99,9 @@ impl App {
             theme.io_pages.subtitle,
         )?;
 
-        let inner = crate::ui::inset_rect(content_bounds, 12, 32)?;
-        let (header, body) = crate::ui::split_top_strip(inner, 48, 10)?;
+        let layout = self.routing_page_layout(content_bounds)?;
+        let header = layout.header;
+        let body = layout.body;
         let active_track = self
             .project
             .active_track()
@@ -430,7 +455,7 @@ impl App {
     }
 
     pub(super) fn routing_panel_rects(&self, body: Rect) -> (Rect, Rect, Rect, Rect) {
-        let gap = 12_i32;
+        let gap = self.ui_metrics().routing_panel_gap_px;
         let signal_width = ((body.width() as i32 * 46) / 100).max(180) as u32;
         let right_width = body
             .width()
@@ -443,7 +468,7 @@ impl App {
             right_width,
             body.height(),
         );
-        let panel_gap = 10_i32;
+        let panel_gap = self.ui_metrics().routing_row_gap_px;
         let rec_height = 72_u32.min(right.height());
         let remaining = right
             .height()
@@ -976,8 +1001,9 @@ impl App {
         y: i32,
         _source: crate::actions::ActionSource,
     ) -> Option<AppControl> {
-        let inner = crate::ui::inset_rect(content_bounds, 12, 32).ok()?;
-        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).ok()?;
+        let layout = self.routing_page_layout(content_bounds).ok()?;
+        let header = layout.header;
+        let body = layout.body;
 
         let meta_active = Rect::new(
             header.x + 8,

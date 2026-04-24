@@ -34,7 +34,7 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
 - `docs/specs/ui-scaling-spec.md`: current implemented UI scaling behavior and constraints.
-- `docs/specs/ui-density-presets-spec.md`: planned density preset behavior for default, compact, touch, and tiny layout modes.
+- `docs/specs/ui-density-presets-spec.md`: density preset behavior for default, compact, touch, and tiny layout modes.
 - `docs/dev/architecture.md`: engine architecture, portability constraints, and stack options.
 - `docs/planning/implementation-plan.md`: milestone order, module breakdown, and delivery sequence.
 - `docs/dev/current-mappings.md`: current keyboard bindings and prototype MIDI/OSC mapping overview.
@@ -97,6 +97,8 @@ Launch state:
 - `cargo run -- --video-mode fullscreen` requests fullscreen rendering on the active SDL video backend
 - `cargo run -- --video-mode kmsdrm-console` requests SDL's `kmsdrm` backend for direct fullscreen rendering from a Linux console session without X11/Wayland
 - `cargo run -- capture-ui --state-mode demo --capture-dir artifacts/screenshots` renders deterministic screenshots without opening the interactive app
+- `cargo run -- run --ui-density compact` launches the app with tighter shared layout metrics
+- `cargo run -- run --ui-density touch` launches the app with larger touch-oriented spacing and targets
 - `cargo run -- run --theme high-contrast-dark` launches a darker high-contrast theme tuned for strong black-background separation
 - `cargo run -- run --theme high-contrast-light` launches the light high-contrast theme
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
@@ -108,6 +110,8 @@ CLI notes:
 - `run`, `capture-ui`, `commands`, and `help` are the first-class app commands
 - the older flag-only form is still supported for compatibility, so existing commands like `cargo run -- --state-mode demo` still work
 - `capture-ui` accepts launch-state options plus `--capture-dir`; `--video-mode` remains interactive-only
+- `--ui-density <default|compact|touch|tiny>` controls the shared spacing and hit-target preset independently from `--theme` and `--ui-scale`
+- `TREKR_UI_DENSITY` provides the environment default when `--ui-density` is not passed
 
 Pi console launch on-device:
 

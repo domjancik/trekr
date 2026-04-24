@@ -31,6 +31,7 @@ use crate::state::PersistedAppState;
 use crate::theme::{Theme, ThemePreset};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
+use crate::ui_density::{UiDensityPreset, UiMetrics, ui_metrics};
 use crate::undo::UndoHistory;
 use image::RgbaImage;
 use sdl3::pixels::{Color, PixelFormat};
@@ -119,6 +120,7 @@ pub struct App {
     ui_scale_override: Option<f32>,
     ui_scaling_mode: UiScalingMode,
     theme_preset: ThemePreset,
+    ui_density_preset: UiDensityPreset,
     transport_ticks: u64,
     playhead_ticks: u64,
     live_fx_ticks: u64,
@@ -180,6 +182,10 @@ impl App {
         crate::theme::theme(self.theme_preset)
     }
 
+    pub(crate) fn ui_metrics(&self) -> &'static UiMetrics {
+        ui_metrics(self.ui_density_preset)
+    }
+
     fn with_project(
         project: Project,
         mappings: Vec<MappingEntry>,
@@ -217,6 +223,7 @@ impl App {
             ui_scale_override: None,
             ui_scaling_mode: UiScalingMode::Auto,
             theme_preset: ThemePreset::from_env(),
+            ui_density_preset: UiDensityPreset::from_env(),
             transport_ticks: 0,
             playhead_ticks: 0,
             live_fx_ticks: 0,
@@ -245,15 +252,20 @@ impl App {
         self.theme_preset = preset;
     }
 
+    pub fn set_ui_density_preset(&mut self, preset: UiDensityPreset) {
+        self.ui_density_preset = preset;
+    }
+
     pub fn bootstrap_summary(&self) -> String {
         format!(
-            "trekr bootstrap: project='{}', tracks={}, active_track={}, page={}, layout={:?}, theme={}, sample_rate={}, song_ticks={}, playing={}, loop_enabled={}, midi_inputs={}, midi_outputs={}",
+            "trekr bootstrap: project='{}', tracks={}, active_track={}, page={}, layout={:?}, theme={}, density={}, sample_rate={}, song_ticks={}, playing={}, loop_enabled={}, midi_inputs={}, midi_outputs={}",
             self.project.name,
             self.project.tracks.len(),
             self.project.active_track_index + 1,
             self.page_state.current_page.label(),
             self.layout_mode,
             self.theme_preset.label(),
+            self.ui_density_preset.label(),
             self.engine_config.sample_rate_hz,
             self.project.full_song_range().length_ticks,
             self.project.transport.playing,
@@ -2130,9 +2142,10 @@ impl App {
             }
         }
 
-        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
-        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
-        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+        let layout = self.mappings_page_layout(content_bounds);
+        let overview_badge = layout.overview_badge;
+        let learn_badge = layout.learn_badge;
+        let direct_badge = layout.direct_badge;
         if rect_contains(overview_badge, x, y) {
             return Some(self.apply_action_with_source(AppAction::ToggleMappingsWriteMode, source));
         }
@@ -2147,27 +2160,8 @@ impl App {
             return Some(self.apply_action_with_source(AppAction::ToggleDirectMappingMode, source));
         }
 
-        let list_bounds = Rect::new(
-            content_bounds.x + 8,
-            content_bounds.y + 44,
-            content_bounds.width().saturating_sub(16),
-            content_bounds.height().saturating_sub(68),
-        );
-        let row_gap = 3_i32;
-        let row_height = 18_i32;
-        let stride = row_height + row_gap;
-        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
-        let selected_index = self
-            .page_state
-            .selected_mapping_index
-            .min(self.mappings.len().saturating_sub(1));
-        let start_index = if self.mappings.len() <= visible_rows {
-            0
-        } else {
-            selected_index
-                .saturating_sub(visible_rows / 2)
-                .min(self.mappings.len() - visible_rows)
-        };
+        let list_bounds = layout.list_bounds;
+        let (visible_rows, start_index) = self.mappings_visible_row_range(&layout);
 
         for visible_index in 0..visible_rows {
             let index = start_index + visible_index;
@@ -2176,9 +2170,9 @@ impl App {
             }
             let row = Rect::new(
                 list_bounds.x,
-                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.y + visible_index as i32 * (layout.row_height + layout.row_gap),
                 list_bounds.width(),
-                row_height as u32,
+                layout.row_height as u32,
             );
             if !rect_contains(row, x, y) {
                 continue;
