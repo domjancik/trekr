@@ -259,3 +259,125 @@ Add runtime descriptor for MIDI ports:
 - AKAI public docs confirm the driver-based remote workflow and remote port selection.
 - They do not explicitly publish low-level packet details in the referenced support article.
 - Treat “AKAI over RTP-MIDI-compatible session model” as a practical interoperability hypothesis to validate during Phase 1 device testing, not as a guaranteed protocol claim.
+## Native Discovery And Device-Surface UX
+
+For native in-app RTP-MIDI support, discovered peers should ultimately appear as normal selectable MIDI endpoints in the existing `MIDI I/O` and routing flows, but discovery and connection state must be explicit before they become routable.
+
+### Primary UX Goal
+
+For the operator, a connected network peer should feel like "another MIDI device" rather than a separate subsystem.
+
+That means:
+
+- discovered peers are surfaced in the `MIDI I/O` page
+- once connected, they can be selected as default input/output endpoints
+- once selected, they can be routed per track using the existing routing model
+- mappings and direct mapping should refer to them using the same device-label model as other MIDI sources, with protocol-aware labels where needed
+
+### Discovery Priority
+
+For keyboard-less or appliance-style targets, manual IP entry must not be the primary connection flow.
+
+Preferred discovery order:
+
+1. mDNS / DNS-SD discovery of `_apple-midi._udp`
+2. trekr-local broadcast fallback discovery when mDNS is unavailable or unreliable
+3. optional preconfigured peers from persisted state or deployment-time config
+
+Manual host/IP entry may exist as a secondary recovery path on desktop-class targets, but it should not be required for normal operation on reMarkable-class devices.
+
+### Device Lifecycle States
+
+Discovered native network peers should have explicit runtime states:
+
+- `Discovered`
+  - peer is visible through discovery but not yet session-connected
+- `Connecting`
+  - invite/session handshake in progress
+- `Connected`
+  - peer is session-active and available as a routable MIDI endpoint
+- `Unavailable`
+  - peer was previously known or selected but is no longer reachable
+
+Rules:
+
+- only `Connected` peers appear as normal selectable endpoints in the main routing/default-selection path
+- `Discovered` peers remain visible in discovery UI so the user can connect them
+- `Unavailable` peers should retain enough identity to explain why a previously selected route is offline
+
+### MIDI I/O Page Behavior
+
+The `MIDI I/O` page should gain a lightweight network-peer section or integrated tagged rows.
+
+Recommended presentation:
+
+- local/system MIDI ports remain listed as today
+- native-discovered RTP-MIDI peers are listed in the same page with protocol/status tags such as:
+  - `RTP`
+  - `NET`
+  - `AKAI`
+  - `DISCOVERED`
+  - `CONNECTED`
+  - `OFFLINE`
+
+Recommended row behavior:
+
+- tapping/clicking a `Discovered` peer initiates connection
+- a successfully connected peer becomes selectable as default input/output
+- tapping/clicking a `Connected` peer may disconnect it or open a compact detail action depending on available UI density
+
+### Routing Behavior
+
+Once a peer reaches `Connected`, it should behave like a normal output/input endpoint in routing:
+
+- appears in active-track routing device selectors
+- can be used for passthrough output
+- can be used as a mapping learn source/device label
+- can be used as a playback target
+
+This preserves the canonical model that routing works with endpoints, not transport-specific ad hoc flows.
+
+### Labeling Rules
+
+Recommended labels in connected state:
+
+- `MPC Live II (RTP)`
+- `DESKTOP-A8TMSU2 (RTP)`
+- `rm-host Bridge (NET)`
+
+If discovery source matters, it may be visible in secondary detail, but primary labels should remain short and device-like.
+
+### ReMarkable / Touch-First Constraints
+
+For reMarkable-class devices:
+
+- peer discovery must be tap-first
+- no keyboard entry dependency for standard flow
+- the network-peer list must support:
+  - discover
+  - connect
+  - reconnect
+  - observe offline state
+- if exactly one preferred peer is known and reachable, auto-reconnect is desirable
+- if multiple peers are visible, the user should be able to tap the intended peer and then treat it as a normal MIDI device thereafter
+
+### Persisted State
+
+Persist enough peer identity to support reconnect behavior:
+
+- display/device name
+- protocol kind
+- stable host/peer identity when available
+- last successful endpoint/SSRC/session details only if useful for reconnect, but do not overfit persistence to ephemeral runtime transport values
+
+Persisted routes should survive restart even if the peer is temporarily absent, surfacing as `Unavailable` until reconnect succeeds.
+
+### Acceptance Criteria Addendum
+
+Add these UI-specific acceptance criteria for native in-app RTP-MIDI support:
+
+9. A discovered native RTP-MIDI peer can be connected from the `MIDI I/O` page without manual IP entry.
+10. Once connected, the peer appears as a normal selectable MIDI endpoint in `MIDI I/O` and routing.
+11. If the peer disappears, the UI shows an explicit unavailable/offline state instead of silently dropping the route.
+12. On touch-first targets, discovery and connection can be completed without keyboard input.
+13. If mDNS is unavailable, trekr-local broadcast discovery can still surface peers for connection.
