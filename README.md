@@ -103,6 +103,13 @@ Launch state:
 - `cargo run --bin trekr-rtpmidi-smoke -- --host 10.11.99.5 --control-port 5004 --note 60 --velocity 100` runs a headless RTP-MIDI invite + note on/off smoke sender against a target AppleMIDI endpoint
 - committed fixture state lives in `state-fixtures/ui-looped.json`
 
+Testing notes:
+
+- default `cargo test` stays offline/deterministic and should not require LAN access, peer availability, or Windows firewall prompts
+- live mDNS / RTP-MIDI verification is opt-in only via ignored integration tests and probe binaries because failures can reflect host firewall, multicast policy, or missing peers rather than code defects
+- run live network checks explicitly with `cargo test --test network_integration -- --ignored`
+- set `TREKR_RTPMIDI_TEST_HOST=<peer-ip-or-host>` and optionally `TREKR_RTPMIDI_TEST_CONTROL_PORT=5004` before running the ignored RTP-MIDI smoke integration test
+
 CLI notes:
 
 - `run`, `capture-ui`, `commands`, and `help` are the first-class app commands
