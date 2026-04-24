@@ -687,7 +687,7 @@ fn parse_state_mode(value: &str) -> Result<StateMode, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_app_command_from, AppCommand, LaunchMode, StateMode};
+    use super::{AppCommand, LaunchMode, StateMode, parse_app_command_from};
     use crate::app::{UiScalingMode, VideoMode};
     use std::path::PathBuf;
 

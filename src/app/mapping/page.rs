@@ -2,7 +2,6 @@ use super::*;
 use crate::theme::{app_chrome, mappings as mappings_theme};
 
 impl App {
-
     pub(crate) fn mapping_row_cells(&self, row: Rect) -> [Rect; 6] {
         let type_rect = Rect::new(row.x + 4, row.y + 3, 46, row.height().saturating_sub(6));
         let source_rect = Rect::new(

@@ -13,11 +13,7 @@ pub(crate) fn resolve_port_by_name(
 }
 
 pub(crate) fn clamp_index(index: usize, len: usize) -> usize {
-    if len == 0 {
-        0
-    } else {
-        index.min(len - 1)
-    }
+    if len == 0 { 0 } else { index.min(len - 1) }
 }
 
 #[cfg(test)]

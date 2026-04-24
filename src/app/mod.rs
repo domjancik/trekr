@@ -1,21 +1,21 @@
 use crate::actions::{
-    action_label, built_in_keyboard_binding_labels, ActionSource, AppAction, KeyboardBindings,
+    ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
 };
 use crate::app_ui::branding;
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
-    cycle_mapping_scope_value, cycle_mapping_source_device_label, cycle_mapping_source_kind,
-    cycle_mapping_source_label, cycle_mapping_target_label, default_mapping_source_device,
-    default_scope_label, default_source_label, demo_mappings, mapping_entry_key_actions,
-    mapping_entry_targets_action, mapping_entry_to_actions, mapping_scope_valid_for_target,
-    MappingEntry, MappingSourceKind,
+    MappingEntry, MappingSourceKind, cycle_mapping_scope_value, cycle_mapping_source_device_label,
+    cycle_mapping_source_kind, cycle_mapping_source_label, cycle_mapping_target_label,
+    default_mapping_source_device, default_scope_label, default_source_label, demo_mappings,
+    mapping_entry_key_actions, mapping_entry_targets_action, mapping_entry_to_actions,
+    mapping_scope_valid_for_target,
 };
 use crate::midi_fx::{
+    LiveMidiFxEvent, LiveMidiFxState, MIDI_FX_SLOT_COUNT, MidiFx, MidiFxChainKind, MidiFxSlot,
     cycle_existing_fx_kind, cycle_fx_kind, fx_slot_label, note_name,
     playback_timing_lookback_ticks, process_live_chain_event, process_live_chain_tick,
-    reset_live_fx_timing, transform_notes, LiveMidiFxEvent, LiveMidiFxState, MidiFx,
-    MidiFxChainKind, MidiFxSlot, MIDI_FX_SLOT_COUNT,
+    reset_live_fx_timing, transform_notes,
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
@@ -25,7 +25,7 @@ use crate::page_widgets::{handle_page_pointer, page_discoverability_targets, ren
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
-use crate::project::{MidiNote, Project, RecordingView, Track, STORED_LOOP_SLOT_COUNT};
+use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
 use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
@@ -47,47 +47,44 @@ mod support;
 
 mod mapping;
 
-mod note_runtime;
 mod midi_io_page;
+mod note_runtime;
 mod routing_ui;
 mod shell;
 mod stored_loops;
 mod timeline;
 mod types;
 
-
-use mapping::input as mapping_input;
-use mapping::lookup as mapping_lookup;
-use mapping::ui as mapping_ui;
 use capture::{
     capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
 };
+use discoverability_ui::track_indicator_target;
 pub(super) use input::rect_contains;
+use mapping::input as mapping_input;
+use mapping::lookup as mapping_lookup;
+use mapping::ui as mapping_ui;
+use mapping_input::{midi_learn_label, midi_mapping_matches_event};
+use mapping_lookup::mapping_target_lookup_input;
+use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
+use note_runtime::{scheduled_note_occurrences, ticks_per_second_for_tempo};
+use shell::scaling::{
+    active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
+};
+pub(super) use shell::ui::{TransportChipSpec, transport_strip_height};
+use stored_loops::{
+    clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
+    stored_loop_slot_color, stored_loop_slot_recall_action,
+};
 use support::io_helpers::{clamp_index, port_name, resolve_port_by_name};
 use support::labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
 };
-use note_runtime::{
-    scheduled_note_occurrences, ticks_per_second_for_tempo,
-};
-use mapping_lookup::mapping_target_lookup_input;
-use discoverability_ui::track_indicator_target;
-use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
-use mapping_input::{midi_learn_label, midi_mapping_matches_event};
-pub(super) use shell::ui::{transport_strip_height, TransportChipSpec};
-use shell::scaling::{
-    active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
-};
-use stored_loops::{
-    clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
-    stored_loop_slot_color, stored_loop_slot_recall_action,
-};
+use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
-use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, DirectMappingMode,
@@ -2201,7 +2198,6 @@ impl App {
         self.status_state.last_action = Some(LastActionStatus { action, source });
         self.apply_action(action)
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2214,7 +2210,7 @@ pub(crate) enum AppControl {
 mod tests {
     use super::{App, AppControl, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
-    use crate::mapping::{default_mapping_source_device, MappingEntry, MappingSourceKind};
+    use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -2606,17 +2602,17 @@ mod tests {
             .regions
             .push(crate::timeline::Region::new(0, 480));
         app.apply_action(AppAction::ClearAllTrackContent);
-        assert!(app
-            .project
-            .tracks
-            .iter()
-            .all(|track| track.midi_notes.is_empty()));
-        assert!(app
-            .project
-            .tracks
-            .iter()
-            .all(|track| track.regions.is_empty()));
+        assert!(
+            app.project
+                .tracks
+                .iter()
+                .all(|track| track.midi_notes.is_empty())
+        );
+        assert!(
+            app.project
+                .tracks
+                .iter()
+                .all(|track| track.regions.is_empty())
+        );
     }
-
-
 }

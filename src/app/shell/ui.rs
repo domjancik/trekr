@@ -3,8 +3,8 @@ use crate::{
     theme::{app_chrome, mappings as mappings_theme, transport as transport_theme},
 };
 
-use super::*;
 use super::layout::{page_tabs_layout, preferred_branding_width};
+use super::*;
 
 pub(crate) struct TransportChipSpec {
     pub(crate) label: String,

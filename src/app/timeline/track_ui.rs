@@ -1,5 +1,5 @@
-use super::*;
 use super::layout::{interlaced_color_at, loop_regions_intersect, rects_overlap};
+use super::*;
 
 impl App {
     pub(crate) fn draw_track_subcolumn<T: RenderTarget>(

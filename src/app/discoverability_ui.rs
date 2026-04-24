@@ -34,7 +34,11 @@ pub(super) fn track_indicator_target(
 }
 
 impl App {
-    pub(super) fn discoverability_target_at(&self, x: i32, y: i32) -> Option<DiscoverabilityTarget> {
+    pub(super) fn discoverability_target_at(
+        &self,
+        x: i32,
+        y: i32,
+    ) -> Option<DiscoverabilityTarget> {
         if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
             return None;
         }
@@ -348,7 +352,11 @@ impl App {
         summary: &ActionDiscoverabilitySummary,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let built_in_count = summary.badges.iter().filter(|badge| badge.built_in).count();
-        let user_count = summary.badges.iter().filter(|badge| !badge.built_in).count();
+        let user_count = summary
+            .badges
+            .iter()
+            .filter(|badge| !badge.built_in)
+            .count();
 
         if built_in_count > 0 && user_count > 0 {
             let left_width = (slot.width() / 2).max(1);
@@ -436,10 +444,12 @@ mod tests {
         assert!(summary.badges.iter().any(|badge| badge.text == "A"));
         assert!(summary.badges.iter().any(|badge| badge.text == "CC20"));
         assert!(!summary.badges.iter().any(|badge| badge.text == "CC21"));
-        assert!(!summary
-            .badges
-            .iter()
-            .any(|badge| badge.text == "/track/active/arm"));
+        assert!(
+            !summary
+                .badges
+                .iter()
+                .any(|badge| badge.text == "/track/active/arm")
+        );
     }
 
     #[test]

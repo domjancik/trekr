@@ -78,13 +78,22 @@ mod tests {
 
     #[test]
     fn stored_loop_slot_index_mappings_cover_all_slots() {
-        assert_eq!(recall_stored_loop_slot_index(AppAction::RecallStoredLoopSlot1), Some(0));
+        assert_eq!(
+            recall_stored_loop_slot_index(AppAction::RecallStoredLoopSlot1),
+            Some(0)
+        );
         assert_eq!(
             store_stored_loop_slot_index(AppAction::StoreCurrentLoopToSlot8),
             Some(7)
         );
-        assert_eq!(clear_stored_loop_slot_index(AppAction::ClearStoredLoopSlot4), Some(3));
-        assert_eq!(stored_loop_slot_recall_action(5), Some(AppAction::RecallStoredLoopSlot6));
+        assert_eq!(
+            clear_stored_loop_slot_index(AppAction::ClearStoredLoopSlot4),
+            Some(3)
+        );
+        assert_eq!(
+            stored_loop_slot_recall_action(5),
+            Some(AppAction::RecallStoredLoopSlot6)
+        );
         assert_eq!(stored_loop_slot_recall_action(99), None);
     }
 
@@ -102,7 +111,10 @@ mod tests {
         app.apply_action(AppAction::RecallStoredLoopSlot2);
 
         let track = app.project.active_track().unwrap();
-        assert_eq!(track.loop_region, crate::timeline::LoopRegion::new(1_920, 960));
+        assert_eq!(
+            track.loop_region,
+            crate::timeline::LoopRegion::new(1_920, 960)
+        );
         assert!(track.state.loop_enabled);
         assert_eq!(track.active_stored_loop_slot(), Some(1));
     }
@@ -127,8 +139,10 @@ mod tests {
         let columns = crate::ui::track_column_pairs(timeline_bounds, app.project.tracks.len());
         let (full_bounds, detail_bounds) = columns[1];
         let (_, body_detail_bounds) = app.track_column_body_bounds(full_bounds, detail_bounds);
-        let detail_label_rect =
-            super::timeline::layout::timeline_subcolumn_label_rect(body_detail_bounds, app.timeline_flow);
+        let detail_label_rect = super::timeline::layout::timeline_subcolumn_label_rect(
+            body_detail_bounds,
+            app.timeline_flow,
+        );
         let (_, slot_rect) = app.stored_loop_slot_rects(detail_label_rect)[0];
 
         let control = app.handle_timeline_pointer(
@@ -157,7 +171,13 @@ mod tests {
         app.transport_ticks = 0;
         app.apply_action(AppAction::SetCurrentTrackLoopStart);
 
-        assert_eq!(app.project.active_track().unwrap().active_stored_loop_slot(), None);
+        assert_eq!(
+            app.project
+                .active_track()
+                .unwrap()
+                .active_stored_loop_slot(),
+            None
+        );
     }
 
     #[test]
@@ -239,7 +259,10 @@ mod tests {
         let wide = Rect::new(0, 0, 120, 14);
         let narrow = Rect::new(0, 0, 44, 14);
 
-        assert_eq!(app.stored_loop_slot_rects(wide).len(), STORED_LOOP_SLOT_COUNT);
+        assert_eq!(
+            app.stored_loop_slot_rects(wide).len(),
+            STORED_LOOP_SLOT_COUNT
+        );
         assert!(app.stored_loop_slot_rects(narrow).len() < STORED_LOOP_SLOT_COUNT);
     }
 }

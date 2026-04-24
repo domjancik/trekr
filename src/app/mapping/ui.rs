@@ -1,7 +1,7 @@
 use crate::actions::AppAction;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
- 
+
 pub(crate) fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
         AppAction::TogglePlayback => Some("Play/Stop"),
@@ -174,5 +174,3 @@ fn keycode_mapping_label(keycode: Keycode) -> Option<&'static str> {
         _ => None,
     }
 }
-
-
