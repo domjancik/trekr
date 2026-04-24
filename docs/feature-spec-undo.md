@@ -69,6 +69,8 @@ This domain covers project-affecting state and timeline editor context:
 - routing values
 - record mode and loop-recording extension mode
 - active track
+- selected timeline sub-context such as `Input FX`, `Timeline`, `Output FX`
+- selected timeline FX row/field when it determines what timeline edit commands target
 - note selection and note focus/anchor state
 
 Rationale:
@@ -102,6 +104,8 @@ This domain covers non-document interface state:
 - timeline flow mode
 - MIDI I/O page list focus and selected device rows
 - routing field focus
+
+It explicitly does not include timeline-local editing target changes such as active track or timeline sub-context switches; those belong to `Timeline`.
 
 Rationale:
 

@@ -143,10 +143,14 @@ impl App {
             | AppAction::ToggleDiscoverabilityOverlay
             | AppAction::ToggleDirectMappingMode
             | AppAction::ToggleMappingsWriteMode
-            | AppAction::SelectPreviousPageField
-            | AppAction::SelectNextPageField
             | AppAction::ToggleFocusedTrackView
             | AppAction::SetTimelineFlow(_) => vec![UndoDomain::Ui],
+            AppAction::SelectPreviousPageField | AppAction::SelectNextPageField => {
+                match self.page_state.current_page {
+                    AppPage::Timeline => vec![UndoDomain::Timeline],
+                    _ => vec![UndoDomain::Ui],
+                }
+            }
             AppAction::AddMappingRow | AppAction::RemoveSelectedMapping => {
                 vec![UndoDomain::Mappings]
             }
@@ -163,13 +167,13 @@ impl App {
                 AppPage::Mappings => vec![UndoDomain::Mappings, UndoDomain::Ui],
                 AppPage::MidiIo => vec![UndoDomain::Ui],
                 AppPage::Routing => vec![UndoDomain::Timeline],
-                AppPage::Timeline => Vec::new(),
+                AppPage::Timeline => vec![UndoDomain::Timeline],
             },
             AppAction::ActivatePageItem => match self.page_state.current_page {
                 AppPage::Mappings => vec![UndoDomain::Mappings, UndoDomain::Ui],
                 AppPage::MidiIo => vec![UndoDomain::Ui],
                 AppPage::Routing => vec![UndoDomain::Timeline],
-                AppPage::Timeline => Vec::new(),
+                AppPage::Timeline => vec![UndoDomain::Timeline],
             },
             AppAction::CancelCurrentMode => vec![UndoDomain::Ui],
             AppAction::CycleGlobalHarmonyRoot
