@@ -289,7 +289,7 @@ impl App {
                 ),
                 1,
                 if enabled {
-                    theme.app_chrome.action_text
+                    contrasting_text_color(fill, theme)
                 } else {
                     theme.app_chrome.detail_text
                 },

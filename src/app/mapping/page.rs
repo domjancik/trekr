@@ -61,11 +61,12 @@ impl App {
             theme.mappings.page_title,
         )?;
         let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
-        canvas.set_draw_color(if self.page_state.mapping_mode == MappingPageMode::Write {
+        let overview_fill = if self.page_state.mapping_mode == MappingPageMode::Write {
             theme.mappings.write_mode_active
         } else {
             theme.mappings.write_mode_inactive
-        });
+        };
+        canvas.set_draw_color(overview_fill);
         canvas.fill_rect(overview_badge)?;
         canvas.set_draw_color(theme.mappings.page_title);
         canvas.draw_rect(overview_badge)?;
@@ -74,14 +75,15 @@ impl App {
             &format!("Tap Mode: {}", self.page_state.mapping_mode.label()),
             Rect::new(content_bounds.x + 208, content_bounds.y + 12, 170, 8),
             1,
-            theme.mappings.overview_text,
+            contrasting_text_color(overview_fill, theme),
         )?;
         let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
-        canvas.set_draw_color(if self.page_state.mapping_midi_learn_armed {
+        let learn_fill = if self.page_state.mapping_midi_learn_armed {
             theme.mappings.learn_armed
         } else {
             theme.mappings.learn_idle
-        });
+        };
+        canvas.set_draw_color(learn_fill);
         canvas.fill_rect(learn_badge)?;
         canvas.set_draw_color(
             if self.page_state.selected_mapping_field == MappingField::SourceValue
@@ -102,16 +104,15 @@ impl App {
             },
             Rect::new(learn_badge.x + 8, learn_badge.y + 4, 120, 8),
             1,
-            theme.mappings.learn_text,
+            contrasting_text_color(learn_fill, theme),
         )?;
         let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
-        canvas.set_draw_color(
-            if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
-                theme.mappings.direct_badge_idle_fill
-            } else {
-                theme.mappings.direct_armed_fill
-            },
-        );
+        let direct_fill = if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+            theme.mappings.direct_badge_idle_fill
+        } else {
+            theme.mappings.direct_armed_fill
+        };
+        canvas.set_draw_color(direct_fill);
         canvas.fill_rect(direct_badge)?;
         canvas.set_draw_color(
             if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
@@ -130,7 +131,7 @@ impl App {
             },
             Rect::new(direct_badge.x + 8, direct_badge.y + 4, 138, 8),
             1,
-            theme.mappings.direct_text,
+            contrasting_text_color(direct_fill, theme),
         )?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -187,7 +188,7 @@ impl App {
                     8,
                 ),
                 1,
-                Color::RGB(154, 166, 182),
+                theme.mappings.meta_text,
             )?;
         }
         let row_gap = 3_i32;
@@ -255,19 +256,21 @@ impl App {
             let trigger_rect = cells[2];
             let target_rect = cells[3];
             let scope_rect = cells[4];
-            canvas.set_draw_color(if selected {
+            let field_fill = if selected {
                 theme.mappings.field_fill_selected
             } else {
                 theme.mappings.field_fill_idle
-            });
+            };
+            canvas.set_draw_color(field_fill);
             canvas.fill_rect(kind_rect)?;
             canvas.fill_rect(trigger_rect)?;
             canvas.fill_rect(device_rect)?;
-            canvas.set_draw_color(if entry.enabled {
+            let target_fill = if entry.enabled {
                 theme.mappings.target_fill_enabled
             } else {
                 theme.mappings.target_fill_disabled
-            });
+            };
+            canvas.set_draw_color(target_fill);
             canvas.fill_rect(target_rect)?;
             canvas.set_draw_color(theme.mappings.scope_fill);
             canvas.fill_rect(scope_rect)?;
@@ -295,7 +298,7 @@ impl App {
                     8,
                 ),
                 1,
-                theme.app_chrome.action_text,
+                contrasting_text_color(field_fill, theme),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -307,7 +310,7 @@ impl App {
                     8,
                 ),
                 1,
-                theme.app_chrome.action_text,
+                contrasting_text_color(field_fill, theme),
             )?;
             let mapping_device_label = if entry.source_kind == MappingSourceKind::Midi {
                 if entry.source_device_label != default_mapping_source_device()
@@ -331,7 +334,7 @@ impl App {
                 ),
                 1,
                 if entry.source_kind == MappingSourceKind::Midi {
-                    theme.mappings.device_text_active
+                    contrasting_text_color(field_fill, theme)
                 } else {
                     theme.mappings.device_text_inactive
                 },
@@ -364,7 +367,7 @@ impl App {
                     8,
                 ),
                 1,
-                theme.mappings.target_text,
+                contrasting_text_color(target_fill, theme),
             )?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -376,8 +379,13 @@ impl App {
                     8,
                 ),
                 1,
-                theme.mappings.scope_text,
+                contrasting_text_color(theme.mappings.scope_fill, theme),
             )?;
+            let enabled_fill = if entry.enabled {
+                theme.mappings.enabled_fill_on
+            } else {
+                theme.mappings.enabled_fill_off
+            };
             crate::ui::draw_text_fitted(
                 canvas,
                 if entry.enabled { "On" } else { "Off" },
@@ -388,7 +396,7 @@ impl App {
                     8,
                 ),
                 1,
-                theme.mappings.scope_text,
+                contrasting_text_color(enabled_fill, theme),
             )?;
 
             if selected && self.page_state.mapping_mode == MappingPageMode::Write {
@@ -416,7 +424,7 @@ impl App {
                         8,
                     ),
                     1,
-                    theme.app_chrome.action_text,
+                    contrasting_text_color(theme.mappings.tap_badge_fill, theme),
                 )?;
             }
         }
@@ -444,6 +452,8 @@ impl App {
             );
             canvas.set_draw_color(fill);
             canvas.fill_rect(token)?;
+            canvas.set_draw_color(theme.app_chrome.surface_border);
+            canvas.draw_rect(token)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 label,
@@ -454,7 +464,7 @@ impl App {
                     8,
                 ),
                 1,
-                theme.app_chrome.action_text,
+                contrasting_text_color(fill, theme),
             )?;
             footer_x += token.width() as i32 + 6;
         }
