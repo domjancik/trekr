@@ -12,7 +12,7 @@ pub(crate) fn centered_text_rect(rect: Rect) -> Rect {
 pub(crate) fn chrome_compact_text_rect(rect: Rect) -> Rect {
     Rect::new(
         rect.x + 2,
-        rect.y + ((rect.height() as i32 - 8) / 2).max(0),
+        rect.y + ((rect.height() as i32 - 8) / 2).max(0) + 1,
         rect.width().saturating_sub(4),
         8,
     )
