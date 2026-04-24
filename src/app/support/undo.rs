@@ -206,6 +206,10 @@ impl App {
     fn capture_timeline_undo_state(&self) -> TimelineUndoState {
         TimelineUndoState {
             project: self.project.clone(),
+            selected_timeline_context: self.page_state.selected_timeline_context,
+            selected_timeline_fx_field: self.page_state.selected_timeline_fx_field,
+            selected_input_fx_row: self.page_state.selected_input_fx_slot,
+            selected_output_fx_row: self.page_state.selected_output_fx_slot,
         }
     }
 
@@ -341,6 +345,11 @@ impl App {
                 restored_project.transport.link_start_stop_sync =
                     session_transport.link_start_stop_sync;
                 self.project = restored_project;
+                self.page_state.selected_timeline_context = state.selected_timeline_context;
+                self.page_state.selected_timeline_fx_field = state.selected_timeline_fx_field;
+                self.page_state.selected_input_fx_slot = state.selected_input_fx_row;
+                self.page_state.selected_output_fx_slot = state.selected_output_fx_row;
+                self.normalize_timeline_fx_selection();
             }
             UndoSnapshot::Mappings(state) => {
                 self.mappings = state.mappings.clone();
@@ -432,6 +441,18 @@ mod tests {
 
         assert_eq!(app.project.active_track_index, original_track);
         assert_eq!(app.page_state.current_page, original_page.next());
+    }
+
+    #[test]
+    fn undo_timeline_restores_timeline_context_switch() {
+        let mut app = App::new();
+        let original_context = app.page_state.selected_timeline_context;
+
+        app.apply_action(AppAction::SelectNextPageField);
+        assert_ne!(app.page_state.selected_timeline_context, original_context);
+
+        app.apply_action(AppAction::UndoTimeline);
+        assert_eq!(app.page_state.selected_timeline_context, original_context);
     }
 
     #[test]
