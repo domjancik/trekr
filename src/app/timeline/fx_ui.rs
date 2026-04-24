@@ -1,6 +1,14 @@
 use super::*;
 use crate::midi_fx::MidiFxInlineParam;
 
+fn is_high_contrast_light(theme: &Theme) -> bool {
+    theme.preset == ThemePreset::HighContrastLight
+}
+
+fn is_high_contrast_dark(theme: &Theme) -> bool {
+    theme.preset == ThemePreset::HighContrastDark
+}
+
 impl App {
     pub(crate) fn timeline_fx_discoverability_targets_for_track(
         &self,
@@ -569,16 +577,21 @@ impl App {
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let high_contrast = is_high_contrast_light(theme);
+        let high_contrast_dark = is_high_contrast_dark(theme);
         let enabled_fill = if slot.enabled {
             if high_contrast {
                 theme.transport.play_active
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(54, 176, 100)
             }
         } else {
             if high_contrast {
                 Color::RGB(232, 232, 232)
+            } else if high_contrast_dark {
+                Color::RGB(48, 48, 48)
             } else {
                 Color::RGB(88, 54, 62)
             }
@@ -588,12 +601,16 @@ impl App {
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(240, 240, 240)
+            } else if high_contrast_dark {
+                Color::RGB(32, 32, 32)
             } else {
                 Color::RGB(44, 50, 70)
             }
         } else {
             if high_contrast {
                 Color::RGB(248, 248, 248)
+            } else if high_contrast_dark {
+                Color::RGB(8, 8, 8)
             } else {
                 Color::RGB(36, 42, 58)
             }
@@ -604,17 +621,23 @@ impl App {
         canvas.set_draw_color(if enabled_selected {
             if high_contrast {
                 Color::RGB(0, 0, 0)
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(252, 236, 156)
             }
         } else if slot.enabled {
             if high_contrast {
                 Color::RGB(0, 0, 0)
+            } else if high_contrast_dark {
+                Color::RGB(0, 0, 0)
             } else {
                 Color::RGB(210, 248, 214)
             }
         } else {
             if high_contrast {
+                Color::RGB(128, 128, 128)
+            } else if high_contrast_dark {
                 Color::RGB(128, 128, 128)
             } else {
                 Color::RGB(196, 142, 154)
@@ -625,12 +648,16 @@ impl App {
             canvas.set_draw_color(if slot.enabled {
                 if high_contrast {
                     Color::RGB(0, 0, 0)
+                } else if high_contrast_dark {
+                    Color::RGB(0, 0, 0)
                 } else {
                     Color::RGB(32, 108, 62)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(160, 160, 160)
+                } else if high_contrast_dark {
+                    Color::RGB(24, 24, 24)
                 } else {
                     Color::RGB(64, 36, 44)
                 }
@@ -660,12 +687,16 @@ impl App {
             {
                 if high_contrast {
                     Color::RGB(224, 224, 224)
+                } else if high_contrast_dark {
+                    Color::RGB(32, 32, 32)
                 } else {
                     Color::RGB(78, 90, 126)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(255, 255, 255)
+                } else if high_contrast_dark {
+                    Color::RGB(12, 12, 12)
                 } else {
                     Color::RGB(52, 58, 80)
                 }
@@ -727,6 +758,8 @@ impl App {
         if selected {
             canvas.set_draw_color(if high_contrast {
                 Color::RGB(0, 0, 0)
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(244, 232, 146)
             });
@@ -747,21 +780,28 @@ impl App {
         selected: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let high_contrast = is_high_contrast_light(theme);
+        let high_contrast_dark = is_high_contrast_dark(theme);
         let text_color = if high_contrast {
             Color::RGB(0, 0, 0)
+        } else if high_contrast_dark {
+            Color::RGB(255, 255, 255)
         } else {
             Color::RGB(226, 232, 238)
         };
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(236, 236, 236)
+            } else if high_contrast_dark {
+                Color::RGB(32, 32, 32)
             } else {
                 Color::RGB(82, 92, 128)
             }
         } else {
             if high_contrast {
                 Color::RGB(250, 250, 250)
+            } else if high_contrast_dark {
+                Color::RGB(8, 8, 8)
             } else {
                 Color::RGB(40, 46, 64)
             }
@@ -770,12 +810,16 @@ impl App {
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(0, 0, 0)
+            } else if high_contrast_dark {
+                Color::RGB(255, 255, 255)
             } else {
                 Color::RGB(244, 232, 146)
             }
         } else {
             if high_contrast {
                 Color::RGB(128, 128, 128)
+            } else if high_contrast_dark {
+                Color::RGB(96, 96, 96)
             } else {
                 Color::RGB(90, 98, 116)
             }
@@ -791,6 +835,8 @@ impl App {
         }
         canvas.set_draw_color(if high_contrast {
             Color::RGB(255, 255, 255)
+        } else if high_contrast_dark {
+            Color::RGB(16, 16, 16)
         } else {
             Color::RGB(52, 58, 80)
         });
@@ -835,15 +881,20 @@ impl App {
             return Ok(());
         }
         let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
+        let high_contrast_dark = self.theme().preset == ThemePreset::HighContrastDark;
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(236, 236, 236)
+            } else if high_contrast_dark {
+                Color::RGB(32, 32, 32)
             } else {
                 Color::RGB(82, 92, 128)
             }
         } else {
             if high_contrast {
                 Color::RGB(255, 255, 255)
+            } else if high_contrast_dark {
+                Color::RGB(16, 16, 16)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -881,6 +932,8 @@ impl App {
                 1,
                 if high_contrast {
                     Color::RGB(96, 96, 96)
+                } else if high_contrast_dark {
+                    Color::RGB(128, 128, 128)
                 } else {
                     Color::RGB(160, 166, 178)
                 },
@@ -902,15 +955,20 @@ impl App {
             return Ok(());
         }
         let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
+        let high_contrast_dark = self.theme().preset == ThemePreset::HighContrastDark;
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(236, 236, 236)
+            } else if high_contrast_dark {
+                Color::RGB(32, 32, 32)
             } else {
                 Color::RGB(82, 92, 128)
             }
         } else {
             if high_contrast {
                 Color::RGB(255, 255, 255)
+            } else if high_contrast_dark {
+                Color::RGB(16, 16, 16)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -924,6 +982,8 @@ impl App {
                 1,
                 if high_contrast {
                     Color::RGB(96, 96, 96)
+                } else if high_contrast_dark {
+                    Color::RGB(128, 128, 128)
                 } else {
                     Color::RGB(160, 166, 178)
                 },
@@ -940,6 +1000,8 @@ impl App {
         );
         canvas.set_draw_color(if high_contrast {
             Color::RGB(160, 160, 160)
+        } else if high_contrast_dark {
+            Color::RGB(96, 96, 96)
         } else {
             Color::RGB(116, 126, 150)
         });
@@ -951,6 +1013,8 @@ impl App {
                 / max_start) as i32;
         canvas.set_draw_color(if high_contrast {
             Color::RGB(0, 0, 0)
+        } else if high_contrast_dark {
+            Color::RGB(255, 255, 255)
         } else {
             Color::RGB(236, 238, 228)
         });
@@ -970,15 +1034,20 @@ impl App {
             return Ok(());
         }
         let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
+        let high_contrast_dark = self.theme().preset == ThemePreset::HighContrastDark;
         canvas.set_draw_color(if selected {
             if high_contrast {
                 Color::RGB(236, 236, 236)
+            } else if high_contrast_dark {
+                Color::RGB(32, 32, 32)
             } else {
                 Color::RGB(82, 92, 128)
             }
         } else {
             if high_contrast {
                 Color::RGB(255, 255, 255)
+            } else if high_contrast_dark {
+                Color::RGB(16, 16, 16)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -998,13 +1067,18 @@ impl App {
             return Ok(());
         }
         let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
+        let high_contrast_dark = self.theme().preset == ThemePreset::HighContrastDark;
         canvas.set_draw_color(if high_contrast {
             self.theme().transport.record_active
+        } else if high_contrast_dark {
+            Color::RGB(255, 255, 255)
         } else {
             Color::RGB(108, 56, 62)
         });
         canvas.fill_rect(rect)?;
         canvas.set_draw_color(if high_contrast {
+            Color::RGB(0, 0, 0)
+        } else if high_contrast_dark {
             Color::RGB(0, 0, 0)
         } else {
             Color::RGB(204, 124, 132)
@@ -1121,7 +1195,8 @@ impl App {
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let high_contrast = is_high_contrast_light(theme);
+        let high_contrast_dark = is_high_contrast_dark(theme);
         for (context, rect) in [
             (TimelineContext::InputFx, layout.input_fx_rect),
             (TimelineContext::OutputFx, layout.output_fx_rect),
@@ -1140,18 +1215,24 @@ impl App {
                 if enabled {
                     if high_contrast {
                         Color::RGB(244, 244, 244)
+                    } else if high_contrast_dark {
+                        Color::RGB(20, 20, 20)
                     } else {
                         Color::RGB(78, 128, 198)
                     }
                 } else if is_active {
                     if high_contrast {
                         Color::RGB(236, 236, 236)
+                    } else if high_contrast_dark {
+                        Color::RGB(12, 12, 12)
                     } else {
                         Color::RGB(56, 70, 94)
                     }
                 } else {
                     if high_contrast {
                         Color::RGB(248, 248, 248)
+                    } else if high_contrast_dark {
+                        Color::RGB(8, 8, 8)
                     } else {
                         Color::RGB(46, 56, 74)
                     }
@@ -1159,18 +1240,24 @@ impl App {
             } else if enabled {
                 if high_contrast {
                     Color::RGB(244, 244, 244)
+                } else if high_contrast_dark {
+                    Color::RGB(20, 20, 20)
                 } else {
                     Color::RGB(172, 108, 156)
                 }
             } else if is_active {
                 if high_contrast {
                     Color::RGB(236, 236, 236)
+                } else if high_contrast_dark {
+                    Color::RGB(12, 12, 12)
                 } else {
                     Color::RGB(84, 68, 94)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(248, 248, 248)
+                } else if high_contrast_dark {
+                    Color::RGB(8, 8, 8)
                 } else {
                     Color::RGB(64, 58, 76)
                 }
@@ -1182,18 +1269,24 @@ impl App {
                     } else {
                         theme.app_chrome.tab_accent_routing
                     }
+                } else if high_contrast_dark {
+                    Color::RGB(255, 255, 255)
                 } else {
                     Color::RGB(236, 238, 228)
                 }
             } else if is_active {
                 if high_contrast {
                     Color::RGB(0, 0, 0)
+                } else if high_contrast_dark {
+                    Color::RGB(255, 255, 255)
                 } else {
                     Color::RGB(176, 184, 198)
                 }
             } else {
                 if high_contrast {
                     Color::RGB(128, 128, 128)
+                } else if high_contrast_dark {
+                    Color::RGB(96, 96, 96)
                 } else {
                     Color::RGB(120, 126, 140)
                 }
@@ -1220,12 +1313,16 @@ impl App {
                     let text_color = if slot.enabled {
                         if high_contrast {
                             Color::RGB(0, 0, 0)
+                        } else if high_contrast_dark {
+                            Color::RGB(0, 0, 0)
                         } else {
                             Color::RGB(248, 244, 236)
                         }
                     } else {
                         if high_contrast {
                             Color::RGB(64, 64, 64)
+                        } else if high_contrast_dark {
+                            Color::RGB(255, 255, 255)
                         } else {
                             Color::RGB(198, 202, 210)
                         }
