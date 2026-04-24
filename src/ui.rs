@@ -501,8 +501,8 @@ pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 
 pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y, lane.width(), 14),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y, 56, 14),
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y - 1, lane.width(), 14),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y - 1, 56, 14),
     }
 }
 
