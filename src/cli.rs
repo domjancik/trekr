@@ -692,6 +692,7 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         "Press Enter to keep the default path.",
     )?;
     let ui_scale = prompt_optional_ui_scale(writer, reader)?;
+    let ui_scaling_mode = prompt_ui_scaling_mode(writer, reader)?;
 
     let run_mode = if capture_mode {
         let output_dir = prompt_path(
@@ -797,6 +798,24 @@ fn prompt_optional_ui_scale<R: BufRead, W: Write>(
     }
 }
 
+fn prompt_ui_scaling_mode<R: BufRead, W: Write>(
+    writer: &mut W,
+    reader: &mut R,
+) -> Result<UiScalingMode, Box<dyn std::error::Error>> {
+    match prompt_menu(
+        writer,
+        reader,
+        "UI scaling mode",
+        &["auto", "nearest", "linear"],
+        0,
+    )? {
+        0 => Ok(UiScalingMode::Auto),
+        1 => Ok(UiScalingMode::Nearest),
+        2 => Ok(UiScalingMode::Linear),
+        _ => unreachable!(),
+    }
+}
+
 fn prompt_path<R: BufRead, W: Write>(
     writer: &mut W,
     reader: &mut R,
@@ -871,6 +890,23 @@ fn video_mode_label(video_mode: VideoMode) -> &'static str {
         VideoMode::Windowed => "windowed",
         VideoMode::Fullscreen => "fullscreen",
         VideoMode::KmsDrmConsole => "kmsdrm-console",
+    }
+}
+
+fn parse_ui_scaling_mode(value: &str) -> Result<UiScalingMode, String> {
+    match value {
+        "auto" => Ok(UiScalingMode::Auto),
+        "nearest" => Ok(UiScalingMode::Nearest),
+        "linear" => Ok(UiScalingMode::Linear),
+        other => Err(format!("unknown ui scaling mode: {other}")),
+    }
+}
+
+fn ui_scaling_mode_label(mode: UiScalingMode) -> &'static str {
+    match mode {
+        UiScalingMode::Auto => "auto",
+        UiScalingMode::Nearest => "nearest",
+        UiScalingMode::Linear => "linear",
     }
 }
 
@@ -1044,6 +1080,20 @@ mod tests {
         ])
         .expect_err("capture-ui should reject video mode");
         assert_eq!(error, "--video-mode is only valid with the run command");
+    }
+
+    #[test]
+    fn run_subcommand_accepts_ui_scaling_mode() {
+        let command = parse_app_command_from(vec![
+            "run".to_owned(),
+            "--ui-scaling".to_owned(),
+            "linear".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        assert_eq!(options.ui_scaling_mode, UiScalingMode::Linear);
     }
 
     #[test]
