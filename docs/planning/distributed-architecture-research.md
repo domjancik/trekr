@@ -48,6 +48,34 @@ This is the safest model for:
 
 Do **not** make each client a peer-authoritative editor for V1 of distributed support. That would force conflict-free replicated editing, distributed undo semantics, and cross-device timing arbitration before the product is ready.
 
+## Preserve Single-Device Performance As A First-Class Requirement
+
+Distributed support must not make the default single-device build feel heavier on small hardware.
+
+Recommended rule:
+
+- the local single-device path should use the same engine/client protocol model conceptually, but with an optimized in-process transport that avoids network stacks, serialization churn, and duplicated copies where possible
+
+Practical constraints:
+
+- no mandatory background networking work when no remote client is attached
+- no per-frame full-state serialization for the local UI
+- no extra locks or heap churn in the MIDI/audio timing path just because remote mode exists
+- no requirement that a single-device session spin up multiple heavyweight processes
+
+Recommended implementation shape:
+
+- keep one authoritative engine runtime
+- allow an **in-process loopback client** for the normal local SDL app
+- use direct function calls or bounded channels with compact event structs for local command delivery
+- serialize only at the actual network boundary, not between tightly-coupled local modules
+
+Best practice:
+
+- treat distributed support as an outer transport layer around the engine boundary, not as a reason to make every local operation pay network-style costs
+
+This preserves the current low-overhead direction from `docs/dev/architecture.md`, especially for Raspberry Pi and other constrained targets.
+
 ## Target Topology
 
 Recommended topology:
@@ -255,6 +283,10 @@ Important rule:
 
 - remote clients render a reflected state view; they do not become the timing authority
 
+Single-device implication:
+
+- when no remote clients are connected, replication work should collapse to the minimum needed for the local shell instead of running as if the app were broadcasting over Wi-Fi
+
 ### 9. Add clock synchronization for display quality
 
 Clients need an estimate of engine time to render playhead motion smoothly.
@@ -440,10 +472,12 @@ Goal:
 - separate core session state from UI-local state
 - move action application into a reducer-like core
 - move transport/MIDI timing into an engine runtime module
+- prove that the local-only path is still lightweight after the split
 
 Exit criteria:
 
 - the local SDL app talks to the engine boundary through the same command/state API that remote clients will use
+- local single-device performance remains at least comparable to the current architecture for idle/render/input workloads
 
 ### Phase 2: In-process loopback client
 
@@ -498,6 +532,7 @@ Exit criteria:
 6. create an engine-hosted loopback client path for the current SDL shell
 7. define lease scopes for transport, timeline editing, mappings, and routing
 8. prototype a simple reliable wire protocol over TCP/WebSocket on the Pi target before considering BLE-rich UI replication
+9. add profiling checks that compare single-device local mode versus distributed-capable local mode before enabling remote features by default
 
 ## Biggest Risks
 
@@ -507,6 +542,7 @@ Exit criteria:
 - treating BLE as equivalent to Wi-Fi for replicated UI workloads
 - leaving undo local when document edits become shared
 - failing to provide explicit conflict and reconnect UX
+- accidentally forcing single-device users to pay serialization, tasking, or process overhead that only remote mode needs
 
 ## Recommended Default Product Policy
 
@@ -519,5 +555,6 @@ For the first distributed version:
 - multi-user editing protected by short-lived leases
 - Wi-Fi/Ethernet first for rich displays
 - BLE limited to lightweight control profiles unless proven sufficient in practice
+- local single-device mode uses the same architecture with an optimized in-process loopback path
 
 This gives the cleanest path from the current codebase to a Pi-hosted collaborative system without sacrificing timing integrity.
