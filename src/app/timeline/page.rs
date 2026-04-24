@@ -328,7 +328,7 @@ impl App {
         let mut cursor_x = bounds.x + 6;
         for spec in &top_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
@@ -375,7 +375,7 @@ impl App {
         let mut truncated_link_row = false;
         for spec in &link_specs {
             let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
             if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
                 truncated_link_row = true;
                 break;
@@ -462,7 +462,7 @@ impl App {
         let mut cursor_x = bounds.x + 6;
         for chip_spec in self.transport_top_chip_specs() {
             let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, top_y, width, chip_height);
             if chip.x + chip.width() as i32 > left_max {
                 break;
             }
@@ -488,7 +488,7 @@ impl App {
         cursor_x = right_panel_x + 6;
         for chip_spec in self.transport_link_chip_specs() {
             let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
+            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
             if chip.x + chip.width() as i32 > right_panel_right {
                 break;
             }
