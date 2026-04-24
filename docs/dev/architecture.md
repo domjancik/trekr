@@ -23,25 +23,6 @@ Recommended runtime structure:
 
 Messaging between the real-time engine and UI should avoid locks in the callback path.
 
-## App Layer Refactor Principles
-
-The current app layer intentionally follows a feature-owned module layout instead of a single large shell file.
-
-Current structure:
-
-- `src/app/mod.rs` is the app integration shell only
-- `src/app/mapping/`, `src/app/timeline/`, and `src/app/shell/` own their page-family behavior
-- `src/app/support/` owns small app-only helper modules
-- runtime-specific app helpers that are still substantial stay top-level under `src/app/`
-
-Required rules:
-
-- do not move page-family behavior back into `src/app/mod.rs`
-- do not create new generic dumping-ground modules
-- keep the action boundary canonical even when reorganizing files
-- keep tests with the owning feature when possible, leaving only true integration coverage at the app shell level
-- structural polish is allowed when it improves navigability, but presenter work and app/core split work are separate follow-on phases
-
 ## Action Model
 
 The application should be action-driven at the input boundary.
