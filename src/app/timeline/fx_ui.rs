@@ -568,34 +568,72 @@ impl App {
         selected: bool,
         text_color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
         let enabled_fill = if slot.enabled {
-            Color::RGB(54, 176, 100)
+            if high_contrast {
+                theme.transport.play_active
+            } else {
+                Color::RGB(54, 176, 100)
+            }
         } else {
-            Color::RGB(88, 54, 62)
+            if high_contrast {
+                Color::RGB(232, 232, 232)
+            } else {
+                Color::RGB(88, 54, 62)
+            }
         };
         let enabled_selected =
             selected && self.page_state.selected_timeline_fx_field == TimelineFxField::Enabled;
         canvas.set_draw_color(if selected {
-            Color::RGB(44, 50, 70)
+            if high_contrast {
+                Color::RGB(240, 240, 240)
+            } else {
+                Color::RGB(44, 50, 70)
+            }
         } else {
-            Color::RGB(36, 42, 58)
+            if high_contrast {
+                Color::RGB(248, 248, 248)
+            } else {
+                Color::RGB(36, 42, 58)
+            }
         });
         canvas.fill_rect(layout.row)?;
         canvas.set_draw_color(enabled_fill);
         canvas.fill_rect(layout.enabled)?;
         canvas.set_draw_color(if enabled_selected {
-            Color::RGB(252, 236, 156)
+            if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(252, 236, 156)
+            }
         } else if slot.enabled {
-            Color::RGB(210, 248, 214)
+            if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(210, 248, 214)
+            }
         } else {
-            Color::RGB(196, 142, 154)
+            if high_contrast {
+                Color::RGB(128, 128, 128)
+            } else {
+                Color::RGB(196, 142, 154)
+            }
         });
         canvas.draw_rect(layout.enabled)?;
         if layout.enabled.width() > 4 && layout.enabled.height() > 4 {
             canvas.set_draw_color(if slot.enabled {
-                Color::RGB(32, 108, 62)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(32, 108, 62)
+                }
             } else {
-                Color::RGB(64, 36, 44)
+                if high_contrast {
+                    Color::RGB(160, 160, 160)
+                } else {
+                    Color::RGB(64, 36, 44)
+                }
             });
             canvas.draw_rect(Rect::new(
                 layout.enabled.x + 1,
@@ -612,7 +650,7 @@ impl App {
                 enabled_label,
                 centered_text_rect(layout.enabled),
                 1,
-                Color::RGB(244, 244, 236),
+                contrasting_text_color(enabled_fill, theme),
             )?;
         }
 
@@ -620,9 +658,17 @@ impl App {
             let kind_fill = if selected
                 && self.page_state.selected_timeline_fx_field == TimelineFxField::Kind
             {
-                Color::RGB(78, 90, 126)
+                if high_contrast {
+                    Color::RGB(224, 224, 224)
+                } else {
+                    Color::RGB(78, 90, 126)
+                }
             } else {
-                Color::RGB(52, 58, 80)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(52, 58, 80)
+                }
             };
             canvas.set_draw_color(kind_fill);
             canvas.fill_rect(layout.kind)?;
@@ -679,7 +725,11 @@ impl App {
         self.draw_timeline_fx_move_zone(canvas, layout.move_down, "↓", move_selected, text_color)?;
         self.draw_timeline_fx_delete_zone(canvas, layout.delete, text_color)?;
         if selected {
-            canvas.set_draw_color(Color::RGB(244, 232, 146));
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(244, 232, 146)
+            });
             let underline_y = layout.row.y + layout.row.height() as i32 - 1;
             canvas.draw_line(
                 sdl3::rect::Point::new(layout.row.x, underline_y),
@@ -696,17 +746,39 @@ impl App {
         layout: TimelineFxRowLayout,
         selected: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let text_color = Color::RGB(226, 232, 238);
-        canvas.set_draw_color(if selected {
-            Color::RGB(82, 92, 128)
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
+        let text_color = if high_contrast {
+            Color::RGB(0, 0, 0)
         } else {
-            Color::RGB(40, 46, 64)
+            Color::RGB(226, 232, 238)
+        };
+        canvas.set_draw_color(if selected {
+            if high_contrast {
+                Color::RGB(236, 236, 236)
+            } else {
+                Color::RGB(82, 92, 128)
+            }
+        } else {
+            if high_contrast {
+                Color::RGB(250, 250, 250)
+            } else {
+                Color::RGB(40, 46, 64)
+            }
         });
         canvas.fill_rect(layout.row)?;
         canvas.set_draw_color(if selected {
-            Color::RGB(244, 232, 146)
+            if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(244, 232, 146)
+            }
         } else {
-            Color::RGB(90, 98, 116)
+            if high_contrast {
+                Color::RGB(128, 128, 128)
+            } else {
+                Color::RGB(90, 98, 116)
+            }
         });
         if selected {
             let underline_y = layout.row.y + layout.row.height() as i32 - 1;
@@ -717,7 +789,11 @@ impl App {
         } else {
             canvas.draw_rect(layout.row)?;
         }
-        canvas.set_draw_color(Color::RGB(52, 58, 80));
+        canvas.set_draw_color(if high_contrast {
+            Color::RGB(255, 255, 255)
+        } else {
+            Color::RGB(52, 58, 80)
+        });
         canvas.fill_rect(layout.enabled)?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -758,10 +834,19 @@ impl App {
         if rect.height() == 0 {
             return Ok(());
         }
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
         canvas.set_draw_color(if selected {
-            Color::RGB(82, 92, 128)
+            if high_contrast {
+                Color::RGB(236, 236, 236)
+            } else {
+                Color::RGB(82, 92, 128)
+            }
         } else {
-            Color::RGB(52, 58, 80)
+            if high_contrast {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(52, 58, 80)
+            }
         });
         canvas.fill_rect(rect)?;
         if let Some(param) = param {
@@ -794,7 +879,11 @@ impl App {
                 "--",
                 centered_text_rect(rect),
                 1,
-                Color::RGB(160, 166, 178),
+                if high_contrast {
+                    Color::RGB(96, 96, 96)
+                } else {
+                    Color::RGB(160, 166, 178)
+                },
             )?;
         }
         Ok(())
@@ -812,10 +901,19 @@ impl App {
         if rect.height() == 0 {
             return Ok(());
         }
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
         canvas.set_draw_color(if selected {
-            Color::RGB(82, 92, 128)
+            if high_contrast {
+                Color::RGB(236, 236, 236)
+            } else {
+                Color::RGB(82, 92, 128)
+            }
         } else {
-            Color::RGB(52, 58, 80)
+            if high_contrast {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(52, 58, 80)
+            }
         });
         canvas.fill_rect(rect)?;
         if param_count <= 2 {
@@ -824,7 +922,11 @@ impl App {
                 "--",
                 centered_text_rect(rect),
                 1,
-                Color::RGB(160, 166, 178),
+                if high_contrast {
+                    Color::RGB(96, 96, 96)
+                } else {
+                    Color::RGB(160, 166, 178)
+                },
             )?;
             return Ok(());
         }
@@ -836,14 +938,22 @@ impl App {
             rect.width().saturating_sub(4),
             1,
         );
-        canvas.set_draw_color(Color::RGB(116, 126, 150));
+        canvas.set_draw_color(if high_contrast {
+            Color::RGB(160, 160, 160)
+        } else {
+            Color::RGB(116, 126, 150)
+        });
         canvas.fill_rect(track_rect)?;
         let thumb_width = (track_rect.width() / param_count.max(1) as u32).max(2);
         let max_start = param_count.saturating_sub(2).max(1);
         let thumb_x = track_rect.x
             + (((track_rect.width().saturating_sub(thumb_width)) as usize * window_start)
                 / max_start) as i32;
-        canvas.set_draw_color(Color::RGB(236, 238, 228));
+        canvas.set_draw_color(if high_contrast {
+            Color::RGB(0, 0, 0)
+        } else {
+            Color::RGB(236, 238, 228)
+        });
         canvas.fill_rect(Rect::new(thumb_x, track_rect.y, thumb_width, 1))?;
         Ok(())
     }
@@ -859,10 +969,19 @@ impl App {
         if rect.height() == 0 {
             return Ok(());
         }
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
         canvas.set_draw_color(if selected {
-            Color::RGB(82, 92, 128)
+            if high_contrast {
+                Color::RGB(236, 236, 236)
+            } else {
+                Color::RGB(82, 92, 128)
+            }
         } else {
-            Color::RGB(52, 58, 80)
+            if high_contrast {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(52, 58, 80)
+            }
         });
         canvas.fill_rect(rect)?;
         crate::ui::draw_text_fitted(canvas, label, centered_text_rect(rect), 1, text_color)?;
@@ -878,9 +997,18 @@ impl App {
         if rect.height() == 0 {
             return Ok(());
         }
-        canvas.set_draw_color(Color::RGB(108, 56, 62));
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
+        canvas.set_draw_color(if high_contrast {
+            self.theme().transport.record_active
+        } else {
+            Color::RGB(108, 56, 62)
+        });
         canvas.fill_rect(rect)?;
-        canvas.set_draw_color(Color::RGB(204, 124, 132));
+        canvas.set_draw_color(if high_contrast {
+            Color::RGB(0, 0, 0)
+        } else {
+            Color::RGB(204, 124, 132)
+        });
         canvas.draw_rect(rect)?;
         crate::ui::draw_text_fitted(canvas, "X", centered_text_rect(rect), 1, text_color)?;
         Ok(())
@@ -992,6 +1120,8 @@ impl App {
         track: &Track,
         is_active: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
         for (context, rect) in [
             (TimelineContext::InputFx, layout.input_fx_rect),
             (TimelineContext::OutputFx, layout.output_fx_rect),
@@ -1008,25 +1138,65 @@ impl App {
             let enabled = active_slots.iter().any(|(_, slot)| slot.enabled);
             let fill = if context == TimelineContext::InputFx {
                 if enabled {
-                    Color::RGB(78, 128, 198)
+                    if high_contrast {
+                        Color::RGB(244, 244, 244)
+                    } else {
+                        Color::RGB(78, 128, 198)
+                    }
                 } else if is_active {
-                    Color::RGB(56, 70, 94)
+                    if high_contrast {
+                        Color::RGB(236, 236, 236)
+                    } else {
+                        Color::RGB(56, 70, 94)
+                    }
                 } else {
-                    Color::RGB(46, 56, 74)
+                    if high_contrast {
+                        Color::RGB(248, 248, 248)
+                    } else {
+                        Color::RGB(46, 56, 74)
+                    }
                 }
             } else if enabled {
-                Color::RGB(172, 108, 156)
+                if high_contrast {
+                    Color::RGB(244, 244, 244)
+                } else {
+                    Color::RGB(172, 108, 156)
+                }
             } else if is_active {
-                Color::RGB(84, 68, 94)
+                if high_contrast {
+                    Color::RGB(236, 236, 236)
+                } else {
+                    Color::RGB(84, 68, 94)
+                }
             } else {
-                Color::RGB(64, 58, 76)
+                if high_contrast {
+                    Color::RGB(248, 248, 248)
+                } else {
+                    Color::RGB(64, 58, 76)
+                }
             };
             let border = if enabled {
-                Color::RGB(236, 238, 228)
+                if high_contrast {
+                    if context == TimelineContext::InputFx {
+                        theme.app_chrome.tab_accent_midi_io
+                    } else {
+                        theme.app_chrome.tab_accent_routing
+                    }
+                } else {
+                    Color::RGB(236, 238, 228)
+                }
             } else if is_active {
-                Color::RGB(176, 184, 198)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(176, 184, 198)
+                }
             } else {
-                Color::RGB(120, 126, 140)
+                if high_contrast {
+                    Color::RGB(128, 128, 128)
+                } else {
+                    Color::RGB(120, 126, 140)
+                }
             };
             canvas.set_draw_color(fill);
             canvas.fill_rect(rect)?;
@@ -1048,9 +1218,17 @@ impl App {
                 if let Some(slot_index) = display_row {
                     let slot = chain[*slot_index].as_ref().expect("timeline slot");
                     let text_color = if slot.enabled {
-                        Color::RGB(248, 244, 236)
+                        if high_contrast {
+                            Color::RGB(0, 0, 0)
+                        } else {
+                            Color::RGB(248, 244, 236)
+                        }
                     } else {
-                        Color::RGB(198, 202, 210)
+                        if high_contrast {
+                            Color::RGB(64, 64, 64)
+                        } else {
+                            Color::RGB(198, 202, 210)
+                        }
                     };
                     self.draw_timeline_fx_row(
                         canvas,

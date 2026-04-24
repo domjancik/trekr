@@ -141,20 +141,38 @@ impl App {
         track: &Track,
         clip_controls: Option<(Rect, Rect)>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
         if track.recording_view == RecordingView::Stacked {
             let can_scroll_left = self.can_select_previous_recording_clip(track);
             let can_scroll_right = self.can_select_next_recording_clip(track);
             let (left_rect, right_rect) = self.recording_view_scroll_control_rects(label_rect);
             canvas.set_draw_color(if can_scroll_left {
-                Color::RGB(74, 82, 98)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(74, 82, 98)
+                }
             } else {
-                Color::RGB(48, 54, 68)
+                if high_contrast {
+                    Color::RGB(232, 232, 232)
+                } else {
+                    Color::RGB(48, 54, 68)
+                }
             });
             canvas.fill_rect(left_rect)?;
             canvas.set_draw_color(if can_scroll_left {
-                Color::RGB(202, 212, 224)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(202, 212, 224)
+                }
             } else {
-                Color::RGB(112, 118, 130)
+                if high_contrast {
+                    Color::RGB(128, 128, 128)
+                } else {
+                    Color::RGB(112, 118, 130)
+                }
             });
             canvas.draw_rect(left_rect)?;
             crate::ui::draw_text_fitted(
@@ -168,21 +186,45 @@ impl App {
                 ),
                 1,
                 if can_scroll_left {
-                    Color::RGB(244, 244, 236)
+                    if high_contrast {
+                        Color::RGB(0, 0, 0)
+                    } else {
+                        Color::RGB(244, 244, 236)
+                    }
                 } else {
-                    Color::RGB(144, 150, 160)
+                    if high_contrast {
+                        Color::RGB(96, 96, 96)
+                    } else {
+                        Color::RGB(144, 150, 160)
+                    }
                 },
             )?;
             canvas.set_draw_color(if can_scroll_right {
-                Color::RGB(74, 82, 98)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(74, 82, 98)
+                }
             } else {
-                Color::RGB(48, 54, 68)
+                if high_contrast {
+                    Color::RGB(232, 232, 232)
+                } else {
+                    Color::RGB(48, 54, 68)
+                }
             });
             canvas.fill_rect(right_rect)?;
             canvas.set_draw_color(if can_scroll_right {
-                Color::RGB(202, 212, 224)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(202, 212, 224)
+                }
             } else {
-                Color::RGB(112, 118, 130)
+                if high_contrast {
+                    Color::RGB(128, 128, 128)
+                } else {
+                    Color::RGB(112, 118, 130)
+                }
             });
             canvas.draw_rect(right_rect)?;
             crate::ui::draw_text_fitted(
@@ -196,19 +238,44 @@ impl App {
                 ),
                 1,
                 if can_scroll_right {
-                    Color::RGB(244, 244, 236)
+                    if high_contrast {
+                        Color::RGB(0, 0, 0)
+                    } else {
+                        Color::RGB(244, 244, 236)
+                    }
                 } else {
-                    Color::RGB(144, 150, 160)
+                    if high_contrast {
+                        Color::RGB(96, 96, 96)
+                    } else {
+                        Color::RGB(144, 150, 160)
+                    }
                 },
             )?;
         }
         let view_rect = self.recording_view_chip_rect(label_rect);
-        canvas.set_draw_color(match track.recording_view {
-            RecordingView::Overlay => Color::RGB(50, 84, 126),
-            RecordingView::Stacked => Color::RGB(124, 98, 48),
-        });
+        let view_fill = match track.recording_view {
+            RecordingView::Overlay => {
+                if high_contrast {
+                    theme.app_chrome.tab_accent_timeline
+                } else {
+                    Color::RGB(50, 84, 126)
+                }
+            }
+            RecordingView::Stacked => {
+                if high_contrast {
+                    theme.transport.song_loop
+                } else {
+                    Color::RGB(124, 98, 48)
+                }
+            }
+        };
+        canvas.set_draw_color(view_fill);
         canvas.fill_rect(view_rect)?;
-        canvas.set_draw_color(Color::RGB(232, 228, 208));
+        canvas.set_draw_color(if high_contrast {
+            Color::RGB(0, 0, 0)
+        } else {
+            Color::RGB(232, 228, 208)
+        });
         canvas.draw_rect(view_rect)?;
         crate::ui::draw_text_fitted(
             canvas,
@@ -223,19 +290,32 @@ impl App {
                 view_rect.height().saturating_sub(2),
             ),
             1,
-            Color::RGB(248, 244, 236),
+            contrasting_text_color(view_fill, theme),
         )?;
 
         if let (Some(selected_clip), Some((mute_rect, delete_rect))) =
             (track.selected_recording_clip(), clip_controls)
         {
-            canvas.set_draw_color(if selected_clip.muted {
-                Color::RGB(120, 118, 112)
+            let mute_fill = if selected_clip.muted {
+                if high_contrast {
+                    Color::RGB(232, 232, 232)
+                } else {
+                    Color::RGB(120, 118, 112)
+                }
             } else {
-                Color::RGB(84, 122, 92)
-            });
+                if high_contrast {
+                    theme.transport.play_active
+                } else {
+                    Color::RGB(84, 122, 92)
+                }
+            };
+            canvas.set_draw_color(mute_fill);
             canvas.fill_rect(mute_rect)?;
-            canvas.set_draw_color(Color::RGB(228, 232, 216));
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(228, 232, 216)
+            });
             canvas.draw_rect(mute_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -247,12 +327,21 @@ impl App {
                     mute_rect.height().saturating_sub(2),
                 ),
                 1,
-                Color::RGB(246, 244, 236),
+                contrasting_text_color(mute_fill, theme),
             )?;
 
-            canvas.set_draw_color(Color::RGB(132, 74, 70));
+            let delete_fill = if high_contrast {
+                theme.transport.record_active
+            } else {
+                Color::RGB(132, 74, 70)
+            };
+            canvas.set_draw_color(delete_fill);
             canvas.fill_rect(delete_rect)?;
-            canvas.set_draw_color(Color::RGB(240, 220, 210));
+            canvas.set_draw_color(if high_contrast {
+                Color::RGB(0, 0, 0)
+            } else {
+                Color::RGB(240, 220, 210)
+            });
             canvas.draw_rect(delete_rect)?;
             crate::ui::draw_text_fitted(
                 canvas,
@@ -264,7 +353,7 @@ impl App {
                     delete_rect.height().saturating_sub(2),
                 ),
                 1,
-                Color::RGB(250, 242, 236),
+                contrasting_text_color(delete_fill, theme),
             )?;
         }
 
@@ -285,6 +374,8 @@ impl App {
         preview_region: Option<crate::timeline::Region>,
         preview_notes: &[crate::project::MidiNote],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        let high_contrast = theme.preset == ThemePreset::HighContrastLight;
         if track.recording_view == RecordingView::Stacked
             && (!track.recording_clips().is_empty() || preview_region.is_some())
         {
@@ -319,19 +410,43 @@ impl App {
 
             for lane in self.recording_lane_layouts(content_rect, track) {
                 canvas.set_draw_color(if lane.preview {
-                    Color::RGB(54, 32, 36)
+                    if high_contrast {
+                        Color::RGB(250, 236, 236)
+                    } else {
+                        Color::RGB(54, 32, 36)
+                    }
                 } else if lane.selected {
-                    Color::RGB(46, 62, 94)
+                    if high_contrast {
+                        Color::RGB(236, 236, 236)
+                    } else {
+                        Color::RGB(46, 62, 94)
+                    }
                 } else {
-                    Color::RGB(26, 34, 48)
+                    if high_contrast {
+                        Color::RGB(244, 244, 244)
+                    } else {
+                        Color::RGB(26, 34, 48)
+                    }
                 });
                 canvas.fill_rect(lane.rect)?;
                 canvas.set_draw_color(if lane.preview {
-                    Color::RGB(248, 122, 122)
+                    if high_contrast {
+                        theme.transport.record_active
+                    } else {
+                        Color::RGB(248, 122, 122)
+                    }
                 } else if lane.selected {
-                    Color::RGB(248, 226, 134)
+                    if high_contrast {
+                        Color::RGB(0, 0, 0)
+                    } else {
+                        Color::RGB(248, 226, 134)
+                    }
                 } else {
-                    Color::RGB(76, 92, 118)
+                    if high_contrast {
+                        Color::RGB(128, 128, 128)
+                    } else {
+                        Color::RGB(76, 92, 118)
+                    }
                 });
                 canvas.draw_rect(lane.rect)?;
 
@@ -346,10 +461,18 @@ impl App {
                             self.timeline_flow,
                         ) {
                             if detail {
-                                canvas.set_draw_color(Color::RGBA(214, 72, 72, 124));
+                                canvas.set_draw_color(if high_contrast {
+                                    Color::RGBA(196, 40, 40, 72)
+                                } else {
+                                    Color::RGBA(214, 72, 72, 124)
+                                });
                                 canvas.fill_rect(region.rect)?;
                             }
-                            canvas.set_draw_color(Color::RGB(248, 122, 122));
+                            canvas.set_draw_color(if high_contrast {
+                                theme.transport.record_active
+                            } else {
+                                Color::RGB(248, 122, 122)
+                            });
                             canvas.draw_rect(region.rect)?;
                         }
                     }
@@ -360,9 +483,17 @@ impl App {
                         note_range,
                         self.timeline_flow,
                     ) {
-                        canvas.set_draw_color(Color::RGBA(238, 108, 108, 176));
+                        canvas.set_draw_color(if high_contrast {
+                            Color::RGBA(196, 40, 40, 136)
+                        } else {
+                            Color::RGBA(238, 108, 108, 176)
+                        });
                         canvas.fill_rect(note.rect)?;
-                        canvas.set_draw_color(Color::RGB(255, 176, 176));
+                        canvas.set_draw_color(if high_contrast {
+                            theme.transport.record_active
+                        } else {
+                            Color::RGB(255, 176, 176)
+                        });
                         canvas.draw_rect(note.rect)?;
                     }
                 } else if let Some(clip_id) = lane.clip_id {
@@ -435,6 +566,7 @@ impl App {
         is_active: bool,
         muted_override: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
         for source_region in regions.iter().copied() {
             let region_muted =
                 muted_override || track.recording_clip_is_muted(source_region.recording_clip_id);
@@ -449,17 +581,37 @@ impl App {
                 continue;
             };
             canvas.set_draw_color(if region.clipped {
-                Color::RGB(108, 88, 56)
+                if high_contrast {
+                    Color::RGB(224, 216, 196)
+                } else {
+                    Color::RGB(108, 88, 56)
+                }
             } else if region_muted {
-                Color::RGB(42, 46, 56)
+                if high_contrast {
+                    Color::RGB(228, 228, 228)
+                } else {
+                    Color::RGB(42, 46, 56)
+                }
             } else {
-                Color::RGB(44, 54, 76)
+                if high_contrast {
+                    Color::RGB(238, 238, 238)
+                } else {
+                    Color::RGB(44, 54, 76)
+                }
             });
             canvas.fill_rect(region.rect)?;
             canvas.set_draw_color(if is_active {
-                Color::RGB(212, 196, 122)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(212, 196, 122)
+                }
             } else {
-                Color::RGB(96, 106, 126)
+                if high_contrast {
+                    Color::RGB(128, 128, 128)
+                } else {
+                    Color::RGB(96, 106, 126)
+                }
             });
             canvas.draw_rect(region.rect)?;
         }
@@ -480,6 +632,7 @@ impl App {
         focused_note_index: Option<usize>,
         anchor_note_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let high_contrast = self.theme().preset == ThemePreset::HighContrastLight;
         let notes: Vec<_> = note_entries.iter().map(|(_, note)| *note).collect();
         for note in crate::ui::note_rects(lane_rect, &notes, note_range, self.timeline_flow) {
             let absolute_index = note_entries[note.source_index].0;
@@ -490,27 +643,67 @@ impl App {
             let focused = focused_note_index == Some(absolute_index);
             let anchored = anchor_note_index == Some(absolute_index);
             canvas.set_draw_color(if selected && detail {
-                Color::RGB(112, 174, 228)
+                if high_contrast {
+                    Color::RGB(0, 92, 160)
+                } else {
+                    Color::RGB(112, 174, 228)
+                }
             } else if selected {
-                Color::RGB(88, 136, 194)
+                if high_contrast {
+                    Color::RGB(0, 0, 0)
+                } else {
+                    Color::RGB(88, 136, 194)
+                }
             } else if note_muted {
-                Color::RGB(92, 100, 112)
+                if high_contrast {
+                    Color::RGB(144, 144, 144)
+                } else {
+                    Color::RGB(92, 100, 112)
+                }
             } else if note.clipped {
-                Color::RGB(244, 204, 132)
+                if high_contrast {
+                    Color::RGB(194, 138, 0)
+                } else {
+                    Color::RGB(244, 204, 132)
+                }
             } else {
-                Color::RGB(210, 222, 236)
+                if high_contrast {
+                    Color::RGB(32, 32, 32)
+                } else {
+                    Color::RGB(210, 222, 236)
+                }
             });
             canvas.fill_rect(note.rect)?;
             canvas.set_draw_color(if focused {
-                Color::RGB(252, 246, 158)
+                if high_contrast {
+                    Color::RGB(194, 138, 0)
+                } else {
+                    Color::RGB(252, 246, 158)
+                }
             } else if anchored {
-                Color::RGB(180, 226, 176)
+                if high_contrast {
+                    Color::RGB(0, 128, 96)
+                } else {
+                    Color::RGB(180, 226, 176)
+                }
             } else if selected {
-                Color::RGB(224, 238, 248)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(224, 238, 248)
+                }
             } else if note_muted {
-                Color::RGB(128, 134, 144)
+                if high_contrast {
+                    Color::RGB(96, 96, 96)
+                } else {
+                    Color::RGB(128, 134, 144)
+                }
             } else {
-                Color::RGB(245, 247, 250)
+                if high_contrast {
+                    Color::RGB(255, 255, 255)
+                } else {
+                    Color::RGB(245, 247, 250)
+                }
             });
             canvas.draw_rect(note.rect)?;
             if focused {
@@ -520,7 +713,11 @@ impl App {
                     note.rect.width().saturating_sub(2).max(1),
                     note.rect.height().saturating_sub(2).max(1),
                 );
-                canvas.set_draw_color(Color::RGB(252, 208, 88));
+                canvas.set_draw_color(if high_contrast {
+                    Color::RGB(194, 138, 0)
+                } else {
+                    Color::RGB(252, 208, 88)
+                });
                 canvas.draw_rect(inner)?;
             }
         }
@@ -800,9 +997,17 @@ impl App {
         let Some((rail, thumb)) = self.recording_clip_scrollbar_rects(content_rect, track) else {
             return Ok(());
         };
-        canvas.set_draw_color(Color::RGB(92, 100, 120));
+        canvas.set_draw_color(if self.theme().preset == ThemePreset::HighContrastLight {
+            Color::RGB(160, 160, 160)
+        } else {
+            Color::RGB(92, 100, 120)
+        });
         canvas.fill_rect(rail)?;
-        canvas.set_draw_color(Color::RGB(244, 214, 118));
+        canvas.set_draw_color(if self.theme().preset == ThemePreset::HighContrastLight {
+            Color::RGB(0, 0, 0)
+        } else {
+            Color::RGB(244, 214, 118)
+        });
         canvas.fill_rect(thumb)?;
         Ok(())
     }
