@@ -287,7 +287,7 @@ impl App {
         } else {
             Rect::new(
                 label_rect.x + 4,
-                bottom_row_y - 2,
+                bottom_row_y - 1,
                 label_rect.width().saturating_sub(8).min(28),
                 11,
             )

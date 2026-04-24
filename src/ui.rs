@@ -535,7 +535,7 @@ pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 pub fn detail_badge_rect(header: Rect) -> Rect {
     Rect::new(
         header.x + 4,
-        header.y + header.height() as i32 - 14,
+        header.y + header.height() as i32 - 12,
         header.width().saturating_sub(8).min(28),
         11,
     )
