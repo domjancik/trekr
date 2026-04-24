@@ -1092,7 +1092,17 @@ impl App {
             Color::RGB(204, 124, 132)
         });
         canvas.draw_rect(rect)?;
-        crate::ui::draw_text_fitted(canvas, "X", centered_text_rect(rect), 1, text_color)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "X",
+            centered_text_rect(rect),
+            1,
+            if high_contrast_dark {
+                Color::RGB(0, 0, 0)
+            } else {
+                text_color
+            },
+        )?;
         Ok(())
     }
 
@@ -1318,22 +1328,18 @@ impl App {
                 let selected = line_index == selected_row;
                 if let Some(slot_index) = display_row {
                     let slot = chain[*slot_index].as_ref().expect("timeline slot");
-                    let text_color = if slot.enabled {
-                        if high_contrast {
-                            Color::RGB(0, 0, 0)
-                        } else if high_contrast_dark {
+                    let text_color = if high_contrast {
+                        if slot.enabled {
                             Color::RGB(0, 0, 0)
                         } else {
-                            Color::RGB(248, 244, 236)
-                        }
-                    } else {
-                        if high_contrast {
                             Color::RGB(64, 64, 64)
-                        } else if high_contrast_dark {
-                            Color::RGB(255, 255, 255)
-                        } else {
-                            Color::RGB(198, 202, 210)
                         }
+                    } else if high_contrast_dark {
+                        Color::RGB(255, 255, 255)
+                    } else if slot.enabled {
+                        Color::RGB(248, 244, 236)
+                    } else {
+                        Color::RGB(198, 202, 210)
                     };
                     self.draw_timeline_fx_row(
                         canvas,
