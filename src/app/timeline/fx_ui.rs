@@ -602,7 +602,7 @@ impl App {
             if high_contrast {
                 Color::RGB(240, 240, 240)
             } else if high_contrast_dark {
-                Color::RGB(32, 32, 32)
+                Color::RGB(56, 56, 56)
             } else {
                 Color::RGB(44, 50, 70)
             }
@@ -610,12 +610,20 @@ impl App {
             if high_contrast {
                 Color::RGB(248, 248, 248)
             } else if high_contrast_dark {
-                Color::RGB(8, 8, 8)
+                Color::RGB(28, 28, 28)
             } else {
                 Color::RGB(36, 42, 58)
             }
         });
         canvas.fill_rect(layout.row)?;
+        if high_contrast_dark {
+            canvas.set_draw_color(if selected {
+                Color::RGB(255, 255, 255)
+            } else {
+                Color::RGB(112, 112, 112)
+            });
+            canvas.draw_rect(layout.row)?;
+        }
         canvas.set_draw_color(enabled_fill);
         canvas.fill_rect(layout.enabled)?;
         canvas.set_draw_color(if enabled_selected {
@@ -688,7 +696,7 @@ impl App {
                 if high_contrast {
                     Color::RGB(224, 224, 224)
                 } else if high_contrast_dark {
-                    Color::RGB(32, 32, 32)
+                    Color::RGB(72, 72, 72)
                 } else {
                     Color::RGB(78, 90, 126)
                 }
@@ -696,7 +704,7 @@ impl App {
                 if high_contrast {
                     Color::RGB(255, 255, 255)
                 } else if high_contrast_dark {
-                    Color::RGB(12, 12, 12)
+                    Color::RGB(44, 44, 44)
                 } else {
                     Color::RGB(52, 58, 80)
                 }
@@ -793,7 +801,7 @@ impl App {
             if high_contrast {
                 Color::RGB(236, 236, 236)
             } else if high_contrast_dark {
-                Color::RGB(32, 32, 32)
+                Color::RGB(56, 56, 56)
             } else {
                 Color::RGB(82, 92, 128)
             }
@@ -801,7 +809,7 @@ impl App {
             if high_contrast {
                 Color::RGB(250, 250, 250)
             } else if high_contrast_dark {
-                Color::RGB(8, 8, 8)
+                Color::RGB(28, 28, 28)
             } else {
                 Color::RGB(40, 46, 64)
             }
@@ -836,7 +844,7 @@ impl App {
         canvas.set_draw_color(if high_contrast {
             Color::RGB(255, 255, 255)
         } else if high_contrast_dark {
-            Color::RGB(16, 16, 16)
+            Color::RGB(44, 44, 44)
         } else {
             Color::RGB(52, 58, 80)
         });
@@ -886,7 +894,7 @@ impl App {
             if high_contrast {
                 Color::RGB(236, 236, 236)
             } else if high_contrast_dark {
-                Color::RGB(32, 32, 32)
+                Color::RGB(72, 72, 72)
             } else {
                 Color::RGB(82, 92, 128)
             }
@@ -894,7 +902,7 @@ impl App {
             if high_contrast {
                 Color::RGB(255, 255, 255)
             } else if high_contrast_dark {
-                Color::RGB(16, 16, 16)
+                Color::RGB(44, 44, 44)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -960,7 +968,7 @@ impl App {
             if high_contrast {
                 Color::RGB(236, 236, 236)
             } else if high_contrast_dark {
-                Color::RGB(32, 32, 32)
+                Color::RGB(72, 72, 72)
             } else {
                 Color::RGB(82, 92, 128)
             }
@@ -968,7 +976,7 @@ impl App {
             if high_contrast {
                 Color::RGB(255, 255, 255)
             } else if high_contrast_dark {
-                Color::RGB(16, 16, 16)
+                Color::RGB(44, 44, 44)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -1039,7 +1047,7 @@ impl App {
             if high_contrast {
                 Color::RGB(236, 236, 236)
             } else if high_contrast_dark {
-                Color::RGB(32, 32, 32)
+                Color::RGB(72, 72, 72)
             } else {
                 Color::RGB(82, 92, 128)
             }
@@ -1047,7 +1055,7 @@ impl App {
             if high_contrast {
                 Color::RGB(255, 255, 255)
             } else if high_contrast_dark {
-                Color::RGB(16, 16, 16)
+                Color::RGB(44, 44, 44)
             } else {
                 Color::RGB(52, 58, 80)
             }
@@ -1216,7 +1224,7 @@ impl App {
                     if high_contrast {
                         Color::RGB(244, 244, 244)
                     } else if high_contrast_dark {
-                        Color::RGB(20, 20, 20)
+                        Color::RGB(36, 36, 36)
                     } else {
                         Color::RGB(78, 128, 198)
                     }
@@ -1224,7 +1232,7 @@ impl App {
                     if high_contrast {
                         Color::RGB(236, 236, 236)
                     } else if high_contrast_dark {
-                        Color::RGB(12, 12, 12)
+                        Color::RGB(24, 24, 24)
                     } else {
                         Color::RGB(56, 70, 94)
                     }
@@ -1232,7 +1240,7 @@ impl App {
                     if high_contrast {
                         Color::RGB(248, 248, 248)
                     } else if high_contrast_dark {
-                        Color::RGB(8, 8, 8)
+                        Color::RGB(16, 16, 16)
                     } else {
                         Color::RGB(46, 56, 74)
                     }
@@ -1241,7 +1249,7 @@ impl App {
                 if high_contrast {
                     Color::RGB(244, 244, 244)
                 } else if high_contrast_dark {
-                    Color::RGB(20, 20, 20)
+                    Color::RGB(36, 36, 36)
                 } else {
                     Color::RGB(172, 108, 156)
                 }
@@ -1249,7 +1257,7 @@ impl App {
                 if high_contrast {
                     Color::RGB(236, 236, 236)
                 } else if high_contrast_dark {
-                    Color::RGB(12, 12, 12)
+                    Color::RGB(24, 24, 24)
                 } else {
                     Color::RGB(84, 68, 94)
                 }
@@ -1257,7 +1265,7 @@ impl App {
                 if high_contrast {
                     Color::RGB(248, 248, 248)
                 } else if high_contrast_dark {
-                    Color::RGB(8, 8, 8)
+                    Color::RGB(16, 16, 16)
                 } else {
                     Color::RGB(64, 58, 76)
                 }
