@@ -191,16 +191,10 @@ impl App {
             };
             canvas.set_draw_color(color);
             canvas.fill_rect(accent)?;
-            let label_rect = crate::app::support::ui_helpers::chrome_text_rect(Rect::new(
-                tab.x + 29,
-                tab.y + 1,
-                tab.width().saturating_sub(31),
-                tab.height().saturating_sub(2),
-            ));
             crate::ui::draw_text_fitted(
                 canvas,
                 page.label(),
-                label_rect,
+                Rect::new(tab.x + 30, tab.y + 8, tab.width().saturating_sub(36), 8),
                 1,
                 if active {
                     theme.app_chrome.tab_text_active
