@@ -508,6 +508,7 @@ impl App {
         self.viewport_size = (1280, 720);
         // Keep renderer-owned screenshots deterministic by bypassing startup-only pulses.
         self.startup_started_at = Instant::now() - Duration::from_secs(10);
+        self.seed_capture_demo_midi_devices();
 
         for spec in capture_specs() {
             self.page_state.current_page = spec.page;
@@ -524,6 +525,22 @@ impl App {
         self.overlay_state.active = None;
 
         Ok(())
+    }
+
+    fn seed_capture_demo_midi_devices(&mut self) {
+        self.midi_devices = MidiDeviceCatalog::demo();
+        self.page_state.midi_io.selected_input_index =
+            self.midi_devices.selected_input.unwrap_or(0);
+        self.page_state.midi_io.selected_output_index =
+            self.midi_devices.selected_output.unwrap_or(0);
+        self.preferred_default_input_name = self
+            .midi_devices
+            .selected_input_port()
+            .map(|port| port.name.clone());
+        self.preferred_default_output_name = self
+            .midi_devices
+            .selected_output_port()
+            .map(|port| port.name.clone());
     }
 
     pub fn seed_capture_demo_timeline_overlaps(&mut self) {

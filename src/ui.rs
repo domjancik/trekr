@@ -619,11 +619,9 @@ pub struct TrackIndicator {
 }
 
 pub fn track_indicators(status_rect: Rect, metrics: &UiMetrics) -> [TrackIndicator; 4] {
-    let inset_x = metrics.track_inner_gap_px.min(2).max(1);
-    let inset_y = ((status_rect.height() as i32 - metrics.touch_target_min_px as i32).max(0) / 2)
-        .min(2)
-        .max(1);
-    let gap = metrics.track_inner_gap_px.min(2).max(1);
+    let inset_x = metrics.track_indicator_inset_x_px;
+    let inset_y = metrics.track_indicator_inset_y_px;
+    let gap = metrics.track_indicator_gap_px;
     let inner_width = (status_rect.width() as i32 - inset_x * 2).max(4);
     let height = status_rect
         .height()
