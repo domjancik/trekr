@@ -309,7 +309,7 @@ impl App {
 
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;
-        let right_top_y = bounds.y + 5;
+        let right_top_y = bounds.y + 6;
         let chip_height = 11;
 
         let top_specs = self.transport_top_chip_specs();
@@ -354,7 +354,7 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             "LINK",
-            Rect::new(right_panel.x + 6, right_panel.y + 3, 28, 8),
+            Rect::new(right_panel.x + 6, right_panel.y + 4, 28, 8),
             1,
             theme.app_chrome.detail_text,
         )?;
@@ -363,7 +363,7 @@ impl App {
             "F6 / SHIFT+F6",
             Rect::new(
                 right_panel.x + right_panel.width() as i32 - 86,
-                right_panel.y + 3,
+                right_panel.y + 4,
                 80,
                 8,
             ),
@@ -452,7 +452,7 @@ impl App {
         let mut rects = Vec::new();
         let top_y = bounds.y + 4;
         let bottom_y = bounds.y + 18;
-        let right_top_y = bounds.y + 5;
+        let right_top_y = bounds.y + 6;
         let chip_height = 11;
         let right_panel_width = self.transport_right_panel_width(bounds);
         let right_panel_x = bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6;
