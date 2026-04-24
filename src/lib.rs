@@ -19,3 +19,4 @@ pub mod timeline;
 pub mod timeline_fx;
 pub mod transport;
 pub mod ui;
+pub mod undo;

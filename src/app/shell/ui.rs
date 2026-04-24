@@ -518,13 +518,16 @@ impl App {
         } else {
             let last_action = self
                 .status_state
-                .last_action
-                .map(|status| {
-                    format!(
-                        "Last Action: {} via {}",
-                        action_label(status.action),
-                        action_source_label(status.source)
-                    )
+                .history_message
+                .clone()
+                .or_else(|| {
+                    self.status_state.last_action.map(|status| {
+                        format!(
+                            "Last Action: {} via {}",
+                            action_label(status.action),
+                            action_source_label(status.source)
+                        )
+                    })
                 })
                 .unwrap_or_else(|| "Last Action: Ready".to_string());
             crate::ui::draw_text_fitted(

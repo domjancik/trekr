@@ -16,10 +16,11 @@ pub(crate) struct OverlayState {
     pub active: Option<AppOverlay>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct StatusState {
     pub hovered_target: Option<DiscoverabilityTarget>,
     pub last_action: Option<LastActionStatus>,
+    pub history_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
