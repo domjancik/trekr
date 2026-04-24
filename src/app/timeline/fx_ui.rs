@@ -1109,7 +1109,9 @@ impl App {
                 )
             },
             1,
-            if high_contrast_dark {
+            if high_contrast {
+                Color::RGB(255, 255, 255)
+            } else if high_contrast_dark {
                 Color::RGB(0, 0, 0)
             } else {
                 text_color
