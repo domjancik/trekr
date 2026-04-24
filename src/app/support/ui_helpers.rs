@@ -20,9 +20,9 @@ pub(crate) fn chrome_compact_text_rect(rect: Rect) -> Rect {
 
 pub(crate) fn compact_label_rect(rect: Rect) -> Rect {
     Rect::new(
-        rect.x + 2,
-        rect.y + ((rect.height() as i32 - 8) / 2).max(0) + 1,
-        rect.width().saturating_sub(4),
+        rect.x + 1,
+        rect.y + ((rect.height() as i32 - 8) / 2).max(0),
+        rect.width().saturating_sub(2),
         8,
     )
 }

@@ -875,9 +875,9 @@ impl App {
     }
 
     pub(crate) fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
-        let top_y = label_rect.y + label_rect.height() as i32 - 11;
+        let top_y = label_rect.y + label_rect.height() as i32 - 12;
         let right = label_rect.x + label_rect.width() as i32 - 4;
-        Rect::new(right - 26, top_y, 26, 9)
+        Rect::new(right - 26, top_y, 26, 10)
     }
 
     pub(crate) fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
@@ -885,12 +885,12 @@ impl App {
             label_rect.x + 4,
             label_rect.y + 2,
             label_rect.width().saturating_sub(8).min(30),
-            9,
+            10,
         )
     }
 
     fn stored_loop_visible_slot_count(&self, label_rect: Rect) -> usize {
-        let slot_w = 8_i32;
+        let slot_w = 10_i32;
         let gap = 2_i32;
         let side_padding = 8_i32;
         let min_name_space = 24_i32;
@@ -905,8 +905,8 @@ impl App {
         let visible_slots = self
             .stored_loop_visible_slot_count(label_rect)
             .min(STORED_LOOP_SLOT_COUNT);
-        let slot_w = 8_u32;
-        let slot_h = 9_u32;
+        let slot_w = 10_u32;
+        let slot_h = 10_u32;
         let gap = 2_i32;
         let mut rects = Vec::with_capacity(visible_slots);
         for slot_index in 0..visible_slots {
@@ -914,7 +914,7 @@ impl App {
                 slot_index,
                 Rect::new(
                     label_rect.x + 4 + slot_index as i32 * (slot_w as i32 + gap),
-                    label_rect.y + 1,
+                    label_rect.y + 0,
                     slot_w,
                     slot_h,
                 ),
@@ -924,10 +924,10 @@ impl App {
     }
 
     pub(crate) fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let top_y = label_rect.y + label_rect.height() as i32 - 11;
+        let top_y = label_rect.y + label_rect.height() as i32 - 12;
         let view_rect = self.recording_view_chip_rect(label_rect);
-        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 9);
-        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 9);
+        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 10);
+        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 10);
         (left_rect, right_rect)
     }
 
@@ -1014,11 +1014,11 @@ impl App {
     }
 
     pub(crate) fn recording_clip_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let top_y = label_rect.y + 3;
+        let top_y = label_rect.y + 2;
         let right = label_rect.x + label_rect.width() as i32 - 4;
         (
-            Rect::new(right - 28, top_y, 12, 8),
-            Rect::new(right - 12, top_y, 12, 8),
+            Rect::new(right - 28, top_y, 12, 10),
+            Rect::new(right - 12, top_y, 12, 10),
         )
     }
 

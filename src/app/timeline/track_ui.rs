@@ -278,9 +278,9 @@ impl App {
         } else {
             Rect::new(
                 label_rect.x + 4,
-                bottom_row_y,
+                bottom_row_y - 1,
                 label_rect.width().saturating_sub(8).min(28),
-                8,
+                10,
             )
         };
         let role_badge_fill = if detail {
