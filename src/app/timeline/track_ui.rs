@@ -167,10 +167,15 @@ impl App {
                     Color::RGB(122, 120, 116)
                 });
                 canvas.draw_rect(*slot_rect)?;
+                let slot_label = (slot_index + 1).to_string();
                 crate::ui::draw_text_fitted(
                     canvas,
-                    &(slot_index + 1).to_string(),
-                    crate::app::support::ui_helpers::compact_label_rect(*slot_rect),
+                    &slot_label,
+                    crate::app::support::ui_helpers::horizontally_center_text_rect(
+                        &slot_label,
+                        crate::app::support::ui_helpers::compact_label_rect(*slot_rect),
+                        1,
+                    ),
                     1,
                     if active || queued || filled {
                         contrasting_text_color(slot_fill, theme)
@@ -248,7 +253,11 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 "THRU",
-                crate::app::support::ui_helpers::compact_label_rect(passthrough_button),
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    "THRU",
+                    crate::app::support::ui_helpers::compact_label_rect(passthrough_button),
+                    1,
+                ),
                 1,
                 contrasting_text_color(passthrough_fill, theme),
             )?;
@@ -278,9 +287,9 @@ impl App {
         } else {
             Rect::new(
                 label_rect.x + 4,
-                bottom_row_y - 1,
+                bottom_row_y - 2,
                 label_rect.width().saturating_sub(8).min(28),
-                10,
+                11,
             )
         };
         let role_badge_fill = if detail {
@@ -319,7 +328,11 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             if detail { "LOOP" } else { "SONG" },
-            crate::app::support::ui_helpers::compact_label_rect(role_badge),
+            crate::app::support::ui_helpers::horizontally_center_text_rect(
+                if detail { "LOOP" } else { "SONG" },
+                crate::app::support::ui_helpers::compact_label_rect(role_badge),
+                1,
+            ),
             1,
             contrasting_text_color(role_badge_fill, theme),
         )?;
