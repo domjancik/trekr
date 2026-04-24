@@ -501,16 +501,16 @@ pub fn track_header_rect(lane: Rect, flow: TimelineFlow) -> Rect {
 
 pub fn track_status_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y - 1, lane.width(), 14),
-        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y - 1, 56, 14),
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y - 1, lane.width(), 15),
+        TimelineFlow::AcrossRows => Rect::new(lane.x, lane.y - 1, 56, 15),
     }
 }
 
 pub fn track_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
-        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 14, lane.width(), 24),
+        TimelineFlow::DownwardColumns => Rect::new(lane.x, lane.y + 15, lane.width(), 24),
         TimelineFlow::AcrossRows => {
-            Rect::new(lane.x, lane.y + 14, 56, lane.height().saturating_sub(14))
+            Rect::new(lane.x, lane.y + 15, 56, lane.height().saturating_sub(15))
         }
     }
 }
@@ -519,9 +519,9 @@ pub fn track_content_rect(lane: Rect, flow: TimelineFlow) -> Rect {
     match flow {
         TimelineFlow::DownwardColumns => Rect::new(
             lane.x,
-            lane.y + 38,
+            lane.y + 39,
             lane.width(),
-            lane.height().saturating_sub(38),
+            lane.height().saturating_sub(39),
         ),
         TimelineFlow::AcrossRows => Rect::new(
             lane.x + 56,
