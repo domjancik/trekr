@@ -10,6 +10,14 @@ use sdl3::keyboard::{Keycode, Mod};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     Quit,
+    Undo,
+    Redo,
+    UndoTimeline,
+    RedoTimeline,
+    UndoMappings,
+    RedoMappings,
+    UndoUi,
+    RedoUi,
     ShowPage(AppPage),
     ShowNextPage,
     ShowPreviousPage,
@@ -157,6 +165,94 @@ impl KeyboardBindings {
     pub fn resolve(self, event: &Event) -> Option<ActionEvent> {
         match event {
             Event::Quit { .. } => Some(ActionEvent::new(AppAction::Quit, ActionSource::Keyboard)),
+            Event::KeyDown {
+                keycode: Some(Keycode::Z),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD)
+                && keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) =>
+            {
+                Some(ActionEvent::new(AppAction::Redo, ActionSource::Keyboard))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::Z),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                Some(ActionEvent::new(AppAction::Undo, ActionSource::Keyboard))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::Y),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD) => {
+                Some(ActionEvent::new(AppAction::Redo, ActionSource::Keyboard))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::Z),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD)
+                && keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) =>
+            {
+                Some(ActionEvent::new(
+                    AppAction::RedoTimeline,
+                    ActionSource::Keyboard,
+                ))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::Z),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) => Some(ActionEvent::new(
+                AppAction::UndoTimeline,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::X),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD)
+                && keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) =>
+            {
+                Some(ActionEvent::new(
+                    AppAction::RedoMappings,
+                    ActionSource::Keyboard,
+                ))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::X),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) => Some(ActionEvent::new(
+                AppAction::UndoMappings,
+                ActionSource::Keyboard,
+            )),
+            Event::KeyDown {
+                keycode: Some(Keycode::C),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD)
+                && keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) =>
+            {
+                Some(ActionEvent::new(AppAction::RedoUi, ActionSource::Keyboard))
+            }
+            Event::KeyDown {
+                keycode: Some(Keycode::C),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) => {
+                Some(ActionEvent::new(AppAction::UndoUi, ActionSource::Keyboard))
+            }
             Event::KeyDown {
                 keycode: Some(Keycode::Escape),
                 ..
@@ -749,6 +845,14 @@ impl KeyboardBindings {
 pub fn action_label(action: AppAction) -> &'static str {
     match action {
         AppAction::Quit => "Quit",
+        AppAction::Undo => "Undo",
+        AppAction::Redo => "Redo",
+        AppAction::UndoTimeline => "Undo Timeline",
+        AppAction::RedoTimeline => "Redo Timeline",
+        AppAction::UndoMappings => "Undo Mappings",
+        AppAction::RedoMappings => "Redo Mappings",
+        AppAction::UndoUi => "Undo UI",
+        AppAction::RedoUi => "Redo UI",
         AppAction::ShowPage(page) => match page {
             AppPage::Timeline => "Show Timeline",
             AppPage::Mappings => "Show Mappings",
@@ -875,6 +979,14 @@ pub fn action_label(action: AppAction) -> &'static str {
 
 pub fn built_in_keyboard_binding_labels(action: AppAction) -> &'static [&'static str] {
     match action {
+        AppAction::Undo => &["Ctrl+Z"],
+        AppAction::Redo => &["Ctrl+Shift+Z", "Ctrl+Y"],
+        AppAction::UndoTimeline => &["Alt+Z"],
+        AppAction::RedoTimeline => &["Alt+Shift+Z"],
+        AppAction::UndoMappings => &["Alt+X"],
+        AppAction::RedoMappings => &["Alt+Shift+X"],
+        AppAction::UndoUi => &["Alt+C"],
+        AppAction::RedoUi => &["Alt+Shift+C"],
         AppAction::ShowPage(AppPage::Timeline) => &["F1"],
         AppAction::ShowPage(AppPage::Mappings) => &["F2"],
         AppAction::ShowPage(AppPage::MidiIo) => &["F3"],

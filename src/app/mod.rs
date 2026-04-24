@@ -30,6 +30,7 @@ use crate::routing::MidiChannelFilter;
 use crate::state::PersistedAppState;
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use crate::ui::{LayoutMode, TimelineFlow};
+use crate::undo::UndoHistory;
 use image::RgbaImage;
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
@@ -128,6 +129,7 @@ pub struct App {
     preferred_default_output_name: Option<String>,
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
+    undo_history: UndoHistory,
 }
 
 impl App {
@@ -220,6 +222,7 @@ impl App {
             preferred_default_output_name,
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
+            undo_history: UndoHistory::default(),
         }
     }
 
@@ -683,8 +686,18 @@ impl App {
         Ok(())
     }
 
-    fn apply_action(&mut self, action: AppAction) -> AppControl {
+    fn apply_action_inner(&mut self, action: AppAction) -> AppControl {
         match action {
+            AppAction::Undo
+            | AppAction::Redo
+            | AppAction::UndoTimeline
+            | AppAction::RedoTimeline
+            | AppAction::UndoMappings
+            | AppAction::RedoMappings
+            | AppAction::UndoUi
+            | AppAction::RedoUi => {
+                unreachable!("undo actions are handled before apply_action_inner")
+            }
             AppAction::Quit => AppControl::Quit,
             AppAction::ShowPage(page) => {
                 self.clear_mapping_target_lookup();
@@ -2195,6 +2208,19 @@ impl App {
     ) -> AppControl {
         self.status_state.hovered_target = None;
         self.direct_mapping_state.status_message = None;
+        if !matches!(
+            action,
+            AppAction::Undo
+                | AppAction::Redo
+                | AppAction::UndoTimeline
+                | AppAction::RedoTimeline
+                | AppAction::UndoMappings
+                | AppAction::RedoMappings
+                | AppAction::UndoUi
+                | AppAction::RedoUi
+        ) {
+            self.status_state.history_message = None;
+        }
         self.status_state.last_action = Some(LastActionStatus { action, source });
         self.apply_action(action)
     }

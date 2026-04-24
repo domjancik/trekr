@@ -13,7 +13,7 @@ pub struct RecordContext {
     pub extend_clip_on_wrap: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub name: String,
     pub transport: Transport,
@@ -166,7 +166,7 @@ pub struct QueuedStoredLoopRecall {
     pub loop_region_at_queue: LoopRegion,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Track {
     pub name: String,
     pub kind: TrackKind,
@@ -1362,7 +1362,7 @@ pub struct MidiNote {
     pub recording_clip_id: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct NoteSelection {
     pub selected_note_indices: Vec<usize>,
     pub focus_note_index: Option<usize>,

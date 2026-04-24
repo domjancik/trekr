@@ -85,6 +85,15 @@ const KEY_SOURCE_OPTIONS: &[&str] = &[
     "Alt+6",
     "Alt+7",
     "Alt+8",
+    "Ctrl+Z",
+    "Ctrl+Y",
+    "Ctrl+Shift+Z",
+    "Alt+Z",
+    "Alt+Shift+Z",
+    "Alt+X",
+    "Alt+Shift+X",
+    "Alt+C",
+    "Alt+Shift+C",
     "Tab/F1-F6",
 ];
 
@@ -170,6 +179,14 @@ const TARGET_OPTIONS: &[&str] = &[
     "Remove Mapping",
     "Previous Mapping Field",
     "Next Mapping Field",
+    "Undo",
+    "Redo",
+    "Undo Timeline",
+    "Redo Timeline",
+    "Undo Mappings",
+    "Redo Mappings",
+    "Undo UI",
+    "Redo UI",
     "Pages/Overlay",
     "Link Enable",
     "Link Start/Stop",
@@ -363,6 +380,14 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Set Song Loop"
         | "Reset Song Loop"
         | "Clear All"
+        | "Undo"
+        | "Redo"
+        | "Undo Timeline"
+        | "Redo Timeline"
+        | "Undo Mappings"
+        | "Redo Mappings"
+        | "Undo UI"
+        | "Redo UI"
         | "Pages/Overlay"
         | "Link Enable"
         | "Link Start/Stop"
@@ -764,6 +789,14 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         "Nudge Selected Notes Down" => {
             track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesDown)
         }
+        "Undo" => vec![AppAction::Undo],
+        "Redo" => vec![AppAction::Redo],
+        "Undo Timeline" => vec![AppAction::UndoTimeline],
+        "Redo Timeline" => vec![AppAction::RedoTimeline],
+        "Undo Mappings" => vec![AppAction::UndoMappings],
+        "Redo Mappings" => vec![AppAction::RedoMappings],
+        "Undo UI" => vec![AppAction::UndoUi],
+        "Redo UI" => vec![AppAction::RedoUi],
         "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
         "Link Enable" => vec![AppAction::ToggleLinkEnabled],
         "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],
@@ -911,6 +944,14 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Nudge Selected Notes Down" => {
             track_scoped_actions(absolute_track_index, AppAction::NudgeSelectedNotesDown)
         }
+        "Undo" => vec![AppAction::Undo],
+        "Redo" => vec![AppAction::Redo],
+        "Undo Timeline" => vec![AppAction::UndoTimeline],
+        "Redo Timeline" => vec![AppAction::RedoTimeline],
+        "Undo Mappings" => vec![AppAction::UndoMappings],
+        "Redo Mappings" => vec![AppAction::RedoMappings],
+        "Undo UI" => vec![AppAction::UndoUi],
+        "Redo UI" => vec![AppAction::RedoUi],
         "Pages/Overlay" => vec![AppAction::ToggleMappingsOverlay],
         "Link Enable" => vec![AppAction::ToggleLinkEnabled],
         "Link Start/Stop" => vec![AppAction::ToggleLinkStartStopSync],

@@ -175,7 +175,12 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
         StateMode::Persisted => {
             if options.state_file.exists() {
                 match state::load(&options.state_file) {
-                    Ok(state) => App::from_persisted_state(state),
+                    Ok(state) => {
+                        let mut app = App::from_persisted_state(state);
+                        let undo_path = state::undo_history_path(&options.state_file);
+                        app.set_undo_history(state::load_undo_history(&undo_path));
+                        app
+                    }
                     Err(_) => App::new_demo(),
                 }
             } else {
@@ -193,6 +198,8 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
             let result = app.run_with_options(run_options);
             if result.is_ok() && options.state_mode == StateMode::Persisted {
                 state::save(&options.state_file, &app.persisted_state())?;
+                let undo_path = state::undo_history_path(&options.state_file);
+                state::save_undo_history(&undo_path, app.undo_history())?;
             }
             result
         }
