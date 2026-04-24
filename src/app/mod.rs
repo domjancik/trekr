@@ -19,8 +19,9 @@ use crate::midi_fx::{
 };
 use crate::midi_io::{
     MidiDeviceCatalog, MidiInputEvent, MidiInputMessage, MidiInputRuntime, MidiOutputRuntime,
-    MidiPortRef,
+    MidiPortRef, MidiTransportProtocol,
 };
+use crate::network_midi::NetworkMidiRuntime;
 use crate::page_widgets::{handle_page_pointer, page_discoverability_targets, render_page};
 use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
@@ -107,6 +108,7 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
+    network_midi: NetworkMidiRuntime,
     link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
@@ -199,6 +201,7 @@ impl App {
             midi_devices: scanned_devices,
             midi_input: MidiInputRuntime::default(),
             midi_output: MidiOutputRuntime::default(),
+            network_midi: NetworkMidiRuntime::default(),
             link,
             mappings,
             overlay_state: OverlayState::default(),
@@ -1557,8 +1560,16 @@ impl App {
 
         let previous_catalog = self.midi_devices.clone();
         let scanned = MidiDeviceCatalog::scan_live();
-        let inputs = scanned.inputs;
-        let outputs = scanned.outputs;
+        let mut inputs = scanned.inputs;
+        let mut outputs = scanned.outputs;
+        for port in self.network_midi.available_ports() {
+            if !inputs.iter().any(|existing| existing == &port) {
+                inputs.push(port.clone());
+            }
+            if !outputs.iter().any(|existing| existing == &port) {
+                outputs.push(port);
+            }
+        }
         let mut next = MidiDeviceCatalog {
             selected_input: resolve_port_by_name(
                 &inputs,
@@ -1634,11 +1645,20 @@ impl App {
     }
 
     fn sync_midi_inputs(&mut self) {
-        let mut ports = Vec::new();
+        let mut system_ports = Vec::new();
+        let mut network_ports = Vec::new();
         for track in &self.project.tracks {
             if let Some(port) = track.routing.input_port.clone() {
-                if !ports.iter().any(|existing: &MidiPortRef| existing == &port) {
-                    ports.push(port);
+                let target_ports = if port.protocol == MidiTransportProtocol::RtpMidiNative {
+                    &mut network_ports
+                } else {
+                    &mut system_ports
+                };
+                if !target_ports
+                    .iter()
+                    .any(|existing: &MidiPortRef| existing == &port)
+                {
+                    target_ports.push(port);
                 }
             }
         }
@@ -1649,12 +1669,67 @@ impl App {
             || self.direct_mapping_state.mode != DirectMappingMode::Inactive
         {
             for port in &self.midi_devices.inputs {
-                if !ports.iter().any(|existing: &MidiPortRef| existing == port) {
-                    ports.push(port.clone());
+                let target_ports = if port.protocol == MidiTransportProtocol::RtpMidiNative {
+                    &mut network_ports
+                } else {
+                    &mut system_ports
+                };
+                if !target_ports
+                    .iter()
+                    .any(|existing: &MidiPortRef| existing == port)
+                {
+                    target_ports.push(port.clone());
                 }
             }
         }
-        self.midi_input.sync_ports(&ports);
+        self.midi_input.sync_ports(&system_ports);
+        self.network_midi.sync_ports(&network_ports);
+    }
+
+    pub(super) fn send_note_on_to_port(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: u8,
+    ) -> Result<(), String> {
+        match port.protocol {
+            MidiTransportProtocol::SystemMidi => self
+                .midi_output
+                .send_note_on(port, channel, pitch, velocity),
+            MidiTransportProtocol::RtpMidiNative => self
+                .network_midi
+                .send_note_on(port, channel, pitch, velocity),
+        }
+    }
+
+    pub(super) fn send_note_off_to_port(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+    ) -> Result<(), String> {
+        match port.protocol {
+            MidiTransportProtocol::SystemMidi => {
+                self.midi_output.send_note_off(port, channel, pitch)
+            }
+            MidiTransportProtocol::RtpMidiNative => {
+                self.network_midi.send_note_off(port, channel, pitch)
+            }
+        }
+    }
+
+    pub(super) fn send_all_notes_off_to_port(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+    ) -> Result<(), String> {
+        match port.protocol {
+            MidiTransportProtocol::SystemMidi => self.midi_output.send_all_notes_off(port, channel),
+            MidiTransportProtocol::RtpMidiNative => {
+                self.network_midi.send_all_notes_off(port, channel)
+            }
+        }
     }
 
     fn ensure_fx_live_state_len(&mut self) {
@@ -1885,17 +1960,11 @@ impl App {
             for processed in processed_events {
                 match processed {
                     LiveMidiFxEvent::NoteOn { pitch, velocity } => {
-                        let _ = self.midi_output.send_note_on(
-                            port,
-                            channel.clamp(1, 16),
-                            pitch,
-                            velocity,
-                        );
+                        let _ =
+                            self.send_note_on_to_port(port, channel.clamp(1, 16), pitch, velocity);
                     }
                     LiveMidiFxEvent::NoteOff { pitch } => {
-                        let _ = self
-                            .midi_output
-                            .send_note_off(port, channel.clamp(1, 16), pitch);
+                        let _ = self.send_note_off_to_port(port, channel.clamp(1, 16), pitch);
                     }
                 }
             }
@@ -1986,7 +2055,7 @@ impl App {
                 for (_, event) in output_events {
                     match event {
                         LiveMidiFxEvent::NoteOn { pitch, velocity } => {
-                            let _ = self.midi_output.send_note_on(
+                            let _ = self.send_note_on_to_port(
                                 port,
                                 channel.clamp(1, 16),
                                 pitch,
@@ -1994,9 +2063,7 @@ impl App {
                             );
                         }
                         LiveMidiFxEvent::NoteOff { pitch } => {
-                            let _ =
-                                self.midi_output
-                                    .send_note_off(port, channel.clamp(1, 16), pitch);
+                            let _ = self.send_note_off_to_port(port, channel.clamp(1, 16), pitch);
                         }
                     }
                 }
@@ -2273,6 +2340,7 @@ mod tests {
         app.playhead_ticks = 0;
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Any MIDI".to_string(),
             source_label: "Note C2".to_string(),
             target_label: "Select Notes At Playhead Add".to_string(),
@@ -2503,6 +2571,7 @@ mod tests {
         app.project.transport.recording = false;
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Key,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: default_mapping_source_device(),
             source_label: "Space".to_string(),
             target_label: "Record".to_string(),

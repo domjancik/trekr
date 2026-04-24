@@ -54,6 +54,7 @@ Latest renderer-owned captures from the demo state:
 - default vertical-time layout with time moving downward
 - a page shell for `Timeline`, `Mappings`, `MIDI I/O`, and `Routing`
 - real MIDI device enumeration via `midir`
+- native RTP-MIDI peer discovery via mDNS `_apple-midi._udp` with discovered peers surfaced as selectable MIDI ports
 - basic routed MIDI note playback on track output ports/channels
 - per-track MIDI input/output FX slots with compact multi-parameter editing on the Routing page
 - direct-editable per-track MIDI FX bands on the timeline, with input FX above the track pair and output FX below it
@@ -80,6 +81,7 @@ Latest renderer-owned captures from the demo state:
 - a direct UI mapping mode for supported timeline and routing controls, driven from discoverability targets
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
+- network-origin MIDI mappings reuse the same `AppAction` path as local MIDI once an RTP peer is discovered/connected
 
 Launch state:
 
@@ -242,6 +244,7 @@ Pointer/touch notes:
 - the mappings page exposes a `Tap Direct Map` chip; when direct mapping is active, tapping a supported timeline or routing control selects or retargets the mapping target instead of triggering it
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
 - MIDI I/O now auto-refreshes device availability while the app is running
+- discovered RTP-MIDI peers are tagged with `RTP` in `MIDI I/O` and can be selected for track input/output routing like local ports
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
 - routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it

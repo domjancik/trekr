@@ -22,14 +22,7 @@ mod tests {
 
     #[test]
     fn port_name_and_lookup_handle_missing_values() {
-        let ports = vec![
-            MidiPortRef {
-                name: "Input A".to_string(),
-            },
-            MidiPortRef {
-                name: "Input B".to_string(),
-            },
-        ];
+        let ports = vec![MidiPortRef::new("Input A"), MidiPortRef::new("Input B")];
         assert_eq!(port_name(None), "none");
         assert_eq!(port_name(ports.first()), "Input A");
         assert_eq!(resolve_port_by_name(&ports, Some("Input B")), Some(1));

@@ -410,6 +410,7 @@ mod tests {
         app.mappings = vec![
             MappingEntry {
                 source_kind: MappingSourceKind::Midi,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: "Any MIDI".to_string(),
                 source_label: "CC20".to_string(),
                 target_label: "Track Arm".to_string(),
@@ -418,6 +419,7 @@ mod tests {
             },
             MappingEntry {
                 source_kind: MappingSourceKind::Midi,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: "Any MIDI".to_string(),
                 source_label: "CC21".to_string(),
                 target_label: "Track Arm".to_string(),
@@ -426,6 +428,7 @@ mod tests {
             },
             MappingEntry {
                 source_kind: MappingSourceKind::Osc,
+                source_protocol: crate::mapping::default_mapping_source_protocol(),
                 source_device_label: default_mapping_source_device(),
                 source_label: "/track/active/arm".to_string(),
                 target_label: "Track Arm".to_string(),

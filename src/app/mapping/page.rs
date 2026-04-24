@@ -1193,6 +1193,7 @@ mod tests {
         app.project.tracks[1].state.armed = false;
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Port A".to_string(),
             source_label: "CC20".to_string(),
             target_label: "Track Arm".to_string(),
@@ -1219,6 +1220,7 @@ mod tests {
         app.project.tracks[1].state.armed = false;
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Port A".to_string(),
             source_label: "CC20".to_string(),
             target_label: "Track Arm".to_string(),
@@ -1245,6 +1247,7 @@ mod tests {
         app.project.tracks[2].state.armed = false;
         app.mappings = vec![MappingEntry {
             source_kind: MappingSourceKind::Midi,
+            source_protocol: crate::mapping::default_mapping_source_protocol(),
             source_device_label: "Any MIDI".to_string(),
             source_label: "CC20".to_string(),
             target_label: "Track Arm".to_string(),
