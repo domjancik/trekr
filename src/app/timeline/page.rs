@@ -245,7 +245,11 @@ impl App {
                 ),
                 crate::ui::TrackIndicatorKind::Muted => (
                     track.state.muted,
-                    theme.app_chrome.footer_chip_inactive,
+                    if theme.preset == ThemePreset::HighContrastLight {
+                        Color::RGB(96, 96, 96)
+                    } else {
+                        theme.app_chrome.footer_chip_inactive
+                    },
                     theme.app_chrome.surface_border,
                     if indicator.rect.width() >= 24 {
                         "MUT"
