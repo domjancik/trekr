@@ -170,12 +170,7 @@ impl App {
                 crate::ui::draw_text_fitted(
                     canvas,
                     &(slot_index + 1).to_string(),
-                    Rect::new(
-                        slot_rect.x + 1,
-                        slot_rect.y + 1,
-                        slot_rect.width().saturating_sub(2),
-                        slot_rect.height().saturating_sub(2),
-                    ),
+                    crate::app::support::ui_helpers::compact_label_rect(*slot_rect),
                     1,
                     if active || queued || filled {
                         contrasting_text_color(slot_fill, theme)
@@ -253,12 +248,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 "THRU",
-                Rect::new(
-                    passthrough_button.x + 2,
-                    passthrough_button.y + 1,
-                    passthrough_button.width().saturating_sub(4),
-                    passthrough_button.height().saturating_sub(2),
-                ),
+                crate::app::support::ui_helpers::compact_label_rect(passthrough_button),
                 1,
                 contrasting_text_color(passthrough_fill, theme),
             )?;
@@ -329,12 +319,7 @@ impl App {
         crate::ui::draw_text_fitted(
             canvas,
             if detail { "LOOP" } else { "SONG" },
-            Rect::new(
-                role_badge.x + 2,
-                role_badge.y + 1,
-                role_badge.width().saturating_sub(4),
-                role_badge.height().saturating_sub(2),
-            ),
+            crate::app::support::ui_helpers::compact_label_rect(role_badge),
             1,
             contrasting_text_color(role_badge_fill, theme),
         )?;

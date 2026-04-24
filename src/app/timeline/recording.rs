@@ -314,21 +314,16 @@ impl App {
             Color::RGB(232, 228, 208)
         });
         canvas.draw_rect(view_rect)?;
-        crate::ui::draw_text_fitted(
-            canvas,
-            match track.recording_view {
-                RecordingView::Overlay => "OVR",
-                RecordingView::Stacked => "STK",
-            },
-            Rect::new(
-                view_rect.x + 3,
-                view_rect.y + 1,
-                view_rect.width().saturating_sub(6),
-                view_rect.height().saturating_sub(2),
-            ),
-            1,
-            contrasting_text_color(view_fill, theme),
-        )?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                match track.recording_view {
+                    RecordingView::Overlay => "OVR",
+                    RecordingView::Stacked => "STK",
+                },
+                crate::app::support::ui_helpers::compact_label_rect(view_rect),
+                1,
+                contrasting_text_color(view_fill, theme),
+            )?;
 
         if let (Some(selected_clip), Some((mute_rect, delete_rect))) =
             (track.selected_recording_clip(), clip_controls)
@@ -361,12 +356,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 if selected_clip.muted { "ON" } else { "M" },
-                Rect::new(
-                    mute_rect.x + 2,
-                    mute_rect.y + 1,
-                    mute_rect.width().saturating_sub(4),
-                    mute_rect.height().saturating_sub(2),
-                ),
+                crate::app::support::ui_helpers::compact_label_rect(mute_rect),
                 1,
                 contrasting_text_color(mute_fill, theme),
             )?;
@@ -389,12 +379,7 @@ impl App {
             crate::ui::draw_text_fitted(
                 canvas,
                 "X",
-                Rect::new(
-                    delete_rect.x + 2,
-                    delete_rect.y + 1,
-                    delete_rect.width().saturating_sub(4),
-                    delete_rect.height().saturating_sub(2),
-                ),
+                crate::app::support::ui_helpers::compact_label_rect(delete_rect),
                 1,
                 contrasting_text_color(delete_fill, theme),
             )?;
@@ -890,17 +875,17 @@ impl App {
     }
 
     pub(crate) fn recording_view_chip_rect(&self, label_rect: Rect) -> Rect {
-        let top_y = label_rect.y + label_rect.height() as i32 - 10;
+        let top_y = label_rect.y + label_rect.height() as i32 - 11;
         let right = label_rect.x + label_rect.width() as i32 - 4;
-        Rect::new(right - 26, top_y, 26, 8)
+        Rect::new(right - 26, top_y, 26, 9)
     }
 
     pub(crate) fn track_passthrough_button_rect(&self, label_rect: Rect) -> Rect {
         Rect::new(
             label_rect.x + 4,
-            label_rect.y + 3,
+            label_rect.y + 2,
             label_rect.width().saturating_sub(8).min(30),
-            8,
+            9,
         )
     }
 
@@ -921,7 +906,7 @@ impl App {
             .stored_loop_visible_slot_count(label_rect)
             .min(STORED_LOOP_SLOT_COUNT);
         let slot_w = 8_u32;
-        let slot_h = 7_u32;
+        let slot_h = 9_u32;
         let gap = 2_i32;
         let mut rects = Vec::with_capacity(visible_slots);
         for slot_index in 0..visible_slots {
@@ -929,7 +914,7 @@ impl App {
                 slot_index,
                 Rect::new(
                     label_rect.x + 4 + slot_index as i32 * (slot_w as i32 + gap),
-                    label_rect.y + 2,
+                    label_rect.y + 1,
                     slot_w,
                     slot_h,
                 ),
@@ -939,10 +924,10 @@ impl App {
     }
 
     pub(crate) fn recording_view_scroll_control_rects(&self, label_rect: Rect) -> (Rect, Rect) {
-        let top_y = label_rect.y + label_rect.height() as i32 - 10;
+        let top_y = label_rect.y + label_rect.height() as i32 - 11;
         let view_rect = self.recording_view_chip_rect(label_rect);
-        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 8);
-        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 8);
+        let right_rect = Rect::new(view_rect.x - 16, top_y, 12, 9);
+        let left_rect = Rect::new(right_rect.x - 14, top_y, 12, 9);
         (left_rect, right_rect)
     }
 
