@@ -1,4 +1,5 @@
 use std::env;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -24,14 +25,20 @@ fn main() {
     }
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("target os available");
+    let link_include = repo_path("vendor/ableton-link/include");
+    let asio_include = repo_path("vendor/ableton-link/modules/asio-standalone/asio/include");
     let mut build = cc::Build::new();
     build.cpp(true);
     build.std("c++17");
     build.file("native/link_bridge.cpp");
-    build.include("vendor/ableton-link/include");
-    build.include("vendor/ableton-link/modules/asio-standalone/asio/include");
 
     if target_os == "windows" {
+        build.include(&link_include);
+        build.include(&asio_include);
+        build.flag_if_supported("/experimental:external");
+        build.flag_if_supported(&format!("/external:I{}", link_include.display()));
+        build.flag_if_supported(&format!("/external:I{}", asio_include.display()));
+        build.flag_if_supported("/external:W0");
         build.define("LINK_PLATFORM_WINDOWS", "1");
         build.define("_SCL_SECURE_NO_WARNINGS", None);
         build.define("NOMINMAX", "1");
@@ -40,9 +47,13 @@ fn main() {
         println!("cargo:rustc-link-lib=iphlpapi");
         println!("cargo:rustc-link-lib=ws2_32");
     } else if target_os == "macos" {
+        build.flag_if_supported(&format!("-isystem{}", link_include.display()));
+        build.flag_if_supported(&format!("-isystem{}", asio_include.display()));
         build.define("LINK_PLATFORM_UNIX", "1");
         build.define("LINK_PLATFORM_MACOSX", "1");
     } else if target_os == "linux" {
+        build.flag_if_supported(&format!("-isystem{}", link_include.display()));
+        build.flag_if_supported(&format!("-isystem{}", asio_include.display()));
         build.define("LINK_PLATFORM_UNIX", "1");
         build.define("LINK_PLATFORM_LINUX", "1");
         println!("cargo:rustc-link-lib=atomic");
@@ -66,6 +77,12 @@ fn git_short_hash() -> Option<String> {
     let hash = String::from_utf8(output.stdout).ok()?;
     let hash = hash.trim();
     (!hash.is_empty()).then_some(hash.to_string())
+}
+
+fn repo_path(relative: &str) -> PathBuf {
+    env::current_dir()
+        .expect("repo root available")
+        .join(relative)
 }
 
 fn git_commit_date_iso8601() -> Option<String> {
