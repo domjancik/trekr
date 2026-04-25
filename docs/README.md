@@ -19,6 +19,7 @@ Recent/additional specs:
 Recent/additional planning docs:
 
 - `docs/planning/distributed-architecture-research.md` — recommended engine-authoritative network architecture for Pi-hosted sessions, remote displays/controllers, reconnect handling, and multi-user leases.
+- `docs/planning/federated-session-evolution-plan.md` — longer-term path from engine-authoritative sessions toward Link-synced federated collaboration with participant-owned MIDI endpoints and future replicated document ownership.
 
 ## Contribution rules
 
