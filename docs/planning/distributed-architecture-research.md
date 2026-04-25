@@ -137,6 +137,28 @@ Only promote UI-adjacent state into the shared session when collaboration truly 
 - a shared presentation mode intentionally mirrored to multiple screens
 - an operator-controlled “follow active track” mode for a specific linked display group
 
+## Headless Engine And Thin-Client Display Mode
+
+The architecture should explicitly support a deployment where:
+
+- the engine runs on a device with no display
+- another device renders the UI as a thin client
+- inputs may come from either side
+
+Typical example:
+
+- a keyboard or MIDI controller is connected to the engine host
+- a separate tablet or monitor device displays the UI
+- the displayed UI reflects actions originating from the engine host as well as actions originating from the thin client itself
+
+Recommended rule:
+
+- the thin client owns its own per-device UI state
+- the engine owns shared session state and applies canonical commands
+- engine-local inputs that depend on UI context must resolve against an explicitly assigned UI state, not against some implicit nonexistent “main screen”
+
+This means the system needs a way to associate engine-local inputs with a specific client UI context when those inputs are context-sensitive.
+
 ## Required Architectural Changes
 
 ### 1. Split app state from view state

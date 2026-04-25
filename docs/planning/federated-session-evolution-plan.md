@@ -273,6 +273,89 @@ That means:
 
 This is important because federated sessions increase display diversity rather than reducing it.
 
+## Headless Engine Plus Thin-Client Displays
+
+The future architecture should also support a mode where:
+
+- one device runs the engine headlessly
+- one or more other devices act as thin display/control clients
+- input hardware may still be attached to the headless engine host
+
+In this mode:
+
+- shared session state is still owned by the engine/coordinator
+- each display client owns its own UI state
+- engine-local keyboard or MIDI inputs still enter through the same canonical action path as remote inputs
+
+This avoids coupling “who renders the UI” to “who captures the input hardware.”
+
+## Who Owns UI State
+
+Recommended rule:
+
+- the device that renders a UI owns that UI state's local navigation, overlays, focus, and presentation preferences
+
+So:
+
+- a thin client display owns its own page, overlay, focus, and layout state
+- another thin client display owns a different UI state object
+- a headless engine host owns no visual UI state by default unless it also runs a local UI shell
+
+Shared session logic should never assume that the engine host automatically owns the “real” UI state.
+
+## Resolving UI-Dependent Shortcuts
+
+Some actions are global and self-contained, such as:
+
+- play/stop
+- record
+- transport toggles
+
+Other shortcuts are context-sensitive and depend on UI state, such as:
+
+- page-relative selection
+- focused-widget adjustment
+- delete/activate within the currently focused page element
+- shortcuts whose meaning changes with overlays or local editing mode
+
+In distributed and thin-client scenarios, these should resolve using an explicit rule:
+
+### Rule 1: context-free shortcuts can execute anywhere
+
+If an action does not depend on UI focus or local page state, the engine can apply it directly regardless of where the input originated.
+
+### Rule 2: UI-dependent shortcuts must target a specific UI state owner
+
+If a shortcut depends on UI context, the command should carry or resolve a target client UI context, such as:
+
+- `engine-local-keyboard` targeting thin client A's UI state
+- remote keyboard on client B targeting client B's own UI state
+
+Suggested command-envelope addition:
+
+- `target_ui_client_id`
+
+That allows the engine to interpret context-sensitive shortcuts against the correct per-client UI state.
+
+### Rule 3: headless hosts need explicit binding for contextual shortcuts
+
+If a keyboard is attached to a headless engine host, and that keyboard triggers context-sensitive shortcuts, the system should explicitly bind that keyboard to:
+
+- one specific thin client's UI state, or
+- a dedicated non-visual operator UI state, if such a mode exists later
+
+Without that binding, context-sensitive shortcuts are ambiguous and should not be interpreted implicitly.
+
+### Rule 4: shared session actions should remain canonical after resolution
+
+Even when a shortcut depends on a target UI state, it should resolve into a canonical shared action after the context lookup step.
+
+That means:
+
+- raw shortcut -> resolve against target UI state -> canonical action or command -> apply to shared session
+
+This preserves the action model while still allowing per-client UI ownership.
+
 ## Security And Trust Model
 
 Bring-your-own-rig collaboration requires explicit trust boundaries.
