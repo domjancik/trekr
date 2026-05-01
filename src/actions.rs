@@ -2,12 +2,13 @@ use crate::pages::AppPage;
 use crate::ui::TimelineFlow;
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
+use serde::{Deserialize, Serialize};
 
 /// The canonical application command layer.
 ///
 /// All control surfaces should resolve into these actions before mutating app
 /// state so inputs remain remappable and transport behavior stays consistent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppAction {
     Quit,
     Undo,

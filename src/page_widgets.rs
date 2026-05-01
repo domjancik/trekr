@@ -1,5 +1,6 @@
 use crate::actions::ActionSource;
 use crate::app::{App, AppControl, DiscoverabilityTarget};
+use crate::distributed::RemoteUiIntent;
 use crate::pages::AppPage;
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
@@ -24,6 +25,14 @@ pub(crate) trait PageWidget {
         app: &App,
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)>;
+    fn resolve_remote_pointer_intent(
+        &self,
+        app: &App,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+    ) -> Option<RemoteUiIntent>;
 }
 
 struct TimelinePageWidget;
@@ -59,6 +68,17 @@ impl PageWidget for TimelinePageWidget {
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         app.timeline_discoverability_targets(content_bounds)
     }
+
+    fn resolve_remote_pointer_intent(
+        &self,
+        app: &App,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        app.resolve_timeline_pointer_intent(content_bounds, x, y, source)
+    }
 }
 
 impl PageWidget for MappingsPageWidget {
@@ -88,6 +108,17 @@ impl PageWidget for MappingsPageWidget {
         _content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         Vec::new()
+    }
+
+    fn resolve_remote_pointer_intent(
+        &self,
+        app: &App,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        app.resolve_mappings_pointer_intent(content_bounds, x, y, source)
     }
 }
 
@@ -119,6 +150,17 @@ impl PageWidget for MidiIoPageWidget {
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         Vec::new()
     }
+
+    fn resolve_remote_pointer_intent(
+        &self,
+        app: &App,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        app.resolve_midi_io_pointer_intent(content_bounds, x, y, source)
+    }
 }
 
 impl PageWidget for RoutingPageWidget {
@@ -148,6 +190,17 @@ impl PageWidget for RoutingPageWidget {
         content_bounds: Rect,
     ) -> Vec<(Rect, DiscoverabilityTarget)> {
         app.routing_discoverability_targets(content_bounds)
+    }
+
+    fn resolve_remote_pointer_intent(
+        &self,
+        app: &App,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        source: ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        app.resolve_routing_pointer_intent(content_bounds, x, y, source)
     }
 }
 
@@ -191,5 +244,29 @@ pub(crate) fn page_discoverability_targets(
         AppPage::Mappings => MappingsPageWidget.discoverability_targets(app, content_bounds),
         AppPage::MidiIo => MidiIoPageWidget.discoverability_targets(app, content_bounds),
         AppPage::Routing => RoutingPageWidget.discoverability_targets(app, content_bounds),
+    }
+}
+
+pub(crate) fn resolve_page_pointer_intent(
+    page: AppPage,
+    app: &App,
+    content_bounds: Rect,
+    x: i32,
+    y: i32,
+    source: ActionSource,
+) -> Option<RemoteUiIntent> {
+    match page {
+        AppPage::Timeline => {
+            TimelinePageWidget.resolve_remote_pointer_intent(app, content_bounds, x, y, source)
+        }
+        AppPage::Mappings => {
+            MappingsPageWidget.resolve_remote_pointer_intent(app, content_bounds, x, y, source)
+        }
+        AppPage::MidiIo => {
+            MidiIoPageWidget.resolve_remote_pointer_intent(app, content_bounds, x, y, source)
+        }
+        AppPage::Routing => {
+            RoutingPageWidget.resolve_remote_pointer_intent(app, content_bounds, x, y, source)
+        }
     }
 }

@@ -1,6 +1,204 @@
 use super::*;
+use crate::distributed::RemoteUiIntent;
 
 impl App {
+    pub(crate) fn resolve_timeline_pointer_intent(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        let (header_bounds, body_bounds) =
+            crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
+        let (transport_bounds, timeline_bounds) =
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+        if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ToggleFocusedTrackView,
+            });
+        }
+        if rect_contains(self.global_loop_reset_button_rect(header_bounds), x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ResetGlobalLoop,
+            });
+        }
+
+        for (rect, action) in self.transport_chip_actions(transport_bounds) {
+            if rect_contains(rect, x, y) {
+                return Some(RemoteUiIntent::Action { action });
+            }
+        }
+
+        for layout in self.visible_timeline_track_layouts(timeline_bounds) {
+            let index = layout.track_index;
+            let full_label_rect = layout.full_label_rect;
+            let detail_label_rect = layout.detail_label_rect;
+            let full_content_rect = layout.full_content_rect;
+            let detail_content_rect = layout.detail_content_rect;
+            for indicator in crate::ui::track_indicators(layout.status_rect) {
+                if !rect_contains(indicator.rect, x, y) {
+                    continue;
+                }
+                let target = track_indicator_target(indicator.kind, Some(indicator.rect))?;
+                return Some(RemoteUiIntent::TrackAction {
+                    track_index: index,
+                    action: target.action,
+                });
+            }
+
+            if rect_contains(self.track_passthrough_button_rect(full_label_rect), x, y) {
+                return Some(RemoteUiIntent::TrackAction {
+                    track_index: index,
+                    action: AppAction::ToggleCurrentTrackPassthrough,
+                });
+            }
+
+            if let Some(action) = self.recording_clip_scroll_control_hit(
+                full_label_rect,
+                &self.project.tracks[index],
+                x,
+                y,
+            ) {
+                return Some(RemoteUiIntent::TrackAction {
+                    track_index: index,
+                    action,
+                });
+            }
+
+            if rect_contains(self.recording_view_chip_rect(full_label_rect), x, y) {
+                return Some(RemoteUiIntent::TrackAction {
+                    track_index: index,
+                    action: AppAction::ToggleCurrentTrackRecordingView,
+                });
+            }
+
+            if let Some(hit) = self.timeline_fx_hit(
+                TimelineContext::OutputFx,
+                layout.output_fx_rect,
+                &self.project.tracks[index],
+                x,
+                y,
+            ) {
+                return Some(self.resolve_timeline_fx_click_intent(index, hit, x, y));
+            }
+
+            if self.project.tracks[index]
+                .selected_recording_clip()
+                .is_some()
+            {
+                let (mute_rect, delete_rect) = self.recording_clip_control_rects(full_label_rect);
+                if rect_contains(mute_rect, x, y) {
+                    return Some(RemoteUiIntent::TrackAction {
+                        track_index: index,
+                        action: AppAction::ToggleSelectedRecordingClipMute,
+                    });
+                }
+                if rect_contains(delete_rect, x, y) {
+                    return Some(RemoteUiIntent::TrackAction {
+                        track_index: index,
+                        action: AppAction::DeleteSelectedRecordingClip,
+                    });
+                }
+            }
+
+            if let Some(hit) = self.timeline_fx_hit(
+                TimelineContext::InputFx,
+                layout.input_fx_rect,
+                &self.project.tracks[index],
+                x,
+                y,
+            ) {
+                return Some(self.resolve_timeline_fx_click_intent(index, hit, x, y));
+            }
+
+            for (slot_index, slot_rect) in self.stored_loop_slot_rects(detail_label_rect) {
+                if !rect_contains(slot_rect, x, y) {
+                    continue;
+                }
+                if let Some(action) = stored_loop_slot_recall_action(slot_index) {
+                    return Some(RemoteUiIntent::TrackAction {
+                        track_index: index,
+                        action,
+                    });
+                }
+            }
+
+            for content_rect in [full_content_rect, detail_content_rect] {
+                if let Some(clip_id) =
+                    self.recording_lane_hit_clip(content_rect, &self.project.tracks[index], x, y)
+                {
+                    return Some(RemoteUiIntent::TrackAction {
+                        track_index: index,
+                        action: AppAction::SelectRecordingClip(clip_id),
+                    });
+                }
+            }
+        }
+
+        None
+    }
+
+    fn resolve_timeline_fx_click_intent(
+        &self,
+        track_index: usize,
+        hit: TimelineFxRowRef,
+        x: i32,
+        y: i32,
+    ) -> RemoteUiIntent {
+        let layout = hit.layout;
+        let (field, action) = if hit.slot_index.is_none() && rect_contains(layout.row, x, y) {
+            (None, Some(AppAction::AddSelectedTimelineFx))
+        } else if rect_contains(layout.enabled, x, y) {
+            (
+                Some(TimelineFxField::Enabled),
+                Some(AppAction::ToggleSelectedTimelineFx),
+            )
+        } else if rect_contains(layout.kind, x, y) {
+            (
+                Some(TimelineFxField::Kind),
+                Some(AppAction::AdjustPageItemForward),
+            )
+        } else if rect_contains(layout.param_primary, x, y) {
+            (
+                Some(TimelineFxField::ParamPrimary),
+                Some(AppAction::AdjustPageItemForward),
+            )
+        } else if rect_contains(layout.param_secondary, x, y) {
+            (
+                Some(TimelineFxField::ParamSecondary),
+                Some(AppAction::AdjustPageItemForward),
+            )
+        } else if rect_contains(layout.overflow, x, y) {
+            (
+                Some(TimelineFxField::Scroll),
+                Some(AppAction::AdjustPageItemForward),
+            )
+        } else if rect_contains(layout.move_up, x, y) {
+            (
+                Some(TimelineFxField::Move),
+                Some(AppAction::AdjustPageItemBackward),
+            )
+        } else if rect_contains(layout.move_down, x, y) {
+            (
+                Some(TimelineFxField::Move),
+                Some(AppAction::AdjustPageItemForward),
+            )
+        } else if rect_contains(layout.delete, x, y) {
+            (None, Some(AppAction::DeleteSelectedTimelineFx))
+        } else {
+            (None, None)
+        };
+
+        RemoteUiIntent::TimelineFxClick {
+            track_index,
+            context: hit.context,
+            row_index: hit.row_index,
+            field,
+            action,
+        }
+    }
+
     pub(crate) fn handle_timeline_pointer(
         &mut self,
         content_bounds: Rect,

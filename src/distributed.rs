@@ -3,8 +3,10 @@ use crate::app::{App, AppControl, ClientUiState};
 use crate::link::LinkSnapshot;
 use crate::mapping::MappingEntry;
 use crate::midi_io::MidiDeviceCatalog;
+use crate::pages::{MappingField, MidiIoListFocus, RoutingField};
 use crate::project::Project;
 use crate::theme::{ThemePreset, theme};
+use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use sdl3::event::Event;
 use sdl3::keyboard::{Keycode, Mod};
 use sdl3::rect::Rect;
@@ -423,12 +425,60 @@ pub enum RemoteInputEvent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RemoteUiIntent {
+    Action {
+        action: AppAction,
+    },
+    TrackAction {
+        track_index: usize,
+        action: AppAction,
+    },
+    SelectMappingRow {
+        index: usize,
+    },
+    ActivateMappingField {
+        index: usize,
+        field: MappingField,
+        activate: bool,
+    },
+    CommitMappingTargetLookupLabel {
+        label: String,
+    },
+    CancelMappingTargetLookup,
+    SetMidiIoFocus {
+        focus: MidiIoListFocus,
+    },
+    SelectMidiInput {
+        index: usize,
+    },
+    SelectMidiOutput {
+        index: usize,
+    },
+    RoutingAdjustField {
+        field: RoutingField,
+        delta: i32,
+    },
+    RoutingActivateField {
+        field: RoutingField,
+    },
+    TimelineFxClick {
+        track_index: usize,
+        context: TimelineContext,
+        row_index: usize,
+        field: Option<TimelineFxField>,
+        action: Option<AppAction>,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ThinClientMessage {
     Hello { client_name: String },
     Command { command: SessionCommand },
     Input { input: RemoteInputEvent },
+    UiIntent { intent: RemoteUiIntent },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -464,6 +514,10 @@ enum ReceivedClientMessage {
     Input {
         client_id: usize,
         input: RemoteInputEvent,
+    },
+    UiIntent {
+        client_id: usize,
+        intent: RemoteUiIntent,
     },
 }
 
@@ -566,6 +620,11 @@ impl SessionServer {
                         self.revision = self.revision.saturating_add(1);
                     }
                 }
+                ReceivedClientMessage::UiIntent { client_id, intent } => {
+                    if self.apply_remote_ui_intent(app, client_id, intent) {
+                        self.revision = self.revision.saturating_add(1);
+                    }
+                }
             }
         }
 
@@ -650,6 +709,35 @@ impl SessionServer {
         }
     }
 
+    fn apply_remote_ui_intent(
+        &mut self,
+        app: &mut App,
+        client_id: usize,
+        intent: RemoteUiIntent,
+    ) -> bool {
+        let context = self
+            .contexts
+            .entry(client_id)
+            .or_insert_with(|| ClientContext {
+                client_name: format!("client-{client_id}"),
+                ui_state: ClientUiState::default(),
+            });
+        let host_ui_state = app.capture_client_ui_state();
+        let before_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
+        app.apply_client_ui_state(&context.ui_state);
+        let control = app.apply_remote_ui_intent(intent);
+        context.ui_state = app.capture_client_ui_state();
+        app.apply_client_ui_state(&host_ui_state);
+
+        match control.unwrap_or(AppControl::Continue) {
+            AppControl::Quit => false,
+            AppControl::Continue => {
+                let after_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
+                before_snapshot != after_snapshot
+            }
+        }
+    }
+
     fn broadcast_message(&self, message: HostMessage) {
         let Ok(mut guard) = self.clients.lock() else {
             return;
@@ -709,6 +797,14 @@ fn spawn_client_reader(
                 ThinClientMessage::Input { input } => {
                     if command_tx
                         .send(ReceivedClientMessage::Input { client_id, input })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                ThinClientMessage::UiIntent { intent } => {
+                    if command_tx
+                        .send(ReceivedClientMessage::UiIntent { client_id, intent })
                         .is_err()
                     {
                         break;
@@ -910,10 +1006,42 @@ pub fn run_thin_client_sdl(
                 _ => {
                     let converted = event.get_converted_coords(&canvas).unwrap_or(event.clone());
                     let viewport_size = mirror_app.client_viewport_size();
-                    if let Some(input) = remote_input_for_event(&converted, viewport_size) {
-                        send_thin_client_input(&mut writer, input)?;
-                        apply_remote_input_locally(&mut mirror_app, input);
-                        status_line = format!("Sent {}", remote_input_label(input));
+                    match &converted {
+                        Event::MouseMotion { x, y, .. } => {
+                            let _ = mirror_app.handle_remote_pointer_hover(*x as i32, *y as i32);
+                        }
+                        Event::FingerMotion { x, y, .. } => {
+                            let _ = mirror_app.handle_remote_pointer_hover(*x as i32, *y as i32);
+                        }
+                        Event::MouseButtonDown { x, y, .. } => {
+                            if let Some(intent) = mirror_app.resolve_remote_pointer_intent(
+                                *x as i32,
+                                *y as i32,
+                                ActionSource::Pointer,
+                            ) {
+                                send_thin_client_ui_intent(&mut writer, intent.clone())?;
+                                let _ = mirror_app.apply_remote_ui_intent(intent);
+                                status_line = "Sent remote pointer intent".to_string();
+                            }
+                        }
+                        Event::FingerDown { x, y, .. } => {
+                            if let Some(intent) = mirror_app.resolve_remote_pointer_intent(
+                                *x as i32,
+                                *y as i32,
+                                ActionSource::Touch,
+                            ) {
+                                send_thin_client_ui_intent(&mut writer, intent.clone())?;
+                                let _ = mirror_app.apply_remote_ui_intent(intent);
+                                status_line = "Sent remote touch intent".to_string();
+                            }
+                        }
+                        _ => {
+                            if let Some(input) = remote_input_for_event(&converted, viewport_size) {
+                                send_thin_client_input(&mut writer, input)?;
+                                apply_remote_input_locally(&mut mirror_app, input);
+                                status_line = format!("Sent {}", remote_input_label(input));
+                            }
+                        }
                     }
                 }
             }
@@ -989,6 +1117,19 @@ fn send_thin_client_input(
         writer,
         "{}",
         serde_json::to_string(&ThinClientMessage::Input { input })?
+    )?;
+    writer.flush()?;
+    Ok(())
+}
+
+fn send_thin_client_ui_intent(
+    writer: &mut TcpStream,
+    intent: RemoteUiIntent,
+) -> Result<(), Box<dyn std::error::Error>> {
+    writeln!(
+        writer,
+        "{}",
+        serde_json::to_string(&ThinClientMessage::UiIntent { intent })?
     )?;
     writer.flush()?;
     Ok(())

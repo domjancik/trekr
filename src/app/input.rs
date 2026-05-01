@@ -1,5 +1,6 @@
 use super::shell::layout::page_tabs_layout;
 use super::*;
+use crate::distributed::RemoteUiIntent;
 
 impl App {
     pub(crate) fn handle_remote_pointer_hover(&mut self, x: i32, y: i32) -> AppControl {
@@ -41,6 +42,154 @@ impl App {
             raw: 0,
         };
         self.handle_keyboard_event(&event)
+    }
+
+    pub(crate) fn resolve_remote_pointer_intent(
+        &self,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (tabs_bounds, content_bounds, _) = self.page_frame_layout(inset).ok()?;
+
+        if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
+            if self.page_state.current_page == AppPage::Mappings {
+                let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+                if rect_contains(direct_badge, x, y) {
+                    return Some(RemoteUiIntent::Action {
+                        action: AppAction::ToggleDirectMappingMode,
+                    });
+                }
+            }
+
+            if let Some(page) = self.hit_page_tab(tabs_bounds, x, y) {
+                return Some(RemoteUiIntent::Action {
+                    action: AppAction::ShowPage(page),
+                });
+            }
+
+            if self
+                .direct_mapping_target_at(content_bounds, x, y)
+                .is_some()
+            {
+                return None;
+            }
+            return None;
+        }
+
+        if let Some(page) = self.hit_page_tab(tabs_bounds, x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ShowPage(page),
+            });
+        }
+
+        crate::page_widgets::resolve_page_pointer_intent(
+            self.page_state.current_page,
+            self,
+            content_bounds,
+            x,
+            y,
+            source,
+        )
+    }
+
+    pub(crate) fn apply_remote_ui_intent(&mut self, intent: RemoteUiIntent) -> Option<AppControl> {
+        match intent {
+            RemoteUiIntent::Action { action } => {
+                Some(self.apply_action_with_source(action, ActionSource::Remote))
+            }
+            RemoteUiIntent::TrackAction {
+                track_index,
+                action,
+            } => {
+                self.project.active_track_index =
+                    track_index.min(self.project.tracks.len().saturating_sub(1));
+                Some(self.apply_action_with_source(action, ActionSource::Remote))
+            }
+            RemoteUiIntent::SelectMappingRow { index } => {
+                self.page_state.selected_mapping_index =
+                    index.min(self.mappings.len().saturating_sub(1));
+                self.normalize_selected_mapping_field();
+                self.page_state.mapping_midi_learn_armed = false;
+                self.clear_mapping_target_lookup();
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::ActivateMappingField {
+                index,
+                field,
+                activate,
+            } => {
+                self.page_state.selected_mapping_index =
+                    index.min(self.mappings.len().saturating_sub(1));
+                self.normalize_selected_mapping_field();
+                self.page_state.mapping_midi_learn_armed = false;
+                self.clear_mapping_target_lookup();
+                self.page_state.selected_mapping_field = field;
+                if activate {
+                    self.activate_mapping_field();
+                }
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::CommitMappingTargetLookupLabel { label } => {
+                let results = self.mapping_target_lookup_results();
+                if let Some(found) = results.into_iter().find(|candidate| *candidate == label) {
+                    self.commit_mapping_target_lookup_label(found);
+                }
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::CancelMappingTargetLookup => {
+                self.cancel_mapping_target_lookup();
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::SetMidiIoFocus { focus } => {
+                self.page_state.midi_io.focus = focus;
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::SelectMidiInput { index } => {
+                self.page_state.midi_io.focus = MidiIoListFocus::Inputs;
+                self.page_state.midi_io.selected_input_index = index;
+                self.set_preferred_default_input_from_index(index);
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::SelectMidiOutput { index } => {
+                self.page_state.midi_io.focus = MidiIoListFocus::Outputs;
+                self.page_state.midi_io.selected_output_index = index;
+                self.set_preferred_default_output_from_index(index);
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::RoutingAdjustField { field, delta } => {
+                self.page_state.selected_routing_field = field;
+                self.adjust_routing_field(delta);
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::RoutingActivateField { field } => {
+                self.page_state.selected_routing_field = field;
+                self.activate_page_item();
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::TimelineFxClick {
+                track_index,
+                context,
+                row_index,
+                field,
+                action,
+            } => {
+                self.project.active_track_index =
+                    track_index.min(self.project.tracks.len().saturating_sub(1));
+                self.page_state.selected_timeline_context = context;
+                if let Some(chain_kind) = context.chain_kind() {
+                    self.set_selected_timeline_fx_row(chain_kind, row_index);
+                }
+                if let Some(field) = field {
+                    self.page_state.selected_timeline_fx_field = field;
+                }
+                action
+                    .map(|action| self.apply_action_with_source(action, ActionSource::Remote))
+                    .or(Some(AppControl::Continue))
+            }
+        }
     }
 
     pub(super) fn poll_midi_input(&mut self) {

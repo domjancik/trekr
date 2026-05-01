@@ -2,7 +2,7 @@ use crate::actions::{
     ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
 };
 use crate::app_ui::branding;
-use crate::distributed::{SessionCommand, SessionServer, SessionSnapshot};
+use crate::distributed::{RemoteUiIntent, SessionCommand, SessionServer, SessionSnapshot};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
@@ -2504,6 +2504,119 @@ impl App {
             }
 
             return Some(AppControl::Continue);
+        }
+
+        None
+    }
+
+    pub(crate) fn resolve_mappings_pointer_intent(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        if let Some(layout) = self.mapping_target_lookup_layout(content_bounds) {
+            if rect_contains(layout.results_panel, x, y) {
+                let relative_y = y - (layout.results_panel.y + 14);
+                if relative_y >= 0 {
+                    let row_index = (relative_y / 12) as usize;
+                    let results = self.mapping_target_lookup_results();
+                    let result_index = layout.start_index + row_index;
+                    if let Some(label) =
+                        results.get(result_index.min(results.len().saturating_sub(1)))
+                    {
+                        return Some(RemoteUiIntent::CommitMappingTargetLookupLabel {
+                            label: (*label).to_string(),
+                        });
+                    }
+                }
+                return Some(RemoteUiIntent::CancelMappingTargetLookup);
+            }
+            if !rect_contains(layout.target_cell, x, y) {
+                return Some(RemoteUiIntent::CancelMappingTargetLookup);
+            }
+        }
+
+        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
+        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+        if rect_contains(overview_badge, x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ToggleMappingsWriteMode,
+            });
+        }
+        if rect_contains(learn_badge, x, y)
+            && self.page_state.mapping_mode == MappingPageMode::Write
+            && self.page_state.selected_mapping_field == MappingField::SourceValue
+        {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ActivatePageItem,
+            });
+        }
+        if rect_contains(direct_badge, x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ToggleDirectMappingMode,
+            });
+        }
+
+        let list_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + 44,
+            content_bounds.width().saturating_sub(16),
+            content_bounds.height().saturating_sub(68),
+        );
+        let row_gap = 3_i32;
+        let row_height = 18_i32;
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+
+        for visible_index in 0..visible_rows {
+            let index = start_index + visible_index;
+            if index >= self.mappings.len() {
+                break;
+            }
+            let row = Rect::new(
+                list_bounds.x,
+                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.width(),
+                row_height as u32,
+            );
+            if !rect_contains(row, x, y) {
+                continue;
+            }
+
+            if self.page_state.mapping_mode != MappingPageMode::Write {
+                return Some(RemoteUiIntent::SelectMappingRow { index });
+            }
+
+            let cells = self.mapping_row_cells(row);
+            for field in MappingField::ALL {
+                let rect = cells[mapping_field_index(field)];
+                if !rect_contains(rect, x, y) || !self.mapping_field_enabled(field) {
+                    continue;
+                }
+                let same_field = self.page_state.selected_mapping_index == index
+                    && self.page_state.selected_mapping_field == field;
+                return Some(RemoteUiIntent::ActivateMappingField {
+                    index,
+                    field,
+                    activate: same_field,
+                });
+            }
+
+            return Some(RemoteUiIntent::SelectMappingRow { index });
         }
 
         None
