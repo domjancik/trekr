@@ -379,43 +379,57 @@ impl App {
         let side_inset = 3;
         let status_width = self.transport_status_width();
         let tempo_pad_width = 98_u32;
-        let right_buttons_width = button_row_width(right_specs.len(), 74, right_gap) as u32;
-        let right_group_width = status_width
-            .saturating_add(right_buttons_width)
-            .saturating_add(tempo_pad_width)
-            .saturating_add((right_gap * 2) as u32);
-        let right_group_bounds = Rect::new(
-            bounds.x + bounds.width() as i32 - right_group_width as i32 - side_inset,
-            bounds.y + 3,
-            right_group_width,
-            bounds.height().saturating_sub(6),
-        );
-        let tempo_pad_bounds = Rect::new(
-            right_group_bounds.x + right_group_bounds.width() as i32 - tempo_pad_width as i32,
-            right_group_bounds.y,
-            tempo_pad_width,
-            right_group_bounds.height(),
-        );
-        let right_buttons_bounds = Rect::new(
-            tempo_pad_bounds.x - right_gap - right_buttons_width as i32,
-            right_group_bounds.y,
-            right_buttons_width,
-            right_group_bounds.height(),
-        );
-        let status_text_bounds = Rect::new(
-            right_group_bounds.x,
-            right_group_bounds.y,
-            status_width,
-            right_group_bounds.height(),
-        );
-        let buttons_bounds = Rect::new(
-            bounds.x + 3,
-            bounds.y + 3,
-            right_group_bounds.x.saturating_sub(bounds.x + 5) as u32,
-            bounds.height().saturating_sub(6),
-        );
+        let build_right_group = |right_buttons_width: u32| {
+            let right_group_width = status_width
+                .saturating_add(right_buttons_width)
+                .saturating_add(tempo_pad_width)
+                .saturating_add((right_gap * 2) as u32);
+            let right_group_bounds = Rect::new(
+                bounds.x + bounds.width() as i32 - right_group_width as i32 - side_inset,
+                bounds.y + 3,
+                right_group_width,
+                bounds.height().saturating_sub(6),
+            );
+            let tempo_pad_bounds = Rect::new(
+                right_group_bounds.x + right_group_bounds.width() as i32 - tempo_pad_width as i32,
+                right_group_bounds.y,
+                tempo_pad_width,
+                right_group_bounds.height(),
+            );
+            let right_buttons_bounds = Rect::new(
+                tempo_pad_bounds.x - right_gap - right_buttons_width as i32,
+                right_group_bounds.y,
+                right_buttons_width,
+                right_group_bounds.height(),
+            );
+            let status_text_bounds = Rect::new(
+                right_group_bounds.x,
+                right_group_bounds.y,
+                status_width,
+                right_group_bounds.height(),
+            );
+            let buttons_bounds = Rect::new(
+                bounds.x + 3,
+                bounds.y + 3,
+                right_group_bounds.x.saturating_sub(bounds.x + 5) as u32,
+                bounds.height().saturating_sub(6),
+            );
+            (
+                buttons_bounds,
+                right_buttons_bounds,
+                tempo_pad_bounds,
+                status_text_bounds,
+            )
+        };
+
+        let (buttons_bounds, _, _, _) =
+            build_right_group(button_row_width(right_specs.len(), 74, right_gap) as u32);
         let shared_button_max_width =
             row_button_width_for_bounds(buttons_bounds, left_specs.len(), 74, 2).unwrap_or(74);
+        let actual_right_buttons_width =
+            button_row_width(right_specs.len(), shared_button_max_width, right_gap) as u32;
+        let (buttons_bounds, right_buttons_bounds, tempo_pad_bounds, status_text_bounds) =
+            build_right_group(actual_right_buttons_width);
         TransportStripLayout {
             left_buttons_bounds: buttons_bounds,
             right_buttons_bounds,
