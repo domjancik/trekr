@@ -422,11 +422,21 @@ impl App {
     }
 
     fn transport_status_width(&self) -> u32 {
-        let quantize = format!("Q {}", quantize_label(self.project.transport.quantize));
-        let peers = format!("Peers {}", self.link_snapshot.peers);
+        let (quantize, peers) = self.transport_status_lines();
         crate::ui::text_width(&quantize, 1)
             .max(crate::ui::text_width(&peers, 1))
             .saturating_add(2)
+    }
+
+    fn transport_status_lines(&self) -> (String, String) {
+        let quantize = format!("Q {}", quantize_label(self.project.transport.quantize));
+        let peers_label = if self.ui_density_preset == crate::ui_density::UiDensityPreset::Tiny {
+            "Prs"
+        } else {
+            "Peers"
+        };
+        let peers = format!("{} {}", peers_label, self.link_snapshot.peers);
+        (quantize, peers)
     }
 
     fn draw_transport_status<T: RenderTarget>(
@@ -435,16 +445,18 @@ impl App {
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
-        let quantize = format!("Q {}", quantize_label(self.project.transport.quantize));
-        let peers = format!("Peers {}", self.link_snapshot.peers);
+        let (quantize, peers) = self.transport_status_lines();
         let quantize_width = crate::ui::text_width(&quantize, 1).min(bounds.width());
         let peers_width = crate::ui::text_width(&peers, 1).min(bounds.width());
+        let top_y = bounds.y + if bounds.height() <= 26 { 3 } else { 6 };
+        let bottom_y =
+            bounds.y + bounds.height() as i32 - if bounds.height() <= 26 { 11 } else { 14 };
         crate::ui::draw_text_fitted(
             canvas,
             &quantize,
             Rect::new(
                 bounds.x + bounds.width() as i32 - quantize_width as i32 - 1,
-                bounds.y + 6,
+                top_y,
                 quantize_width,
                 8,
             ),
@@ -456,7 +468,7 @@ impl App {
             &peers,
             Rect::new(
                 bounds.x + bounds.width() as i32 - peers_width as i32 - 1,
-                bounds.y + bounds.height() as i32 - 14,
+                bottom_y,
                 peers_width,
                 8,
             ),
@@ -733,6 +745,20 @@ mod tests {
             assert!(rect.x + rect.width() as i32 <= bounds.x + bounds.width() as i32);
             assert!(rect.y + rect.height() as i32 <= bounds.y + bounds.height() as i32);
         }
+    }
+
+    #[test]
+    fn tiny_density_transport_status_lines_do_not_overlap() {
+        let mut app = App::new();
+        app.set_ui_density_preset(crate::ui_density::UiDensityPreset::Tiny);
+        let bounds = Rect::new(0, 0, 40, 26);
+        let top_y = bounds.y + if bounds.height() <= 26 { 3 } else { 6 };
+        let bottom_y =
+            bounds.y + bounds.height() as i32 - if bounds.height() <= 26 { 11 } else { 14 };
+
+        assert!(top_y + 8 <= bottom_y);
+        let (_, peers) = app.transport_status_lines();
+        assert!(peers.starts_with("Prs "));
     }
 
     #[test]
