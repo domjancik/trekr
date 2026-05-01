@@ -125,6 +125,7 @@ pub struct App {
     link_snapshot: LinkSnapshot,
     note_additive_select_held: bool,
     focused_track_view: bool,
+    last_tempo_tap_at: Option<Instant>,
     startup_started_at: Instant,
     last_midi_refresh_at: Instant,
     preferred_default_input_name: Option<String>,
@@ -228,6 +229,7 @@ impl App {
             link_snapshot,
             note_additive_select_held: false,
             focused_track_view: false,
+            last_tempo_tap_at: None,
             startup_started_at: Instant::now(),
             last_midi_refresh_at: Instant::now() - MIDI_REFRESH_INTERVAL,
             preferred_default_input_name,
@@ -905,6 +907,32 @@ impl App {
                     !self.project.transport.loop_recording_extends_clip;
                 AppControl::Continue
             }
+            AppAction::DecreaseTempo => {
+                self.set_transport_tempo(
+                    self.project.transport.tempo_bpm.saturating_sub(1).max(20),
+                );
+                AppControl::Continue
+            }
+            AppAction::IncreaseTempo => {
+                self.set_transport_tempo(
+                    self.project.transport.tempo_bpm.saturating_add(1).min(400),
+                );
+                AppControl::Continue
+            }
+            AppAction::HalfTempo => {
+                self.set_transport_tempo((self.project.transport.tempo_bpm / 2).max(20));
+                AppControl::Continue
+            }
+            AppAction::DoubleTempo => {
+                self.set_transport_tempo(
+                    self.project.transport.tempo_bpm.saturating_mul(2).min(400),
+                );
+                AppControl::Continue
+            }
+            AppAction::TapTempo => {
+                self.tap_transport_tempo();
+                AppControl::Continue
+            }
             AppAction::ToggleGlobalLoop => {
                 self.project.transport.loop_enabled = !self.project.transport.loop_enabled;
                 self.silence_tracks_for_loop_change();
@@ -1468,6 +1496,28 @@ impl App {
         let previous_ticks = self.live_fx_ticks;
         self.live_fx_ticks = self.live_fx_ticks.saturating_add(advanced_ticks as u64);
         self.dispatch_live_arp_events(previous_ticks, self.live_fx_ticks);
+    }
+
+    fn set_transport_tempo(&mut self, bpm: u16) {
+        let bpm = bpm.clamp(20, 400);
+        self.project.transport.tempo_bpm = bpm;
+        self.last_tempo_tap_at = None;
+        self.link.commit_tempo(f64::from(bpm));
+        self.link_snapshot = self.link.refresh();
+    }
+
+    fn tap_transport_tempo(&mut self) {
+        let now = Instant::now();
+        if let Some(previous_tap) = self.last_tempo_tap_at {
+            let interval_ms = now.saturating_duration_since(previous_tap).as_millis() as u64;
+            if (150..=3_000).contains(&interval_ms) {
+                let bpm = (60_000 / interval_ms).clamp(20, 400) as u16;
+                self.project.transport.tempo_bpm = bpm;
+                self.link.commit_tempo(f64::from(bpm));
+                self.link_snapshot = self.link.refresh();
+            }
+        }
+        self.last_tempo_tap_at = Some(now);
     }
 
     fn process_queued_stored_loop_recalls(
