@@ -434,12 +434,6 @@ impl App {
         ]
     }
 
-    pub(crate) fn transport_button_specs(&self) -> Vec<TransportChipSpec> {
-        let mut specs = self.transport_left_button_specs();
-        specs.extend(self.transport_right_button_specs());
-        specs
-    }
-
     fn draw_footer<T: RenderTarget>(
         &self,
         canvas: &mut Canvas<T>,
@@ -673,7 +667,7 @@ mod tests {
         let mut app = App::new();
         app.apply_action(AppAction::CycleGlobalHarmonyRoot);
         let labels = app
-            .transport_button_specs()
+            .transport_left_button_specs()
             .into_iter()
             .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
@@ -687,7 +681,8 @@ mod tests {
     #[test]
     fn transport_button_specs_include_compact_labels_for_tight_layouts() {
         let app = App::new();
-        let specs = app.transport_button_specs();
+        let mut specs = app.transport_left_button_specs();
+        specs.extend(app.transport_right_button_specs());
         assert!(specs.iter().any(|chip| {
             chip.label == "Song Loop"
                 && chip.compact_label.as_deref() == Some("Loop")
