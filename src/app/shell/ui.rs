@@ -5,7 +5,9 @@ use super::*;
 
 pub(crate) struct TransportChipSpec {
     pub(crate) label: String,
+    pub(crate) compact_label: Option<String>,
     pub(crate) sublabel: Option<String>,
+    pub(crate) compact_sublabel: Option<String>,
     pub(crate) action: Option<AppAction>,
     pub(crate) fill: Color,
 }
@@ -19,10 +21,22 @@ impl TransportChipSpec {
     ) -> Self {
         Self {
             label: label.into(),
+            compact_label: None,
             sublabel: Some(sublabel.into()),
+            compact_sublabel: None,
             action,
             fill,
         }
+    }
+
+    fn with_compact_labels(
+        mut self,
+        compact_label: impl Into<String>,
+        compact_sublabel: impl Into<String>,
+    ) -> Self {
+        self.compact_label = Some(compact_label.into());
+        self.compact_sublabel = Some(compact_sublabel.into());
+        self
     }
 }
 
@@ -257,7 +271,20 @@ impl App {
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(chip)?;
         let text_color = contrasting_text_color(spec.fill, theme);
-        if let Some(sublabel) = &spec.sublabel {
+        let compact = chip.width() <= 58;
+        let label = if compact {
+            spec.compact_label.as_deref().unwrap_or(&spec.label)
+        } else {
+            &spec.label
+        };
+        let sublabel = if compact {
+            spec.compact_sublabel
+                .as_deref()
+                .or(spec.sublabel.as_deref())
+        } else {
+            spec.sublabel.as_deref()
+        };
+        if let Some(sublabel) = sublabel {
             let top_rect = Rect::new(chip.x + 4, chip.y + 5, chip.width().saturating_sub(8), 8);
             let bottom_rect = Rect::new(
                 chip.x + 4,
@@ -265,25 +292,22 @@ impl App {
                 chip.width().saturating_sub(8),
                 8,
             );
-            let top_label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
-                &spec.label,
-                top_rect,
-                1,
-            );
+            let top_label_rect =
+                crate::app::support::ui_helpers::horizontally_center_text_rect(label, top_rect, 1);
             let bottom_label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
                 sublabel,
                 bottom_rect,
                 1,
             );
-            crate::ui::draw_text_fitted(canvas, &spec.label, top_label_rect, 1, text_color)?;
+            crate::ui::draw_text_fitted(canvas, label, top_label_rect, 1, text_color)?;
             crate::ui::draw_text_fitted(canvas, sublabel, bottom_label_rect, 1, text_color)?;
         } else {
             let label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
-                &spec.label,
+                label,
                 crate::app::support::ui_helpers::chrome_compact_text_rect(chip),
                 1,
             );
-            crate::ui::draw_text_fitted(canvas, &spec.label, label_rect, 1, text_color)?;
+            crate::ui::draw_text_fitted(canvas, label, label_rect, 1, text_color)?;
         }
         Ok(())
     }
@@ -300,7 +324,8 @@ impl App {
                 } else {
                     theme.transport.play_idle
                 },
-            ),
+            )
+            .with_compact_labels("Ply", on_off(self.project.transport.playing)),
             TransportChipSpec::button(
                 "Rec",
                 on_off(self.project.transport.recording),
@@ -310,12 +335,17 @@ impl App {
                 } else {
                     theme.transport.record_idle
                 },
-            ),
+            )
+            .with_compact_labels("Rec", on_off(self.project.transport.recording)),
             TransportChipSpec::button(
                 "Rec Mode",
                 short_record_mode_label(self.project.transport.record_mode),
                 Some(AppAction::CycleRecordMode),
                 theme.transport.record_mode,
+            )
+            .with_compact_labels(
+                "Mode",
+                short_record_mode_label(self.project.transport.record_mode),
             ),
             TransportChipSpec::button(
                 "Rec Wrap",
@@ -330,19 +360,29 @@ impl App {
                 } else {
                     theme.transport.loop_wrap_clamp
                 },
+            )
+            .with_compact_labels(
+                "Wrap",
+                if self.project.transport.loop_recording_extends_clip {
+                    "Ext"
+                } else {
+                    "Clp"
+                },
             ),
             TransportChipSpec::button(
                 "Song Loop",
                 on_off(self.project.transport.loop_enabled),
                 Some(AppAction::ToggleGlobalLoop),
                 theme.transport.song_loop,
-            ),
+            )
+            .with_compact_labels("Loop", on_off(self.project.transport.loop_enabled)),
             TransportChipSpec::button(
                 "Harmony",
                 note_name(self.project.global_harmony.root),
                 Some(AppAction::CycleGlobalHarmonyRoot),
                 theme.transport.harmony,
-            ),
+            )
+            .with_compact_labels("Harm", note_name(self.project.global_harmony.root)),
             TransportChipSpec::button(
                 "Link",
                 on_off(self.project.transport.link_enabled),
@@ -352,13 +392,15 @@ impl App {
                 } else {
                     theme.transport.link_idle
                 },
-            ),
+            )
+            .with_compact_labels("Link", on_off(self.project.transport.link_enabled)),
             TransportChipSpec::button(
                 "Link Sync",
                 on_off(self.project.transport.link_start_stop_sync),
                 Some(AppAction::ToggleLinkStartStopSync),
                 theme.transport.link_start_stop,
-            ),
+            )
+            .with_compact_labels("Sync", on_off(self.project.transport.link_start_stop_sync)),
             TransportChipSpec::button(
                 "Launch Q",
                 on_off(self.project.transport.stored_loop_recall_quantized),
@@ -368,12 +410,20 @@ impl App {
                 } else {
                     theme.transport.launch_quantize_disabled
                 },
+            )
+            .with_compact_labels(
+                "Lnch Q",
+                on_off(self.project.transport.stored_loop_recall_quantized),
             ),
             TransportChipSpec::button(
                 "Launch",
                 launch_quantize_label(self.project.transport.stored_loop_launch_quantize),
                 Some(AppAction::CycleStoredLoopLaunchQuantize),
                 theme.transport.launch_quantize_mode,
+            )
+            .with_compact_labels(
+                "Lnch",
+                launch_quantize_label(self.project.transport.stored_loop_launch_quantize),
             ),
         ]
     }
@@ -620,5 +670,19 @@ mod tests {
                 .iter()
                 .any(|(label, value)| label == "Harmony" && value == "C#")
         );
+    }
+
+    #[test]
+    fn transport_button_specs_include_compact_labels_for_tight_layouts() {
+        let app = App::new();
+        let specs = app.transport_button_specs();
+        assert!(specs.iter().any(|chip| {
+            chip.label == "Song Loop"
+                && chip.compact_label.as_deref() == Some("Loop")
+                && chip.compact_sublabel.as_deref() == Some("ON")
+        }));
+        assert!(specs.iter().any(|chip| {
+            chip.label == "Link Sync" && chip.compact_label.as_deref() == Some("Sync")
+        }));
     }
 }
