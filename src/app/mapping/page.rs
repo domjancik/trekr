@@ -1260,7 +1260,7 @@ mod tests {
         let mut app = App::new();
         app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
         for track in &mut app.project.tracks {
-            track.routing.input_port = None;
+            track.routing.input_port = TrackPortSelection::None;
         }
 
         app.apply_action(AppAction::ShowPage(AppPage::Mappings));

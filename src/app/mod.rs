@@ -26,7 +26,7 @@ use crate::pages::{
     AppPage, AppPageState, MappingField, MappingPageMode, MidiIoListFocus, RoutingField,
 };
 use crate::project::{MidiNote, Project, RecordingView, STORED_LOOP_SLOT_COUNT, Track};
-use crate::routing::MidiChannelFilter;
+use crate::routing::{MidiChannelFilter, TrackPortSelection};
 use crate::state::PersistedAppState;
 use crate::theme::{Theme, ThemePreset};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
@@ -76,7 +76,7 @@ use stored_loops::{
     clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
     stored_loop_slot_color, stored_loop_slot_recall_action,
 };
-use support::io_helpers::{clamp_index, port_name, resolve_port_by_name};
+use support::io_helpers::{clamp_index, resolve_port_by_name};
 use support::labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
@@ -700,9 +700,9 @@ impl App {
                 active.name,
                 on_off(self.direct_mapping_state.mode != DirectMappingMode::Inactive),
                 self.page_state.selected_routing_field.label(),
-                port_name(active.routing.input_port.as_ref()),
+                self.routing_input_selection_label(&active.routing.input_port),
                 input_channel_label(active.routing.input_channel),
-                port_name(active.routing.output_port.as_ref()),
+                self.routing_output_selection_label(&active.routing.output_port),
                 output_channel_label(active.routing.output_channel),
                 on_off(active.state.passthrough),
                 active.midi_fx.record_input_fx_mode.label(),
@@ -1589,17 +1589,21 @@ impl App {
     }
 
     fn seed_demo_routing(&mut self) {
-        let input_default = self.midi_devices.selected_input_port().cloned();
         let output_count = self.midi_devices.outputs.len().max(1);
         for (index, track) in self.project.tracks.iter_mut().enumerate() {
-            track.routing.input_port = input_default.clone();
+            track.routing.input_port = TrackPortSelection::Default;
             track.routing.input_channel = if index % 2 == 0 {
                 MidiChannelFilter::Omni
             } else {
                 MidiChannelFilter::Channel(((index % 16) + 1) as u8)
             };
-            track.routing.output_port =
-                self.midi_devices.outputs.get(index % output_count).cloned();
+            track.routing.output_port = self
+                .midi_devices
+                .outputs
+                .get(index % output_count)
+                .cloned()
+                .map(TrackPortSelection::named)
+                .unwrap_or_default();
             track.routing.output_channel = Some(((index % 16) + 1) as u8);
             if index == 0 {
                 track.midi_fx.input_fx[0] = Some(MidiFxSlot {
@@ -1735,10 +1739,68 @@ impl App {
         self.midi_devices.set_selected_output(index);
     }
 
+    pub(super) fn default_input_port(&self) -> Option<&MidiPortRef> {
+        self.midi_devices.selected_input_port()
+    }
+
+    pub(super) fn default_output_port(&self) -> Option<&MidiPortRef> {
+        self.midi_devices.selected_output_port()
+    }
+
+    pub(super) fn resolved_input_port<'a>(
+        &'a self,
+        selection: &'a TrackPortSelection,
+    ) -> Option<&'a MidiPortRef> {
+        selection.resolve(self.default_input_port())
+    }
+
+    pub(super) fn routing_input_selection_label(&self, selection: &TrackPortSelection) -> String {
+        self.routing_selection_label(selection, self.default_input_port(), |name| {
+            self.input_port_is_available(name)
+        })
+    }
+
+    pub(super) fn routing_output_selection_label(&self, selection: &TrackPortSelection) -> String {
+        self.routing_selection_label(selection, self.default_output_port(), |name| {
+            self.output_port_is_available(name)
+        })
+    }
+
+    fn routing_selection_label(
+        &self,
+        selection: &TrackPortSelection,
+        default_port: Option<&MidiPortRef>,
+        is_available: impl Fn(&str) -> bool,
+    ) -> String {
+        match selection {
+            TrackPortSelection::None => "None".to_string(),
+            TrackPortSelection::Default => default_port
+                .map(|port| {
+                    if is_available(&port.name) {
+                        format!("Default ({})", port.name)
+                    } else {
+                        format!("Default ({} offline)", port.name)
+                    }
+                })
+                .unwrap_or_else(|| "Default (offline)".to_string()),
+            TrackPortSelection::Port(port) => {
+                if is_available(&port.name) {
+                    port.name.clone()
+                } else {
+                    format!("{} (offline)", port.name)
+                }
+            }
+        }
+    }
+
     fn sync_midi_inputs(&mut self) {
         let mut ports = Vec::new();
         for track in &self.project.tracks {
-            if let Some(port) = track.routing.input_port.clone() {
+            if let Some(port) = track
+                .routing
+                .input_port
+                .cloned_resolved(self.default_input_port())
+            {
                 if !ports.iter().any(|existing: &MidiPortRef| existing == &port) {
                     ports.push(port);
                 }
@@ -1863,7 +1925,10 @@ impl App {
                 target_index,
                 record_mode: track.midi_fx.record_input_fx_mode,
                 monitor_input_fx: track.midi_fx.monitor_input_fx,
-                output_port: track.routing.output_port.clone(),
+                output_port: track
+                    .routing
+                    .output_port
+                    .cloned_resolved(self.default_output_port()),
                 output_channel: track.routing.output_channel,
                 output_chain: track.midi_fx.output_fx.clone(),
             };
@@ -2029,7 +2094,10 @@ impl App {
             let record_mode = track_view.midi_fx.record_input_fx_mode;
             let monitor_input_fx = track_view.midi_fx.monitor_input_fx;
             let passthrough = track_view.state.passthrough;
-            let output_port = track_view.routing.output_port.clone();
+            let output_port = track_view
+                .routing
+                .output_port
+                .cloned_resolved(self.default_output_port());
             let output_channel = track_view.routing.output_channel;
 
             let input_events = if let Some(state) = self.input_fx_live_states.get_mut(track_index) {
@@ -2309,6 +2377,7 @@ mod tests {
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
+    use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
 
@@ -2641,7 +2710,7 @@ mod tests {
         let mut app = App::new();
         let track = app.project.active_track_mut().unwrap();
         track.clear_content();
-        track.routing.input_port = Some(MidiPortRef::new("Test Input"));
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.transport_ticks = 0;
         app.playhead_ticks = 0;
 
@@ -2652,7 +2721,7 @@ mod tests {
         let input_port = app
             .project
             .active_track()
-            .and_then(|track| track.routing.input_port.clone())
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
             .expect("test track should have explicit input port");
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
@@ -2711,5 +2780,121 @@ mod tests {
                 .iter()
                 .all(|track| track.regions.is_empty())
         );
+    }
+
+    #[test]
+    fn default_routes_follow_current_defaults_without_mutating_none_or_named_routes() {
+        let mut app = App::new();
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A"), MidiPortRef::new("In B")];
+        app.midi_devices.outputs = vec![MidiPortRef::new("Out A"), MidiPortRef::new("Out B")];
+        app.set_preferred_default_input_from_index(0);
+        app.set_preferred_default_output_from_index(0);
+
+        app.project.tracks[0].routing.input_port = TrackPortSelection::Default;
+        app.project.tracks[0].routing.output_port = TrackPortSelection::Default;
+        app.project.tracks[1].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[1].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
+        app.project.tracks[2].routing.input_port = TrackPortSelection::None;
+        app.project.tracks[2].routing.output_port = TrackPortSelection::None;
+
+        assert_eq!(
+            app.resolved_input_port(&app.project.tracks[0].routing.input_port)
+                .map(|port| port.name.as_str()),
+            Some("In A")
+        );
+        assert_eq!(
+            app.project.tracks[0]
+                .routing
+                .output_port
+                .resolve(app.default_output_port())
+                .map(|port| port.name.as_str()),
+            Some("Out A")
+        );
+
+        app.set_preferred_default_input_from_index(1);
+        app.set_preferred_default_output_from_index(1);
+
+        assert_eq!(
+            app.project.tracks[0].routing.input_port,
+            TrackPortSelection::Default
+        );
+        assert_eq!(
+            app.project.tracks[0].routing.output_port,
+            TrackPortSelection::Default
+        );
+        assert_eq!(
+            app.resolved_input_port(&app.project.tracks[0].routing.input_port)
+                .map(|port| port.name.as_str()),
+            Some("In B")
+        );
+        assert_eq!(
+            app.project.tracks[0]
+                .routing
+                .output_port
+                .resolve(app.default_output_port())
+                .map(|port| port.name.as_str()),
+            Some("Out B")
+        );
+
+        assert_eq!(
+            app.project.tracks[1].routing.input_port,
+            TrackPortSelection::named(MidiPortRef::new("In A"))
+        );
+        assert_eq!(
+            app.project.tracks[1].routing.output_port,
+            TrackPortSelection::named(MidiPortRef::new("Out A"))
+        );
+        assert_eq!(
+            app.resolved_input_port(&app.project.tracks[1].routing.input_port)
+                .map(|port| port.name.as_str()),
+            Some("In A")
+        );
+        assert_eq!(
+            app.project.tracks[1]
+                .routing
+                .output_port
+                .resolve(app.default_output_port())
+                .map(|port| port.name.as_str()),
+            Some("Out A")
+        );
+        assert_eq!(
+            app.resolved_input_port(&app.project.tracks[2].routing.input_port),
+            None
+        );
+        assert_eq!(
+            app.project.tracks[2]
+                .routing
+                .output_port
+                .resolve(app.default_output_port()),
+            None
+        );
+    }
+
+    #[test]
+    fn passthrough_does_not_treat_none_input_as_default_route() {
+        let mut app = App::new();
+        app.midi_devices.inputs = vec![MidiPortRef::new("In A")];
+        app.midi_devices.outputs = vec![MidiPortRef::new("Out A")];
+        app.set_preferred_default_input_from_index(0);
+        app.set_preferred_default_output_from_index(0);
+
+        let track = &mut app.project.tracks[0];
+        track.routing.input_port = TrackPortSelection::None;
+        track.routing.output_port = TrackPortSelection::Default;
+        track.routing.output_channel = Some(1);
+        track.state.passthrough = true;
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
+        assert!(app.midi_output.sent_messages().is_empty());
     }
 }
