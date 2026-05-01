@@ -418,11 +418,8 @@ impl TransportStripLayout {
         let button_width = (available_width / count as i32)
             .min(max_button_width)
             .max(8);
-        let used_width = button_width * count as i32 + total_gap;
-        let start_x =
-            self.buttons_bounds.x + ((self.buttons_bounds.width() as i32 - used_width) / 2);
         Some(Rect::new(
-            start_x + index as i32 * (button_width + gap),
+            self.buttons_bounds.x + index as i32 * (button_width + gap),
             self.buttons_bounds.y,
             button_width as u32,
             self.buttons_bounds.height(),
@@ -538,7 +535,7 @@ mod tests {
 
         assert_eq!(first.width(), 74);
         assert_eq!(last.width(), 74);
-        assert!(first.x > layout.buttons_bounds.x);
+        assert_eq!(first.x, layout.buttons_bounds.x);
         assert!(last.x + last.width() as i32 < layout.buttons_bounds.x + layout.buttons_bounds.width() as i32);
     }
 }
