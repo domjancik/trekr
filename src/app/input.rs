@@ -25,25 +25,6 @@ impl App {
         self.handle_pointer_down(x, y, source)
     }
 
-    pub(crate) fn handle_remote_key_down(
-        &mut self,
-        keycode: sdl3::keyboard::Keycode,
-        keymod: sdl3::keyboard::Mod,
-        repeat: bool,
-    ) -> Option<AppControl> {
-        let event = sdl3::event::Event::KeyDown {
-            timestamp: 0,
-            window_id: 0,
-            keycode: Some(keycode),
-            scancode: None,
-            keymod,
-            repeat,
-            which: 0,
-            raw: 0,
-        };
-        self.handle_keyboard_event(&event)
-    }
-
     pub(crate) fn resolve_remote_key_intent(
         &self,
         keycode: sdl3::keyboard::Keycode,

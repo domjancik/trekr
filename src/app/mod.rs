@@ -223,14 +223,6 @@ impl App {
         self.note_additive_select_held = state.note_additive_select_held;
     }
 
-    pub(crate) fn set_client_viewport_size(&mut self, viewport_size: (u32, u32)) {
-        self.viewport_size = viewport_size;
-    }
-
-    pub(crate) fn client_viewport_size(&self) -> (u32, u32) {
-        self.viewport_size
-    }
-
     #[allow(dead_code)]
     pub(crate) fn apply_session_snapshot(&mut self, snapshot: &SessionSnapshot) {
         self.project = snapshot.project.clone();
