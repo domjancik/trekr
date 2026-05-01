@@ -682,6 +682,9 @@ mod tests {
         assert_eq!(first.width(), 74);
         assert_eq!(last.width(), 74);
         assert_eq!(first.x, layout.buttons_bounds.x);
-        assert!(last.x + last.width() as i32 < layout.buttons_bounds.x + layout.buttons_bounds.width() as i32);
+        assert!(
+            last.x + (last.width() as i32)
+                < layout.buttons_bounds.x + layout.buttons_bounds.width() as i32
+        );
     }
 }

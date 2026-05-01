@@ -113,6 +113,11 @@ const TARGET_OPTIONS: &[&str] = &[
     "Record",
     "Record Mode",
     "Loop Recording Wrap",
+    "Tempo Down",
+    "Tempo Up",
+    "Half Tempo",
+    "Double Tempo",
+    "Tap Tempo",
     "Song Loop",
     "Reset Song Loop",
     "Track Loop",
@@ -376,6 +381,11 @@ fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<Strin
         | "Play/Stop"
         | "Record Mode"
         | "Loop Recording Wrap"
+        | "Tempo Down"
+        | "Tempo Up"
+        | "Half Tempo"
+        | "Double Tempo"
+        | "Tap Tempo"
         | "Song Loop"
         | "Set Song Loop"
         | "Reset Song Loop"
@@ -675,6 +685,11 @@ pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) ->
         ),
         "Record Mode" => vec![AppAction::CycleRecordMode],
         "Loop Recording Wrap" => vec![AppAction::ToggleLoopRecordingExtension],
+        "Tempo Down" => vec![AppAction::DecreaseTempo],
+        "Tempo Up" => vec![AppAction::IncreaseTempo],
+        "Half Tempo" => vec![AppAction::HalfTempo],
+        "Double Tempo" => vec![AppAction::DoubleTempo],
+        "Tap Tempo" => vec![AppAction::TapTempo],
         "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
         "Reset Song Loop" => vec![AppAction::ResetGlobalLoop],
         "Track Loop" | "Set Track Loop" => {
@@ -846,6 +861,11 @@ fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
         "Record" | "Record Hold" => vec![AppAction::ToggleRecording],
         "Record Mode" => vec![AppAction::CycleRecordMode],
         "Loop Recording Wrap" => vec![AppAction::ToggleLoopRecordingExtension],
+        "Tempo Down" => vec![AppAction::DecreaseTempo],
+        "Tempo Up" => vec![AppAction::IncreaseTempo],
+        "Half Tempo" => vec![AppAction::HalfTempo],
+        "Double Tempo" => vec![AppAction::DoubleTempo],
+        "Tap Tempo" => vec![AppAction::TapTempo],
         "Song Loop" | "Set Song Loop" => vec![AppAction::ToggleGlobalLoop],
         "Reset Song Loop" => vec![AppAction::ResetGlobalLoop],
         "Track Loop" | "Set Track Loop" => {
@@ -1105,6 +1125,10 @@ mod tests {
             cycle_mapping_target_label("Play/Stop", -1),
             "Link Start/Stop"
         );
+        assert_eq!(
+            cycle_mapping_target_label("Loop Recording Wrap", 1),
+            "Tempo Down"
+        );
         assert_eq!(cycle_mapping_scope_label("Global", -1), "Absolute");
         assert_eq!(
             cycle_mapping_source_device_label("Any MIDI", &["Port A".to_string()], 1),
@@ -1155,6 +1179,8 @@ mod tests {
         ));
         assert!(!mapping_scope_valid_for_target("Play/Stop", "Track 3", 4));
         assert!(mapping_scope_valid_for_target("Play/Stop", "Global", 4));
+        assert!(mapping_scope_valid_for_target("Tap Tempo", "Global", 4));
+        assert!(!mapping_scope_valid_for_target("Tap Tempo", "Track 1", 4));
     }
 
     #[test]
@@ -1241,6 +1267,38 @@ mod tests {
             ("Remove Mapping", AppAction::RemoveSelectedMapping),
             ("Previous Mapping Field", AppAction::SelectPreviousPageField),
             ("Next Mapping Field", AppAction::SelectNextPageField),
+        ];
+
+        for (target_label, action) in cases {
+            let entry = MappingEntry {
+                source_kind: MappingSourceKind::Midi,
+                source_device_label: "Port A".to_string(),
+                source_label: "CC20".to_string(),
+                target_label: target_label.to_string(),
+                scope_label: "Global".to_string(),
+                enabled: true,
+            };
+            assert_eq!(mapping_entry_to_actions(&entry, &event), vec![action]);
+            assert!(mapping_entry_targets_action(&entry, action));
+        }
+    }
+
+    #[test]
+    fn tempo_targets_resolve_through_canonical_mapping_path() {
+        let event = MidiInputEvent {
+            port: MidiPortRef::new("Port A"),
+            channel: 1,
+            message: MidiInputMessage::ControlChange {
+                controller: 20,
+                value: 127,
+            },
+        };
+        let cases = [
+            ("Tempo Down", AppAction::DecreaseTempo),
+            ("Tempo Up", AppAction::IncreaseTempo),
+            ("Half Tempo", AppAction::HalfTempo),
+            ("Double Tempo", AppAction::DoubleTempo),
+            ("Tap Tempo", AppAction::TapTempo),
         ];
 
         for (target_label, action) in cases {
