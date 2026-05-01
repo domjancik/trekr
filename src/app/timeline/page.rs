@@ -306,10 +306,16 @@ impl App {
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
-        let button_specs = self.transport_button_specs();
+        let left_specs = self.transport_left_button_specs();
+        let right_specs = self.transport_right_button_specs();
         let layout = self.transport_strip_layout(bounds);
-        for (index, spec) in button_specs.iter().enumerate() {
-            if let Some(chip) = layout.button_rect(index, button_specs.len()) {
+        for (index, spec) in left_specs.iter().enumerate() {
+            if let Some(chip) = layout.left_button_rect(index, left_specs.len()) {
+                self.draw_transport_chip(canvas, chip, spec)?;
+            }
+        }
+        for (index, spec) in right_specs.iter().enumerate() {
+            if let Some(chip) = layout.right_button_rect(index, right_specs.len()) {
                 self.draw_transport_chip(canvas, chip, spec)?;
             }
         }
@@ -342,12 +348,22 @@ impl App {
     pub(crate) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
         let layout = self.transport_strip_layout(bounds);
-        let button_specs = self.transport_button_specs();
-        let button_count = button_specs.len();
-        for (index, chip_spec) in button_specs.into_iter().enumerate() {
+        let left_specs = self.transport_left_button_specs();
+        let left_count = left_specs.len();
+        for (index, chip_spec) in left_specs.into_iter().enumerate() {
             if let (Some(chip), Some(action)) =
-                (layout.button_rect(index, button_count), chip_spec.action)
+                (layout.left_button_rect(index, left_count), chip_spec.action)
             {
+                rects.push((chip, action));
+            }
+        }
+        let right_specs = self.transport_right_button_specs();
+        let right_count = right_specs.len();
+        for (index, chip_spec) in right_specs.into_iter().enumerate() {
+            if let (Some(chip), Some(action)) = (
+                layout.right_button_rect(index, right_count),
+                chip_spec.action,
+            ) {
                 rects.push((chip, action));
             }
         }
@@ -357,42 +373,60 @@ impl App {
     }
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
-        let status_width = bounds.width().min(214).max(168);
+        let right_specs = self.transport_right_button_specs();
+        let right_gap = 2;
         let side_inset = 3;
-        let status_gap = 2;
-        let status_bounds = Rect::new(
-            bounds.x + bounds.width() as i32 - status_width as i32 - side_inset,
+        let status_width = self.transport_status_width();
+        let tempo_pad_width = 98_u32;
+        let right_buttons_width = button_row_width(right_specs.len(), 74, right_gap) as u32;
+        let right_group_width = status_width
+            .saturating_add(right_buttons_width)
+            .saturating_add(tempo_pad_width)
+            .saturating_add((right_gap * 2) as u32);
+        let right_group_bounds = Rect::new(
+            bounds.x + bounds.width() as i32 - right_group_width as i32 - side_inset,
             bounds.y + 3,
-            status_width,
+            right_group_width,
             bounds.height().saturating_sub(6),
         );
-        let tempo_pad_width = status_width.min(98);
         let tempo_pad_bounds = Rect::new(
-            status_bounds.x,
-            status_bounds.y,
+            right_group_bounds.x + right_group_bounds.width() as i32 - tempo_pad_width as i32,
+            right_group_bounds.y,
             tempo_pad_width,
-            status_bounds.height(),
+            right_group_bounds.height(),
+        );
+        let right_buttons_bounds = Rect::new(
+            tempo_pad_bounds.x - right_gap - right_buttons_width as i32,
+            right_group_bounds.y,
+            right_buttons_width,
+            right_group_bounds.height(),
         );
         let status_text_bounds = Rect::new(
-            tempo_pad_bounds.x + tempo_pad_bounds.width() as i32 + status_gap,
-            status_bounds.y,
-            status_bounds
-                .width()
-                .saturating_sub(tempo_pad_bounds.width())
-                .saturating_sub(status_gap as u32),
-            status_bounds.height(),
+            right_group_bounds.x,
+            right_group_bounds.y,
+            status_width,
+            right_group_bounds.height(),
         );
         let buttons_bounds = Rect::new(
             bounds.x + 3,
             bounds.y + 3,
-            status_bounds.x.saturating_sub(bounds.x + 5) as u32,
+            right_group_bounds.x.saturating_sub(bounds.x + 5) as u32,
             bounds.height().saturating_sub(6),
         );
         TransportStripLayout {
-            buttons_bounds,
+            left_buttons_bounds: buttons_bounds,
+            right_buttons_bounds,
             tempo_pad_bounds,
             status_text_bounds,
         }
+    }
+
+    fn transport_status_width(&self) -> u32 {
+        let quantize = format!("Q {}", quantize_label(self.project.transport.quantize));
+        let peers = format!("Peers {}", self.link_snapshot.peers);
+        crate::ui::text_width(&quantize, 1)
+            .max(crate::ui::text_width(&peers, 1))
+            .saturating_add(2)
     }
 
     fn draw_transport_status<T: RenderTarget>(
@@ -516,7 +550,8 @@ impl App {
 
 #[derive(Debug, Clone, Copy)]
 struct TransportStripLayout {
-    buttons_bounds: Rect,
+    left_buttons_bounds: Rect,
+    right_buttons_bounds: Rect,
     tempo_pad_bounds: Rect,
     status_text_bounds: Rect,
 }
@@ -555,27 +590,53 @@ impl TempoPadLayout {
 }
 
 impl TransportStripLayout {
-    fn button_rect(self, index: usize, count: usize) -> Option<Rect> {
-        if count == 0 || index >= count || self.buttons_bounds.width() == 0 {
-            return None;
-        }
-        let gap = 2_i32;
-        let max_button_width = 74_i32;
-        let total_gap = gap * count.saturating_sub(1) as i32;
-        let available_width = self.buttons_bounds.width() as i32 - total_gap;
-        if available_width <= 0 {
-            return None;
-        }
-        let button_width = (available_width / count as i32)
-            .min(max_button_width)
-            .max(8);
-        Some(Rect::new(
-            self.buttons_bounds.x + index as i32 * (button_width + gap),
-            self.buttons_bounds.y,
-            button_width as u32,
-            self.buttons_bounds.height(),
-        ))
+    fn left_button_rect(self, index: usize, count: usize) -> Option<Rect> {
+        row_button_rect(self.left_buttons_bounds, index, count, 74, 2, false)
     }
+
+    fn right_button_rect(self, index: usize, count: usize) -> Option<Rect> {
+        row_button_rect(self.right_buttons_bounds, index, count, 74, 2, true)
+    }
+}
+
+fn button_row_width(count: usize, max_button_width: i32, gap: i32) -> i32 {
+    if count == 0 {
+        return 0;
+    }
+    (max_button_width * count as i32) + gap * count.saturating_sub(1) as i32
+}
+
+fn row_button_rect(
+    bounds: Rect,
+    index: usize,
+    count: usize,
+    max_button_width: i32,
+    gap: i32,
+    right_align: bool,
+) -> Option<Rect> {
+    if count == 0 || index >= count || bounds.width() == 0 {
+        return None;
+    }
+    let total_gap = gap * count.saturating_sub(1) as i32;
+    let available_width = bounds.width() as i32 - total_gap;
+    if available_width <= 0 {
+        return None;
+    }
+    let button_width = (available_width / count as i32)
+        .min(max_button_width)
+        .max(8);
+    let used_width = button_width * count as i32 + total_gap;
+    let start_x = if right_align {
+        bounds.x + bounds.width() as i32 - used_width
+    } else {
+        bounds.x
+    };
+    Some(Rect::new(
+        start_x + index as i32 * (button_width + gap),
+        bounds.y,
+        button_width as u32,
+        bounds.height(),
+    ))
 }
 
 #[cfg(test)]
@@ -677,20 +738,21 @@ mod tests {
     #[test]
     fn wide_transport_layout_caps_button_width() {
         let layout = TransportStripLayout {
-            buttons_bounds: Rect::new(40, 40, 1400, 36),
+            left_buttons_bounds: Rect::new(40, 40, 900, 36),
+            right_buttons_bounds: Rect::new(950, 40, 150, 36),
             tempo_pad_bounds: Rect::new(1446, 40, 98, 36),
             status_text_bounds: Rect::new(1550, 40, 84, 36),
         };
 
-        let first = layout.button_rect(0, 10).expect("first button");
-        let last = layout.button_rect(9, 10).expect("last button");
+        let first = layout.left_button_rect(0, 10).expect("first button");
+        let last = layout.left_button_rect(9, 10).expect("last button");
 
         assert_eq!(first.width(), 74);
         assert_eq!(last.width(), 74);
-        assert_eq!(first.x, layout.buttons_bounds.x);
+        assert_eq!(first.x, layout.left_buttons_bounds.x);
         assert!(
             last.x + (last.width() as i32)
-                < layout.buttons_bounds.x + layout.buttons_bounds.width() as i32
+                < layout.left_buttons_bounds.x + layout.left_buttons_bounds.width() as i32
         );
     }
 }
