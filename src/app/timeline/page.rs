@@ -383,9 +383,9 @@ impl App {
             status_bounds.height(),
         );
         let buttons_bounds = Rect::new(
-            bounds.x + 2,
+            bounds.x + 3,
             bounds.y + 3,
-            status_bounds.x.saturating_sub(bounds.x + 4) as u32,
+            status_bounds.x.saturating_sub(bounds.x + 5) as u32,
             bounds.height().saturating_sub(6),
         );
         TransportStripLayout {
