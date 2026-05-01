@@ -408,9 +408,25 @@ impl TransportStripLayout {
         if count == 0 || index >= count || self.buttons_bounds.width() == 0 {
             return None;
         }
-        let gap = 6;
-        let columns = crate::ui::equal_columns(self.buttons_bounds, count, gap);
-        columns.get(index).copied()
+        let gap = 6_i32;
+        let max_button_width = 74_i32;
+        let total_gap = gap * count.saturating_sub(1) as i32;
+        let available_width = self.buttons_bounds.width() as i32 - total_gap;
+        if available_width <= 0 {
+            return None;
+        }
+        let button_width = (available_width / count as i32)
+            .min(max_button_width)
+            .max(8);
+        let used_width = button_width * count as i32 + total_gap;
+        let start_x =
+            self.buttons_bounds.x + ((self.buttons_bounds.width() as i32 - used_width) / 2);
+        Some(Rect::new(
+            start_x + index as i32 * (button_width + gap),
+            self.buttons_bounds.y,
+            button_width as u32,
+            self.buttons_bounds.height(),
+        ))
     }
 }
 
@@ -508,5 +524,21 @@ mod tests {
             assert!(rect.x + rect.width() as i32 <= bounds.x + bounds.width() as i32);
             assert!(rect.y + rect.height() as i32 <= bounds.y + bounds.height() as i32);
         }
+    }
+
+    #[test]
+    fn wide_transport_layout_caps_button_width() {
+        let layout = TransportStripLayout {
+            buttons_bounds: Rect::new(40, 40, 1400, 36),
+            status_bounds: Rect::new(1446, 40, 120, 36),
+        };
+
+        let first = layout.button_rect(0, 10).expect("first button");
+        let last = layout.button_rect(9, 10).expect("last button");
+
+        assert_eq!(first.width(), 74);
+        assert_eq!(last.width(), 74);
+        assert!(first.x > layout.buttons_bounds.x);
+        assert!(last.x + last.width() as i32 < layout.buttons_bounds.x + layout.buttons_bounds.width() as i32);
     }
 }
