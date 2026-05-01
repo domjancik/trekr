@@ -666,7 +666,7 @@ mod tests {
     fn transport_chip_specs_include_visible_loop_recording_wrap_status() {
         let mut app = App::new();
         let labels = app
-            .transport_button_specs()
+            .transport_left_button_specs()
             .into_iter()
             .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
@@ -683,7 +683,7 @@ mod tests {
 
         app.apply_action(AppAction::ToggleLoopRecordingExtension);
         let labels = app
-            .transport_button_specs()
+            .transport_left_button_specs()
             .into_iter()
             .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
