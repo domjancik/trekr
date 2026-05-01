@@ -156,7 +156,10 @@ impl App {
             .enumerate()
             .map(|(track_index, track)| {
                 let channel = track.routing.output_channel.unwrap_or(1).clamp(1, 16);
-                let port = track.routing.output_port.clone();
+                let port = track
+                    .routing
+                    .output_port
+                    .cloned_resolved(self.default_output_port());
                 let output_lookback = playback_timing_lookback_ticks(&track.midi_fx.output_fx);
                 let lookback_padding =
                     output_lookback.saturating_add(u64::from(output_lookback > 0));
@@ -256,7 +259,7 @@ impl App {
                 track
                     .routing
                     .output_port
-                    .clone()
+                    .cloned_resolved(self.default_output_port())
                     .zip(track.routing.output_channel)
             })
             .collect();
@@ -374,7 +377,8 @@ mod tests {
     #[test]
     fn changing_global_loop_sends_all_notes_off() {
         let mut app = App::new();
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
 
         app.apply_action(AppAction::SetGlobalLoopStart);
@@ -392,7 +396,8 @@ mod tests {
     #[test]
     fn changing_track_loop_sends_all_notes_off() {
         let mut app = App::new();
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
 
         app.apply_action(AppAction::NudgeCurrentTrackLoopForward);
@@ -412,7 +417,8 @@ mod tests {
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.select_track(0);
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0]
             .midi_notes
@@ -443,8 +449,10 @@ mod tests {
     fn stopped_live_input_delay_uses_live_fx_clock_for_note_on_and_note_off() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0].state.passthrough = true;
         app.project.tracks[0].midi_fx.monitor_input_fx = true;
@@ -453,7 +461,12 @@ mod tests {
             effect: MidiFx::Delay { ticks: 240 },
         });
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
@@ -490,8 +503,10 @@ mod tests {
     fn stopped_live_input_duration_uses_live_fx_clock_when_note_starts_late() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0].state.passthrough = true;
         app.project.tracks[0].midi_fx.monitor_input_fx = true;
@@ -501,7 +516,12 @@ mod tests {
         });
         app.live_fx_ticks = 960;
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
@@ -531,7 +551,8 @@ mod tests {
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.select_track(0);
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0]
             .midi_notes
@@ -553,11 +574,13 @@ mod tests {
     fn track_clone_passthrough_sends_live_output_to_target_track() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
         app.project.tracks[1].state.passthrough = true;
         app.project.tracks[1].midi_fx.monitor_input_fx = true;
-        app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out B"));
         app.project.tracks[1].routing.output_channel = Some(2);
         app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
             enabled: true,
@@ -569,7 +592,12 @@ mod tests {
         });
         app.project.tracks[1].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
@@ -605,13 +633,16 @@ mod tests {
     fn track_clone_monitor_fx_sends_live_output_without_passthrough() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
         app.project.tracks[1].state.passthrough = false;
         app.project.tracks[1].midi_fx.monitor_input_fx = true;
-        app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out B"));
         app.project.tracks[1].routing.output_channel = Some(2);
-        app.project.tracks[1].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[1].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.project.tracks[1].routing.input_channel = MidiChannelFilter::Channel(1);
         app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
             enabled: true,
@@ -623,7 +654,12 @@ mod tests {
         });
         app.project.tracks[1].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
@@ -683,7 +719,8 @@ mod tests {
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.select_track(1);
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
         app.project.tracks[1].state.armed = true;
         app.project.tracks[1].midi_fx.record_input_fx_mode =
@@ -701,7 +738,12 @@ mod tests {
 
         app.apply_action(AppAction::ToggleRecording);
         assert!(app.project.tracks[1].active_take.is_some());
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
@@ -766,7 +808,8 @@ mod tests {
         app.project.tracks[0]
             .midi_notes
             .push(MidiNote::new(60, 960, 480, 100));
-        app.project.tracks[1].routing.output_port = Some(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out B"));
         app.project.tracks[1].routing.output_channel = Some(2);
         app.project.tracks[1].midi_fx.input_fx[0] = Some(MidiFxSlot {
             enabled: true,
@@ -789,9 +832,11 @@ mod tests {
     fn live_input_arp_passthrough_emits_timed_notes() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("Test Input"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
         app.project.tracks[0].state.passthrough = true;
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
             enabled: true,
@@ -802,7 +847,12 @@ mod tests {
             },
         });
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
@@ -835,7 +885,8 @@ mod tests {
     fn playback_output_delay_emits_note_off_after_source_note_window() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0]
             .midi_notes
@@ -877,7 +928,8 @@ mod tests {
     fn playback_output_delay_releases_notes_for_repeated_pattern_across_small_windows() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0].midi_notes = vec![
             MidiNote::new(60, 0, 240, 100),
@@ -926,7 +978,8 @@ mod tests {
     fn playback_output_duration_releases_note_after_extended_length_window() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0]
             .midi_notes
@@ -965,8 +1018,10 @@ mod tests {
     fn stopped_live_arp_ticks_without_advancing_playhead() {
         let mut app = App::new();
         app.project.clear_all_track_content();
-        app.project.tracks[0].routing.input_port = Some(MidiPortRef::new("In A"));
-        app.project.tracks[0].routing.output_port = Some(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
         app.project.tracks[0].routing.output_channel = Some(1);
         app.project.tracks[0].state.passthrough = true;
         app.project.tracks[0].midi_fx.monitor_input_fx = true;
@@ -980,7 +1035,12 @@ mod tests {
             },
         });
 
-        let input_port = app.project.tracks[0].routing.input_port.clone().unwrap();
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
         app.handle_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,

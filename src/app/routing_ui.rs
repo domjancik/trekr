@@ -620,31 +620,13 @@ impl App {
 
     fn routing_field_value(&self, track: &Track, field: RoutingField) -> String {
         match field {
-            RoutingField::InputDevice => track
-                .routing
-                .input_port
-                .as_ref()
-                .map(|port| {
-                    if self.input_port_is_available(&port.name) {
-                        port.name.clone()
-                    } else {
-                        format!("{} (offline)", port.name)
-                    }
-                })
-                .unwrap_or_else(|| "none".to_string()),
+            RoutingField::InputDevice => {
+                self.routing_input_selection_label(&track.routing.input_port)
+            }
             RoutingField::InputChannel => input_channel_label(track.routing.input_channel),
-            RoutingField::OutputDevice => track
-                .routing
-                .output_port
-                .as_ref()
-                .map(|port| {
-                    if self.output_port_is_available(&port.name) {
-                        port.name.clone()
-                    } else {
-                        format!("{} (offline)", port.name)
-                    }
-                })
-                .unwrap_or_else(|| "none".to_string()),
+            RoutingField::OutputDevice => {
+                self.routing_output_selection_label(&track.routing.output_port)
+            }
             RoutingField::OutputChannel => output_channel_label(track.routing.output_channel),
             RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
             RoutingField::RecordInputFx => track.midi_fx.record_input_fx_mode.label().to_string(),
@@ -910,13 +892,11 @@ impl App {
     }
 
     pub(super) fn adjust_routing_field(&mut self, delta: i32) {
-        let current_input = self.midi_devices.selected_input_port().cloned();
-        let current_output = self.midi_devices.selected_output_port().cloned();
         match self.page_state.selected_routing_field {
             RoutingField::InputDevice => {
                 if let Some(track) = self.project.active_track_mut() {
-                    track.routing.input_port = cycle_optional_port(
-                        track.routing.input_port.as_ref(),
+                    track.routing.input_port = cycle_track_port_selection(
+                        &track.routing.input_port,
                         &self.midi_devices.inputs,
                         delta,
                     );
@@ -931,8 +911,8 @@ impl App {
             }
             RoutingField::OutputDevice => {
                 if let Some(track) = self.project.active_track_mut() {
-                    track.routing.output_port = cycle_optional_port(
-                        track.routing.output_port.as_ref(),
+                    track.routing.output_port = cycle_track_port_selection(
+                        &track.routing.output_port,
                         &self.midi_devices.outputs,
                         delta,
                     );
@@ -947,14 +927,7 @@ impl App {
             RoutingField::Passthrough => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.passthrough = !track.state.passthrough;
-                    if track.routing.input_port.is_none() {
-                        track.routing.input_port = current_input;
-                    }
-                    if track.routing.output_port.is_none() {
-                        track.routing.output_port = current_output;
-                    }
                 }
-                self.sync_midi_inputs();
             }
             RoutingField::RecordInputFx => {
                 if let Some(track) = self.project.active_track_mut() {
@@ -1098,25 +1071,30 @@ fn visible_param_label(param: Option<&MidiFxInlineParam>, fallback: &'static str
         .unwrap_or_else(|| fallback.to_string())
 }
 
-pub(super) fn cycle_optional_port(
-    current: Option<&MidiPortRef>,
+pub(super) fn cycle_track_port_selection(
+    current: &TrackPortSelection,
     ports: &[MidiPortRef],
     delta: i32,
-) -> Option<MidiPortRef> {
-    if ports.is_empty() {
-        return None;
-    }
-
-    let option_count = ports.len() as i32 + 1;
-    let current_index = current
-        .and_then(|port| ports.iter().position(|candidate| candidate == port))
-        .map(|index| index as i32 + 1)
-        .unwrap_or(0);
+) -> TrackPortSelection {
+    let option_count = ports.len() as i32 + 2;
+    let current_index = match current {
+        TrackPortSelection::None => 0,
+        TrackPortSelection::Default => 1,
+        TrackPortSelection::Port(port) => ports
+            .iter()
+            .position(|candidate| candidate == port)
+            .map(|index| index as i32 + 2)
+            .unwrap_or(2),
+    };
     let next_index = (current_index + delta).rem_euclid(option_count);
-    if next_index == 0 {
-        None
-    } else {
-        ports.get((next_index - 1) as usize).cloned()
+    match next_index {
+        0 => TrackPortSelection::None,
+        1 => TrackPortSelection::Default,
+        _ => ports
+            .get((next_index - 2) as usize)
+            .cloned()
+            .map(TrackPortSelection::named)
+            .unwrap_or_default(),
     }
 }
 
@@ -1162,22 +1140,24 @@ fn output_channel_label(channel: Option<u8>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::routing::MidiChannelFilter;
+    use crate::routing::{MidiChannelFilter, TrackPortSelection};
 
     #[test]
     fn cycle_helpers_wrap_through_expected_ranges() {
         let app = App::new();
         assert_eq!(
-            cycle_optional_port(None, &app.midi_devices.outputs, 1)
-                .unwrap()
-                .name,
-            app.midi_devices.outputs[0].name
+            cycle_track_port_selection(&TrackPortSelection::None, &app.midi_devices.outputs, 1),
+            TrackPortSelection::Default
         );
         assert_eq!(
             cycle_input_channel(MidiChannelFilter::Omni, 1),
             MidiChannelFilter::Channel(1)
         );
         assert_eq!(cycle_output_channel(None, -1), Some(16));
+        assert_eq!(
+            cycle_track_port_selection(&TrackPortSelection::Default, &app.midi_devices.outputs, 1),
+            TrackPortSelection::named(app.midi_devices.outputs[0].clone())
+        );
     }
 
     #[test]
@@ -1192,6 +1172,26 @@ mod tests {
         assert_ne!(
             app.project.active_track().unwrap().routing.output_channel,
             before
+        );
+    }
+
+    #[test]
+    fn passthrough_toggle_preserves_none_routes() {
+        let mut app = App::new();
+        app.project.tracks[0].routing.input_port = TrackPortSelection::None;
+        app.project.tracks[0].routing.output_port = TrackPortSelection::None;
+        app.page_state.selected_routing_field = RoutingField::Passthrough;
+
+        app.adjust_routing_field(1);
+
+        assert!(app.project.tracks[0].state.passthrough);
+        assert_eq!(
+            app.project.tracks[0].routing.input_port,
+            TrackPortSelection::None
+        );
+        assert_eq!(
+            app.project.tracks[0].routing.output_port,
+            TrackPortSelection::None
         );
     }
 

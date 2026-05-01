@@ -249,7 +249,8 @@ Pointer/touch notes:
 - MIDI I/O rows are clickable/tappable to select and set the default input/output
 - MIDI I/O now auto-refreshes device availability while the app is running
 - default input/output selections are preserved by device name and shown as offline when missing, instead of silently retargeting to another port
-- routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable
+- track routing device selectors distinguish `None` (no route), `Default` (follow the current app default device), and explicit named ports
+- routing and MIDI mapping device labels show an offline marker when their assigned port is currently unavailable, including `Default (offline)` when no current default resolves
 - routing rows are clickable/tappable; tapping the value area adjusts the field and tapping passthrough toggles it
 - the Routing page now groups `Signal`, `Input FX`, and `Output FX` into separate panes, with compact 2-column FX grids for per-slot `Slot`, `Kind`, `On`, and label-aware parameter cells that relabel to the current visible `P1` / `P2` parameters while `More` scrolls the parameter window
 - the Timeline page shows per-track MIDI FX bands for input and output chains, with direct inline editing on the track

@@ -29,7 +29,7 @@ impl App {
             .iter()
             .enumerate()
             .filter(|(_, track)| {
-                track.routing.input_port.as_ref() == Some(&event.port)
+                self.resolved_input_port(&track.routing.input_port) == Some(&event.port)
                     && match track.routing.input_channel {
                         MidiChannelFilter::Omni => true,
                         MidiChannelFilter::Channel(channel) => channel == event.channel,
@@ -62,7 +62,10 @@ impl App {
                 track_view.midi_fx.record_input_fx_mode,
                 track_view.midi_fx.monitor_input_fx,
                 track_view.state.passthrough,
-                track_view.routing.output_port.clone(),
+                track_view
+                    .routing
+                    .output_port
+                    .cloned_resolved(self.default_output_port()),
                 track_view.routing.output_channel,
                 track_view.midi_fx.input_fx.clone(),
                 track_view.midi_fx.output_fx.clone(),

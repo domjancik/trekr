@@ -1,9 +1,5 @@
 use super::*;
 
-pub(crate) fn port_name(port: Option<&MidiPortRef>) -> &str {
-    port.map(|value| value.name.as_str()).unwrap_or("none")
-}
-
 pub(crate) fn resolve_port_by_name(
     ports: &[MidiPortRef],
     preferred_name: Option<&str>,
@@ -30,8 +26,6 @@ mod tests {
                 name: "Input B".to_string(),
             },
         ];
-        assert_eq!(port_name(None), "none");
-        assert_eq!(port_name(ports.first()), "Input A");
         assert_eq!(resolve_port_by_name(&ports, Some("Input B")), Some(1));
         assert_eq!(resolve_port_by_name(&ports, Some("Missing")), None);
         assert_eq!(resolve_port_by_name(&ports, None), None);
