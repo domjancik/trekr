@@ -690,10 +690,11 @@ mod tests {
         let app = App::new();
         let mut specs = app.transport_left_button_specs();
         specs.extend(app.transport_right_button_specs());
+        let expected_song_loop_state = on_off(app.project.transport.loop_enabled);
         assert!(specs.iter().any(|chip| {
             chip.label == "Song Loop"
                 && chip.compact_label.as_deref() == Some("Loop")
-                && chip.compact_sublabel.as_deref() == Some("ON")
+                && chip.compact_sublabel.as_deref() == Some(expected_song_loop_state)
         }));
         assert!(specs.iter().any(|chip| {
             chip.label == "Link Sync" && chip.compact_label.as_deref() == Some("Sync")
