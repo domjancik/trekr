@@ -8,6 +8,7 @@ use crate::pages::{MappingField, MidiIoListFocus, RoutingField};
 use crate::project::Project;
 use crate::theme::{ThemePreset, theme};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
+use if_addrs::{IfAddr, get_if_addrs};
 use sdl3::event::Event;
 use sdl3::keyboard::Keycode;
 use sdl3::rect::Rect;
@@ -32,6 +33,7 @@ const DISCOVERY_QUERY_INTERVAL: Duration = Duration::from_millis(1000);
 const DISCOVERY_STALE_AFTER: Duration = Duration::from_millis(4000);
 const DISCOVERY_UDP_PORT: u16 = 8789;
 const DISCOVERY_PROTOCOL_VERSION: u32 = 1;
+const CONNECT_PROBE_TIMEOUT: Duration = Duration::from_millis(180);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionCommand {
@@ -149,6 +151,7 @@ pub struct DiscoveryAdvertisement {
     pub session_name: String,
     pub host_name: String,
     pub listen_addr: String,
+    pub connect_addrs: Vec<String>,
     pub port: u16,
     pub protocol_version: u32,
     pub host_mode: String,
@@ -170,7 +173,7 @@ enum DiscoveryWireMessage {
 #[derive(Debug, Clone)]
 struct DiscoveredSession {
     session: DiscoveryAdvertisement,
-    connect_addr: String,
+    preferred_connect_addr: String,
     last_seen_at: Instant,
 }
 
@@ -182,7 +185,7 @@ impl DiscoveredSession {
     fn subtitle(&self) -> String {
         format!(
             "{} | {} client{} | {}",
-            self.connect_addr,
+            self.preferred_connect_addr,
             self.session.current_client_count,
             if self.session.current_client_count == 1 {
                 ""
@@ -330,6 +333,7 @@ impl DiscoveryHostService {
             let host_name = local_host_name();
             let port = parse_listen_port(&config.listen_addr);
             let session_id = format!("{host_name}:{port}");
+            let connect_addrs = discover_connect_addrs(&config.listen_addr, &host_name);
             let mut buffer = [0_u8; 4096];
             diagnostics::log_info(
                 "distributed",
@@ -352,6 +356,7 @@ impl DiscoveryHostService {
                             session_name: config.session_name.clone(),
                             host_name: host_name.clone(),
                             listen_addr: config.listen_addr.clone(),
+                            connect_addrs: connect_addrs.clone(),
                             port,
                             protocol_version: DISCOVERY_PROTOCOL_VERSION,
                             host_mode: config.host_mode.clone(),
@@ -441,12 +446,14 @@ impl DiscoveryClient {
                     else {
                         continue;
                     };
-                    let connect_addr = format!("{}:{}", source.ip(), session.port);
+                    let connect_addr =
+                        choose_preferred_connect_addr(&session, source.ip().to_string())
+                            .unwrap_or_else(|| format!("{}:{}", source.ip(), session.port));
                     upsert_discovered_session(
                         sessions,
                         DiscoveredSession {
                             session,
-                            connect_addr,
+                            preferred_connect_addr: connect_addr,
                             last_seen_at: Instant::now(),
                         },
                     );
@@ -469,7 +476,10 @@ impl DiscoveryClient {
             left.session
                 .session_name
                 .cmp(&right.session.session_name)
-                .then(left.connect_addr.cmp(&right.connect_addr))
+                .then(
+                    left.preferred_connect_addr
+                        .cmp(&right.preferred_connect_addr),
+                )
         });
     }
 }
@@ -1233,7 +1243,7 @@ fn handle_shell_key_down(
             Keycode::Return => {
                 if let Some(session) = shell.selected_session() {
                     if session.is_compatible() {
-                        ThinClientShellOutcome::Connect(session.connect_addr.clone())
+                        ThinClientShellOutcome::Connect(session.preferred_connect_addr.clone())
                     } else {
                         shell.status_line =
                             "Selected session uses an incompatible discovery protocol.".to_string();
@@ -1331,7 +1341,9 @@ fn handle_shell_pointer_down(
             if rect_contains(layout.connect_button, x, y) {
                 if let Some(session) = shell.selected_session() {
                     if session.is_compatible() {
-                        return ThinClientShellOutcome::Connect(session.connect_addr.clone());
+                        return ThinClientShellOutcome::Connect(
+                            session.preferred_connect_addr.clone(),
+                        );
                     }
                     shell.status_line =
                         "Selected session uses an incompatible discovery protocol.".to_string();
@@ -1503,7 +1515,7 @@ fn draw_thin_client_shell(
                     } else {
                         format!(
                             "{} | incompatible protocol v{}",
-                            session.connect_addr, session.session.protocol_version
+                            session.preferred_connect_addr, session.session.protocol_version
                         )
                     };
                     crate::ui::draw_text_fitted(
@@ -1732,11 +1744,136 @@ fn local_host_name() -> String {
         .unwrap_or_else(|| "localhost".to_string())
 }
 
+fn discover_connect_addrs(listen_addr: &str, host_name: &str) -> Vec<String> {
+    let port = parse_listen_port(listen_addr);
+    let bind_host = parse_listen_host(listen_addr);
+    let mut candidates = Vec::new();
+
+    match bind_host.as_deref() {
+        Some("127.0.0.1") | Some("localhost") => {
+            candidates.push(format!("127.0.0.1:{port}"));
+        }
+        Some(host) if !host.is_empty() && host != "0.0.0.0" => {
+            candidates.push(format!("{host}:{port}"));
+        }
+        _ => {
+            if let Ok(ifaces) = get_if_addrs() {
+                for iface in ifaces {
+                    let IfAddr::V4(addr) = iface.addr else {
+                        continue;
+                    };
+                    let ip = addr.ip;
+                    if ip.is_unspecified() {
+                        continue;
+                    }
+                    candidates.push(format!("{ip}:{port}"));
+                }
+            }
+            candidates.push(format!("{host_name}:{port}"));
+        }
+    }
+
+    candidates.push(format!("127.0.0.1:{port}"));
+    dedupe_preserve_order(candidates)
+}
+
+fn choose_preferred_connect_addr(
+    session: &DiscoveryAdvertisement,
+    responder_ip: String,
+) -> Option<String> {
+    let local_host = local_host_name();
+    let prefer_loopback = session.host_name.eq_ignore_ascii_case(&local_host);
+    let mut candidates = session.connect_addrs.clone();
+    candidates.push(format!("{responder_ip}:{}", session.port));
+    let candidates = dedupe_preserve_order(candidates);
+
+    let mut scored = candidates
+        .into_iter()
+        .map(|addr| {
+            let latency = probe_connect_latency(&addr);
+            let score = connect_addr_score(&addr, prefer_loopback, latency);
+            (addr, score, latency)
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| {
+        left.1
+            .cmp(&right.1)
+            .then_with(|| left.2.cmp(&right.2))
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    scored.into_iter().map(|entry| entry.0).next()
+}
+
+fn probe_connect_latency(connect_addr: &str) -> Duration {
+    let start = Instant::now();
+    let result = connect_addr
+        .parse::<SocketAddr>()
+        .ok()
+        .map(|addr| TcpStream::connect_timeout(&addr, CONNECT_PROBE_TIMEOUT));
+    if let Some(Ok(stream)) = result {
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        start.elapsed()
+    } else {
+        CONNECT_PROBE_TIMEOUT + Duration::from_millis(500)
+    }
+}
+
+fn connect_addr_score(connect_addr: &str, prefer_loopback: bool, latency: Duration) -> (u8, u128) {
+    let host = connect_addr
+        .rsplit_once(':')
+        .map(|(host, _)| host.trim_matches(['[', ']']))
+        .unwrap_or(connect_addr);
+
+    let class = if host == "127.0.0.1" || host.eq_ignore_ascii_case("localhost") {
+        if prefer_loopback { 0 } else { 3 }
+    } else if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        if is_private_v4(ip) {
+            1
+        } else if is_link_local_v4(ip) {
+            4
+        } else {
+            5
+        }
+    } else {
+        2
+    };
+    (class, latency.as_millis())
+}
+
+fn is_private_v4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    octets[0] == 10
+        || (octets[0] == 172 && (16..=31).contains(&octets[1]))
+        || (octets[0] == 192 && octets[1] == 168)
+}
+
+fn is_link_local_v4(ip: std::net::Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    octets[0] == 169 && octets[1] == 254
+}
+
+fn parse_listen_host(listen_addr: &str) -> Option<String> {
+    listen_addr
+        .rsplit_once(':')
+        .map(|(host, _)| host.to_string())
+}
+
 fn parse_listen_port(listen_addr: &str) -> u16 {
     listen_addr
         .rsplit_once(':')
         .and_then(|(_, port)| port.parse::<u16>().ok())
         .unwrap_or(8788)
+}
+
+fn dedupe_preserve_order(values: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped = Vec::new();
+    for value in values {
+        if seen.insert(value.clone()) {
+            deduped.push(value);
+        }
+    }
+    deduped
 }
 
 fn draw_waiting_thin_client(
@@ -1845,7 +1982,10 @@ fn spawn_stdin_reader(stdin_tx: Sender<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::SessionCommand;
+    use super::{
+        DISCOVERY_PROTOCOL_VERSION, DiscoveryAdvertisement, SessionCommand,
+        choose_preferred_connect_addr,
+    };
 
     #[test]
     fn session_command_parses_common_tokens() {
@@ -1862,5 +2002,26 @@ mod tests {
             Some(SessionCommand::ToggleCurrentTrackMute)
         );
         assert_eq!(SessionCommand::parse_token("nope"), None);
+    }
+
+    #[test]
+    fn advertised_private_address_beats_link_local_responder_address() {
+        let advertisement = DiscoveryAdvertisement {
+            session_id: "host:1234".to_string(),
+            session_name: "Demo".to_string(),
+            host_name: "remote-host".to_string(),
+            listen_addr: "0.0.0.0:1234".to_string(),
+            connect_addrs: vec![
+                "192.168.1.44:1234".to_string(),
+                "169.254.12.9:1234".to_string(),
+            ],
+            port: 1234,
+            protocol_version: DISCOVERY_PROTOCOL_VERSION,
+            host_mode: "host-session".to_string(),
+            current_client_count: 0,
+        };
+
+        let chosen = choose_preferred_connect_addr(&advertisement, "169.254.12.9".to_string());
+        assert_eq!(chosen.as_deref(), Some("192.168.1.44:1234"));
     }
 }

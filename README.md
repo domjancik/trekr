@@ -88,6 +88,7 @@ Latest renderer-owned captures from the demo state:
 - optional thin-client session hosting over TCP, while retaining the normal in-process local app path
 - an SDL thin client mode that mirrors the full app UI in a separate window and forwards keyboard/pointer input back to the host for host-authoritative action resolution
 - LAN discovery for SDL thin clients, with automatic session naming plus manual `host:port` fallback when discovery is unavailable
+- discovery advertisements expose concrete connectable addresses so clients can avoid choosing the wrong NIC on multi-interface hosts and can prefer lower-latency reachable paths
 
 Launch state:
 
