@@ -61,6 +61,11 @@ impl App {
             | AppAction::EndNoteAdditiveSelectionHold => Vec::new(),
             AppAction::CycleRecordMode
             | AppAction::ToggleLoopRecordingExtension
+            | AppAction::DecreaseTempo
+            | AppAction::IncreaseTempo
+            | AppAction::HalfTempo
+            | AppAction::DoubleTempo
+            | AppAction::TapTempo
             | AppAction::ToggleGlobalLoop
             | AppAction::ResetGlobalLoop
             | AppAction::ClearCurrentTrackContent

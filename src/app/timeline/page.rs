@@ -313,20 +313,8 @@ impl App {
                 self.draw_transport_chip(canvas, chip, spec)?;
             }
         }
-
-        let status = self.transport_status_summary();
-        crate::ui::draw_text_fitted(
-            canvas,
-            &status,
-            Rect::new(
-                layout.status_bounds.x + 4,
-                layout.status_bounds.y + layout.status_bounds.height() as i32 / 2 - 4,
-                layout.status_bounds.width().saturating_sub(8),
-                8,
-            ),
-            1,
-            theme.app_chrome.detail_text,
-        )?;
+        self.draw_tempo_pad(canvas, layout.tempo_pad_bounds)?;
+        self.draw_transport_status(canvas, layout.status_text_bounds)?;
 
         Ok(())
     }
@@ -363,17 +351,34 @@ impl App {
                 rects.push((chip, action));
             }
         }
+        rects.extend(self.tempo_pad_actions(layout.tempo_pad_bounds));
 
         rects
     }
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
-        let status_width = bounds.width().min(136).max(112);
+        let status_width = bounds.width().min(214).max(168);
         let status_bounds = Rect::new(
             bounds.x + bounds.width() as i32 - status_width as i32 - 6,
             bounds.y + 3,
             status_width,
             bounds.height().saturating_sub(6),
+        );
+        let tempo_pad_width = status_width.min(98);
+        let tempo_pad_bounds = Rect::new(
+            status_bounds.x,
+            status_bounds.y,
+            tempo_pad_width,
+            status_bounds.height(),
+        );
+        let status_text_bounds = Rect::new(
+            tempo_pad_bounds.x + tempo_pad_bounds.width() as i32 + 6,
+            status_bounds.y,
+            status_bounds
+                .width()
+                .saturating_sub(tempo_pad_bounds.width())
+                .saturating_sub(6),
+            status_bounds.height(),
         );
         let buttons_bounds = Rect::new(
             bounds.x + 6,
@@ -383,24 +388,164 @@ impl App {
         );
         TransportStripLayout {
             buttons_bounds,
-            status_bounds,
+            tempo_pad_bounds,
+            status_text_bounds,
         }
     }
 
-    fn transport_status_summary(&self) -> String {
-        format!(
-            "{} BPM  Q {}  P {}",
-            self.project.transport.tempo_bpm,
-            quantize_label(self.project.transport.quantize),
-            self.link_snapshot.peers
-        )
+    fn draw_transport_status<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!("Q {}", quantize_label(self.project.transport.quantize)),
+            Rect::new(
+                bounds.x + 2,
+                bounds.y + 6,
+                bounds.width().saturating_sub(4),
+                8,
+            ),
+            1,
+            theme.app_chrome.detail_text,
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            &format!("P {}", self.link_snapshot.peers),
+            Rect::new(
+                bounds.x + 2,
+                bounds.y + bounds.height() as i32 - 14,
+                bounds.width().saturating_sub(4),
+                8,
+            ),
+            1,
+            theme.app_chrome.detail_text,
+        )?;
+        Ok(())
+    }
+
+    fn draw_tempo_pad<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        bounds: Rect,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        canvas.set_draw_color(theme.transport.tempo);
+        canvas.fill_rect(bounds)?;
+        canvas.set_draw_color(theme.app_chrome.surface_border);
+        canvas.draw_rect(bounds)?;
+
+        let layout = TempoPadLayout::new(bounds);
+        for (rect, label) in [
+            (layout.top_left, "-"),
+            (layout.top_right, "+"),
+            (layout.bottom_left, "/"),
+            (layout.bottom_right, "*"),
+        ] {
+            canvas.set_draw_color(theme.app_chrome.surface_border);
+            canvas.draw_rect(rect)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                label,
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    label,
+                    crate::app::support::ui_helpers::chrome_compact_text_rect(rect),
+                    1,
+                ),
+                1,
+                contrasting_text_color(theme.transport.tempo, theme),
+            )?;
+        }
+
+        canvas.set_draw_color(theme.app_chrome.surface_border);
+        canvas.draw_rect(layout.center)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            &self.project.transport.tempo_bpm.to_string(),
+            crate::app::support::ui_helpers::horizontally_center_text_rect(
+                &self.project.transport.tempo_bpm.to_string(),
+                Rect::new(
+                    layout.center.x + 2,
+                    layout.center.y + 5,
+                    layout.center.width().saturating_sub(4),
+                    8,
+                ),
+                1,
+            ),
+            1,
+            contrasting_text_color(theme.transport.tempo, theme),
+        )?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            "TAP",
+            crate::app::support::ui_helpers::horizontally_center_text_rect(
+                "TAP",
+                Rect::new(
+                    layout.center.x + 2,
+                    layout.center.y + layout.center.height() as i32 - 12,
+                    layout.center.width().saturating_sub(4),
+                    8,
+                ),
+                1,
+            ),
+            1,
+            contrasting_text_color(theme.transport.tempo, theme),
+        )?;
+        Ok(())
+    }
+
+    fn tempo_pad_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
+        let layout = TempoPadLayout::new(bounds);
+        vec![
+            (layout.top_left, AppAction::DecreaseTempo),
+            (layout.top_right, AppAction::IncreaseTempo),
+            (layout.bottom_left, AppAction::HalfTempo),
+            (layout.bottom_right, AppAction::DoubleTempo),
+            (layout.center, AppAction::TapTempo),
+        ]
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct TransportStripLayout {
     buttons_bounds: Rect,
-    status_bounds: Rect,
+    tempo_pad_bounds: Rect,
+    status_text_bounds: Rect,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TempoPadLayout {
+    top_left: Rect,
+    top_right: Rect,
+    bottom_left: Rect,
+    bottom_right: Rect,
+    center: Rect,
+}
+
+impl TempoPadLayout {
+    fn new(bounds: Rect) -> Self {
+        let cell_width = (bounds.width() / 3).max(12);
+        let cell_height = (bounds.height() / 2).max(12);
+        let left_x = bounds.x;
+        let center_x = bounds.x + cell_width as i32;
+        let right_x = bounds.x + bounds.width() as i32 - cell_width as i32;
+        let top_y = bounds.y;
+        let bottom_y = bounds.y + bounds.height() as i32 - cell_height as i32;
+        Self {
+            top_left: Rect::new(left_x, top_y, cell_width, cell_height),
+            top_right: Rect::new(right_x, top_y, cell_width, cell_height),
+            bottom_left: Rect::new(left_x, bottom_y, cell_width, cell_height),
+            bottom_right: Rect::new(right_x, bottom_y, cell_width, cell_height),
+            center: Rect::new(
+                center_x,
+                bounds.y,
+                bounds.width().saturating_sub(cell_width.saturating_mul(2)),
+                bounds.height(),
+            ),
+        }
+    }
 }
 
 impl TransportStripLayout {
@@ -527,7 +672,8 @@ mod tests {
     fn wide_transport_layout_caps_button_width() {
         let layout = TransportStripLayout {
             buttons_bounds: Rect::new(40, 40, 1400, 36),
-            status_bounds: Rect::new(1446, 40, 120, 36),
+            tempo_pad_bounds: Rect::new(1446, 40, 98, 36),
+            status_text_bounds: Rect::new(1550, 40, 84, 36),
         };
 
         let first = layout.button_rect(0, 10).expect("first button");
