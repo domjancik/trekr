@@ -358,8 +358,10 @@ impl App {
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
         let status_width = bounds.width().min(214).max(168);
+        let side_inset = 2;
+        let status_gap = 2;
         let status_bounds = Rect::new(
-            bounds.x + bounds.width() as i32 - status_width as i32 - 6,
+            bounds.x + bounds.width() as i32 - status_width as i32 - side_inset,
             bounds.y + 3,
             status_width,
             bounds.height().saturating_sub(6),
@@ -372,12 +374,12 @@ impl App {
             status_bounds.height(),
         );
         let status_text_bounds = Rect::new(
-            tempo_pad_bounds.x + tempo_pad_bounds.width() as i32 + 6,
+            tempo_pad_bounds.x + tempo_pad_bounds.width() as i32 + status_gap,
             status_bounds.y,
             status_bounds
                 .width()
                 .saturating_sub(tempo_pad_bounds.width())
-                .saturating_sub(6),
+                .saturating_sub(status_gap as u32),
             status_bounds.height(),
         );
         let buttons_bounds = Rect::new(
