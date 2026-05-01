@@ -381,9 +381,9 @@ impl App {
             status_bounds.height(),
         );
         let buttons_bounds = Rect::new(
-            bounds.x + 6,
+            bounds.x + 2,
             bounds.y + 3,
-            status_bounds.x.saturating_sub(bounds.x + 12) as u32,
+            status_bounds.x.saturating_sub(bounds.x + 4) as u32,
             bounds.height().saturating_sub(6),
         );
         TransportStripLayout {
@@ -413,7 +413,7 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("P {}", self.link_snapshot.peers),
+            &format!("Peers {}", self.link_snapshot.peers),
             Rect::new(
                 bounds.x + 2,
                 bounds.y + bounds.height() as i32 - 14,
