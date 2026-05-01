@@ -74,7 +74,7 @@ Latest renderer-owned captures from the demo state:
 - focused-track timeline view for expanding the active track pair while keeping loop detail visible
 - per-track MIDI note selection with focus/anchor highlighting in the timeline columns
 - action-driven note stepping, span extend/contract, and pitch/time nudging on the active track
-- a grouped in-canvas transport strip on the timeline page, with primary transport controls on the left and Link/quantize status on the right
+- a condensed single-row in-canvas transport strip on the timeline page, with taller touch-friendly buttons for transport/Link actions plus compact BPM, quantize, and peer status readouts
 - a renderer-level footer/status bar that shows hover mapping summaries and falls back to the last performed action
 - hover-driven mapping discoverability for timeline transport, track-state controls, and routing passthrough controls
 - an inline mapping discoverability overlay with compact built-in vs user-defined badges
@@ -235,7 +235,7 @@ Mapping discoverability notes:
 Pointer/touch notes:
 
 - tabs are clickable/tappable
-- timeline transport chips are clickable/tappable for play, record, record mode, loop-wrap clip extension (`RecWrap Clamp` / `RecWrap Extend`), song loop, global harmony root, Link, and Link sync
+- timeline transport controls use a single-row button bar with two-line labels and are clickable/tappable for play, record, record mode, loop-wrap clip extension (`Rec Wrap` + `Clamp` / `Ext`), song loop, global harmony root, Link, Link sync, and launch quantize controls
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
 - each timeline FX row now uses one compact single-line layout in all states; it favors shorter effect/parameter labels so parameter values stay visible, keeps `P2` before `More` when both are visible, and uses the `More` cell as a parameter-window position scroller

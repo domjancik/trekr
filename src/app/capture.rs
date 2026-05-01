@@ -5,20 +5,7 @@ use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
 
-use super::TransportChipSpec;
 use super::types::CaptureSpec;
-
-pub(super) fn chip_row_width(specs: &[TransportChipSpec]) -> u32 {
-    if specs.is_empty() {
-        return 0;
-    }
-    let chips = specs
-        .iter()
-        .map(|spec| crate::ui::text_width(&spec.label, 1) + 10)
-        .sum::<u32>();
-    let gaps = (specs.len().saturating_sub(1) as u32) * 6;
-    chips.saturating_add(gaps)
-}
 
 pub(super) fn capture_specs() -> [CaptureSpec; 6] {
     [

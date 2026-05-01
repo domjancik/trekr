@@ -306,119 +306,27 @@ impl App {
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(bounds)?;
 
-        let top_specs = self.transport_top_chip_specs();
-        let bottom_specs = self.transport_bottom_chip_specs();
-        let link_specs = self.transport_link_chip_specs();
-        let status_specs = self.transport_status_chip_specs();
+        let button_specs = self.transport_button_specs();
         let layout = self.transport_strip_layout(bounds);
-        let top_y = layout.top_y;
-        let bottom_y = layout.bottom_y;
-        let right_top_y = layout.right_top_y;
-        let chip_height = layout.chip_height;
-        let right_panel = layout.right_panel;
-        let left_max = right_panel.x - 12;
-
-        let mut cursor_x = bounds.x + 6;
-        for spec in &top_specs {
-            let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
-            if chip.x + chip.width() as i32 > left_max {
-                break;
+        for (index, spec) in button_specs.iter().enumerate() {
+            if let Some(chip) = layout.button_rect(index, button_specs.len()) {
+                self.draw_transport_chip(canvas, chip, spec)?;
             }
-            self.draw_transport_chip(canvas, chip, spec)?;
-            cursor_x += chip.width() as i32 + 6;
         }
 
-        cursor_x = bounds.x + 6;
-        for spec in &bottom_specs {
-            let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
-            if chip.x + chip.width() as i32 > left_max {
-                break;
-            }
-            self.draw_transport_chip(canvas, chip, spec)?;
-            cursor_x += chip.width() as i32 + 6;
-        }
-
-        canvas.set_draw_color(theme.app_chrome.overlay_panel_fill);
-        canvas.fill_rect(right_panel)?;
-        canvas.set_draw_color(theme.app_chrome.surface_border);
-        canvas.draw_rect(right_panel)?;
-        if !layout.compact {
-            crate::ui::draw_text_fitted(
-                canvas,
-                "LINK",
-                Rect::new(right_panel.x + 6, layout.right_header_y, 28, 8),
-                1,
-                theme.app_chrome.detail_text,
-            )?;
-            crate::ui::draw_text_fitted(
-                canvas,
-                "F6 / SHIFT+F6",
-                Rect::new(
-                    right_panel.x + right_panel.width() as i32 - 86,
-                    layout.right_header_y,
-                    80,
-                    8,
-                ),
-                1,
-                theme.app_chrome.detail_text,
-            )?;
-        }
-
-        cursor_x = right_panel.x + 6;
-        let mut truncated_link_row = false;
-        for spec in &link_specs {
-            let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
-            if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
-                truncated_link_row = true;
-                break;
-            }
-            self.draw_transport_chip(canvas, chip, spec)?;
-            cursor_x += chip.width() as i32 + 6;
-        }
-        if truncated_link_row {
-            crate::ui::draw_text_fitted(
-                canvas,
-                "(...)",
-                Rect::new(
-                    right_panel.x + right_panel.width() as i32 - 32,
-                    right_top_y + 1,
-                    28,
-                    chip_height.saturating_sub(2),
-                ),
-                1,
-                theme.app_chrome.detail_text,
-            )?;
-        }
-
-        cursor_x = right_panel.x + 6;
-        let mut truncated_status_row = false;
-        for spec in &status_specs {
-            let width = crate::ui::text_width(&spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
-            if chip.x + chip.width() as i32 > right_panel.x + right_panel.width() as i32 - 6 {
-                truncated_status_row = true;
-                break;
-            }
-            self.draw_transport_chip(canvas, chip, spec)?;
-            cursor_x += chip.width() as i32 + 6;
-        }
-        if truncated_status_row {
-            crate::ui::draw_text_fitted(
-                canvas,
-                "(...)",
-                Rect::new(
-                    right_panel.x + right_panel.width() as i32 - 32,
-                    bottom_y + 1,
-                    28,
-                    chip_height.saturating_sub(2),
-                ),
-                1,
-                theme.app_chrome.detail_text,
-            )?;
-        }
+        let status = self.transport_status_summary();
+        crate::ui::draw_text_fitted(
+            canvas,
+            &status,
+            Rect::new(
+                layout.status_bounds.x + 4,
+                layout.status_bounds.y + layout.status_bounds.height() as i32 / 2 - 4,
+                layout.status_bounds.width().saturating_sub(8),
+                8,
+            ),
+            1,
+            theme.app_chrome.detail_text,
+        )?;
 
         Ok(())
     }
@@ -446,108 +354,64 @@ impl App {
     pub(crate) fn transport_chip_actions(&self, bounds: Rect) -> Vec<(Rect, AppAction)> {
         let mut rects = Vec::new();
         let layout = self.transport_strip_layout(bounds);
-        let top_y = layout.top_y;
-        let bottom_y = layout.bottom_y;
-        let right_top_y = layout.right_top_y;
-        let chip_height = layout.chip_height;
-        let right_panel_x = layout.right_panel.x;
-        let right_panel_right = layout.right_panel.x + layout.right_panel.width() as i32 - 6;
-        let left_max = right_panel_x - 12;
-
-        let mut cursor_x = bounds.x + 6;
-        for chip_spec in self.transport_top_chip_specs() {
-            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, top_y, width, chip_height);
-            if chip.x + chip.width() as i32 > left_max {
-                break;
-            }
-            if let Some(action) = chip_spec.action {
+        let button_specs = self.transport_button_specs();
+        let button_count = button_specs.len();
+        for (index, chip_spec) in button_specs.into_iter().enumerate() {
+            if let (Some(chip), Some(action)) =
+                (layout.button_rect(index, button_count), chip_spec.action)
+            {
                 rects.push((chip, action));
             }
-            cursor_x += chip.width() as i32 + 6;
-        }
-
-        cursor_x = bounds.x + 6;
-        for chip_spec in self.transport_bottom_chip_specs() {
-            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
-            if chip.x + chip.width() as i32 > left_max {
-                break;
-            }
-            if let Some(action) = chip_spec.action {
-                rects.push((chip, action));
-            }
-            cursor_x += chip.width() as i32 + 6;
-        }
-
-        cursor_x = right_panel_x + 6;
-        for chip_spec in self.transport_link_chip_specs() {
-            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, right_top_y, width, chip_height);
-            if chip.x + chip.width() as i32 > right_panel_right {
-                break;
-            }
-            if let Some(action) = chip_spec.action {
-                rects.push((chip, action));
-            }
-            cursor_x += chip.width() as i32 + 6;
-        }
-
-        cursor_x = right_panel_x + 6;
-        for chip_spec in self.transport_status_chip_specs() {
-            let width = crate::ui::text_width(&chip_spec.label, 1) + 10;
-            let chip = Rect::new(cursor_x, bottom_y, width, chip_height);
-            if chip.x + chip.width() as i32 > right_panel_right {
-                break;
-            }
-            if let Some(action) = chip_spec.action {
-                rects.push((chip, action));
-            }
-            cursor_x += chip.width() as i32 + 6;
         }
 
         rects
     }
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
-        let compact = bounds.height() < 30;
-        let chip_height = if compact { 8 } else { 11 };
-        let top_y = bounds.y + 4;
-        let bottom_y = bounds.y + bounds.height() as i32 - chip_height as i32 - 4;
-        let right_panel_width = self.transport_right_panel_width(bounds);
-        let right_panel = Rect::new(
-            bounds.x + bounds.width() as i32 - right_panel_width as i32 - 6,
+        let status_width = bounds.width().min(136).max(112);
+        let status_bounds = Rect::new(
+            bounds.x + bounds.width() as i32 - status_width as i32 - 6,
             bounds.y + 3,
-            right_panel_width,
+            status_width,
             bounds.height().saturating_sub(6),
         );
-        let right_header_y = if compact {
-            right_panel.y + 2
-        } else {
-            right_panel.y + 4
-        };
-        let right_top_y = if compact { top_y } else { bounds.y + 6 };
+        let buttons_bounds = Rect::new(
+            bounds.x + 6,
+            bounds.y + 3,
+            status_bounds.x.saturating_sub(bounds.x + 12) as u32,
+            bounds.height().saturating_sub(6),
+        );
         TransportStripLayout {
-            top_y,
-            bottom_y,
-            right_top_y,
-            right_header_y,
-            chip_height,
-            right_panel,
-            compact,
+            buttons_bounds,
+            status_bounds,
         }
+    }
+
+    fn transport_status_summary(&self) -> String {
+        format!(
+            "{} BPM  Q {}  P {}",
+            self.project.transport.tempo_bpm,
+            quantize_label(self.project.transport.quantize),
+            self.link_snapshot.peers
+        )
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct TransportStripLayout {
-    top_y: i32,
-    bottom_y: i32,
-    right_top_y: i32,
-    right_header_y: i32,
-    chip_height: u32,
-    right_panel: Rect,
-    compact: bool,
+    buttons_bounds: Rect,
+    status_bounds: Rect,
+}
+
+impl TransportStripLayout {
+    fn button_rect(self, index: usize, count: usize) -> Option<Rect> {
+        if count == 0 || index >= count || self.buttons_bounds.width() == 0 {
+            return None;
+        }
+        let gap = 6;
+        let columns = crate::ui::equal_columns(self.buttons_bounds, count, gap);
+        columns.get(index).copied()
+    }
 }
 
 #[cfg(test)]
@@ -577,20 +441,32 @@ mod tests {
     fn transport_chip_specs_include_visible_loop_recording_wrap_status() {
         let mut app = App::new();
         let labels = app
-            .transport_bottom_chip_specs()
+            .transport_button_specs()
             .into_iter()
-            .map(|chip| chip.label)
+            .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Wrap Extend"));
-        assert!(labels.iter().any(|label| label == "Harmony C"));
+        assert!(
+            labels
+                .iter()
+                .any(|(label, value)| label == "Rec Wrap" && value == "Ext")
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|(label, value)| label == "Harmony" && value == "C")
+        );
 
         app.apply_action(AppAction::ToggleLoopRecordingExtension);
         let labels = app
-            .transport_bottom_chip_specs()
+            .transport_button_specs()
             .into_iter()
-            .map(|chip| chip.label)
+            .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Wrap Clamp"));
+        assert!(
+            labels
+                .iter()
+                .any(|(label, value)| label == "Rec Wrap" && value == "Clamp")
+        );
     }
 
     #[test]
