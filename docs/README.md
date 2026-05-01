@@ -15,6 +15,7 @@ Recent/additional specs:
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
 - `docs/specs/feature-spec-quick-mapping-lookup.md` — target-field fuzzy lookup/edit flow for the mappings page.
 - root `README.md` — runnable screenshot-review workflow plus pixel-exact renderer screenshot regression steps against `origin/main`.
+- `docs/specs/thin-client-connection-discovery-spec.md` — planned discovery and manual-connect UX for thin clients, including local-network advertisement, session naming, and client-local connection shell behavior.
 
 Recent/additional planning docs:
 
@@ -32,3 +33,4 @@ When adding or updating docs:
 5. Keep root-level `README.md` and tracked UI artifacts aligned with the current app surface per `AGENTS.md`.
 
 If a document no longer fits its folder, move it with `git mv` to preserve history where feasible.
+
