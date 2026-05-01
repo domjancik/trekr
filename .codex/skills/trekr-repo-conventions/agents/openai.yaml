@@ -1,4 +1,4 @@
 interface:
   display_name: "trekr Repo Conventions"
   short_description: "Apply trekr repo structure and validation rules."
-  default_prompt: "Use this skill when editing trekr so file placement, naming, screenshots, docs, and validation follow the canonical modular refactor conventions."
+  default_prompt: "Use this skill when editing or reviewing trekr so file placement, naming, screenshots, docs, validation, and refactor judgments follow the canonical modular conventions."
