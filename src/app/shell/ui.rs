@@ -5,8 +5,25 @@ use super::*;
 
 pub(crate) struct TransportChipSpec {
     pub(crate) label: String,
+    pub(crate) sublabel: Option<String>,
     pub(crate) action: Option<AppAction>,
     pub(crate) fill: Color,
+}
+
+impl TransportChipSpec {
+    fn button(
+        label: impl Into<String>,
+        sublabel: impl Into<String>,
+        action: Option<AppAction>,
+        fill: Color,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            sublabel: Some(sublabel.into()),
+            action,
+            fill,
+        }
+    }
 }
 
 impl App {
@@ -239,163 +256,126 @@ impl App {
         canvas.fill_rect(chip)?;
         canvas.set_draw_color(theme.app_chrome.surface_border);
         canvas.draw_rect(chip)?;
-        let label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
-            &spec.label,
-            crate::app::support::ui_helpers::chrome_compact_text_rect(chip),
-            1,
-        );
-        crate::ui::draw_text_fitted(
-            canvas,
-            &spec.label,
-            label_rect,
-            1,
-            contrasting_text_color(spec.fill, theme),
-        )?;
+        let text_color = contrasting_text_color(spec.fill, theme);
+        if let Some(sublabel) = &spec.sublabel {
+            let top_rect = Rect::new(chip.x + 4, chip.y + 5, chip.width().saturating_sub(8), 8);
+            let bottom_rect = Rect::new(
+                chip.x + 4,
+                chip.y + chip.height() as i32 - 13,
+                chip.width().saturating_sub(8),
+                8,
+            );
+            let top_label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
+                &spec.label,
+                top_rect,
+                1,
+            );
+            let bottom_label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
+                sublabel,
+                bottom_rect,
+                1,
+            );
+            crate::ui::draw_text_fitted(canvas, &spec.label, top_label_rect, 1, text_color)?;
+            crate::ui::draw_text_fitted(canvas, sublabel, bottom_label_rect, 1, text_color)?;
+        } else {
+            let label_rect = crate::app::support::ui_helpers::horizontally_center_text_rect(
+                &spec.label,
+                crate::app::support::ui_helpers::chrome_compact_text_rect(chip),
+                1,
+            );
+            crate::ui::draw_text_fitted(canvas, &spec.label, label_rect, 1, text_color)?;
+        }
         Ok(())
     }
 
-    pub(crate) fn transport_top_chip_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_button_specs(&self) -> Vec<TransportChipSpec> {
         let theme = self.theme();
         vec![
-            TransportChipSpec {
-                label: format!("Play {}", on_off(self.project.transport.playing)),
-                action: Some(AppAction::TogglePlayback),
-                fill: if self.project.transport.playing {
+            TransportChipSpec::button(
+                "Play",
+                on_off(self.project.transport.playing),
+                Some(AppAction::TogglePlayback),
+                if self.project.transport.playing {
                     theme.transport.play_active
                 } else {
                     theme.transport.play_idle
                 },
-            },
-            TransportChipSpec {
-                label: format!("Record {}", on_off(self.project.transport.recording)),
-                action: Some(AppAction::ToggleRecording),
-                fill: if self.project.transport.recording {
+            ),
+            TransportChipSpec::button(
+                "Rec",
+                on_off(self.project.transport.recording),
+                Some(AppAction::ToggleRecording),
+                if self.project.transport.recording {
                     theme.transport.record_active
                 } else {
                     theme.transport.record_idle
                 },
-            },
-            TransportChipSpec {
-                label: format!("Mode {}", self.project.transport.record_mode.label()),
-                action: Some(AppAction::CycleRecordMode),
-                fill: theme.transport.record_mode,
-            },
-        ]
-    }
-
-    pub(crate) fn transport_bottom_chip_specs(&self) -> Vec<TransportChipSpec> {
-        let theme = self.theme();
-        vec![
-            TransportChipSpec {
-                label: format!(
-                    "Wrap {}",
-                    if self.project.transport.loop_recording_extends_clip {
-                        "Extend"
-                    } else {
-                        "Clamp"
-                    }
-                ),
-                action: Some(AppAction::ToggleLoopRecordingExtension),
-                fill: if self.project.transport.loop_recording_extends_clip {
+            ),
+            TransportChipSpec::button(
+                "Rec Mode",
+                short_record_mode_label(self.project.transport.record_mode),
+                Some(AppAction::CycleRecordMode),
+                theme.transport.record_mode,
+            ),
+            TransportChipSpec::button(
+                "Rec Wrap",
+                if self.project.transport.loop_recording_extends_clip {
+                    "Ext"
+                } else {
+                    "Clamp"
+                },
+                Some(AppAction::ToggleLoopRecordingExtension),
+                if self.project.transport.loop_recording_extends_clip {
                     theme.transport.loop_wrap_extend
                 } else {
                     theme.transport.loop_wrap_clamp
                 },
-            },
-            TransportChipSpec {
-                label: format!("Song Loop {}", on_off(self.project.transport.loop_enabled)),
-                action: Some(AppAction::ToggleGlobalLoop),
-                fill: theme.transport.song_loop,
-            },
-            TransportChipSpec {
-                label: format!("Tempo {}", self.project.transport.tempo_bpm),
-                action: None,
-                fill: theme.transport.tempo,
-            },
-            TransportChipSpec {
-                label: format!("Harmony {}", note_name(self.project.global_harmony.root)),
-                action: Some(AppAction::CycleGlobalHarmonyRoot),
-                fill: theme.transport.harmony,
-            },
-            TransportChipSpec {
-                label: format!("NoteAdd {}", on_off(self.note_additive_select_held)),
-                action: None,
-                fill: if self.note_additive_select_held {
-                    theme.transport.note_add_held
-                } else {
-                    theme.transport.note_add_idle
-                },
-            },
-        ]
-    }
-
-    pub(crate) fn transport_link_chip_specs(&self) -> Vec<TransportChipSpec> {
-        let theme = self.theme();
-        vec![
-            TransportChipSpec {
-                label: format!("Link {}", on_off(self.project.transport.link_enabled)),
-                action: Some(AppAction::ToggleLinkEnabled),
-                fill: if self.project.transport.link_enabled {
+            ),
+            TransportChipSpec::button(
+                "Song Loop",
+                on_off(self.project.transport.loop_enabled),
+                Some(AppAction::ToggleGlobalLoop),
+                theme.transport.song_loop,
+            ),
+            TransportChipSpec::button(
+                "Harmony",
+                note_name(self.project.global_harmony.root),
+                Some(AppAction::CycleGlobalHarmonyRoot),
+                theme.transport.harmony,
+            ),
+            TransportChipSpec::button(
+                "Link",
+                on_off(self.project.transport.link_enabled),
+                Some(AppAction::ToggleLinkEnabled),
+                if self.project.transport.link_enabled {
                     theme.transport.link_active
                 } else {
                     theme.transport.link_idle
                 },
-            },
-            TransportChipSpec {
-                label: format!(
-                    "Start/Stop {}",
-                    on_off(self.project.transport.link_start_stop_sync)
-                ),
-                action: Some(AppAction::ToggleLinkStartStopSync),
-                fill: theme.transport.link_start_stop,
-            },
-        ]
-    }
-
-    pub(crate) fn transport_status_chip_specs(&self) -> Vec<TransportChipSpec> {
-        let theme = self.theme();
-        vec![
-            TransportChipSpec {
-                label: format!(
-                    "LaunchQ {}",
-                    on_off(self.project.transport.stored_loop_recall_quantized)
-                ),
-                action: Some(AppAction::ToggleStoredLoopRecallQuantize),
-                fill: if self.project.transport.stored_loop_recall_quantized {
+            ),
+            TransportChipSpec::button(
+                "Link Sync",
+                on_off(self.project.transport.link_start_stop_sync),
+                Some(AppAction::ToggleLinkStartStopSync),
+                theme.transport.link_start_stop,
+            ),
+            TransportChipSpec::button(
+                "Launch Q",
+                on_off(self.project.transport.stored_loop_recall_quantized),
+                Some(AppAction::ToggleStoredLoopRecallQuantize),
+                if self.project.transport.stored_loop_recall_quantized {
                     theme.transport.launch_quantize_enabled
                 } else {
                     theme.transport.launch_quantize_disabled
                 },
-            },
-            TransportChipSpec {
-                label: format!(
-                    "Launch {}",
-                    launch_quantize_label(self.project.transport.stored_loop_launch_quantize)
-                ),
-                action: Some(AppAction::CycleStoredLoopLaunchQuantize),
-                fill: theme.transport.launch_quantize_mode,
-            },
-            TransportChipSpec {
-                label: format!("Quant {}", quantize_label(self.project.transport.quantize)),
-                action: None,
-                fill: theme.transport.quantize,
-            },
-            TransportChipSpec {
-                label: format!("Peers {}", self.link_snapshot.peers),
-                action: None,
-                fill: theme.transport.peers,
-            },
+            ),
+            TransportChipSpec::button(
+                "Launch",
+                launch_quantize_label(self.project.transport.stored_loop_launch_quantize),
+                Some(AppAction::CycleStoredLoopLaunchQuantize),
+                theme.transport.launch_quantize_mode,
+            ),
         ]
-    }
-
-    pub(crate) fn transport_right_panel_width(&self, bounds: Rect) -> u32 {
-        let top_row = chip_row_width(&self.transport_link_chip_specs())
-            .saturating_add(96)
-            .saturating_add(12);
-        let bottom_row = chip_row_width(&self.transport_status_chip_specs()).saturating_add(12);
-        let desired = top_row.max(bottom_row).max(236);
-        let max_allowed = bounds.width().saturating_sub(220).max(236);
-        desired.min(max_allowed)
     }
 
     fn draw_footer<T: RenderTarget>(
@@ -584,6 +564,13 @@ pub(crate) fn transport_strip_height(metrics: &crate::ui_density::UiMetrics) -> 
     metrics.transport_strip_height_px
 }
 
+fn short_record_mode_label(mode: crate::transport::RecordMode) -> &'static str {
+    match mode {
+        crate::transport::RecordMode::Overdub => "Ovrdub",
+        crate::transport::RecordMode::Replace => "Replace",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -624,10 +611,14 @@ mod tests {
         let mut app = App::new();
         app.apply_action(AppAction::CycleGlobalHarmonyRoot);
         let labels = app
-            .transport_bottom_chip_specs()
+            .transport_button_specs()
             .into_iter()
-            .map(|chip| chip.label)
+            .map(|chip| (chip.label, chip.sublabel.unwrap_or_default()))
             .collect::<Vec<_>>();
-        assert!(labels.iter().any(|label| label == "Harmony C#"));
+        assert!(
+            labels
+                .iter()
+                .any(|(label, value)| label == "Harmony" && value == "C#")
+        );
     }
 }

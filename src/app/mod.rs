@@ -58,9 +58,7 @@ mod stored_loops;
 mod timeline;
 mod types;
 
-use capture::{
-    capture_specs, chip_row_width, readback_color_at, readback_rect_rgba, seed_capture_demo_track,
-};
+use capture::{capture_specs, readback_color_at, readback_rect_rgba, seed_capture_demo_track};
 use discoverability_ui::track_indicator_target;
 pub(super) use input::rect_contains;
 use mapping::input as mapping_input;
@@ -73,7 +71,7 @@ use note_runtime::{scheduled_note_occurrences, ticks_per_second_for_tempo};
 use shell::scaling::{
     active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
 };
-pub(super) use shell::ui::{TransportChipSpec, transport_strip_height};
+pub(super) use shell::ui::transport_strip_height;
 use stored_loops::{
     clear_stored_loop_slot_index, recall_stored_loop_slot_index, store_stored_loop_slot_index,
     stored_loop_slot_color, stored_loop_slot_recall_action,
