@@ -8,18 +8,6 @@ use sdl3::render::{Canvas, RenderTarget};
 
 use super::types::CaptureSpec;
 
-pub(super) fn chip_row_width(specs: &[TransportChipSpec]) -> u32 {
-    if specs.is_empty() {
-        return 0;
-    }
-    let chips = specs
-        .iter()
-        .map(|spec| crate::ui::text_width(&spec.label, 1) + 10)
-        .sum::<u32>();
-    let gaps = (specs.len().saturating_sub(1) as u32) * 6;
-    chips.saturating_add(gaps)
-}
-
 pub(super) fn capture_specs() -> [CaptureSpec; 7] {
     [
         CaptureSpec {
@@ -54,25 +42,6 @@ pub(super) fn capture_specs() -> [CaptureSpec; 7] {
             page: AppPage::Mappings,
             overlay: Some(AppOverlay::MappingsQuickView),
             focused_track_view: false,
-            open_clip_align: false,
-            filename: "mappings-overlay.png",
-        },
-        CaptureSpec {
-            page: AppPage::MidiIo,
-            overlay: None,
-            focused_track_view: false,
-            open_clip_align: false,
-            filename: "midi-io.png",
-        },
-        CaptureSpec {
-            page: AppPage::Routing,
-            overlay: None,
-            focused_track_view: false,
-            open_clip_align: false,
-            filename: "routing.png",
-        },
-    ]
-}            focused_track_view: false,
             open_clip_align: false,
             filename: "mappings-overlay.png",
         },
