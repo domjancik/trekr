@@ -358,7 +358,7 @@ impl App {
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
         let status_width = bounds.width().min(214).max(168);
-        let side_inset = 2;
+        let side_inset = 1;
         let status_gap = 2;
         let status_bounds = Rect::new(
             bounds.x + bounds.width() as i32 - status_width as i32 - side_inset,
