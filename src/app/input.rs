@@ -91,10 +91,20 @@ impl App {
 
         if let Some(source_label) = direct_mapping_key_label(&event) {
             if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
-                return None;
+                if matches!(
+                    self.direct_mapping_state.mode,
+                    DirectMappingMode::AwaitingInput(_)
+                ) {
+                    return Some(RemoteUiIntent::CaptureDirectMappingKey {
+                        source_label: source_label.clone(),
+                    });
+                }
             }
-            if !self.resolve_key_mapping_actions(&source_label).is_empty() {
-                return None;
+            let mapping_actions = self.resolve_key_mapping_actions(&source_label);
+            if !mapping_actions.is_empty() {
+                return Some(RemoteUiIntent::Actions {
+                    actions: mapping_actions,
+                });
             }
         }
 
@@ -131,11 +141,13 @@ impl App {
                 });
             }
 
-            if self
-                .direct_mapping_target_at(content_bounds, x, y)
-                .is_some()
-            {
-                return None;
+            if let Some(target) = self.direct_mapping_target_at(content_bounds, x, y) {
+                return Some(RemoteUiIntent::BeginDirectMappingInput {
+                    action: target.action,
+                    target_label: target.target_label.to_string(),
+                    scope_label: target.scope_label.to_string(),
+                    display_scope: target.display_scope.map(str::to_string),
+                });
             }
             return None;
         }
@@ -156,10 +168,39 @@ impl App {
         )
     }
 
+    fn find_direct_mapping_target_descriptor(
+        &self,
+        action: AppAction,
+        target_label: &str,
+        scope_label: &str,
+        display_scope: Option<&str>,
+    ) -> Option<DirectMappingTarget> {
+        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
+        let (_, content_bounds, _) = self.page_frame_layout(inset).ok()?;
+        self.direct_mapping_targets(content_bounds)
+            .into_iter()
+            .find(|target| {
+                target.action == action
+                    && target.target_label == target_label
+                    && target.scope_label == scope_label
+                    && target.display_scope == display_scope
+            })
+    }
+
     pub(crate) fn apply_remote_ui_intent(&mut self, intent: RemoteUiIntent) -> Option<AppControl> {
         match intent {
             RemoteUiIntent::Action { action } => {
                 Some(self.apply_action_with_source(action, ActionSource::Remote))
+            }
+            RemoteUiIntent::Actions { actions } => {
+                for action in actions {
+                    let control = self.apply_action_with_source(action, ActionSource::Remote);
+                    if control == AppControl::Quit {
+                        return Some(control);
+                    }
+                }
+                Some(AppControl::Continue)
             }
             RemoteUiIntent::TrackAction {
                 track_index,
@@ -168,6 +209,35 @@ impl App {
                 self.project.active_track_index =
                     track_index.min(self.project.tracks.len().saturating_sub(1));
                 Some(self.apply_action_with_source(action, ActionSource::Remote))
+            }
+            RemoteUiIntent::BeginDirectMappingInput {
+                action,
+                target_label,
+                scope_label,
+                display_scope,
+            } => {
+                if let Some(target) = self.find_direct_mapping_target_descriptor(
+                    action,
+                    &target_label,
+                    &scope_label,
+                    display_scope.as_deref(),
+                ) {
+                    self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
+                    self.direct_mapping_state.status_message = None;
+                    self.sync_midi_inputs();
+                }
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::CaptureDirectMappingKey { source_label } => {
+                if let DirectMappingMode::AwaitingInput(target) = self.direct_mapping_state.mode {
+                    self.commit_direct_mapping_source(
+                        MappingSourceKind::Key,
+                        target,
+                        &default_mapping_source_device(),
+                        &source_label,
+                    );
+                }
+                Some(AppControl::Continue)
             }
             RemoteUiIntent::SelectMappingRow { index } => {
                 self.page_state.selected_mapping_index =
@@ -726,6 +796,7 @@ pub(crate) fn pointer_hover_position(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
 
     #[test]
     fn pointer_position_uses_render_coordinates_for_mouse() {
@@ -816,5 +887,76 @@ mod tests {
             app.direct_mapping_state.mode,
             DirectMappingMode::AwaitingInput(record_target)
         );
+    }
+
+    #[test]
+    fn remote_key_intent_uses_semantic_actions_for_custom_key_mappings() {
+        let mut app = App::new();
+        app.mappings = vec![MappingEntry {
+            source_kind: MappingSourceKind::Key,
+            source_device_label: default_mapping_source_device(),
+            source_label: "Space".to_string(),
+            target_label: "Record".to_string(),
+            scope_label: "Armed/Active".to_string(),
+            enabled: true,
+        }];
+
+        assert_eq!(
+            app.resolve_remote_key_intent(
+                sdl3::keyboard::Keycode::Space,
+                sdl3::keyboard::Mod::NOMOD,
+                false,
+            ),
+            Some(RemoteUiIntent::Actions {
+                actions: vec![AppAction::ToggleRecording],
+            })
+        );
+    }
+
+    #[test]
+    fn remote_key_intent_uses_capture_intent_for_direct_mapping_keys() {
+        let mut app = App::new();
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        assert_eq!(
+            app.resolve_remote_key_intent(
+                sdl3::keyboard::Keycode::R,
+                sdl3::keyboard::Mod::LCTRLMOD | sdl3::keyboard::Mod::LSHIFTMOD,
+                false,
+            ),
+            Some(RemoteUiIntent::CaptureDirectMappingKey {
+                source_label: "Ctrl+Shift+R".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn applying_capture_direct_mapping_key_intent_commits_mapping() {
+        let mut app = App::new();
+        app.mappings.clear();
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let control = app.apply_remote_ui_intent(RemoteUiIntent::CaptureDirectMappingKey {
+            source_label: "Ctrl+Shift+R".to_string(),
+        });
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_eq!(app.mappings.len(), 1);
+        assert_eq!(app.mappings[0].source_kind, MappingSourceKind::Key);
+        assert_eq!(app.mappings[0].source_label, "Ctrl+Shift+R");
+        assert_eq!(app.mappings[0].target_label, "Play/Stop");
+        assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
     }
 }

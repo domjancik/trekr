@@ -9,7 +9,7 @@ use crate::project::Project;
 use crate::theme::{ThemePreset, theme};
 use crate::timeline_fx::{TimelineContext, TimelineFxField};
 use sdl3::event::Event;
-use sdl3::keyboard::{Keycode, Mod};
+use sdl3::keyboard::Keycode;
 use sdl3::rect::Rect;
 use sdl3::render::Canvas;
 use sdl3::video::Window;
@@ -131,310 +131,27 @@ pub struct SessionSnapshot {
     pub playhead_ticks: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RemotePointerSource {
-    Pointer,
-    Touch,
-}
-
-impl RemotePointerSource {
-    fn action_source(self) -> ActionSource {
-        match self {
-            RemotePointerSource::Pointer => ActionSource::Pointer,
-            RemotePointerSource::Touch => ActionSource::Touch,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RemoteKeycode {
-    Escape,
-    Space,
-    Return,
-    Backspace,
-    Delete,
-    Tab,
-    Home,
-    Left,
-    Right,
-    Up,
-    Down,
-    Comma,
-    Period,
-    Minus,
-    Equals,
-    LeftBracket,
-    RightBracket,
-    Slash,
-    Backslash,
-    F1,
-    F2,
-    F3,
-    F4,
-    F5,
-    F6,
-    F7,
-    F8,
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
-    Num0,
-    Num1,
-    Num2,
-    Num3,
-    Num4,
-    Num5,
-    Num6,
-    Num7,
-    Num8,
-    Num9,
-    Kp1,
-    Kp2,
-    Kp3,
-    Kp4,
-    Kp5,
-    Kp6,
-    Kp7,
-    Kp8,
-    LShift,
-    RShift,
-    LCtrl,
-    RCtrl,
-    LAlt,
-    RAlt,
-    LGui,
-    RGui,
-    Mode,
-}
-
-impl RemoteKeycode {
-    #[allow(dead_code)]
-    fn from_sdl(keycode: Keycode) -> Option<Self> {
-        Some(match keycode {
-            Keycode::Escape => Self::Escape,
-            Keycode::Space => Self::Space,
-            Keycode::Return => Self::Return,
-            Keycode::Backspace => Self::Backspace,
-            Keycode::Delete => Self::Delete,
-            Keycode::Tab => Self::Tab,
-            Keycode::Home => Self::Home,
-            Keycode::Left => Self::Left,
-            Keycode::Right => Self::Right,
-            Keycode::Up => Self::Up,
-            Keycode::Down => Self::Down,
-            Keycode::Comma => Self::Comma,
-            Keycode::Period => Self::Period,
-            Keycode::Minus => Self::Minus,
-            Keycode::Equals => Self::Equals,
-            Keycode::LeftBracket => Self::LeftBracket,
-            Keycode::RightBracket => Self::RightBracket,
-            Keycode::Slash => Self::Slash,
-            Keycode::Backslash => Self::Backslash,
-            Keycode::F1 => Self::F1,
-            Keycode::F2 => Self::F2,
-            Keycode::F3 => Self::F3,
-            Keycode::F4 => Self::F4,
-            Keycode::F5 => Self::F5,
-            Keycode::F6 => Self::F6,
-            Keycode::F7 => Self::F7,
-            Keycode::F8 => Self::F8,
-            Keycode::A => Self::A,
-            Keycode::B => Self::B,
-            Keycode::C => Self::C,
-            Keycode::D => Self::D,
-            Keycode::E => Self::E,
-            Keycode::F => Self::F,
-            Keycode::G => Self::G,
-            Keycode::H => Self::H,
-            Keycode::I => Self::I,
-            Keycode::J => Self::J,
-            Keycode::K => Self::K,
-            Keycode::L => Self::L,
-            Keycode::M => Self::M,
-            Keycode::N => Self::N,
-            Keycode::O => Self::O,
-            Keycode::P => Self::P,
-            Keycode::Q => Self::Q,
-            Keycode::R => Self::R,
-            Keycode::S => Self::S,
-            Keycode::T => Self::T,
-            Keycode::U => Self::U,
-            Keycode::V => Self::V,
-            Keycode::W => Self::W,
-            Keycode::X => Self::X,
-            Keycode::Y => Self::Y,
-            Keycode::Z => Self::Z,
-            Keycode::_0 => Self::Num0,
-            Keycode::_1 => Self::Num1,
-            Keycode::_2 => Self::Num2,
-            Keycode::_3 => Self::Num3,
-            Keycode::_4 => Self::Num4,
-            Keycode::_5 => Self::Num5,
-            Keycode::_6 => Self::Num6,
-            Keycode::_7 => Self::Num7,
-            Keycode::_8 => Self::Num8,
-            Keycode::_9 => Self::Num9,
-            Keycode::Kp1 => Self::Kp1,
-            Keycode::Kp2 => Self::Kp2,
-            Keycode::Kp3 => Self::Kp3,
-            Keycode::Kp4 => Self::Kp4,
-            Keycode::Kp5 => Self::Kp5,
-            Keycode::Kp6 => Self::Kp6,
-            Keycode::Kp7 => Self::Kp7,
-            Keycode::Kp8 => Self::Kp8,
-            Keycode::LShift => Self::LShift,
-            Keycode::RShift => Self::RShift,
-            Keycode::LCtrl => Self::LCtrl,
-            Keycode::RCtrl => Self::RCtrl,
-            Keycode::LAlt => Self::LAlt,
-            Keycode::RAlt => Self::RAlt,
-            Keycode::LGui => Self::LGui,
-            Keycode::RGui => Self::RGui,
-            Keycode::Mode => Self::Mode,
-            _ => return None,
-        })
-    }
-
-    fn to_sdl(self) -> Keycode {
-        match self {
-            Self::Escape => Keycode::Escape,
-            Self::Space => Keycode::Space,
-            Self::Return => Keycode::Return,
-            Self::Backspace => Keycode::Backspace,
-            Self::Delete => Keycode::Delete,
-            Self::Tab => Keycode::Tab,
-            Self::Home => Keycode::Home,
-            Self::Left => Keycode::Left,
-            Self::Right => Keycode::Right,
-            Self::Up => Keycode::Up,
-            Self::Down => Keycode::Down,
-            Self::Comma => Keycode::Comma,
-            Self::Period => Keycode::Period,
-            Self::Minus => Keycode::Minus,
-            Self::Equals => Keycode::Equals,
-            Self::LeftBracket => Keycode::LeftBracket,
-            Self::RightBracket => Keycode::RightBracket,
-            Self::Slash => Keycode::Slash,
-            Self::Backslash => Keycode::Backslash,
-            Self::F1 => Keycode::F1,
-            Self::F2 => Keycode::F2,
-            Self::F3 => Keycode::F3,
-            Self::F4 => Keycode::F4,
-            Self::F5 => Keycode::F5,
-            Self::F6 => Keycode::F6,
-            Self::F7 => Keycode::F7,
-            Self::F8 => Keycode::F8,
-            Self::A => Keycode::A,
-            Self::B => Keycode::B,
-            Self::C => Keycode::C,
-            Self::D => Keycode::D,
-            Self::E => Keycode::E,
-            Self::F => Keycode::F,
-            Self::G => Keycode::G,
-            Self::H => Keycode::H,
-            Self::I => Keycode::I,
-            Self::J => Keycode::J,
-            Self::K => Keycode::K,
-            Self::L => Keycode::L,
-            Self::M => Keycode::M,
-            Self::N => Keycode::N,
-            Self::O => Keycode::O,
-            Self::P => Keycode::P,
-            Self::Q => Keycode::Q,
-            Self::R => Keycode::R,
-            Self::S => Keycode::S,
-            Self::T => Keycode::T,
-            Self::U => Keycode::U,
-            Self::V => Keycode::V,
-            Self::W => Keycode::W,
-            Self::X => Keycode::X,
-            Self::Y => Keycode::Y,
-            Self::Z => Keycode::Z,
-            Self::Num0 => Keycode::_0,
-            Self::Num1 => Keycode::_1,
-            Self::Num2 => Keycode::_2,
-            Self::Num3 => Keycode::_3,
-            Self::Num4 => Keycode::_4,
-            Self::Num5 => Keycode::_5,
-            Self::Num6 => Keycode::_6,
-            Self::Num7 => Keycode::_7,
-            Self::Num8 => Keycode::_8,
-            Self::Num9 => Keycode::_9,
-            Self::Kp1 => Keycode::Kp1,
-            Self::Kp2 => Keycode::Kp2,
-            Self::Kp3 => Keycode::Kp3,
-            Self::Kp4 => Keycode::Kp4,
-            Self::Kp5 => Keycode::Kp5,
-            Self::Kp6 => Keycode::Kp6,
-            Self::Kp7 => Keycode::Kp7,
-            Self::Kp8 => Keycode::Kp8,
-            Self::LShift => Keycode::LShift,
-            Self::RShift => Keycode::RShift,
-            Self::LCtrl => Keycode::LCtrl,
-            Self::RCtrl => Keycode::RCtrl,
-            Self::LAlt => Keycode::LAlt,
-            Self::RAlt => Keycode::RAlt,
-            Self::LGui => Keycode::LGui,
-            Self::RGui => Keycode::RGui,
-            Self::Mode => Keycode::Mode,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum RemoteInputEvent {
-    KeyDown {
-        keycode: RemoteKeycode,
-        keymod_bits: u16,
-        repeat: bool,
-        viewport_size: (u32, u32),
-    },
-    PointerHover {
-        x: i32,
-        y: i32,
-        viewport_size: (u32, u32),
-    },
-    PointerDown {
-        x: i32,
-        y: i32,
-        source: RemotePointerSource,
-        viewport_size: (u32, u32),
-    },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RemoteUiIntent {
     Action {
         action: AppAction,
     },
+    Actions {
+        actions: Vec<AppAction>,
+    },
     TrackAction {
         track_index: usize,
         action: AppAction,
+    },
+    BeginDirectMappingInput {
+        action: AppAction,
+        target_label: String,
+        scope_label: String,
+        display_scope: Option<String>,
+    },
+    CaptureDirectMappingKey {
+        source_label: String,
     },
     SelectMappingRow {
         index: usize,
@@ -482,7 +199,6 @@ pub enum RemoteUiIntent {
 pub enum ThinClientMessage {
     Hello { client_name: String },
     Command { command: SessionCommand },
-    Input { input: RemoteInputEvent },
     UiIntent { intent: RemoteUiIntent },
 }
 
@@ -515,10 +231,6 @@ enum ReceivedClientMessage {
     },
     Command {
         command: SessionCommand,
-    },
-    Input {
-        client_id: usize,
-        input: RemoteInputEvent,
     },
     UiIntent {
         client_id: usize,
@@ -634,11 +346,6 @@ impl SessionServer {
                         });
                     }
                 }
-                ReceivedClientMessage::Input { client_id, input } => {
-                    if self.apply_remote_input(app, client_id, input) {
-                        self.revision = self.revision.saturating_add(1);
-                    }
-                }
                 ReceivedClientMessage::UiIntent { client_id, intent } => {
                     if self.apply_remote_ui_intent(app, client_id, intent) {
                         diagnostics::log_info(
@@ -669,67 +376,6 @@ impl SessionServer {
 
     pub fn connected_clients(&self) -> usize {
         self.clients.lock().map(|guard| guard.len()).unwrap_or(0)
-    }
-
-    fn apply_remote_input(
-        &mut self,
-        app: &mut App,
-        client_id: usize,
-        input: RemoteInputEvent,
-    ) -> bool {
-        let context = self
-            .contexts
-            .entry(client_id)
-            .or_insert_with(|| ClientContext {
-                client_name: format!("client-{client_id}"),
-                ui_state: ClientUiState::default(),
-            });
-        let host_ui_state = app.capture_client_ui_state();
-        let before_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
-        app.apply_client_ui_state(&context.ui_state);
-
-        let control = match input {
-            RemoteInputEvent::KeyDown {
-                keycode,
-                keymod_bits,
-                repeat,
-                viewport_size,
-            } => {
-                app.set_client_viewport_size(viewport_size);
-                app.handle_remote_key_down(
-                    keycode.to_sdl(),
-                    Mod::from_bits_truncate(keymod_bits),
-                    repeat,
-                )
-            }
-            RemoteInputEvent::PointerHover {
-                x,
-                y,
-                viewport_size,
-            } => {
-                app.set_client_viewport_size(viewport_size);
-                Some(app.handle_remote_pointer_hover(x, y))
-            }
-            RemoteInputEvent::PointerDown {
-                x,
-                y,
-                source,
-                viewport_size,
-            } => {
-                app.set_client_viewport_size(viewport_size);
-                app.handle_remote_pointer_down(x, y, source.action_source())
-            }
-        };
-        context.ui_state = app.capture_client_ui_state();
-        app.apply_client_ui_state(&host_ui_state);
-
-        match control.unwrap_or(AppControl::Continue) {
-            AppControl::Quit => false,
-            AppControl::Continue => {
-                let after_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
-                before_snapshot != after_snapshot
-            }
-        }
     }
 
     fn apply_remote_ui_intent(
@@ -812,14 +458,6 @@ fn spawn_client_reader(
                 ThinClientMessage::Command { command } => {
                     if command_tx
                         .send(ReceivedClientMessage::Command { command })
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-                ThinClientMessage::Input { input } => {
-                    if command_tx
-                        .send(ReceivedClientMessage::Input { client_id, input })
                         .is_err()
                     {
                         break;
@@ -1035,7 +673,6 @@ pub fn run_thin_client_sdl(
                 } => break 'running,
                 _ => {
                     let converted = event.get_converted_coords(&canvas).unwrap_or(event.clone());
-                    let viewport_size = mirror_app.client_viewport_size();
                     match &converted {
                         Event::KeyDown {
                             keycode: Some(keycode),
@@ -1049,12 +686,6 @@ pub fn run_thin_client_sdl(
                                 send_thin_client_ui_intent(&mut writer, intent.clone())?;
                                 let _ = mirror_app.apply_remote_ui_intent(intent);
                                 status_line = "Sent remote key intent".to_string();
-                            } else if let Some(input) =
-                                remote_input_for_event(&converted, viewport_size)
-                            {
-                                send_thin_client_input(&mut writer, input)?;
-                                apply_remote_input_locally(&mut mirror_app, input);
-                                status_line = format!("Sent {}", remote_input_label(input));
                             }
                         }
                         Event::MouseMotion { x, y, .. } => {
@@ -1085,13 +716,7 @@ pub fn run_thin_client_sdl(
                                 status_line = "Sent remote touch intent".to_string();
                             }
                         }
-                        _ => {
-                            if let Some(input) = remote_input_for_event(&converted, viewport_size) {
-                                send_thin_client_input(&mut writer, input)?;
-                                apply_remote_input_locally(&mut mirror_app, input);
-                                status_line = format!("Sent {}", remote_input_label(input));
-                            }
-                        }
+                        _ => {}
                     }
                 }
             }
@@ -1159,19 +784,6 @@ fn connect_thin_client_channel(
     Ok((writer, snapshot_rx))
 }
 
-fn send_thin_client_input(
-    writer: &mut TcpStream,
-    input: RemoteInputEvent,
-) -> Result<(), Box<dyn std::error::Error>> {
-    writeln!(
-        writer,
-        "{}",
-        serde_json::to_string(&ThinClientMessage::Input { input })?
-    )?;
-    writer.flush()?;
-    Ok(())
-}
-
 fn send_thin_client_ui_intent(
     writer: &mut TcpStream,
     intent: RemoteUiIntent,
@@ -1183,88 +795,6 @@ fn send_thin_client_ui_intent(
     )?;
     writer.flush()?;
     Ok(())
-}
-
-fn remote_input_for_event(event: &Event, viewport_size: (u32, u32)) -> Option<RemoteInputEvent> {
-    match event {
-        Event::KeyDown {
-            keycode: Some(keycode),
-            keymod,
-            repeat,
-            ..
-        } => Some(RemoteInputEvent::KeyDown {
-            keycode: RemoteKeycode::from_sdl(*keycode)?,
-            keymod_bits: keymod.bits(),
-            repeat: *repeat,
-            viewport_size,
-        }),
-        Event::MouseMotion { x, y, .. } => Some(RemoteInputEvent::PointerHover {
-            x: *x as i32,
-            y: *y as i32,
-            viewport_size,
-        }),
-        Event::MouseButtonDown { x, y, .. } => Some(RemoteInputEvent::PointerDown {
-            x: *x as i32,
-            y: *y as i32,
-            source: RemotePointerSource::Pointer,
-            viewport_size,
-        }),
-        Event::FingerMotion { x, y, .. } => Some(RemoteInputEvent::PointerHover {
-            x: *x as i32,
-            y: *y as i32,
-            viewport_size,
-        }),
-        Event::FingerDown { x, y, .. } => Some(RemoteInputEvent::PointerDown {
-            x: *x as i32,
-            y: *y as i32,
-            source: RemotePointerSource::Touch,
-            viewport_size,
-        }),
-        _ => None,
-    }
-}
-
-fn apply_remote_input_locally(app: &mut App, input: RemoteInputEvent) {
-    match input {
-        RemoteInputEvent::KeyDown {
-            keycode,
-            keymod_bits,
-            repeat,
-            viewport_size,
-        } => {
-            app.set_client_viewport_size(viewport_size);
-            let _ = app.handle_remote_key_down(
-                keycode.to_sdl(),
-                Mod::from_bits_truncate(keymod_bits),
-                repeat,
-            );
-        }
-        RemoteInputEvent::PointerHover {
-            x,
-            y,
-            viewport_size,
-        } => {
-            app.set_client_viewport_size(viewport_size);
-            let _ = app.handle_remote_pointer_hover(x, y);
-        }
-        RemoteInputEvent::PointerDown {
-            x,
-            y,
-            source,
-            viewport_size,
-        } => {
-            app.set_client_viewport_size(viewport_size);
-            let _ = app.handle_remote_pointer_down(x, y, source.action_source());
-        }
-    }
-}
-
-fn remote_input_label(input: RemoteInputEvent) -> &'static str {
-    match input {
-        RemoteInputEvent::KeyDown { .. } => "remote key",
-        RemoteInputEvent::PointerHover { .. } => "remote hover",
-        RemoteInputEvent::PointerDown { .. } => "remote pointer",
-    }
 }
 
 fn draw_waiting_thin_client(
@@ -1373,9 +903,7 @@ fn spawn_stdin_reader(stdin_tx: Sender<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{RemoteInputEvent, RemoteKeycode, SessionCommand, remote_input_for_event};
-    use sdl3::event::Event;
-    use sdl3::keyboard::Mod;
+    use super::SessionCommand;
 
     #[test]
     fn session_command_parses_common_tokens() {
@@ -1392,29 +920,5 @@ mod tests {
             Some(SessionCommand::ToggleCurrentTrackMute)
         );
         assert_eq!(SessionCommand::parse_token("nope"), None);
-    }
-
-    #[test]
-    fn remote_input_events_capture_client_viewport() {
-        let event = Event::KeyDown {
-            timestamp: 0,
-            window_id: 1,
-            keycode: Some(sdl3::keyboard::Keycode::Space),
-            scancode: None,
-            keymod: Mod::NOMOD,
-            repeat: false,
-            which: 0,
-            raw: 0,
-        };
-
-        assert_eq!(
-            remote_input_for_event(&event, (1111, 777)),
-            Some(RemoteInputEvent::KeyDown {
-                keycode: RemoteKeycode::Space,
-                keymod_bits: Mod::NOMOD.bits(),
-                repeat: false,
-                viewport_size: (1111, 777),
-            })
-        );
     }
 }
