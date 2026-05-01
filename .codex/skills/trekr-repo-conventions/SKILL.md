@@ -1,11 +1,11 @@
 ---
 name: trekr-repo-conventions
-description: Apply the canonical trekr repository conventions for file placement, module ownership, naming, validation, screenshot hygiene, and refactor discipline. Use when changing Rust app modules, page UI, runtime helpers, README/docs, screenshots, or doing structural cleanup so edits stay aligned with the post-Phase-2 modular layout.
+description: Apply the canonical trekr repository conventions for file placement, module ownership, naming, validation, screenshot hygiene, and refactor discipline. Use when changing or reviewing Rust app modules, page UI, runtime helpers, README/docs, screenshots, or structural cleanup so edits and review judgments stay aligned with the post-Phase-2 modular layout.
 ---
 
 # Trekr Repo Conventions
 
-Use this skill whenever you touch trekr code or docs and need the change to fit the established structure.
+Use this skill whenever you edit or review trekr code or docs and need the change or review to fit the established structure.
 
 ## Repo contract
 
