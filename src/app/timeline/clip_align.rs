@@ -92,6 +92,9 @@ impl App {
                 1,
                 field_text,
             )?;
+            let value_rect = Rect::new(rect.x + 76, rect.y + 5, rect.width().saturating_sub(82), 8);
+            let field_text = crate::app::support::ui_helpers::contrasting_text_color(fill, theme);
+            crate::ui::draw_text_fitted(canvas, &label.to_uppercase(), label_rect, 1, field_text)?;
             canvas.set_draw_color(if selected {
                 theme.app_chrome.surface_border
             } else {
