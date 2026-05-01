@@ -1126,6 +1126,7 @@ mod tests {
         assert_eq!(options.theme_preset, Some(ThemePreset::HighContrastLight));
     }
 
+    #[test]
     fn host_session_requires_listen_addr() {
         let error =
             parse_app_command_from(vec!["host-session".to_owned()]).expect_err("expected error");

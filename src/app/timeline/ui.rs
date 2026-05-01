@@ -12,7 +12,8 @@ impl App {
         let (header_bounds, body_bounds) =
             crate::ui::split_top_strip(content_bounds, 28, 6).ok()?;
         let (transport_bounds, timeline_bounds) =
-            crate::ui::split_top_strip(body_bounds, transport_strip_height(), 8).ok()?;
+            crate::ui::split_top_strip(body_bounds, transport_strip_height(self.ui_metrics()), 8)
+                .ok()?;
         if rect_contains(self.focused_track_view_button_rect(header_bounds), x, y) {
             return Some(RemoteUiIntent::Action {
                 action: AppAction::ToggleFocusedTrackView,
@@ -36,7 +37,7 @@ impl App {
             let detail_label_rect = layout.detail_label_rect;
             let full_content_rect = layout.full_content_rect;
             let detail_content_rect = layout.detail_content_rect;
-            for indicator in crate::ui::track_indicators(layout.status_rect) {
+            for indicator in crate::ui::track_indicators(layout.status_rect, self.ui_metrics()) {
                 if !rect_contains(indicator.rect, x, y) {
                     continue;
                 }

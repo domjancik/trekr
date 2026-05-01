@@ -102,7 +102,8 @@ impl App {
         y: i32,
         source: crate::actions::ActionSource,
     ) -> Option<RemoteUiIntent> {
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let surface =
+            crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1, self.ui_metrics());
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (tabs_bounds, content_bounds, _) = self.page_frame_layout(inset).ok()?;
 
@@ -156,7 +157,8 @@ impl App {
         scope_label: &str,
         display_scope: Option<&str>,
     ) -> Option<DirectMappingTarget> {
-        let surface = crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1);
+        let surface =
+            crate::ui::surface_rect(self.viewport_size.0, self.viewport_size.1, self.ui_metrics());
         let inset = crate::ui::inset_rect(surface, 24, 24).ok()?;
         let (_, content_bounds, _) = self.page_frame_layout(inset).ok()?;
         self.direct_mapping_targets(content_bounds)
