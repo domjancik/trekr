@@ -408,15 +408,18 @@ pub enum RemoteInputEvent {
         keycode: RemoteKeycode,
         keymod_bits: u16,
         repeat: bool,
+        viewport_size: (u32, u32),
     },
     PointerHover {
         x: i32,
         y: i32,
+        viewport_size: (u32, u32),
     },
     PointerDown {
         x: i32,
         y: i32,
         source: RemotePointerSource,
+        viewport_size: (u32, u32),
     },
 }
 
@@ -608,13 +611,30 @@ impl SessionServer {
                 keycode,
                 keymod_bits,
                 repeat,
-            } => app.handle_remote_key_down(
-                keycode.to_sdl(),
-                Mod::from_bits_truncate(keymod_bits),
-                repeat,
-            ),
-            RemoteInputEvent::PointerHover { x, y } => Some(app.handle_remote_pointer_hover(x, y)),
-            RemoteInputEvent::PointerDown { x, y, source } => {
+                viewport_size,
+            } => {
+                app.set_client_viewport_size(viewport_size);
+                app.handle_remote_key_down(
+                    keycode.to_sdl(),
+                    Mod::from_bits_truncate(keymod_bits),
+                    repeat,
+                )
+            }
+            RemoteInputEvent::PointerHover {
+                x,
+                y,
+                viewport_size,
+            } => {
+                app.set_client_viewport_size(viewport_size);
+                Some(app.handle_remote_pointer_hover(x, y))
+            }
+            RemoteInputEvent::PointerDown {
+                x,
+                y,
+                source,
+                viewport_size,
+            } => {
+                app.set_client_viewport_size(viewport_size);
                 app.handle_remote_pointer_down(x, y, source.action_source())
             }
         };
@@ -878,6 +898,7 @@ pub fn run_thin_client_sdl(
     let mut status_line = format!("Connected to {connect_addr} as {client_name}");
 
     'running: loop {
+        mirror_app.configure_window_canvas(&mut canvas)?;
         for event in event_pump.poll_iter() {
             match &event {
                 Event::Quit { .. } => break 'running,
@@ -888,7 +909,8 @@ pub fn run_thin_client_sdl(
                 } => break 'running,
                 _ => {
                     let converted = event.get_converted_coords(&canvas).unwrap_or(event.clone());
-                    if let Some(input) = remote_input_for_event(&converted) {
+                    let viewport_size = mirror_app.client_viewport_size();
+                    if let Some(input) = remote_input_for_event(&converted, viewport_size) {
                         send_thin_client_input(&mut writer, input)?;
                         apply_remote_input_locally(&mut mirror_app, input);
                         status_line = format!("Sent {}", remote_input_label(input));
@@ -972,7 +994,7 @@ fn send_thin_client_input(
     Ok(())
 }
 
-fn remote_input_for_event(event: &Event) -> Option<RemoteInputEvent> {
+fn remote_input_for_event(event: &Event, viewport_size: (u32, u32)) -> Option<RemoteInputEvent> {
     match event {
         Event::KeyDown {
             keycode: Some(keycode),
@@ -983,24 +1005,29 @@ fn remote_input_for_event(event: &Event) -> Option<RemoteInputEvent> {
             keycode: RemoteKeycode::from_sdl(*keycode)?,
             keymod_bits: keymod.bits(),
             repeat: *repeat,
+            viewport_size,
         }),
         Event::MouseMotion { x, y, .. } => Some(RemoteInputEvent::PointerHover {
             x: *x as i32,
             y: *y as i32,
+            viewport_size,
         }),
         Event::MouseButtonDown { x, y, .. } => Some(RemoteInputEvent::PointerDown {
             x: *x as i32,
             y: *y as i32,
             source: RemotePointerSource::Pointer,
+            viewport_size,
         }),
         Event::FingerMotion { x, y, .. } => Some(RemoteInputEvent::PointerHover {
             x: *x as i32,
             y: *y as i32,
+            viewport_size,
         }),
         Event::FingerDown { x, y, .. } => Some(RemoteInputEvent::PointerDown {
             x: *x as i32,
             y: *y as i32,
             source: RemotePointerSource::Touch,
+            viewport_size,
         }),
         _ => None,
     }
@@ -1012,17 +1039,30 @@ fn apply_remote_input_locally(app: &mut App, input: RemoteInputEvent) {
             keycode,
             keymod_bits,
             repeat,
+            viewport_size,
         } => {
+            app.set_client_viewport_size(viewport_size);
             let _ = app.handle_remote_key_down(
                 keycode.to_sdl(),
                 Mod::from_bits_truncate(keymod_bits),
                 repeat,
             );
         }
-        RemoteInputEvent::PointerHover { x, y } => {
+        RemoteInputEvent::PointerHover {
+            x,
+            y,
+            viewport_size,
+        } => {
+            app.set_client_viewport_size(viewport_size);
             let _ = app.handle_remote_pointer_hover(x, y);
         }
-        RemoteInputEvent::PointerDown { x, y, source } => {
+        RemoteInputEvent::PointerDown {
+            x,
+            y,
+            source,
+            viewport_size,
+        } => {
+            app.set_client_viewport_size(viewport_size);
             let _ = app.handle_remote_pointer_down(x, y, source.action_source());
         }
     }
@@ -1142,7 +1182,9 @@ fn spawn_stdin_reader(stdin_tx: Sender<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::SessionCommand;
+    use super::{RemoteInputEvent, RemoteKeycode, SessionCommand, remote_input_for_event};
+    use sdl3::event::Event;
+    use sdl3::keyboard::Mod;
 
     #[test]
     fn session_command_parses_common_tokens() {
@@ -1159,5 +1201,29 @@ mod tests {
             Some(SessionCommand::ToggleCurrentTrackMute)
         );
         assert_eq!(SessionCommand::parse_token("nope"), None);
+    }
+
+    #[test]
+    fn remote_input_events_capture_client_viewport() {
+        let event = Event::KeyDown {
+            timestamp: 0,
+            window_id: 1,
+            keycode: Some(sdl3::keyboard::Keycode::Space),
+            scancode: None,
+            keymod: Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+
+        assert_eq!(
+            remote_input_for_event(&event, (1111, 777)),
+            Some(RemoteInputEvent::KeyDown {
+                keycode: RemoteKeycode::Space,
+                keymod_bits: Mod::NOMOD.bits(),
+                repeat: false,
+                viewport_size: (1111, 777),
+            })
+        );
     }
 }

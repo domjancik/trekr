@@ -205,6 +205,7 @@ impl App {
             status_state: self.status_state.clone(),
             direct_mapping_state: self.direct_mapping_state.clone(),
             target_lookup_state: self.target_lookup_state.clone(),
+            viewport_size: self.viewport_size,
             focused_track_view: self.focused_track_view,
             note_additive_select_held: self.note_additive_select_held,
         }
@@ -217,8 +218,17 @@ impl App {
         self.status_state = state.status_state.clone();
         self.direct_mapping_state = state.direct_mapping_state.clone();
         self.target_lookup_state = state.target_lookup_state.clone();
+        self.viewport_size = state.viewport_size;
         self.focused_track_view = state.focused_track_view;
         self.note_additive_select_held = state.note_additive_select_held;
+    }
+
+    pub(crate) fn set_client_viewport_size(&mut self, viewport_size: (u32, u32)) {
+        self.viewport_size = viewport_size;
+    }
+
+    pub(crate) fn client_viewport_size(&self) -> (u32, u32) {
+        self.viewport_size
     }
 
     #[allow(dead_code)]
@@ -2561,6 +2571,7 @@ mod tests {
         let mut app = App::new();
         app.page_state.current_page = AppPage::Routing;
         app.overlay_state.active = Some(AppOverlay::Discoverability);
+        app.viewport_size = (900, 700);
         app.focused_track_view = true;
         app.note_additive_select_held = true;
 
@@ -2574,6 +2585,7 @@ mod tests {
             restored.overlay_state.active,
             Some(AppOverlay::Discoverability)
         );
+        assert_eq!(restored.viewport_size, (900, 700));
         assert!(restored.focused_track_view);
         assert!(restored.note_additive_select_held);
     }

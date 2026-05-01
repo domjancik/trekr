@@ -25,6 +25,7 @@ pub(crate) struct ClientUiState {
     pub(crate) status_state: StatusState,
     pub(crate) direct_mapping_state: DirectMappingState,
     pub(crate) target_lookup_state: MappingTargetLookupState,
+    pub(crate) viewport_size: (u32, u32),
     pub(crate) focused_track_view: bool,
     pub(crate) note_additive_select_held: bool,
 }
@@ -37,6 +38,7 @@ impl Default for ClientUiState {
             status_state: StatusState::default(),
             direct_mapping_state: DirectMappingState::default(),
             target_lookup_state: MappingTargetLookupState::default(),
+            viewport_size: (1280, 720),
             focused_track_view: false,
             note_additive_select_held: false,
         }
