@@ -345,7 +345,7 @@ impl App {
             )
             .with_compact_labels(
                 "Mode",
-                short_record_mode_label(self.project.transport.record_mode),
+                compact_record_mode_label(self.project.transport.record_mode),
             ),
             TransportChipSpec::button(
                 "Rec Wrap",
@@ -627,6 +627,13 @@ fn short_record_mode_label(mode: crate::transport::RecordMode) -> &'static str {
     }
 }
 
+fn compact_record_mode_label(mode: crate::transport::RecordMode) -> &'static str {
+    match mode {
+        crate::transport::RecordMode::Overdub => "Ovd",
+        crate::transport::RecordMode::Replace => "Repl",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -690,6 +697,11 @@ mod tests {
         }));
         assert!(specs.iter().any(|chip| {
             chip.label == "Link Sync" && chip.compact_label.as_deref() == Some("Sync")
+        }));
+        assert!(specs.iter().any(|chip| {
+            chip.label == "Rec Mode"
+                && chip.compact_label.as_deref() == Some("Mode")
+                && chip.compact_sublabel.as_deref() == Some("Ovd")
         }));
     }
 }
