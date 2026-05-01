@@ -240,9 +240,10 @@ pub enum UiScalingMode {
     Linear,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RunOptions {
     pub video_mode: VideoMode,
+    pub session_listen: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

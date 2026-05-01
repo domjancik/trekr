@@ -1,4 +1,5 @@
 use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
+use crate::distributed;
 use crate::state;
 use crate::theme::ThemePreset;
 use crate::ui_density::UiDensityPreset;
@@ -32,8 +33,22 @@ pub enum LaunchMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppCommand {
     Launch(LaunchOptions),
+    HostSession(HostSessionOptions),
+    ThinClient(ThinClientOptions),
     PrintHelp,
     PrintCommands,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HostSessionOptions {
+    pub launch: LaunchOptions,
+    pub listen_addr: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThinClientOptions {
+    pub connect_addr: String,
+    pub client_name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +63,7 @@ pub struct SuggestedCommand {
 pub const DEFAULT_STATE_FILE: &str = "artifacts/state/last-run.json";
 pub const DEFAULT_CAPTURE_DIR: &str = "artifacts/screenshots";
 
-const SUGGESTED_COMMANDS: [SuggestedCommand; 6] = [
+const SUGGESTED_COMMANDS: [SuggestedCommand; 8] = [
     SuggestedCommand {
         label: "Desktop persisted session",
         command: "cargo run -- run",
@@ -97,6 +112,26 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 6] = [
         launchable: true,
     },
     SuggestedCommand {
+        label: "Headless session host",
+        command: "cargo run -- host-session --state-mode demo --listen 0.0.0.0:8787",
+        description: "Run the shared session headlessly and accept thin-client connections over TCP.",
+        args: &[
+            "host-session",
+            "--state-mode",
+            "demo",
+            "--listen",
+            "0.0.0.0:8787",
+        ],
+        launchable: true,
+    },
+    SuggestedCommand {
+        label: "Terminal thin client",
+        command: "cargo run -- thin-client --connect 127.0.0.1:8787",
+        description: "Connect a lightweight terminal control surface to a session host.",
+        args: &["thin-client", "--connect", "127.0.0.1:8787"],
+        launchable: true,
+    },
+    SuggestedCommand {
         label: "Terminal launch picker",
         command: "cargo run --bin trekr-tui",
         description: "Open the text UI selector for common launch profiles.",
@@ -141,6 +176,28 @@ where
         "capture-ui" => {
             parse_launch_options_from(args.into_iter().skip(1), true).map(AppCommand::Launch)
         }
+        "host-session"
+            if args
+                .iter()
+                .skip(1)
+                .any(|arg| arg == "--help" || arg == "-h") =>
+        {
+            Ok(AppCommand::PrintHelp)
+        }
+        "host-session" => {
+            parse_host_session_options_from(args.into_iter().skip(1)).map(AppCommand::HostSession)
+        }
+        "thin-client"
+            if args
+                .iter()
+                .skip(1)
+                .any(|arg| arg == "--help" || arg == "-h") =>
+        {
+            Ok(AppCommand::PrintHelp)
+        }
+        "thin-client" => {
+            parse_thin_client_options_from(args.into_iter().skip(1)).map(AppCommand::ThinClient)
+        }
         _ if first.starts_with('-') => {
             parse_launch_options_from(args.into_iter(), false).map(AppCommand::Launch)
         }
@@ -165,6 +222,10 @@ impl Default for LaunchOptions {
 pub fn execute_app_command(command: AppCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         AppCommand::Launch(options) => launch(options),
+        AppCommand::HostSession(options) => host_session(options),
+        AppCommand::ThinClient(options) => {
+            distributed::run_thin_client(&options.connect_addr, &options.client_name)
+        }
         AppCommand::PrintHelp => {
             print_help(&mut io::stdout())?;
             Ok(())
@@ -177,6 +238,34 @@ pub fn execute_app_command(command: AppCommand) -> Result<(), Box<dyn std::error
 }
 
 pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = build_app(&options);
+    println!("{}", app.bootstrap_summary());
+    match options.run_mode {
+        LaunchMode::Interactive(run_options) => {
+            let result = app.run_with_options(run_options);
+            if result.is_ok() && options.state_mode == StateMode::Persisted {
+                state::save(&options.state_file, &app.persisted_state())?;
+                let undo_path = state::undo_history_path(&options.state_file);
+                state::save_undo_history(&undo_path, app.undo_history())?;
+            }
+            result
+        }
+        LaunchMode::Capture(capture) => {
+            if options.state_mode == StateMode::Demo {
+                app.seed_capture_demo_timeline_overlaps();
+            }
+            app.capture_ui_pages(capture)
+        }
+    }
+}
+
+pub fn host_session(options: HostSessionOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let app = build_app(&options.launch);
+    println!("{}", app.bootstrap_summary());
+    distributed::run_headless_session_host(app, &options.listen_addr)
+}
+
+fn build_app(options: &LaunchOptions) -> App {
     let mut app = match options.state_mode {
         StateMode::Persisted => {
             if options.state_file.exists() {
@@ -204,24 +293,7 @@ pub fn launch(options: LaunchOptions) -> Result<(), Box<dyn std::error::Error>> 
     if let Some(ui_density_preset) = options.ui_density_preset {
         app.set_ui_density_preset(ui_density_preset);
     }
-    println!("{}", app.bootstrap_summary());
-    match options.run_mode {
-        LaunchMode::Interactive(run_options) => {
-            let result = app.run_with_options(run_options);
-            if result.is_ok() && options.state_mode == StateMode::Persisted {
-                state::save(&options.state_file, &app.persisted_state())?;
-                let undo_path = state::undo_history_path(&options.state_file);
-                state::save_undo_history(&undo_path, app.undo_history())?;
-            }
-            result
-        }
-        LaunchMode::Capture(capture) => {
-            if options.state_mode == StateMode::Demo {
-                app.seed_capture_demo_timeline_overlaps();
-            }
-            app.capture_ui_pages(capture)
-        }
-    }
+    app
 }
 
 pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
@@ -237,6 +309,14 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(
         writer,
         "  capture-ui  render UI screenshots without opening the interactive app"
+    )?;
+    writeln!(
+        writer,
+        "  host-session run a headless shared session host for thin clients"
+    )?;
+    writeln!(
+        writer,
+        "  thin-client connect a lightweight terminal control client to a session host"
     )?;
     writeln!(
         writer,
@@ -269,7 +349,31 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(
         writer,
+        "  --listen <addr>               run only, expose the SDL app as a thin-client session host"
+    )?;
+    writeln!(
+        writer,
         "  --capture-dir <path>          capture-ui only, default: {DEFAULT_CAPTURE_DIR}"
+    )?;
+    writeln!(writer)?;
+    writeln!(writer, "options for `host-session`:")?;
+    writeln!(
+        writer,
+        "  --listen <addr>               required, for example 0.0.0.0:8787"
+    )?;
+    writeln!(
+        writer,
+        "  plus all launch-state options from `run` except --video-mode"
+    )?;
+    writeln!(writer)?;
+    writeln!(writer, "options for `thin-client`:")?;
+    writeln!(
+        writer,
+        "  --connect <addr>              required, for example 127.0.0.1:8787"
+    )?;
+    writeln!(
+        writer,
+        "  --name <client-name>          optional, default: thin-client"
     )?;
     writeln!(writer)?;
     writeln!(writer, "compatibility:")?;
@@ -367,6 +471,10 @@ pub fn launch_command_args(options: &LaunchOptions) -> Vec<String> {
             if run_options.video_mode != VideoMode::Windowed {
                 args.push("--video-mode".to_owned());
                 args.push(video_mode_label(run_options.video_mode).to_owned());
+            }
+            if let Some(listen_addr) = &run_options.session_listen {
+                args.push("--listen".to_owned());
+                args.push(listen_addr.clone());
             }
         }
         LaunchMode::Capture(capture) => {
@@ -480,6 +588,15 @@ where
                 }
                 run_options.video_mode = parse_video_mode(&value)?;
             }
+            "--listen" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--listen requires host:port".to_owned())?;
+                if capture_mode {
+                    return Err("--listen is only valid with the run command".to_owned());
+                }
+                run_options.session_listen = Some(value);
+            }
             "--help" | "-h" => return Err("use `help` to print the full CLI reference".to_owned()),
             other => return Err(format!("unknown argument: {other}")),
         }
@@ -491,6 +608,66 @@ where
     };
 
     Ok(options)
+}
+
+fn parse_host_session_options_from<I>(args: I) -> Result<HostSessionOptions, String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut listen_addr = None;
+    let mut passthrough_args = Vec::new();
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--listen" {
+            listen_addr = Some(
+                iter.next()
+                    .ok_or_else(|| "--listen requires host:port".to_owned())?,
+            );
+        } else {
+            passthrough_args.push(arg);
+        }
+    }
+
+    let mut launch = parse_launch_options_from(passthrough_args, false)?;
+    if let LaunchMode::Interactive(run_options) = &mut launch.run_mode {
+        run_options.video_mode = VideoMode::Windowed;
+        run_options.session_listen = None;
+    }
+
+    Ok(HostSessionOptions {
+        launch,
+        listen_addr: listen_addr.ok_or_else(|| "--listen is required".to_owned())?,
+    })
+}
+
+fn parse_thin_client_options_from<I>(args: I) -> Result<ThinClientOptions, String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut connect_addr = None;
+    let mut client_name = "thin-client".to_owned();
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--connect" => {
+                connect_addr = Some(
+                    args.next()
+                        .ok_or_else(|| "--connect requires host:port".to_owned())?,
+                );
+            }
+            "--name" => {
+                client_name = args
+                    .next()
+                    .ok_or_else(|| "--name requires a client name".to_owned())?;
+            }
+            other => return Err(format!("unknown argument: {other}")),
+        }
+    }
+
+    Ok(ThinClientOptions {
+        connect_addr: connect_addr.ok_or_else(|| "--connect is required".to_owned())?,
+        client_name,
+    })
 }
 
 fn parse_video_mode(value: &str) -> Result<VideoMode, String> {
@@ -529,7 +706,10 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         LaunchMode::Capture(UiCaptureOptions { output_dir })
     } else {
         let video_mode = prompt_video_mode(writer, reader)?;
-        LaunchMode::Interactive(RunOptions { video_mode })
+        LaunchMode::Interactive(RunOptions {
+            video_mode,
+            session_listen: None,
+        })
     };
 
     Ok(LaunchOptions {
@@ -765,6 +945,7 @@ mod tests {
         match options.run_mode {
             LaunchMode::Interactive(run_options) => {
                 assert_eq!(run_options.video_mode, VideoMode::Windowed);
+                assert_eq!(run_options.session_listen, None);
             }
             LaunchMode::Capture(_) => panic!("expected interactive mode"),
         }
@@ -787,6 +968,26 @@ mod tests {
         match options.run_mode {
             LaunchMode::Interactive(run_options) => {
                 assert_eq!(run_options.video_mode, VideoMode::KmsDrmConsole);
+                assert_eq!(run_options.session_listen, None);
+            }
+            LaunchMode::Capture(_) => panic!("expected interactive mode"),
+        }
+    }
+
+    #[test]
+    fn run_subcommand_accepts_session_listen() {
+        let command = parse_app_command_from(vec![
+            "run".to_owned(),
+            "--listen".to_owned(),
+            "0.0.0.0:8787".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        match options.run_mode {
+            LaunchMode::Interactive(run_options) => {
+                assert_eq!(run_options.session_listen, Some("0.0.0.0:8787".to_owned()));
             }
             LaunchMode::Capture(_) => panic!("expected interactive mode"),
         }
@@ -874,6 +1075,19 @@ mod tests {
             panic!("expected launch command");
         };
         assert_eq!(options.theme_preset, Some(ThemePreset::HighContrastLight));
+    }
+
+    fn host_session_requires_listen_addr() {
+        let error =
+            parse_app_command_from(vec!["host-session".to_owned()]).expect_err("expected error");
+        assert_eq!(error, "--listen is required");
+    }
+
+    #[test]
+    fn thin_client_requires_connect_addr() {
+        let error =
+            parse_app_command_from(vec!["thin-client".to_owned()]).expect_err("expected error");
+        assert_eq!(error, "--connect is required");
     }
 
     #[test]

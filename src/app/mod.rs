@@ -2,6 +2,7 @@ use crate::actions::{
     ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
 };
 use crate::app_ui::branding;
+use crate::distributed::{SessionCommand, SessionServer, SessionSnapshot};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
@@ -183,6 +184,46 @@ impl App {
         }
     }
 
+    pub fn session_project(&self) -> &Project {
+        &self.project
+    }
+
+    pub fn session_transport_ticks(&self) -> u64 {
+        self.transport_ticks
+    }
+
+    pub fn session_playhead_ticks(&self) -> u64 {
+        self.playhead_ticks
+    }
+
+    pub fn session_snapshot(&self, revision: u64, connected_clients: usize) -> SessionSnapshot {
+        SessionSnapshot {
+            revision,
+            connected_clients,
+            project: self.project.clone(),
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+        }
+    }
+
+    pub fn apply_session_command(&mut self, command: SessionCommand, source: ActionSource) -> bool {
+        let action = command.action();
+        if matches!(
+            self.apply_action_with_source(action, source),
+            AppControl::Continue
+        ) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn service_session_runtime(&mut self, delta: Duration) {
+        self.poll_midi_input();
+        self.maybe_refresh_midi_devices(Instant::now());
+        self.advance_playhead(delta);
+    }
+
     pub(crate) fn theme(&self) -> &'static Theme {
         crate::theme::theme(self.theme_preset)
     }
@@ -292,6 +333,11 @@ impl App {
         options: RunOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.startup_started_at = Instant::now();
+        let mut session_server = options
+            .session_listen
+            .as_deref()
+            .map(SessionServer::bind)
+            .transpose()?;
 
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
@@ -335,9 +381,9 @@ impl App {
             let present_mode = std::env::var("TREKR_KMSDRM_PRESENT_MODE")
                 .unwrap_or_else(|_| "renderer".to_owned());
             if present_mode.eq_ignore_ascii_case("surface") {
-                return self.run_kmsdrm_surface_console(sdl_context, window);
+                return self.run_kmsdrm_surface_console(sdl_context, window, session_server);
             }
-            return self.run_kmsdrm_renderer_console(sdl_context, window);
+            return self.run_kmsdrm_renderer_console(sdl_context, window, session_server);
         }
 
         let mut canvas = window.into_canvas();
@@ -371,11 +417,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
@@ -393,6 +440,7 @@ impl App {
         &mut self,
         sdl_context: sdl3::Sdl,
         window: sdl3::video::Window,
+        mut session_server: Option<SessionServer>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut canvas = window.into_canvas();
         self.configure_window_canvas(&mut canvas)?;
@@ -425,11 +473,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
@@ -444,6 +493,7 @@ impl App {
         &mut self,
         sdl_context: sdl3::Sdl,
         mut window: sdl3::video::Window,
+        mut session_server: Option<SessionServer>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut event_pump = sdl_context.event_pump()?;
         let started_at = Instant::now();
@@ -476,11 +526,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.viewport_size = window.size_in_pixels();
 
             self.update_window_title(&mut window)?;
