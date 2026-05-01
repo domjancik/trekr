@@ -86,6 +86,7 @@ Latest renderer-owned captures from the demo state:
 - a cross-platform Ableton Link transport layer with runtime status in the transport strip
 - direct mouse/touch control for tabs, transport controls, mappings, MIDI I/O selection, and routing fields
 - optional thin-client session hosting for context-free shared transport/track commands over TCP, while retaining the normal in-process local app path
+- an SDL thin client mode that mirrors shared transport/track state in a separate window and can send the same context-free command slice
 
 Launch state:
 
@@ -106,6 +107,7 @@ Launch state:
 - `cargo run -- run --ui-density touch` launches the app with larger touch-oriented spacing and targets
 - `cargo run -- host-session --state-mode demo --listen 0.0.0.0:8787` runs a headless shared-session host for terminal thin clients
 - `cargo run -- thin-client --connect 127.0.0.1:8787` connects a terminal thin client that mirrors shared transport/track state and can send context-free commands
+- `cargo run -- thin-client-sdl --connect 127.0.0.1:8787` connects an SDL thin client window with keyboard and clickable buttons for the same context-free command slice
 - `cargo run -- run --theme high-contrast-dark` launches a darker high-contrast theme tuned for strong black-background separation
 - `cargo run -- run --theme high-contrast-light` launches the light high-contrast theme
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale
@@ -115,6 +117,7 @@ Launch state:
 CLI notes:
 
 - `run`, `capture-ui`, `host-session`, `thin-client`, `commands`, and `help` are the first-class app commands
+- `thin-client-sdl` provides the SDL windowed thin-client variant alongside the terminal thin client
 - the older flag-only form is still supported for compatibility, so existing commands like `cargo run -- --state-mode demo` still work
 - `capture-ui` accepts launch-state options plus `--capture-dir`; `--video-mode` remains interactive-only
 - `--ui-density <default|compact|touch|tiny>` controls the shared spacing and hit-target preset independently from `--theme` and `--ui-scale`

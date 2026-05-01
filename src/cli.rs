@@ -35,6 +35,7 @@ pub enum AppCommand {
     Launch(LaunchOptions),
     HostSession(HostSessionOptions),
     ThinClient(ThinClientOptions),
+    ThinClientSdl(ThinClientOptions),
     PrintHelp,
     PrintCommands,
 }
@@ -63,7 +64,7 @@ pub struct SuggestedCommand {
 pub const DEFAULT_STATE_FILE: &str = "artifacts/state/last-run.json";
 pub const DEFAULT_CAPTURE_DIR: &str = "artifacts/screenshots";
 
-const SUGGESTED_COMMANDS: [SuggestedCommand; 8] = [
+const SUGGESTED_COMMANDS: [SuggestedCommand; 9] = [
     SuggestedCommand {
         label: "Desktop persisted session",
         command: "cargo run -- run",
@@ -129,6 +130,13 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 8] = [
         command: "cargo run -- thin-client --connect 127.0.0.1:8787",
         description: "Connect a lightweight terminal control surface to a session host.",
         args: &["thin-client", "--connect", "127.0.0.1:8787"],
+        launchable: true,
+    },
+    SuggestedCommand {
+        label: "SDL thin client",
+        command: "cargo run -- thin-client-sdl --connect 127.0.0.1:8787",
+        description: "Connect an SDL thin client window that mirrors session state and sends context-free commands.",
+        args: &["thin-client-sdl", "--connect", "127.0.0.1:8787"],
         launchable: true,
     },
     SuggestedCommand {
@@ -198,6 +206,17 @@ where
         "thin-client" => {
             parse_thin_client_options_from(args.into_iter().skip(1)).map(AppCommand::ThinClient)
         }
+        "thin-client-sdl"
+            if args
+                .iter()
+                .skip(1)
+                .any(|arg| arg == "--help" || arg == "-h") =>
+        {
+            Ok(AppCommand::PrintHelp)
+        }
+        "thin-client-sdl" => {
+            parse_thin_client_options_from(args.into_iter().skip(1)).map(AppCommand::ThinClientSdl)
+        }
         _ if first.starts_with('-') => {
             parse_launch_options_from(args.into_iter(), false).map(AppCommand::Launch)
         }
@@ -225,6 +244,9 @@ pub fn execute_app_command(command: AppCommand) -> Result<(), Box<dyn std::error
         AppCommand::HostSession(options) => host_session(options),
         AppCommand::ThinClient(options) => {
             distributed::run_thin_client(&options.connect_addr, &options.client_name)
+        }
+        AppCommand::ThinClientSdl(options) => {
+            distributed::run_thin_client_sdl(&options.connect_addr, &options.client_name)
         }
         AppCommand::PrintHelp => {
             print_help(&mut io::stdout())?;
@@ -320,6 +342,10 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(
         writer,
+        "  thin-client-sdl connect an SDL thin client window to a session host"
+    )?;
+    writeln!(
+        writer,
         "  commands    print suggested documented launch commands"
     )?;
     writeln!(writer, "  help        show this help")?;
@@ -367,6 +393,16 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(writer)?;
     writeln!(writer, "options for `thin-client`:")?;
+    writeln!(
+        writer,
+        "  --connect <addr>              required, for example 127.0.0.1:8787"
+    )?;
+    writeln!(
+        writer,
+        "  --name <client-name>          optional, default: thin-client"
+    )?;
+    writeln!(writer)?;
+    writeln!(writer, "options for `thin-client-sdl`:")?;
     writeln!(
         writer,
         "  --connect <addr>              required, for example 127.0.0.1:8787"
@@ -1102,5 +1138,12 @@ mod tests {
             panic!("expected launch command");
         };
         assert_eq!(options.ui_density_preset, Some(UiDensityPreset::Touch));
+    }
+
+    #[test]
+    fn thin_client_sdl_requires_connect_addr() {
+        let error =
+            parse_app_command_from(vec!["thin-client-sdl".to_owned()]).expect_err("expected error");
+        assert_eq!(error, "--connect is required");
     }
 }
