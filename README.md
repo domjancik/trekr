@@ -108,6 +108,7 @@ Launch state:
 - `cargo run -- host-session --state-mode demo --listen 0.0.0.0:8788` runs a headless shared-session host for terminal or SDL thin clients
 - `cargo run -- thin-client --connect 127.0.0.1:8788` connects a terminal thin client that mirrors shared transport/track state and can send context-free commands
 - `cargo run -- thin-client-sdl --connect 127.0.0.1:8788` connects an SDL thin client window that mirrors the full current app UI and forwards keyboard/pointer input to the host
+- crash diagnostics append to `artifacts/logs/trekr.log`, and panics capture a backtrace there in addition to stderr
 - `cargo run -- run --theme high-contrast-dark` launches a darker high-contrast theme tuned for strong black-background separation
 - `cargo run -- run --theme high-contrast-light` launches the light high-contrast theme
 - `cargo run -- --ui-scale 2.0` forces a larger logical UI scale instead of using the OS-reported display scale

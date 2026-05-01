@@ -1,5 +1,6 @@
 use crate::actions::{ActionSource, AppAction};
 use crate::app::{App, AppControl, ClientUiState};
+use crate::diagnostics;
 use crate::link::LinkSnapshot;
 use crate::mapping::MappingEntry;
 use crate::midi_io::MidiDeviceCatalog;
@@ -446,6 +447,10 @@ pub enum RemoteUiIntent {
     CommitMappingTargetLookupLabel {
         label: String,
     },
+    AppendMappingTargetLookupText {
+        text: String,
+    },
+    BackspaceMappingTargetLookup,
     CancelMappingTargetLookup,
     SetMidiIoFocus {
         focus: MidiIoListFocus,
@@ -548,16 +553,22 @@ impl SessionServer {
         let accept_thread = thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(stream) = stream else {
+                    diagnostics::log_error("distributed", "listener incoming stream failed");
                     continue;
                 };
                 let client_id = accept_next_client_id.fetch_add(1, Ordering::Relaxed);
                 let Ok(write_stream) = stream.try_clone() else {
+                    diagnostics::log_error(
+                        "distributed",
+                        format!("failed to clone stream for client {client_id}"),
+                    );
                     continue;
                 };
                 let (outbound_tx, outbound_rx) = mpsc::channel::<HostMessage>();
                 if let Ok(mut guard) = accept_clients.lock() {
                     guard.insert(client_id, outbound_tx);
                 }
+                diagnostics::log_info("distributed", format!("client {client_id} connected"));
                 let _ = command_tx.send(ReceivedClientMessage::Connected { client_id });
                 spawn_client_writer(write_stream, outbound_rx);
                 spawn_client_reader(stream, client_id, command_tx.clone());
@@ -592,6 +603,10 @@ impl SessionServer {
                     if let Ok(mut guard) = self.clients.lock() {
                         guard.remove(&client_id);
                     }
+                    diagnostics::log_info(
+                        "distributed",
+                        format!("client {client_id} disconnected"),
+                    );
                 }
                 ReceivedClientMessage::Hello {
                     client_id,
@@ -608,6 +623,10 @@ impl SessionServer {
                 }
                 ReceivedClientMessage::Command { command } => {
                     if app.apply_session_command(command, ActionSource::Remote) {
+                        diagnostics::log_info(
+                            "distributed",
+                            format!("applied session command: {:?}", command),
+                        );
                         self.revision = self.revision.saturating_add(1);
                         self.broadcast_message(HostMessage::Ack {
                             revision: self.revision,
@@ -622,6 +641,10 @@ impl SessionServer {
                 }
                 ReceivedClientMessage::UiIntent { client_id, intent } => {
                     if self.apply_remote_ui_intent(app, client_id, intent) {
+                        diagnostics::log_info(
+                            "distributed",
+                            format!("applied ui intent for client {client_id}"),
+                        );
                         self.revision = self.revision.saturating_add(1);
                     }
                 }
@@ -825,6 +848,13 @@ pub fn run_headless_session_host(
     spawn_stdin_reader(stdin_tx);
 
     println!("trekr headless session host listening on {listen_addr}");
+    diagnostics::log_info(
+        "distributed",
+        format!(
+            "headless session host listening on {listen_addr}; log file {}",
+            diagnostics::log_path().display()
+        ),
+    );
     println!(
         "Local commands: {}",
         SessionCommand::ALL
@@ -1007,6 +1037,26 @@ pub fn run_thin_client_sdl(
                     let converted = event.get_converted_coords(&canvas).unwrap_or(event.clone());
                     let viewport_size = mirror_app.client_viewport_size();
                     match &converted {
+                        Event::KeyDown {
+                            keycode: Some(keycode),
+                            keymod,
+                            repeat,
+                            ..
+                        } => {
+                            if let Some(intent) =
+                                mirror_app.resolve_remote_key_intent(*keycode, *keymod, *repeat)
+                            {
+                                send_thin_client_ui_intent(&mut writer, intent.clone())?;
+                                let _ = mirror_app.apply_remote_ui_intent(intent);
+                                status_line = "Sent remote key intent".to_string();
+                            } else if let Some(input) =
+                                remote_input_for_event(&converted, viewport_size)
+                            {
+                                send_thin_client_input(&mut writer, input)?;
+                                apply_remote_input_locally(&mut mirror_app, input);
+                                status_line = format!("Sent {}", remote_input_label(input));
+                            }
+                        }
                         Event::MouseMotion { x, y, .. } => {
                             let _ = mirror_app.handle_remote_pointer_hover(*x as i32, *y as i32);
                         }

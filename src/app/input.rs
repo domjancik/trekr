@@ -44,6 +44,67 @@ impl App {
         self.handle_keyboard_event(&event)
     }
 
+    pub(crate) fn resolve_remote_key_intent(
+        &self,
+        keycode: sdl3::keyboard::Keycode,
+        keymod: sdl3::keyboard::Mod,
+        repeat: bool,
+    ) -> Option<RemoteUiIntent> {
+        let event = sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(keycode),
+            scancode: None,
+            keymod,
+            repeat,
+            which: 0,
+            raw: 0,
+        };
+
+        if self.target_lookup_state.active.is_some() {
+            match keycode {
+                sdl3::keyboard::Keycode::Escape if !repeat => {
+                    return Some(RemoteUiIntent::Action {
+                        action: AppAction::CancelCurrentMode,
+                    });
+                }
+                sdl3::keyboard::Keycode::Backspace if !repeat => {
+                    return Some(RemoteUiIntent::BackspaceMappingTargetLookup);
+                }
+                sdl3::keyboard::Keycode::Tab if !repeat => return None,
+                _ => {
+                    if let Some(input) = mapping_target_lookup_input(&event) {
+                        return Some(RemoteUiIntent::AppendMappingTargetLookupText { text: input });
+                    }
+                }
+            }
+        }
+
+        if matches!(keycode, sdl3::keyboard::Keycode::Escape)
+            && !repeat
+            && self.direct_mapping_state.mode != DirectMappingMode::Inactive
+        {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::CancelCurrentMode,
+            });
+        }
+
+        if let Some(source_label) = direct_mapping_key_label(&event) {
+            if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
+                return None;
+            }
+            if !self.resolve_key_mapping_actions(&source_label).is_empty() {
+                return None;
+            }
+        }
+
+        self.keyboard_bindings
+            .resolve(&event)
+            .map(|action_event| RemoteUiIntent::Action {
+                action: action_event.action,
+            })
+    }
+
     pub(crate) fn resolve_remote_pointer_intent(
         &self,
         x: i32,
@@ -137,6 +198,14 @@ impl App {
                 if let Some(found) = results.into_iter().find(|candidate| *candidate == label) {
                     self.commit_mapping_target_lookup_label(found);
                 }
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::AppendMappingTargetLookupText { text } => {
+                self.append_mapping_target_lookup_text(&text);
+                Some(AppControl::Continue)
+            }
+            RemoteUiIntent::BackspaceMappingTargetLookup => {
+                self.backspace_mapping_target_lookup();
                 Some(AppControl::Continue)
             }
             RemoteUiIntent::CancelMappingTargetLookup => {
