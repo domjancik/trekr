@@ -312,7 +312,7 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn transport_button_specs(&self) -> Vec<TransportChipSpec> {
+    pub(crate) fn transport_left_button_specs(&self) -> Vec<TransportChipSpec> {
         let theme = self.theme();
         vec![
             TransportChipSpec::button(
@@ -384,24 +384,6 @@ impl App {
             )
             .with_compact_labels("Harm", note_name(self.project.global_harmony.root)),
             TransportChipSpec::button(
-                "Link",
-                on_off(self.project.transport.link_enabled),
-                Some(AppAction::ToggleLinkEnabled),
-                if self.project.transport.link_enabled {
-                    theme.transport.link_active
-                } else {
-                    theme.transport.link_idle
-                },
-            )
-            .with_compact_labels("Link", on_off(self.project.transport.link_enabled)),
-            TransportChipSpec::button(
-                "Link Sync",
-                on_off(self.project.transport.link_start_stop_sync),
-                Some(AppAction::ToggleLinkStartStopSync),
-                theme.transport.link_start_stop,
-            )
-            .with_compact_labels("Sync", on_off(self.project.transport.link_start_stop_sync)),
-            TransportChipSpec::button(
                 "Launch Q",
                 on_off(self.project.transport.stored_loop_recall_quantized),
                 Some(AppAction::ToggleStoredLoopRecallQuantize),
@@ -426,6 +408,36 @@ impl App {
                 launch_quantize_label(self.project.transport.stored_loop_launch_quantize),
             ),
         ]
+    }
+
+    pub(crate) fn transport_right_button_specs(&self) -> Vec<TransportChipSpec> {
+        let theme = self.theme();
+        vec![
+            TransportChipSpec::button(
+                "Link",
+                on_off(self.project.transport.link_enabled),
+                Some(AppAction::ToggleLinkEnabled),
+                if self.project.transport.link_enabled {
+                    theme.transport.link_active
+                } else {
+                    theme.transport.link_idle
+                },
+            )
+            .with_compact_labels("Link", on_off(self.project.transport.link_enabled)),
+            TransportChipSpec::button(
+                "Link Sync",
+                on_off(self.project.transport.link_start_stop_sync),
+                Some(AppAction::ToggleLinkStartStopSync),
+                theme.transport.link_start_stop,
+            )
+            .with_compact_labels("Sync", on_off(self.project.transport.link_start_stop_sync)),
+        ]
+    }
+
+    pub(crate) fn transport_button_specs(&self) -> Vec<TransportChipSpec> {
+        let mut specs = self.transport_left_button_specs();
+        specs.extend(self.transport_right_button_specs());
+        specs
     }
 
     fn draw_footer<T: RenderTarget>(
