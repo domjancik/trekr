@@ -401,13 +401,17 @@ impl App {
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
+        let quantize = format!("Q {}", quantize_label(self.project.transport.quantize));
+        let peers = format!("Peers {}", self.link_snapshot.peers);
+        let quantize_width = crate::ui::text_width(&quantize, 1).min(bounds.width());
+        let peers_width = crate::ui::text_width(&peers, 1).min(bounds.width());
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("Q {}", quantize_label(self.project.transport.quantize)),
+            &quantize,
             Rect::new(
-                bounds.x + 2,
+                bounds.x + bounds.width() as i32 - quantize_width as i32 - 1,
                 bounds.y + 6,
-                bounds.width().saturating_sub(4),
+                quantize_width,
                 8,
             ),
             1,
@@ -415,11 +419,11 @@ impl App {
         )?;
         crate::ui::draw_text_fitted(
             canvas,
-            &format!("Peers {}", self.link_snapshot.peers),
+            &peers,
             Rect::new(
-                bounds.x + 2,
+                bounds.x + bounds.width() as i32 - peers_width as i32 - 1,
                 bounds.y + bounds.height() as i32 - 14,
-                bounds.width().saturating_sub(4),
+                peers_width,
                 8,
             ),
             1,
