@@ -2,7 +2,10 @@ use crate::actions::{
     ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
 };
 use crate::app_ui::branding;
-use crate::distributed::{RemoteUiIntent, SessionCommand, SessionServer, SessionSnapshot};
+use crate::distributed::{
+    DiscoveryHostConfig, RemoteUiIntent, SessionCommand, SessionServer, SessionSnapshot,
+    default_discovery_session_name,
+};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
@@ -391,7 +394,16 @@ impl App {
         let mut session_server = options
             .session_listen
             .as_deref()
-            .map(SessionServer::bind)
+            .map(|listen_addr| {
+                SessionServer::bind(
+                    listen_addr,
+                    DiscoveryHostConfig {
+                        session_name: default_discovery_session_name(&self.project.name),
+                        host_mode: "run-listen".to_string(),
+                        listen_addr: listen_addr.to_string(),
+                    },
+                )
+            })
             .transpose()?;
 
         if options.video_mode == VideoMode::KmsDrmConsole {

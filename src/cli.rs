@@ -48,7 +48,7 @@ pub struct HostSessionOptions {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThinClientOptions {
-    pub connect_addr: String,
+    pub connect_addr: Option<String>,
     pub client_name: String,
 }
 
@@ -134,9 +134,9 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 9] = [
     },
     SuggestedCommand {
         label: "SDL thin client",
-        command: "cargo run -- thin-client-sdl --connect 127.0.0.1:8788",
-        description: "Connect an SDL thin client window that mirrors the full app UI and forwards keyboard/pointer input.",
-        args: &["thin-client-sdl", "--connect", "127.0.0.1:8788"],
+        command: "cargo run -- thin-client-sdl",
+        description: "Open the SDL thin client discovery screen and join a LAN-advertised session or connect manually.",
+        args: &["thin-client-sdl"],
         launchable: true,
     },
     SuggestedCommand {
@@ -204,7 +204,8 @@ where
             Ok(AppCommand::PrintHelp)
         }
         "thin-client" => {
-            parse_thin_client_options_from(args.into_iter().skip(1)).map(AppCommand::ThinClient)
+            parse_thin_client_options_from_with_requirement(args.into_iter().skip(1), true)
+                .map(AppCommand::ThinClient)
         }
         "thin-client-sdl"
             if args
@@ -215,7 +216,8 @@ where
             Ok(AppCommand::PrintHelp)
         }
         "thin-client-sdl" => {
-            parse_thin_client_options_from(args.into_iter().skip(1)).map(AppCommand::ThinClientSdl)
+            parse_thin_client_options_from_with_requirement(args.into_iter().skip(1), false)
+                .map(AppCommand::ThinClientSdl)
         }
         _ if first.starts_with('-') => {
             parse_launch_options_from(args.into_iter(), false).map(AppCommand::Launch)
@@ -242,11 +244,15 @@ pub fn execute_app_command(command: AppCommand) -> Result<(), Box<dyn std::error
     match command {
         AppCommand::Launch(options) => launch(options),
         AppCommand::HostSession(options) => host_session(options),
-        AppCommand::ThinClient(options) => {
-            distributed::run_thin_client(&options.connect_addr, &options.client_name)
-        }
+        AppCommand::ThinClient(options) => distributed::run_thin_client(
+            options
+                .connect_addr
+                .as_deref()
+                .ok_or_else(|| "--connect is required".to_owned())?,
+            &options.client_name,
+        ),
         AppCommand::ThinClientSdl(options) => {
-            distributed::run_thin_client_sdl(&options.connect_addr, &options.client_name)
+            distributed::run_thin_client_sdl(options.connect_addr.as_deref(), &options.client_name)
         }
         AppCommand::PrintHelp => {
             print_help(&mut io::stdout())?;
@@ -405,7 +411,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "options for `thin-client-sdl`:")?;
     writeln!(
         writer,
-        "  --connect <addr>              required, for example 127.0.0.1:8788"
+        "  --connect <addr>              optional direct-connect bypass, for example 127.0.0.1:8788"
     )?;
     writeln!(
         writer,
@@ -676,7 +682,10 @@ where
     })
 }
 
-fn parse_thin_client_options_from<I>(args: I) -> Result<ThinClientOptions, String>
+fn parse_thin_client_options_from_with_requirement<I>(
+    args: I,
+    require_connect: bool,
+) -> Result<ThinClientOptions, String>
 where
     I: IntoIterator<Item = String>,
 {
@@ -701,7 +710,11 @@ where
     }
 
     Ok(ThinClientOptions {
-        connect_addr: connect_addr.ok_or_else(|| "--connect is required".to_owned())?,
+        connect_addr: if require_connect {
+            Some(connect_addr.ok_or_else(|| "--connect is required".to_owned())?)
+        } else {
+            connect_addr
+        },
         client_name,
     })
 }
@@ -1141,9 +1154,12 @@ mod tests {
     }
 
     #[test]
-    fn thin_client_sdl_requires_connect_addr() {
-        let error =
-            parse_app_command_from(vec!["thin-client-sdl".to_owned()]).expect_err("expected error");
-        assert_eq!(error, "--connect is required");
+    fn thin_client_sdl_defaults_to_discovery_when_connect_is_absent() {
+        let command =
+            parse_app_command_from(vec!["thin-client-sdl".to_owned()]).expect("parse command");
+        let AppCommand::ThinClientSdl(options) = command else {
+            panic!("expected thin-client-sdl command");
+        };
+        assert_eq!(options.connect_addr, None);
     }
 }
