@@ -373,6 +373,7 @@ impl App {
     }
 
     fn transport_strip_layout(&self, bounds: Rect) -> TransportStripLayout {
+        let left_specs = self.transport_left_button_specs();
         let right_specs = self.transport_right_button_specs();
         let right_gap = 2;
         let side_inset = 3;
@@ -413,11 +414,14 @@ impl App {
             right_group_bounds.x.saturating_sub(bounds.x + 5) as u32,
             bounds.height().saturating_sub(6),
         );
+        let shared_button_max_width =
+            row_button_width_for_bounds(buttons_bounds, left_specs.len(), 74, 2).unwrap_or(74);
         TransportStripLayout {
             left_buttons_bounds: buttons_bounds,
             right_buttons_bounds,
             tempo_pad_bounds,
             status_text_bounds,
+            shared_button_max_width,
         }
     }
 
@@ -566,6 +570,7 @@ struct TransportStripLayout {
     right_buttons_bounds: Rect,
     tempo_pad_bounds: Rect,
     status_text_bounds: Rect,
+    shared_button_max_width: i32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -603,11 +608,25 @@ impl TempoPadLayout {
 
 impl TransportStripLayout {
     fn left_button_rect(self, index: usize, count: usize) -> Option<Rect> {
-        row_button_rect(self.left_buttons_bounds, index, count, 74, 2, false)
+        row_button_rect(
+            self.left_buttons_bounds,
+            index,
+            count,
+            self.shared_button_max_width,
+            2,
+            false,
+        )
     }
 
     fn right_button_rect(self, index: usize, count: usize) -> Option<Rect> {
-        row_button_rect(self.right_buttons_bounds, index, count, 74, 2, true)
+        row_button_rect(
+            self.right_buttons_bounds,
+            index,
+            count,
+            self.shared_button_max_width,
+            2,
+            true,
+        )
     }
 }
 
@@ -649,6 +668,27 @@ fn row_button_rect(
         button_width as u32,
         bounds.height(),
     ))
+}
+
+fn row_button_width_for_bounds(
+    bounds: Rect,
+    count: usize,
+    max_button_width: i32,
+    gap: i32,
+) -> Option<i32> {
+    if count == 0 || bounds.width() == 0 {
+        return None;
+    }
+    let total_gap = gap * count.saturating_sub(1) as i32;
+    let available_width = bounds.width() as i32 - total_gap;
+    if available_width <= 0 {
+        return None;
+    }
+    Some(
+        (available_width / count as i32)
+            .min(max_button_width)
+            .max(8),
+    )
 }
 
 #[cfg(test)]
@@ -768,6 +808,7 @@ mod tests {
             right_buttons_bounds: Rect::new(950, 40, 150, 36),
             tempo_pad_bounds: Rect::new(1446, 40, 98, 36),
             status_text_bounds: Rect::new(1550, 40, 84, 36),
+            shared_button_max_width: 74,
         };
 
         let first = layout.left_button_rect(0, 10).expect("first button");
@@ -780,5 +821,23 @@ mod tests {
             last.x + (last.width() as i32)
                 < layout.left_buttons_bounds.x + layout.left_buttons_bounds.width() as i32
         );
+    }
+
+    #[test]
+    fn narrow_transport_layout_keeps_right_buttons_from_outgrowing_left_buttons() {
+        let shared_button_max_width =
+            row_button_width_for_bounds(Rect::new(40, 40, 360, 36), 8, 74, 2).expect("width");
+        let layout = TransportStripLayout {
+            left_buttons_bounds: Rect::new(40, 40, 360, 36),
+            right_buttons_bounds: Rect::new(410, 40, 150, 36),
+            tempo_pad_bounds: Rect::new(564, 40, 98, 36),
+            status_text_bounds: Rect::new(666, 40, 48, 36),
+            shared_button_max_width,
+        };
+
+        let left = layout.left_button_rect(0, 8).expect("left");
+        let right = layout.right_button_rect(0, 2).expect("right");
+
+        assert_eq!(right.width(), left.width());
     }
 }
