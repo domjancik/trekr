@@ -559,7 +559,7 @@ impl TransportStripLayout {
         if count == 0 || index >= count || self.buttons_bounds.width() == 0 {
             return None;
         }
-        let gap = 6_i32;
+        let gap = 2_i32;
         let max_button_width = 74_i32;
         let total_gap = gap * count.saturating_sub(1) as i32;
         let available_width = self.buttons_bounds.width() as i32 - total_gap;
