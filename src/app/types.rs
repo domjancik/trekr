@@ -2,6 +2,7 @@ use crate::actions::{ActionSource, AppAction};
 use crate::mapping::MappingSourceKind;
 use crate::pages::AppPage;
 use crate::project::{ClipAlignPreview, ClipAlignSettings};
+use crate::pages::AppPageState;
 use crate::timeline_fx::TimelineContext;
 use sdl3::rect::Rect;
 use std::path::PathBuf;
@@ -15,6 +16,31 @@ pub(crate) enum AppOverlay {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OverlayState {
     pub active: Option<AppOverlay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClientUiState {
+    pub(crate) page_state: AppPageState,
+    pub(crate) overlay_state: OverlayState,
+    pub(crate) status_state: StatusState,
+    pub(crate) direct_mapping_state: DirectMappingState,
+    pub(crate) target_lookup_state: MappingTargetLookupState,
+    pub(crate) focused_track_view: bool,
+    pub(crate) note_additive_select_held: bool,
+}
+
+impl Default for ClientUiState {
+    fn default() -> Self {
+        Self {
+            page_state: AppPageState::default(),
+            overlay_state: OverlayState::default(),
+            status_state: StatusState::default(),
+            direct_mapping_state: DirectMappingState::default(),
+            target_lookup_state: MappingTargetLookupState::default(),
+            focused_track_view: false,
+            note_additive_select_held: false,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

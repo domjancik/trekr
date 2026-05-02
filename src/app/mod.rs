@@ -92,11 +92,12 @@ use timeline::layout::{
 };
 pub(crate) use types::DiscoverabilityTarget;
 use types::{
-    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClipAlignField,
-    ClipAlignSession, DirectMappingMode, DirectMappingOrigin, DirectMappingState,
-    DirectMappingTarget, LastActionStatus, MappingBadge, MappingTargetLookupLayout,
-    MappingTargetLookupState, OverlayState, RecordingLaneLayout, RecordingLaneWindow, StatusState,
-    TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
+    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClientUiState,
+    ClipAlignField, ClipAlignSession, DirectMappingMode, DirectMappingOrigin,
+    DirectMappingState, DirectMappingTarget, LastActionStatus, MappingBadge,
+    MappingTargetLookupLayout, MappingTargetLookupState, OverlayState, RecordingLaneLayout,
+    RecordingLaneWindow, StatusState, TimelineFxRowLayout, TimelineFxRowRef,
+    TimelineTrackLayout,
 };
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
@@ -194,6 +195,30 @@ impl App {
 
     pub fn session_playhead_ticks(&self) -> u64 {
         self.playhead_ticks
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn capture_client_ui_state(&self) -> ClientUiState {
+        ClientUiState {
+            page_state: self.page_state,
+            overlay_state: self.overlay_state,
+            status_state: self.status_state.clone(),
+            direct_mapping_state: self.direct_mapping_state.clone(),
+            target_lookup_state: self.target_lookup_state.clone(),
+            focused_track_view: self.focused_track_view,
+            note_additive_select_held: self.note_additive_select_held,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn apply_client_ui_state(&mut self, state: &ClientUiState) {
+        self.page_state = state.page_state;
+        self.overlay_state = state.overlay_state;
+        self.status_state = state.status_state.clone();
+        self.direct_mapping_state = state.direct_mapping_state.clone();
+        self.target_lookup_state = state.target_lookup_state.clone();
+        self.focused_track_view = state.focused_track_view;
+        self.note_additive_select_held = state.note_additive_select_held;
     }
 
     pub fn session_snapshot(&self, revision: u64, connected_clients: usize) -> SessionSnapshot {
@@ -2479,10 +2504,11 @@ pub(crate) enum AppControl {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppControl, LastActionStatus};
+    use super::{App, AppControl, AppOverlay, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
+    use crate::pages::AppPage;
     use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -2500,6 +2526,28 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.loop_enabled);
         assert!(app.project.tracks[2].state.armed);
+    }
+
+    #[test]
+    fn client_ui_state_round_trips_local_view_state() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Routing;
+        app.overlay_state.active = Some(AppOverlay::Discoverability);
+        app.focused_track_view = true;
+        app.note_additive_select_held = true;
+
+        let state = app.capture_client_ui_state();
+
+        let mut restored = App::new();
+        restored.apply_client_ui_state(&state);
+
+        assert_eq!(restored.page_state.current_page, AppPage::Routing);
+        assert_eq!(
+            restored.overlay_state.active,
+            Some(AppOverlay::Discoverability)
+        );
+        assert!(restored.focused_track_view);
+        assert!(restored.note_additive_select_held);
     }
 
     #[test]
