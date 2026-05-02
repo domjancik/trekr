@@ -123,7 +123,7 @@ Recommended fields:
 3. `Target Length`
    - `1 bar`
    - `2 bars`
-   - `4 bars` (recommended default)
+   - `4 bars`
    - `8 bars`
    - later: arbitrary beat count
 4. `Destination`
@@ -183,12 +183,21 @@ The default should optimize for “I recorded a phrase and now I want it to beco
 
 - start at `First Note`
 - end at `Start Of Last Note`
-- target `4 bars`
+- target length should be the **closest supported bar count at the current project tempo**
 - destination `Track Loop`
 - apply mode `Fit + Tempo`
 - enable the chosen loop if it was off
 
-This trims dead air before the first played note and treats the final onset as the loop boundary, which is usually a better fit for repeating rhythmic material than using the final note release.
+This trims dead air before the first played note, treats the final onset as the loop boundary, and makes the first suggestion feel musically plausible relative to the current tempo instead of always assuming `4 bars`.
+
+Target-length suggestion rule:
+
+- resolve the source span first using the current start/end settings
+- measure the real-time duration that span would take at the **current project tempo**
+- compare that duration against the supported loop lengths at the same tempo: `1`, `2`, `4`, and `8` bars
+- preselect the closest match
+- if two choices are equally close, prefer the shorter one
+- if the span is invalid, fall back to the persisted last-used target length, otherwise `4 bars`
 
 ## Tempo Model
 

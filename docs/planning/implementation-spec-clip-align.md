@@ -27,7 +27,7 @@ Deliver a first-pass clip-align workflow that lets the user:
 
 - source start: `First Note`
 - source end: `Start Of Last Note`
-- target length: `4 bars`
+- target length: closest supported bar count at current tempo
 - destination: `Track Loop`
 - apply mode: `Fit + Tempo`
 - enable target loop on apply: `true`
@@ -47,6 +47,15 @@ Use fixed musical lengths first, represented in ticks from current PPQN:
 - `8 bars`
 
 Assume 4/4 for V1 because there is no broader time-signature model in the current transport docs/code.
+
+Default suggestion behavior:
+
+- when opening Clip Align, resolve the current source span first
+- convert that span to elapsed beats/bars using the current project tempo and transport PPQN
+- compare it against the supported V1 target lengths (`1/2/4/8` bars)
+- choose the closest supported value as the initial selected target length
+- on exact ties, prefer the shorter target
+- if the span cannot be resolved, fall back to the remembered last-used value, otherwise `4 bars`
 
 ### Supported Destination Modes
 
@@ -298,7 +307,7 @@ Add footer/discoverability support in `src/app.rs` / `src/actions.rs` label help
 
 Recommended status examples:
 
-- `Clip Align: First Note -> Start Of Last Note, 4 bars, Track Loop, Fit + Tempo`
+- `Clip Align: First Note -> Start Of Last Note, suggested 1 bar, Track Loop, Fit + Tempo`
 - `Clip Align blocked: external tempo authority active`
 - `Clip Align blocked: source span is empty`
 
