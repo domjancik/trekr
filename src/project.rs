@@ -1733,7 +1733,10 @@ fn suggest_clip_align_target_length(
     .into_iter()
     .min_by_key(|candidate| {
         let target_ticks = clip_align_target_length_ticks(transport, *candidate);
-        (source_length_ticks.abs_diff(target_ticks), candidate.bars())
+        (
+            source_length_ticks.abs_diff(target_ticks),
+            std::cmp::Reverse(candidate.bars()),
+        )
     })
     .unwrap_or(ClipAlignTargetLength::Bar4)
 }
@@ -2093,7 +2096,7 @@ mod tests {
     }
 
     #[test]
-    fn clip_align_suggests_shorter_target_length_on_exact_tie() {
+    fn clip_align_suggests_longer_target_length_on_exact_tie() {
         let transport = Transport::default();
         let mut track = Track::new_empty("Track 1", TrackKind::Midi);
         track.recording_clips = vec![RecordingClip {
@@ -2116,7 +2119,7 @@ mod tests {
         };
         assert_eq!(
             track.suggested_clip_align_target_length(transport, 1, settings),
-            Some(ClipAlignTargetLength::Bar1)
+            Some(ClipAlignTargetLength::Bar2)
         );
     }
 
