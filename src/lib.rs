@@ -2,6 +2,8 @@ pub mod actions;
 pub mod app;
 pub mod app_ui;
 pub mod cli;
+pub mod diagnostics;
+pub mod distributed;
 pub mod engine;
 pub mod link;
 pub mod mapping;

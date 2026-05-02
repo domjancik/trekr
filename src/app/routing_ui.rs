@@ -967,6 +967,89 @@ impl App {
         }
     }
 
+    pub(crate) fn resolve_routing_pointer_intent(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<crate::distributed::RemoteUiIntent> {
+        let inner = crate::ui::inset_rect(content_bounds, 12, 32).ok()?;
+        let (header, body) = crate::ui::split_top_strip(inner, 48, 10).ok()?;
+
+        let meta_active = Rect::new(
+            header.x + 8,
+            header.y + 8,
+            90,
+            header.height().saturating_sub(16),
+        );
+        let meta_thru = Rect::new(
+            header.x + 106,
+            header.y + 8,
+            92,
+            header.height().saturating_sub(16),
+        );
+        if rect_contains(meta_active, x, y) {
+            return Some(crate::distributed::RemoteUiIntent::Action {
+                action: AppAction::SelectNextTrack,
+            });
+        }
+        if rect_contains(meta_thru, x, y) {
+            return Some(crate::distributed::RemoteUiIntent::RoutingActivateField {
+                field: RoutingField::Passthrough,
+            });
+        }
+
+        for (field, row) in self.routing_field_rects(body) {
+            if !rect_contains(row, x, y) {
+                continue;
+            }
+            if matches!(
+                field,
+                RoutingField::Passthrough
+                    | RoutingField::RecordInputFx
+                    | RoutingField::MonitorInputFx
+                    | RoutingField::InputFxEnabled
+                    | RoutingField::OutputFxEnabled
+            ) {
+                return Some(crate::distributed::RemoteUiIntent::RoutingActivateField { field });
+            }
+            let control_height = row.height().saturating_sub(20).max(10);
+            let control_y = row.y + row.height() as i32 - control_height as i32 - 6;
+            let value = Rect::new(
+                row.x + 8,
+                control_y,
+                row.width().saturating_sub(64),
+                control_height,
+            );
+            let affordance = Rect::new(
+                row.x + row.width() as i32 - 48,
+                control_y,
+                40,
+                control_height,
+            );
+            if rect_contains(value, x, y) {
+                let delta = if x < value.x + value.width() as i32 / 2 {
+                    -1
+                } else {
+                    1
+                };
+                return Some(crate::distributed::RemoteUiIntent::RoutingAdjustField {
+                    field,
+                    delta,
+                });
+            } else if rect_contains(affordance, x, y) {
+                return Some(crate::distributed::RemoteUiIntent::RoutingAdjustField {
+                    field,
+                    delta: 1,
+                });
+            }
+            return Some(crate::distributed::RemoteUiIntent::RoutingActivateField { field });
+        }
+
+        None
+    }
+
     pub(crate) fn handle_routing_pointer(
         &mut self,
         content_bounds: Rect,

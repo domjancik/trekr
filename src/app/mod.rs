@@ -2,6 +2,10 @@ use crate::actions::{
     ActionSource, AppAction, KeyboardBindings, action_label, built_in_keyboard_binding_labels,
 };
 use crate::app_ui::branding;
+use crate::distributed::{
+    DiscoveryHostConfig, RemoteUiIntent, SessionCommand, SessionServer, SessionSnapshot,
+    default_discovery_session_name,
+};
 use crate::engine::EngineConfig;
 use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::mapping::{
@@ -89,7 +93,6 @@ use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
-pub(crate) use types::DiscoverabilityTarget;
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClipAlignField,
     ClipAlignSession, DirectMappingMode, DirectMappingOrigin, DirectMappingState,
@@ -97,6 +100,7 @@ use types::{
     MappingTargetLookupState, OverlayState, RecordingLaneLayout, RecordingLaneWindow, StatusState,
     TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
 };
+pub(crate) use types::{ClientUiState, DiscoverabilityTarget};
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
@@ -181,6 +185,100 @@ impl App {
             transport_ticks: self.transport_ticks,
             playhead_ticks: self.playhead_ticks,
         }
+    }
+
+    pub fn session_project(&self) -> &Project {
+        &self.project
+    }
+
+    pub fn session_transport_ticks(&self) -> u64 {
+        self.transport_ticks
+    }
+
+    pub fn session_playhead_ticks(&self) -> u64 {
+        self.playhead_ticks
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn capture_client_ui_state(&self) -> ClientUiState {
+        ClientUiState {
+            page_state: self.page_state,
+            overlay_state: self.overlay_state,
+            status_state: self.status_state.clone(),
+            direct_mapping_state: self.direct_mapping_state.clone(),
+            target_lookup_state: self.target_lookup_state.clone(),
+            viewport_size: self.viewport_size,
+            focused_track_view: self.focused_track_view,
+            note_additive_select_held: self.note_additive_select_held,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn apply_client_ui_state(&mut self, state: &ClientUiState) {
+        self.page_state = state.page_state;
+        self.overlay_state = state.overlay_state;
+        self.status_state = state.status_state.clone();
+        self.direct_mapping_state = state.direct_mapping_state.clone();
+        self.target_lookup_state = state.target_lookup_state.clone();
+        self.viewport_size = state.viewport_size;
+        self.focused_track_view = state.focused_track_view;
+        self.note_additive_select_held = state.note_additive_select_held;
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn apply_session_snapshot(&mut self, snapshot: &SessionSnapshot) {
+        self.project = snapshot.project.clone();
+        self.mappings = snapshot.mappings.clone();
+        self.midi_devices = snapshot.midi_devices.clone();
+        self.link_snapshot = snapshot.link_snapshot;
+        self.transport_ticks = snapshot.transport_ticks;
+        self.playhead_ticks = snapshot.playhead_ticks;
+        self.live_fx_ticks = snapshot.transport_ticks;
+        self.page_state.selected_mapping_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        self.page_state.midi_io.selected_input_index = self
+            .page_state
+            .midi_io
+            .selected_input_index
+            .min(self.midi_devices.inputs.len().saturating_sub(1));
+        self.page_state.midi_io.selected_output_index = self
+            .page_state
+            .midi_io
+            .selected_output_index
+            .min(self.midi_devices.outputs.len().saturating_sub(1));
+    }
+
+    pub fn session_snapshot(&self, revision: u64, connected_clients: usize) -> SessionSnapshot {
+        SessionSnapshot {
+            revision,
+            connected_clients,
+            project: self.project.clone(),
+            mappings: self.mappings.clone(),
+            midi_devices: self.midi_devices.clone(),
+            link_snapshot: self.link_snapshot,
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+        }
+    }
+
+    pub fn apply_session_command(&mut self, command: SessionCommand, source: ActionSource) -> bool {
+        let action = command.action();
+        if matches!(
+            self.apply_action_with_source(action, source),
+            AppControl::Continue
+        ) {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn service_session_runtime(&mut self, delta: Duration) {
+        self.poll_midi_input();
+        self.maybe_refresh_midi_devices(Instant::now());
+        self.advance_playhead(delta);
     }
 
     pub(crate) fn theme(&self) -> &'static Theme {
@@ -292,6 +390,20 @@ impl App {
         options: RunOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.startup_started_at = Instant::now();
+        let mut session_server = options
+            .session_listen
+            .as_deref()
+            .map(|listen_addr| {
+                SessionServer::bind(
+                    listen_addr,
+                    DiscoveryHostConfig {
+                        session_name: default_discovery_session_name(&self.project.name),
+                        host_mode: "run-listen".to_string(),
+                        listen_addr: listen_addr.to_string(),
+                    },
+                )
+            })
+            .transpose()?;
 
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
@@ -335,9 +447,9 @@ impl App {
             let present_mode = std::env::var("TREKR_KMSDRM_PRESENT_MODE")
                 .unwrap_or_else(|_| "renderer".to_owned());
             if present_mode.eq_ignore_ascii_case("surface") {
-                return self.run_kmsdrm_surface_console(sdl_context, window);
+                return self.run_kmsdrm_surface_console(sdl_context, window, session_server);
             }
-            return self.run_kmsdrm_renderer_console(sdl_context, window);
+            return self.run_kmsdrm_renderer_console(sdl_context, window, session_server);
         }
 
         let mut canvas = window.into_canvas();
@@ -371,11 +483,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
@@ -393,6 +506,7 @@ impl App {
         &mut self,
         sdl_context: sdl3::Sdl,
         window: sdl3::video::Window,
+        mut session_server: Option<SessionServer>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut canvas = window.into_canvas();
         self.configure_window_canvas(&mut canvas)?;
@@ -425,11 +539,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.configure_window_canvas(&mut canvas)?;
 
             self.update_window_title(canvas.window_mut())?;
@@ -444,6 +559,7 @@ impl App {
         &mut self,
         sdl_context: sdl3::Sdl,
         mut window: sdl3::video::Window,
+        mut session_server: Option<SessionServer>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut event_pump = sdl_context.event_pump()?;
         let started_at = Instant::now();
@@ -476,11 +592,12 @@ impl App {
                 break 'running;
             }
 
-            self.poll_midi_input();
             let now = Instant::now();
-            self.maybe_refresh_midi_devices(now);
-            self.advance_playhead(now.saturating_duration_since(last_frame_at));
+            self.service_session_runtime(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
+            if let Some(server) = &mut session_server {
+                server.service_app(self);
+            }
             self.viewport_size = window.size_in_pixels();
 
             self.update_window_title(&mut window)?;
@@ -2395,6 +2512,119 @@ impl App {
         None
     }
 
+    pub(crate) fn resolve_mappings_pointer_intent(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<RemoteUiIntent> {
+        if let Some(layout) = self.mapping_target_lookup_layout(content_bounds) {
+            if rect_contains(layout.results_panel, x, y) {
+                let relative_y = y - (layout.results_panel.y + 14);
+                if relative_y >= 0 {
+                    let row_index = (relative_y / 12) as usize;
+                    let results = self.mapping_target_lookup_results();
+                    let result_index = layout.start_index + row_index;
+                    if let Some(label) =
+                        results.get(result_index.min(results.len().saturating_sub(1)))
+                    {
+                        return Some(RemoteUiIntent::CommitMappingTargetLookupLabel {
+                            label: (*label).to_string(),
+                        });
+                    }
+                }
+                return Some(RemoteUiIntent::CancelMappingTargetLookup);
+            }
+            if !rect_contains(layout.target_cell, x, y) {
+                return Some(RemoteUiIntent::CancelMappingTargetLookup);
+            }
+        }
+
+        let overview_badge = Rect::new(content_bounds.x + 200, content_bounds.y + 8, 188, 16);
+        let learn_badge = Rect::new(content_bounds.x + 392, content_bounds.y + 8, 136, 16);
+        let direct_badge = Rect::new(content_bounds.x + 532, content_bounds.y + 8, 154, 16);
+        if rect_contains(overview_badge, x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ToggleMappingsWriteMode,
+            });
+        }
+        if rect_contains(learn_badge, x, y)
+            && self.page_state.mapping_mode == MappingPageMode::Write
+            && self.page_state.selected_mapping_field == MappingField::SourceValue
+        {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ActivatePageItem,
+            });
+        }
+        if rect_contains(direct_badge, x, y) {
+            return Some(RemoteUiIntent::Action {
+                action: AppAction::ToggleDirectMappingMode,
+            });
+        }
+
+        let list_bounds = Rect::new(
+            content_bounds.x + 8,
+            content_bounds.y + 44,
+            content_bounds.width().saturating_sub(16),
+            content_bounds.height().saturating_sub(68),
+        );
+        let row_gap = 3_i32;
+        let row_height = 18_i32;
+        let stride = row_height + row_gap;
+        let visible_rows = ((list_bounds.height() as i32 + row_gap) / stride).max(1) as usize;
+        let selected_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        let start_index = if self.mappings.len() <= visible_rows {
+            0
+        } else {
+            selected_index
+                .saturating_sub(visible_rows / 2)
+                .min(self.mappings.len() - visible_rows)
+        };
+
+        for visible_index in 0..visible_rows {
+            let index = start_index + visible_index;
+            if index >= self.mappings.len() {
+                break;
+            }
+            let row = Rect::new(
+                list_bounds.x,
+                list_bounds.y + visible_index as i32 * stride,
+                list_bounds.width(),
+                row_height as u32,
+            );
+            if !rect_contains(row, x, y) {
+                continue;
+            }
+
+            if self.page_state.mapping_mode != MappingPageMode::Write {
+                return Some(RemoteUiIntent::SelectMappingRow { index });
+            }
+
+            let cells = self.mapping_row_cells(row);
+            for field in MappingField::ALL {
+                let rect = cells[mapping_field_index(field)];
+                if !rect_contains(rect, x, y) || !self.mapping_field_enabled(field) {
+                    continue;
+                }
+                let same_field = self.page_state.selected_mapping_index == index
+                    && self.page_state.selected_mapping_field == field;
+                return Some(RemoteUiIntent::ActivateMappingField {
+                    index,
+                    field,
+                    activate: same_field,
+                });
+            }
+
+            return Some(RemoteUiIntent::SelectMappingRow { index });
+        }
+
+        None
+    }
+
     fn apply_action_with_source(
         &mut self,
         action: AppAction,
@@ -2428,10 +2658,11 @@ pub(crate) enum AppControl {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppControl, LastActionStatus};
+    use super::{App, AppControl, AppOverlay, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
+    use crate::pages::AppPage;
     use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -2449,6 +2680,30 @@ mod tests {
         assert_eq!(app.project.active_track_index, 2);
         assert!(app.project.tracks[2].state.loop_enabled);
         assert!(app.project.tracks[2].state.armed);
+    }
+
+    #[test]
+    fn client_ui_state_round_trips_local_view_state() {
+        let mut app = App::new();
+        app.page_state.current_page = AppPage::Routing;
+        app.overlay_state.active = Some(AppOverlay::Discoverability);
+        app.viewport_size = (900, 700);
+        app.focused_track_view = true;
+        app.note_additive_select_held = true;
+
+        let state = app.capture_client_ui_state();
+
+        let mut restored = App::new();
+        restored.apply_client_ui_state(&state);
+
+        assert_eq!(restored.page_state.current_page, AppPage::Routing);
+        assert_eq!(
+            restored.overlay_state.active,
+            Some(AppOverlay::Discoverability)
+        );
+        assert_eq!(restored.viewport_size, (900, 700));
+        assert!(restored.focused_track_view);
+        assert!(restored.note_additive_select_held);
     }
 
     #[test]

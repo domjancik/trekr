@@ -301,6 +301,63 @@ impl App {
         Ok(())
     }
 
+    pub(crate) fn resolve_midi_io_pointer_intent(
+        &self,
+        content_bounds: Rect,
+        x: i32,
+        y: i32,
+        _source: crate::actions::ActionSource,
+    ) -> Option<crate::distributed::RemoteUiIntent> {
+        let (_, lists_bounds) = crate::ui::split_top_strip(content_bounds, 28, 10).ok()?;
+        let columns = crate::ui::equal_columns(lists_bounds, 2, 14);
+        let input_bounds = columns[0];
+        let output_bounds = columns[1];
+        let input_header = Rect::new(input_bounds.x, input_bounds.y, input_bounds.width(), 22);
+        let output_header = Rect::new(output_bounds.x, output_bounds.y, output_bounds.width(), 22);
+
+        if rect_contains(input_header, x, y) {
+            return Some(crate::distributed::RemoteUiIntent::SetMidiIoFocus {
+                focus: MidiIoListFocus::Inputs,
+            });
+        }
+        if rect_contains(output_header, x, y) {
+            return Some(crate::distributed::RemoteUiIntent::SetMidiIoFocus {
+                focus: MidiIoListFocus::Outputs,
+            });
+        }
+
+        let input_list = Rect::new(
+            input_bounds.x,
+            input_header.y + input_header.height() as i32 + 6,
+            input_bounds.width(),
+            input_bounds
+                .height()
+                .saturating_sub(input_header.height().saturating_add(28)),
+        );
+        let output_list = Rect::new(
+            output_bounds.x,
+            output_header.y + output_header.height() as i32 + 6,
+            output_bounds.width(),
+            output_bounds
+                .height()
+                .saturating_sub(output_header.height().saturating_add(28)),
+        );
+
+        if let Some(index) =
+            self.hit_device_list_row(input_list, self.midi_devices.inputs.len(), x, y)
+        {
+            return Some(crate::distributed::RemoteUiIntent::SelectMidiInput { index });
+        }
+
+        if let Some(index) =
+            self.hit_device_list_row(output_list, self.midi_devices.outputs.len(), x, y)
+        {
+            return Some(crate::distributed::RemoteUiIntent::SelectMidiOutput { index });
+        }
+
+        None
+    }
+
     pub(crate) fn handle_midi_io_pointer(
         &mut self,
         content_bounds: Rect,
