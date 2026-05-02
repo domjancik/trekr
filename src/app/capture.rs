@@ -223,4 +223,3 @@ fn dense_capture_notes(track_index: usize) -> Vec<MidiNote> {
     }
     notes
 }
-
