@@ -90,9 +90,9 @@ use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
-pub(crate) use types::DiscoverabilityTarget;
+pub(crate) use types::{ClientUiState, DiscoverabilityTarget};
 use types::{
-    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClientUiState,
+    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay,
     ClipAlignField, ClipAlignSession, DirectMappingMode, DirectMappingOrigin,
     DirectMappingState, DirectMappingTarget, LastActionStatus, MappingBadge,
     MappingTargetLookupLayout, MappingTargetLookupState, OverlayState, RecordingLaneLayout,
@@ -221,11 +221,39 @@ impl App {
         self.note_additive_select_held = state.note_additive_select_held;
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn apply_session_snapshot(&mut self, snapshot: &SessionSnapshot) {
+        self.project = snapshot.project.clone();
+        self.mappings = snapshot.mappings.clone();
+        self.midi_devices = snapshot.midi_devices.clone();
+        self.link_snapshot = snapshot.link_snapshot;
+        self.transport_ticks = snapshot.transport_ticks;
+        self.playhead_ticks = snapshot.playhead_ticks;
+        self.live_fx_ticks = snapshot.transport_ticks;
+        self.page_state.selected_mapping_index = self
+            .page_state
+            .selected_mapping_index
+            .min(self.mappings.len().saturating_sub(1));
+        self.page_state.midi_io.selected_input_index = self
+            .page_state
+            .midi_io
+            .selected_input_index
+            .min(self.midi_devices.inputs.len().saturating_sub(1));
+        self.page_state.midi_io.selected_output_index = self
+            .page_state
+            .midi_io
+            .selected_output_index
+            .min(self.midi_devices.outputs.len().saturating_sub(1));
+    }
+
     pub fn session_snapshot(&self, revision: u64, connected_clients: usize) -> SessionSnapshot {
         SessionSnapshot {
             revision,
             connected_clients,
             project: self.project.clone(),
+            mappings: self.mappings.clone(),
+            midi_devices: self.midi_devices.clone(),
+            link_snapshot: self.link_snapshot,
             transport_ticks: self.transport_ticks,
             playhead_ticks: self.playhead_ticks,
         }

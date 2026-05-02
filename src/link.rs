@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
 const LINK_QUANTUM_BEATS: f64 = 4.0;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LinkSnapshot {
     pub enabled: bool,
     pub start_stop_sync: bool,

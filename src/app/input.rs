@@ -2,6 +2,48 @@ use super::shell::layout::page_tabs_layout;
 use super::*;
 
 impl App {
+    pub(crate) fn handle_remote_pointer_hover(&mut self, x: i32, y: i32) -> AppControl {
+        self.status_state.hovered_target = if self.direct_mapping_state.mode
+            == DirectMappingMode::Inactive
+        {
+            self.discoverability_target_at(x, y)
+        } else {
+            None
+        };
+        if self.status_state.hovered_target.is_some() {
+            self.direct_mapping_state.status_message = None;
+        }
+        AppControl::Continue
+    }
+
+    pub(crate) fn handle_remote_pointer_down(
+        &mut self,
+        x: i32,
+        y: i32,
+        source: crate::actions::ActionSource,
+    ) -> Option<AppControl> {
+        self.handle_pointer_down(x, y, source)
+    }
+
+    pub(crate) fn handle_remote_key_down(
+        &mut self,
+        keycode: sdl3::keyboard::Keycode,
+        keymod: sdl3::keyboard::Mod,
+        repeat: bool,
+    ) -> Option<AppControl> {
+        let event = sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(keycode),
+            scancode: None,
+            keymod,
+            repeat,
+            which: 0,
+            raw: 0,
+        };
+        self.handle_keyboard_event(&event)
+    }
+
     pub(super) fn poll_midi_input(&mut self) {
         let events = self.midi_input.drain_events();
         for event in events {
@@ -195,22 +237,11 @@ impl App {
         event: &sdl3::event::Event,
     ) -> Option<AppControl> {
         if let Some((x, y)) = pointer_hover_position(event, self.viewport_size) {
-            self.status_state.hovered_target = if self.direct_mapping_state.mode
-                == DirectMappingMode::Inactive
-                && self.clip_align_session.is_none()
-            {
-                self.discoverability_target_at(x, y)
-            } else {
-                None
-            };
-            if self.status_state.hovered_target.is_some() {
-                self.direct_mapping_state.status_message = None;
-            }
-            return Some(AppControl::Continue);
+            return Some(self.handle_remote_pointer_hover(x, y));
         }
 
         let (x, y, source) = pointer_down_position(event, self.viewport_size)?;
-        self.handle_pointer_down(x, y, source)
+        self.handle_remote_pointer_down(x, y, source)
     }
 
     pub(super) fn handle_keyboard_event(

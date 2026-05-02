@@ -42,7 +42,7 @@ pub struct MidiInputEvent {
     pub message: MidiInputMessage,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiDeviceCatalog {
     pub inputs: Vec<MidiPortRef>,
     pub outputs: Vec<MidiPortRef>,

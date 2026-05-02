@@ -1,15 +1,20 @@
 use crate::actions::{ActionSource, AppAction};
-use crate::app::App;
+use crate::app::{App, AppControl, ClientUiState};
+use crate::link::LinkSnapshot;
+use crate::mapping::MappingEntry;
+use crate::midi_io::MidiDeviceCatalog;
 use crate::project::Project;
 use crate::theme::{ThemePreset, theme};
 use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
+use sdl3::keyboard::{Keycode, Mod};
 use sdl3::rect::Rect;
 use sdl3::render::Canvas;
 use sdl3::video::Window;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -116,8 +121,303 @@ pub struct SessionSnapshot {
     pub revision: u64,
     pub connected_clients: usize,
     pub project: Project,
+    pub mappings: Vec<MappingEntry>,
+    pub midi_devices: MidiDeviceCatalog,
+    pub link_snapshot: LinkSnapshot,
     pub transport_ticks: u64,
     pub playhead_ticks: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemotePointerSource {
+    Pointer,
+    Touch,
+}
+
+impl RemotePointerSource {
+    fn action_source(self) -> ActionSource {
+        match self {
+            RemotePointerSource::Pointer => ActionSource::Pointer,
+            RemotePointerSource::Touch => ActionSource::Touch,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoteKeycode {
+    Escape,
+    Space,
+    Return,
+    Backspace,
+    Delete,
+    Tab,
+    Home,
+    Left,
+    Right,
+    Up,
+    Down,
+    Comma,
+    Period,
+    Minus,
+    Equals,
+    LeftBracket,
+    RightBracket,
+    Slash,
+    Backslash,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+    Num0,
+    Num1,
+    Num2,
+    Num3,
+    Num4,
+    Num5,
+    Num6,
+    Num7,
+    Num8,
+    Num9,
+    Kp1,
+    Kp2,
+    Kp3,
+    Kp4,
+    Kp5,
+    Kp6,
+    Kp7,
+    Kp8,
+    LShift,
+    RShift,
+    LCtrl,
+    RCtrl,
+    LAlt,
+    RAlt,
+    LGui,
+    RGui,
+    Mode,
+}
+
+impl RemoteKeycode {
+    #[allow(dead_code)]
+    fn from_sdl(keycode: Keycode) -> Option<Self> {
+        Some(match keycode {
+            Keycode::Escape => Self::Escape,
+            Keycode::Space => Self::Space,
+            Keycode::Return => Self::Return,
+            Keycode::Backspace => Self::Backspace,
+            Keycode::Delete => Self::Delete,
+            Keycode::Tab => Self::Tab,
+            Keycode::Home => Self::Home,
+            Keycode::Left => Self::Left,
+            Keycode::Right => Self::Right,
+            Keycode::Up => Self::Up,
+            Keycode::Down => Self::Down,
+            Keycode::Comma => Self::Comma,
+            Keycode::Period => Self::Period,
+            Keycode::Minus => Self::Minus,
+            Keycode::Equals => Self::Equals,
+            Keycode::LeftBracket => Self::LeftBracket,
+            Keycode::RightBracket => Self::RightBracket,
+            Keycode::Slash => Self::Slash,
+            Keycode::Backslash => Self::Backslash,
+            Keycode::F1 => Self::F1,
+            Keycode::F2 => Self::F2,
+            Keycode::F3 => Self::F3,
+            Keycode::F4 => Self::F4,
+            Keycode::F5 => Self::F5,
+            Keycode::F6 => Self::F6,
+            Keycode::F7 => Self::F7,
+            Keycode::F8 => Self::F8,
+            Keycode::A => Self::A,
+            Keycode::B => Self::B,
+            Keycode::C => Self::C,
+            Keycode::D => Self::D,
+            Keycode::E => Self::E,
+            Keycode::F => Self::F,
+            Keycode::G => Self::G,
+            Keycode::H => Self::H,
+            Keycode::I => Self::I,
+            Keycode::J => Self::J,
+            Keycode::K => Self::K,
+            Keycode::L => Self::L,
+            Keycode::M => Self::M,
+            Keycode::N => Self::N,
+            Keycode::O => Self::O,
+            Keycode::P => Self::P,
+            Keycode::Q => Self::Q,
+            Keycode::R => Self::R,
+            Keycode::S => Self::S,
+            Keycode::T => Self::T,
+            Keycode::U => Self::U,
+            Keycode::V => Self::V,
+            Keycode::W => Self::W,
+            Keycode::X => Self::X,
+            Keycode::Y => Self::Y,
+            Keycode::Z => Self::Z,
+            Keycode::_0 => Self::Num0,
+            Keycode::_1 => Self::Num1,
+            Keycode::_2 => Self::Num2,
+            Keycode::_3 => Self::Num3,
+            Keycode::_4 => Self::Num4,
+            Keycode::_5 => Self::Num5,
+            Keycode::_6 => Self::Num6,
+            Keycode::_7 => Self::Num7,
+            Keycode::_8 => Self::Num8,
+            Keycode::_9 => Self::Num9,
+            Keycode::Kp1 => Self::Kp1,
+            Keycode::Kp2 => Self::Kp2,
+            Keycode::Kp3 => Self::Kp3,
+            Keycode::Kp4 => Self::Kp4,
+            Keycode::Kp5 => Self::Kp5,
+            Keycode::Kp6 => Self::Kp6,
+            Keycode::Kp7 => Self::Kp7,
+            Keycode::Kp8 => Self::Kp8,
+            Keycode::LShift => Self::LShift,
+            Keycode::RShift => Self::RShift,
+            Keycode::LCtrl => Self::LCtrl,
+            Keycode::RCtrl => Self::RCtrl,
+            Keycode::LAlt => Self::LAlt,
+            Keycode::RAlt => Self::RAlt,
+            Keycode::LGui => Self::LGui,
+            Keycode::RGui => Self::RGui,
+            Keycode::Mode => Self::Mode,
+            _ => return None,
+        })
+    }
+
+    fn to_sdl(self) -> Keycode {
+        match self {
+            Self::Escape => Keycode::Escape,
+            Self::Space => Keycode::Space,
+            Self::Return => Keycode::Return,
+            Self::Backspace => Keycode::Backspace,
+            Self::Delete => Keycode::Delete,
+            Self::Tab => Keycode::Tab,
+            Self::Home => Keycode::Home,
+            Self::Left => Keycode::Left,
+            Self::Right => Keycode::Right,
+            Self::Up => Keycode::Up,
+            Self::Down => Keycode::Down,
+            Self::Comma => Keycode::Comma,
+            Self::Period => Keycode::Period,
+            Self::Minus => Keycode::Minus,
+            Self::Equals => Keycode::Equals,
+            Self::LeftBracket => Keycode::LeftBracket,
+            Self::RightBracket => Keycode::RightBracket,
+            Self::Slash => Keycode::Slash,
+            Self::Backslash => Keycode::Backslash,
+            Self::F1 => Keycode::F1,
+            Self::F2 => Keycode::F2,
+            Self::F3 => Keycode::F3,
+            Self::F4 => Keycode::F4,
+            Self::F5 => Keycode::F5,
+            Self::F6 => Keycode::F6,
+            Self::F7 => Keycode::F7,
+            Self::F8 => Keycode::F8,
+            Self::A => Keycode::A,
+            Self::B => Keycode::B,
+            Self::C => Keycode::C,
+            Self::D => Keycode::D,
+            Self::E => Keycode::E,
+            Self::F => Keycode::F,
+            Self::G => Keycode::G,
+            Self::H => Keycode::H,
+            Self::I => Keycode::I,
+            Self::J => Keycode::J,
+            Self::K => Keycode::K,
+            Self::L => Keycode::L,
+            Self::M => Keycode::M,
+            Self::N => Keycode::N,
+            Self::O => Keycode::O,
+            Self::P => Keycode::P,
+            Self::Q => Keycode::Q,
+            Self::R => Keycode::R,
+            Self::S => Keycode::S,
+            Self::T => Keycode::T,
+            Self::U => Keycode::U,
+            Self::V => Keycode::V,
+            Self::W => Keycode::W,
+            Self::X => Keycode::X,
+            Self::Y => Keycode::Y,
+            Self::Z => Keycode::Z,
+            Self::Num0 => Keycode::_0,
+            Self::Num1 => Keycode::_1,
+            Self::Num2 => Keycode::_2,
+            Self::Num3 => Keycode::_3,
+            Self::Num4 => Keycode::_4,
+            Self::Num5 => Keycode::_5,
+            Self::Num6 => Keycode::_6,
+            Self::Num7 => Keycode::_7,
+            Self::Num8 => Keycode::_8,
+            Self::Num9 => Keycode::_9,
+            Self::Kp1 => Keycode::Kp1,
+            Self::Kp2 => Keycode::Kp2,
+            Self::Kp3 => Keycode::Kp3,
+            Self::Kp4 => Keycode::Kp4,
+            Self::Kp5 => Keycode::Kp5,
+            Self::Kp6 => Keycode::Kp6,
+            Self::Kp7 => Keycode::Kp7,
+            Self::Kp8 => Keycode::Kp8,
+            Self::LShift => Keycode::LShift,
+            Self::RShift => Keycode::RShift,
+            Self::LCtrl => Keycode::LCtrl,
+            Self::RCtrl => Keycode::RCtrl,
+            Self::LAlt => Keycode::LAlt,
+            Self::RAlt => Keycode::RAlt,
+            Self::LGui => Keycode::LGui,
+            Self::RGui => Keycode::RGui,
+            Self::Mode => Keycode::Mode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RemoteInputEvent {
+    KeyDown {
+        keycode: RemoteKeycode,
+        keymod_bits: u16,
+        repeat: bool,
+    },
+    PointerHover {
+        x: i32,
+        y: i32,
+    },
+    PointerDown {
+        x: i32,
+        y: i32,
+        source: RemotePointerSource,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +425,7 @@ pub struct SessionSnapshot {
 pub enum ThinClientMessage {
     Hello { client_name: String },
     Command { command: SessionCommand },
+    Input { input: RemoteInputEvent },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,14 +444,24 @@ pub enum HostMessage {
 }
 
 #[derive(Debug, Clone)]
-struct ReceivedCommand {
-    command: SessionCommand,
+enum ReceivedClientMessage {
+    Connected { client_id: usize },
+    Disconnected { client_id: usize },
+    Hello { client_id: usize, client_name: String },
+    Command { command: SessionCommand },
+    Input { client_id: usize, input: RemoteInputEvent },
+}
+
+#[derive(Debug, Clone)]
+struct ClientContext {
     client_name: String,
+    ui_state: ClientUiState,
 }
 
 pub struct SessionServer {
-    command_rx: Receiver<ReceivedCommand>,
-    clients: Arc<Mutex<Vec<Sender<HostMessage>>>>,
+    command_rx: Receiver<ReceivedClientMessage>,
+    clients: Arc<Mutex<HashMap<usize, Sender<HostMessage>>>>,
+    contexts: HashMap<usize, ClientContext>,
     revision: u64,
     last_snapshot_json: Option<String>,
     last_snapshot_broadcast_at: Instant,
@@ -161,28 +472,33 @@ impl SessionServer {
     pub fn bind(listen_addr: &str) -> io::Result<Self> {
         let listener = TcpListener::bind(listen_addr)?;
         let (command_tx, command_rx) = mpsc::channel();
-        let clients = Arc::new(Mutex::new(Vec::<Sender<HostMessage>>::new()));
+        let clients = Arc::new(Mutex::new(HashMap::<usize, Sender<HostMessage>>::new()));
         let accept_clients = Arc::clone(&clients);
+        let next_client_id = Arc::new(AtomicUsize::new(1));
+        let accept_next_client_id = Arc::clone(&next_client_id);
         let accept_thread = thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(stream) = stream else {
                     continue;
                 };
+                let client_id = accept_next_client_id.fetch_add(1, Ordering::Relaxed);
                 let Ok(write_stream) = stream.try_clone() else {
                     continue;
                 };
                 let (outbound_tx, outbound_rx) = mpsc::channel::<HostMessage>();
                 if let Ok(mut guard) = accept_clients.lock() {
-                    guard.push(outbound_tx);
+                    guard.insert(client_id, outbound_tx);
                 }
+                let _ = command_tx.send(ReceivedClientMessage::Connected { client_id });
                 spawn_client_writer(write_stream, outbound_rx);
-                spawn_client_reader(stream, command_tx.clone());
+                spawn_client_reader(stream, client_id, command_tx.clone());
             }
         });
 
         Ok(Self {
             command_rx,
             clients,
+            contexts: HashMap::new(),
             revision: 0,
             last_snapshot_json: None,
             last_snapshot_broadcast_at: Instant::now() - SNAPSHOT_BROADCAST_INTERVAL,
@@ -191,19 +507,49 @@ impl SessionServer {
     }
 
     pub fn service_app(&mut self, app: &mut App) {
-        let mut accepted_commands = Vec::new();
-        for received in self.command_rx.try_iter() {
-            if app.apply_session_command(received.command, ActionSource::Remote) {
-                self.revision = self.revision.saturating_add(1);
-                accepted_commands.push((received.client_name, received.command));
+        let received_messages: Vec<_> = self.command_rx.try_iter().collect();
+        for received in received_messages {
+            match received {
+                ReceivedClientMessage::Connected { client_id } => {
+                    self.contexts.entry(client_id).or_insert_with(|| ClientContext {
+                        client_name: format!("client-{client_id}"),
+                        ui_state: ClientUiState::default(),
+                    });
+                }
+                ReceivedClientMessage::Disconnected { client_id } => {
+                    self.contexts.remove(&client_id);
+                    if let Ok(mut guard) = self.clients.lock() {
+                        guard.remove(&client_id);
+                    }
+                }
+                ReceivedClientMessage::Hello {
+                    client_id,
+                    client_name,
+                } => {
+                    let initial_name = client_name.clone();
+                    self.contexts
+                        .entry(client_id)
+                        .or_insert_with(|| ClientContext {
+                            client_name: initial_name,
+                            ui_state: ClientUiState::default(),
+                        })
+                        .client_name = client_name;
+                }
+                ReceivedClientMessage::Command { command } => {
+                    if app.apply_session_command(command, ActionSource::Remote) {
+                        self.revision = self.revision.saturating_add(1);
+                        self.broadcast_message(HostMessage::Ack {
+                            revision: self.revision,
+                            command,
+                        });
+                    }
+                }
+                ReceivedClientMessage::Input { client_id, input } => {
+                    if self.apply_remote_input(app, client_id, input) {
+                        self.revision = self.revision.saturating_add(1);
+                    }
+                }
             }
-        }
-
-        for (_, command) in accepted_commands {
-            self.broadcast_message(HostMessage::Ack {
-                revision: self.revision,
-                command,
-            });
         }
 
         if self.last_snapshot_broadcast_at.elapsed() >= SNAPSHOT_BROADCAST_INTERVAL {
@@ -226,11 +572,52 @@ impl SessionServer {
         self.clients.lock().map(|guard| guard.len()).unwrap_or(0)
     }
 
+    fn apply_remote_input(
+        &mut self,
+        app: &mut App,
+        client_id: usize,
+        input: RemoteInputEvent,
+    ) -> bool {
+        let context = self.contexts.entry(client_id).or_insert_with(|| ClientContext {
+            client_name: format!("client-{client_id}"),
+            ui_state: ClientUiState::default(),
+        });
+        let host_ui_state = app.capture_client_ui_state();
+        let before_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
+        app.apply_client_ui_state(&context.ui_state);
+
+        let control = match input {
+            RemoteInputEvent::KeyDown {
+                keycode,
+                keymod_bits,
+                repeat,
+            } => app.handle_remote_key_down(
+                keycode.to_sdl(),
+                Mod::from_bits_truncate(keymod_bits),
+                repeat,
+            ),
+            RemoteInputEvent::PointerHover { x, y } => Some(app.handle_remote_pointer_hover(x, y)),
+            RemoteInputEvent::PointerDown { x, y, source } => {
+                app.handle_remote_pointer_down(x, y, source.action_source())
+            }
+        };
+        context.ui_state = app.capture_client_ui_state();
+        app.apply_client_ui_state(&host_ui_state);
+
+        match control.unwrap_or(AppControl::Continue) {
+            AppControl::Quit => false,
+            AppControl::Continue => {
+                let after_snapshot = serde_json::to_string(&app.session_snapshot(0, 0)).ok();
+                before_snapshot != after_snapshot
+            }
+        }
+    }
+
     fn broadcast_message(&self, message: HostMessage) {
         let Ok(mut guard) = self.clients.lock() else {
             return;
         };
-        guard.retain(|client| client.send(message.clone()).is_ok());
+        guard.retain(|_, client| client.send(message.clone()).is_ok());
     }
 }
 
@@ -251,9 +638,12 @@ fn spawn_client_writer(stream: TcpStream, outbound_rx: Receiver<HostMessage>) {
     });
 }
 
-fn spawn_client_reader(stream: TcpStream, command_tx: Sender<ReceivedCommand>) {
+fn spawn_client_reader(
+    stream: TcpStream,
+    client_id: usize,
+    command_tx: Sender<ReceivedClientMessage>,
+) {
     thread::spawn(move || {
-        let mut client_name = format!("client-{}", std::process::id());
         let reader = BufReader::new(stream);
         for line in reader.lines() {
             let Ok(line) = line else {
@@ -266,14 +656,22 @@ fn spawn_client_reader(stream: TcpStream, command_tx: Sender<ReceivedCommand>) {
                 ThinClientMessage::Hello {
                     client_name: hello_name,
                 } => {
-                    client_name = hello_name;
+                    let _ = command_tx.send(ReceivedClientMessage::Hello {
+                        client_id,
+                        client_name: hello_name,
+                    });
                 }
                 ThinClientMessage::Command { command } => {
                     if command_tx
-                        .send(ReceivedCommand {
-                            command,
-                            client_name: client_name.clone(),
-                        })
+                        .send(ReceivedClientMessage::Command { command })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                ThinClientMessage::Input { input } => {
+                    if command_tx
+                        .send(ReceivedClientMessage::Input { client_id, input })
                         .is_err()
                     {
                         break;
@@ -281,6 +679,7 @@ fn spawn_client_reader(stream: TcpStream, command_tx: Sender<ReceivedCommand>) {
                 }
             }
         }
+        let _ = command_tx.send(ReceivedClientMessage::Disconnected { client_id });
     });
 }
 
