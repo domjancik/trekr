@@ -82,10 +82,7 @@ impl App {
                 return self.handle_timeline_fx_pointer_hit(hit, x, y, source, was_selected);
             }
 
-            if self.project.tracks[index]
-                .selected_recording_clip()
-                .is_some()
-            {
+            if self.clip_align_track_has_available_clip(&self.project.tracks[index]) {
                 let (align_rect, mute_rect, delete_rect) =
                     self.recording_clip_control_rects(full_label_rect);
                 if rect_contains(align_rect, x, y) {
@@ -250,7 +247,7 @@ impl App {
                 overlay_slot: None,
             },
         ));
-        if track.selected_recording_clip().is_some() {
+        if self.clip_align_track_has_available_clip(track) {
             let (align_rect, mute_rect, delete_rect) =
                 self.recording_clip_control_rects(label_rect);
             targets.push((

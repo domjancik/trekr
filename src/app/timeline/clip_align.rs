@@ -1,6 +1,115 @@
 use super::*;
 
 impl App {
+    pub(crate) fn handle_clip_align_keyboard_event(
+        &mut self,
+        event: &sdl3::event::Event,
+    ) -> Option<AppControl> {
+        if self.clip_align_session.is_some() {
+            match event {
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Escape),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::CloseRecordingClipAlign,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Return),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::ApplyRecordingClipAlign,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Left),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::SelectPreviousClipAlignField,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Right),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::SelectNextClipAlignField,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::Q),
+                    keymod,
+                    repeat: false,
+                    ..
+                } if !keymod.intersects(
+                    sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+                {
+                    return Some(self.apply_action_with_source(
+                        AppAction::AdjustClipAlignFieldBackward,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                sdl3::event::Event::KeyDown {
+                    keycode: Some(sdl3::keyboard::Keycode::E),
+                    repeat: false,
+                    ..
+                } => {
+                    return Some(self.apply_action_with_source(
+                        AppAction::AdjustClipAlignFieldForward,
+                        crate::actions::ActionSource::Keyboard,
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        if matches!(
+            event,
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Return),
+                keymod,
+                repeat: false,
+                ..
+            } if keymod.intersects(
+                sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD,
+            )
+        ) && self.page_state.current_page == AppPage::Timeline
+            && self.page_state.selected_timeline_context == TimelineContext::TrackTimeline
+            && self
+                .project
+                .active_track()
+                .and_then(|track| track.selected_recording_clip_or_only())
+                .is_some()
+        {
+            return Some(self.apply_action_with_source(
+                AppAction::OpenSelectedRecordingClipAlign,
+                crate::actions::ActionSource::Keyboard,
+            ));
+        }
+
+        None
+    }
+
     pub(crate) fn clip_align_panel_rect(&self, content_bounds: Rect) -> Rect {
         Rect::new(content_bounds.x + 12, content_bounds.y + 36, 364, 228)
     }
@@ -78,20 +187,9 @@ impl App {
             canvas.draw_rect(rect)?;
             let (label, value) = self.clip_align_field_label_value(field, session);
             let label_rect = Rect::new(rect.x + 6, rect.y + 5, 64, 8);
-            let value_rect = Rect::new(
-                rect.x + 76,
-                rect.y + 5,
-                rect.width().saturating_sub(82),
-                8,
-            );
+            let value_rect = Rect::new(rect.x + 76, rect.y + 5, rect.width().saturating_sub(82), 8);
             let field_text = crate::app::support::ui_helpers::contrasting_text_color(fill, theme);
-            crate::ui::draw_text_fitted(
-                canvas,
-                &label.to_uppercase(),
-                label_rect,
-                1,
-                field_text,
-            )?;
+            crate::ui::draw_text_fitted(canvas, &label.to_uppercase(), label_rect, 1, field_text)?;
             canvas.set_draw_color(if selected {
                 theme.app_chrome.surface_border
             } else {
@@ -516,6 +614,10 @@ impl App {
         self.sync_active_track_recording_clip_scroll();
         self.clip_align_defaults = session.settings;
         self.clip_align_session = None;
+    }
+
+    pub(crate) fn clip_align_track_has_available_clip(&self, track: &Track) -> bool {
+        track.selected_recording_clip_or_only().is_some()
     }
 
     pub(crate) fn handle_clip_align_pointer_down(
