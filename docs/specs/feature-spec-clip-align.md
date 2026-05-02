@@ -196,7 +196,7 @@ Target-length suggestion rule:
 - measure the real-time duration that span would take at the **current project tempo**
 - compare that duration against the supported loop lengths at the same tempo: `1`, `2`, `4`, and `8` bars
 - preselect the closest match
-- if two choices are equally close, prefer the shorter one
+- if two choices are equally close, round up to the longer supported length
 - if the span is invalid, fall back to the persisted last-used target length, otherwise `4 bars`
 
 ## Tempo Model

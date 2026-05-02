@@ -54,7 +54,7 @@ Default suggestion behavior:
 - convert that span to elapsed beats/bars using the current project tempo and transport PPQN
 - compare it against the supported V1 target lengths (`1/2/4/8` bars)
 - choose the closest supported value as the initial selected target length
-- on exact ties, prefer the shorter target
+- on exact ties, round up to the longer target
 - if the span cannot be resolved, fall back to the remembered last-used value, otherwise `4 bars`
 
 ### Supported Destination Modes
