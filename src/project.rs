@@ -886,6 +886,24 @@ impl Track {
         })
     }
 
+    pub fn suggested_clip_align_target_length(
+        &self,
+        transport: Transport,
+        clip_id: u64,
+        settings: ClipAlignSettings,
+    ) -> Option<ClipAlignTargetLength> {
+        let clip = self.recording_clip(clip_id)?;
+        let source_start_ticks =
+            self.resolve_clip_align_source_start(clip, settings.source_start_mode);
+        let source_end_ticks = self.resolve_clip_align_source_end(clip, settings.source_end_mode);
+        (source_end_ticks > source_start_ticks).then(|| {
+            suggest_clip_align_target_length(
+                transport,
+                source_end_ticks.saturating_sub(source_start_ticks),
+            )
+        })
+    }
+
     pub fn apply_clip_align(
         &mut self,
         transport: Transport,
@@ -1702,6 +1720,24 @@ fn clip_align_target_length_ticks(
     (u64::from(transport.ppqn.max(1)) * 4 * target_length.bars()).max(1)
 }
 
+fn suggest_clip_align_target_length(
+    transport: Transport,
+    source_length_ticks: u64,
+) -> ClipAlignTargetLength {
+    [
+        ClipAlignTargetLength::Bar1,
+        ClipAlignTargetLength::Bar2,
+        ClipAlignTargetLength::Bar4,
+        ClipAlignTargetLength::Bar8,
+    ]
+    .into_iter()
+    .min_by_key(|candidate| {
+        let target_ticks = clip_align_target_length_ticks(transport, *candidate);
+        (source_length_ticks.abs_diff(target_ticks), candidate.bars())
+    })
+    .unwrap_or(ClipAlignTargetLength::Bar4)
+}
+
 fn derive_clip_align_tempo_bpm(
     base_tempo_bpm: u64,
     source_length_ticks: u64,
@@ -2030,6 +2066,58 @@ mod tests {
 
         assert_eq!(preview.source_length_ticks, 960);
         assert_eq!(preview.tempo_preview_bpm, Some(400));
+    }
+
+    #[test]
+    fn clip_align_suggests_closest_supported_target_length() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.recording_clips = vec![RecordingClip {
+            id: 1,
+            region: Region::new_recorded(0, 5_900, 1),
+            muted: false,
+            native_start_ticks: 0,
+            native_end_ticks: 5_900,
+            native_duration_ticks: 5_900,
+            native_capture_tempo_bpm: 120,
+        }];
+        track.midi_notes = vec![
+            MidiNote::new_recorded(60, 0, 120, 100, 1),
+            MidiNote::new_recorded(62, 5_900, 120, 100, 1),
+        ];
+
+        assert_eq!(
+            track.suggested_clip_align_target_length(transport, 1, ClipAlignSettings::default()),
+            Some(ClipAlignTargetLength::Bar2)
+        );
+    }
+
+    #[test]
+    fn clip_align_suggests_shorter_target_length_on_exact_tie() {
+        let transport = Transport::default();
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.recording_clips = vec![RecordingClip {
+            id: 1,
+            region: Region::new_recorded(0, 5_760, 1),
+            muted: false,
+            native_start_ticks: 0,
+            native_end_ticks: 5_760,
+            native_duration_ticks: 5_760,
+            native_capture_tempo_bpm: 120,
+        }];
+        track.midi_notes = vec![
+            MidiNote::new_recorded(60, 0, 120, 100, 1),
+            MidiNote::new_recorded(62, 5_640, 120, 100, 1),
+        ];
+
+        let settings = ClipAlignSettings {
+            source_end_mode: ClipAlignSourceEndMode::LastNoteEnd,
+            ..ClipAlignSettings::default()
+        };
+        assert_eq!(
+            track.suggested_clip_align_target_length(transport, 1, settings),
+            Some(ClipAlignTargetLength::Bar1)
+        );
     }
 
     #[test]

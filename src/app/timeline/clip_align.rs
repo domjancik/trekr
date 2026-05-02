@@ -431,7 +431,12 @@ impl App {
         let Some(clip) = track.selected_recording_clip_or_only() else {
             return;
         };
-        let settings = self.clip_align_defaults;
+        let mut settings = self.clip_align_defaults;
+        if let Some(suggested_target_length) =
+            track.suggested_clip_align_target_length(self.project.transport, clip.id, settings)
+        {
+            settings.target_length = suggested_target_length;
+        }
         let Some(destination_start_ticks) =
             self.clip_align_destination_start_ticks(track_index, settings.destination)
         else {
@@ -667,8 +672,8 @@ impl App {
 mod tests {
     use super::*;
     use crate::actions::AppAction;
-    use crate::project::RecordingView;
-    use crate::timeline::RecordingTake;
+    use crate::project::{ClipAlignTargetLength, MidiNote, RecordingClip, RecordingView};
+    use crate::timeline::{RecordingTake, Region};
 
     #[test]
     fn clip_align_action_opens_and_applies_for_selected_clip() {
@@ -690,7 +695,42 @@ mod tests {
         assert!(app.clip_align_session.is_none());
         assert_eq!(
             app.project.active_track().unwrap().loop_region.length_ticks,
-            15_360
+            3_840
+        );
+    }
+
+    #[test]
+    fn opening_clip_align_uses_tempo_aware_target_length_suggestion() {
+        let mut app = App::new();
+        let transport = app.project.transport;
+        {
+            let track = app.project.active_track_mut().unwrap();
+            track.clear_content();
+            track.recording_clips = vec![RecordingClip {
+                id: 1,
+                region: Region::new_recorded(0, 3_700, 1),
+                muted: false,
+                native_start_ticks: 0,
+                native_end_ticks: 3_700,
+                native_duration_ticks: 3_700,
+                native_capture_tempo_bpm: transport.tempo_bpm,
+            }];
+            track.selected_recording_clip_id = Some(1);
+            track.midi_notes = vec![
+                MidiNote::new_recorded(60, 0, 120, 100, 1),
+                MidiNote::new_recorded(62, 3_700, 120, 100, 1),
+            ];
+            track.recording_view = RecordingView::Stacked;
+        }
+        app.clip_align_defaults.target_length = ClipAlignTargetLength::Bar8;
+
+        app.apply_action(AppAction::OpenSelectedRecordingClipAlign);
+
+        assert_eq!(
+            app.clip_align_session
+                .as_ref()
+                .map(|session| session.settings.target_length),
+            Some(ClipAlignTargetLength::Bar1)
         );
     }
 }
