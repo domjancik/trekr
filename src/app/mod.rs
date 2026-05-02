@@ -90,7 +90,6 @@ use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
-pub(crate) use types::{ClientUiState, DiscoverabilityTarget};
 use types::{
     ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay,
     ClipAlignField, ClipAlignSession, DirectMappingMode, DirectMappingOrigin,
@@ -99,6 +98,7 @@ use types::{
     RecordingLaneWindow, StatusState, TimelineFxRowLayout, TimelineFxRowRef,
     TimelineTrackLayout,
 };
+pub(crate) use types::{ClientUiState, DiscoverabilityTarget};
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);

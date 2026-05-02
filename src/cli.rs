@@ -114,29 +114,29 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 9] = [
     },
     SuggestedCommand {
         label: "Headless session host",
-        command: "cargo run -- host-session --state-mode demo --listen 0.0.0.0:8787",
+        command: "cargo run -- host-session --state-mode demo --listen 0.0.0.0:8788",
         description: "Run the shared session headlessly and accept thin-client connections over TCP.",
         args: &[
             "host-session",
             "--state-mode",
             "demo",
             "--listen",
-            "0.0.0.0:8787",
+            "0.0.0.0:8788",
         ],
         launchable: true,
     },
     SuggestedCommand {
         label: "Terminal thin client",
-        command: "cargo run -- thin-client --connect 127.0.0.1:8787",
+        command: "cargo run -- thin-client --connect 127.0.0.1:8788",
         description: "Connect a lightweight terminal control surface to a session host.",
-        args: &["thin-client", "--connect", "127.0.0.1:8787"],
+        args: &["thin-client", "--connect", "127.0.0.1:8788"],
         launchable: true,
     },
     SuggestedCommand {
         label: "SDL thin client",
-        command: "cargo run -- thin-client-sdl --connect 127.0.0.1:8787",
-        description: "Connect an SDL thin client window that mirrors session state and sends context-free commands.",
-        args: &["thin-client-sdl", "--connect", "127.0.0.1:8787"],
+        command: "cargo run -- thin-client-sdl --connect 127.0.0.1:8788",
+        description: "Connect an SDL thin client window that mirrors the full app UI and forwards keyboard/pointer input.",
+        args: &["thin-client-sdl", "--connect", "127.0.0.1:8788"],
         launchable: true,
     },
     SuggestedCommand {
@@ -385,7 +385,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "options for `host-session`:")?;
     writeln!(
         writer,
-        "  --listen <addr>               required, for example 0.0.0.0:8787"
+        "  --listen <addr>               required, for example 0.0.0.0:8788"
     )?;
     writeln!(
         writer,
@@ -395,7 +395,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "options for `thin-client`:")?;
     writeln!(
         writer,
-        "  --connect <addr>              required, for example 127.0.0.1:8787"
+        "  --connect <addr>              required, for example 127.0.0.1:8788"
     )?;
     writeln!(
         writer,
@@ -405,7 +405,7 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     writeln!(writer, "options for `thin-client-sdl`:")?;
     writeln!(
         writer,
-        "  --connect <addr>              required, for example 127.0.0.1:8787"
+        "  --connect <addr>              required, for example 127.0.0.1:8788"
     )?;
     writeln!(
         writer,

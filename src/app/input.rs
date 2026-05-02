@@ -3,13 +3,12 @@ use super::*;
 
 impl App {
     pub(crate) fn handle_remote_pointer_hover(&mut self, x: i32, y: i32) -> AppControl {
-        self.status_state.hovered_target = if self.direct_mapping_state.mode
-            == DirectMappingMode::Inactive
-        {
-            self.discoverability_target_at(x, y)
-        } else {
-            None
-        };
+        self.status_state.hovered_target =
+            if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+                self.discoverability_target_at(x, y)
+            } else {
+                None
+            };
         if self.status_state.hovered_target.is_some() {
             self.direct_mapping_state.status_message = None;
         }
