@@ -94,12 +94,11 @@ use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
 };
 use types::{
-    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay,
-    ClipAlignField, ClipAlignSession, DirectMappingMode, DirectMappingOrigin,
-    DirectMappingState, DirectMappingTarget, LastActionStatus, MappingBadge,
-    MappingTargetLookupLayout, MappingTargetLookupState, OverlayState, RecordingLaneLayout,
-    RecordingLaneWindow, StatusState, TimelineFxRowLayout, TimelineFxRowRef,
-    TimelineTrackLayout,
+    ActionDiscoverabilitySummary, ActiveMappingTargetLookup, AppOverlay, ClipAlignField,
+    ClipAlignSession, DirectMappingMode, DirectMappingOrigin, DirectMappingState,
+    DirectMappingTarget, LastActionStatus, MappingBadge, MappingTargetLookupLayout,
+    MappingTargetLookupState, OverlayState, RecordingLaneLayout, RecordingLaneWindow, StatusState,
+    TimelineFxRowLayout, TimelineFxRowRef, TimelineTrackLayout,
 };
 pub(crate) use types::{ClientUiState, DiscoverabilityTarget};
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};

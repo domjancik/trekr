@@ -88,7 +88,8 @@ impl App {
                 .selected_recording_clip()
                 .is_some()
             {
-                let (mute_rect, delete_rect) = self.recording_clip_control_rects(full_label_rect);
+                let (_, mute_rect, delete_rect) =
+                    self.recording_clip_control_rects(full_label_rect);
                 if rect_contains(mute_rect, x, y) {
                     return Some(RemoteUiIntent::TrackAction {
                         track_index: index,

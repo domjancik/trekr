@@ -1,8 +1,8 @@
 use crate::actions::{ActionSource, AppAction};
 use crate::mapping::MappingSourceKind;
 use crate::pages::AppPage;
-use crate::project::{ClipAlignPreview, ClipAlignSettings};
 use crate::pages::AppPageState;
+use crate::project::{ClipAlignPreview, ClipAlignSettings};
 use crate::timeline_fx::TimelineContext;
 use sdl3::rect::Rect;
 use std::path::PathBuf;
