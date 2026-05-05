@@ -13,6 +13,7 @@ Recent/additional specs:
 
 - `docs/specs/ui-density-presets-spec.md` — implemented density preset model for default, compact, touch, and tiny layout metrics.
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
+- `docs/specs/rpi-deployment-spec.md` — Raspberry Pi deploy/provision/autostart workflow boundaries.
 - `docs/specs/feature-spec-quick-mapping-lookup.md` — target-field fuzzy lookup/edit flow for the mappings page.
 - root `README.md` — runnable screenshot-review workflow plus pixel-exact renderer screenshot regression steps against `origin/main`.
 
