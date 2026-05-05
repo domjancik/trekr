@@ -1,10 +1,25 @@
-use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use midir::{Ignore, MidiInput, MidiInputConnection};
+#[cfg(not(test))]
+use midir::{MidiOutput, MidiOutputConnection};
 use serde::{Deserialize, Serialize};
+#[cfg(not(test))]
+use std::cmp::Reverse;
+#[cfg(not(test))]
+use std::collections::BinaryHeap;
 use std::collections::HashMap;
+#[cfg(not(test))]
+use std::fs::OpenOptions;
+#[cfg(not(test))]
+use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(not(test))]
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::mpsc::{self, Receiver, Sender};
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
+#[cfg(not(test))]
 use std::thread;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiPortRef {
@@ -181,27 +196,17 @@ fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> 
         .or_else(|| (!ports.is_empty()).then_some(0))
 }
 
-#[cfg_attr(test, allow(dead_code))]
-pub struct MidiOutputRuntime {
-    sender: Sender<MidiOutputCommand>,
-    #[cfg(test)]
-    sent_commands: Arc<Mutex<Vec<MidiOutputCommand>>>,
-    #[cfg(test)]
-    sent_messages: Arc<Mutex<Vec<(String, u8, u8, Option<u8>)>>>,
-}
-
-#[cfg_attr(test, allow(dead_code))]
-pub struct MidiInputRuntime {
-    app_name: &'static str,
-    sender: Sender<MidiInputEvent>,
-    receiver: Receiver<MidiInputEvent>,
-    connections: HashMap<String, MidiInputConnection<()>>,
-    #[cfg(test)]
-    requested_ports: Vec<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MidiEventPriority {
+    Panic,
+    LiveImmediate,
+    NoteOff,
+    Playback,
+    DelayedFx,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum MidiOutputCommand {
+enum MidiOutputPayload {
     NoteOn {
         port: MidiPortRef,
         channel: u8,
@@ -219,6 +224,58 @@ enum MidiOutputCommand {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QueuedMidiEvent {
+    due_at: Instant,
+    priority: MidiEventPriority,
+    sequence: u64,
+    payload: MidiOutputPayload,
+}
+
+impl Ord for QueuedMidiEvent {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.due_at, self.priority, self.sequence).cmp(&(
+            other.due_at,
+            other.priority,
+            other.sequence,
+        ))
+    }
+}
+
+impl PartialOrd for QueuedMidiEvent {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub struct MidiOutputRuntime {
+    sender: Sender<MidiSchedulerCommand>,
+    sequence: AtomicU64,
+    #[cfg(test)]
+    sent_commands: Arc<Mutex<Vec<String>>>,
+    #[cfg(test)]
+    sent_messages: Arc<Mutex<Vec<(String, u8, u8, Option<u8>)>>>,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub struct MidiInputRuntime {
+    app_name: &'static str,
+    sender: Sender<MidiInputEvent>,
+    receiver: Receiver<MidiInputEvent>,
+    connections: HashMap<String, MidiInputConnection<()>>,
+    #[cfg(test)]
+    requested_ports: Vec<String>,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+enum MidiSchedulerCommand {
+    Enqueue(QueuedMidiEvent),
+    Prewarm(MidiPortRef),
+    Shutdown,
+}
+
+#[cfg(not(test))]
 struct MidiOutputWorker {
     app_name: &'static str,
     connections: HashMap<String, MidiOutputConnection>,
@@ -228,21 +285,23 @@ impl Default for MidiOutputRuntime {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
         #[cfg(test)]
+        let _ = &receiver;
+        #[cfg(test)]
         let sent_commands = Arc::new(Mutex::new(Vec::new()));
         #[cfg(test)]
         let sent_messages = Arc::new(Mutex::new(Vec::new()));
+        #[cfg(not(test))]
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
             .spawn(move || {
                 let mut worker = MidiOutputWorker::default();
-                while let Ok(command) = receiver.recv() {
-                    let _ = worker.handle(command);
-                }
+                worker.run(receiver);
             })
             .expect("midi output worker should start");
 
         Self {
             sender,
+            sequence: AtomicU64::new(0),
             #[cfg(test)]
             sent_commands,
             #[cfg(test)]
@@ -265,6 +324,7 @@ impl Default for MidiInputRuntime {
     }
 }
 
+#[cfg(not(test))]
 impl Default for MidiOutputWorker {
     fn default() -> Self {
         Self {
@@ -282,42 +342,14 @@ impl MidiOutputRuntime {
         pitch: u8,
         velocity: u8,
     ) -> Result<(), String> {
-        let command = MidiOutputCommand::NoteOn {
-            port: port.clone(),
+        self.schedule_note_on_at(
+            port,
             channel,
             pitch,
             velocity,
-        };
-        self.send_note_on_internal(port, channel, pitch, velocity, command)
-    }
-
-    #[cfg(not(test))]
-    fn send_note_on_internal(
-        &mut self,
-        _port: &MidiPortRef,
-        _channel: u8,
-        _pitch: u8,
-        _velocity: u8,
-        command: MidiOutputCommand,
-    ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        self.sender.send(command).map_err(|error| error.to_string())
-    }
-
-    #[cfg(test)]
-    fn send_note_on_internal(
-        &mut self,
-        port: &MidiPortRef,
-        channel: u8,
-        pitch: u8,
-        velocity: u8,
-        command: MidiOutputCommand,
-    ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        if let Ok(mut sent) = self.sent_messages.lock() {
-            sent.push((port.name.clone(), channel, pitch, Some(velocity)));
-        }
-        Ok(())
+            Instant::now(),
+            MidiEventPriority::LiveImmediate,
+        )
     }
 
     pub fn send_note_off(
@@ -326,103 +358,221 @@ impl MidiOutputRuntime {
         channel: u8,
         pitch: u8,
     ) -> Result<(), String> {
-        let command = MidiOutputCommand::NoteOff {
-            port: port.clone(),
+        self.schedule_note_off_at(
+            port,
             channel,
             pitch,
-        };
-        self.send_note_off_internal(port, channel, pitch, command)
+            Instant::now(),
+            MidiEventPriority::NoteOff,
+        )
     }
 
-    #[cfg(not(test))]
-    fn send_note_off_internal(
-        &mut self,
-        _port: &MidiPortRef,
-        _channel: u8,
-        _pitch: u8,
-        command: MidiOutputCommand,
-    ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        self.sender.send(command).map_err(|error| error.to_string())
+    pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
+        let event = self.build_event(
+            Instant::now(),
+            MidiEventPriority::Panic,
+            MidiOutputPayload::AllNotesOff {
+                port: port.clone(),
+                channel,
+            },
+        );
+        self.record_command_for_test(&event);
+        #[cfg(test)]
+        {
+            self.record_sent_payload(&event.payload);
+            return Ok(());
+        }
+        #[cfg(not(test))]
+        {
+            self.sender
+                .send(MidiSchedulerCommand::Enqueue(event))
+                .map_err(|error| error.to_string())
+        }
     }
 
-    #[cfg(test)]
-    fn send_note_off_internal(
+    pub fn schedule_note_on_at(
         &mut self,
         port: &MidiPortRef,
         channel: u8,
         pitch: u8,
-        command: MidiOutputCommand,
+        velocity: u8,
+        due_at: Instant,
+        priority: MidiEventPriority,
     ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        if let Ok(mut sent) = self.sent_messages.lock() {
-            sent.push((port.name.clone(), channel, pitch, None));
+        let event = self.build_event(
+            due_at,
+            priority,
+            MidiOutputPayload::NoteOn {
+                port: port.clone(),
+                channel,
+                pitch,
+                velocity,
+            },
+        );
+        self.record_command_for_test(&event);
+        #[cfg(test)]
+        {
+            self.record_sent_payload(&event.payload);
+            return Ok(());
         }
-        Ok(())
+        #[cfg(not(test))]
+        {
+            self.sender
+                .send(MidiSchedulerCommand::Enqueue(event))
+                .map_err(|error| error.to_string())
+        }
     }
 
-    pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
-        let command = MidiOutputCommand::AllNotesOff {
-            port: port.clone(),
-            channel,
-        };
-        self.send_all_notes_off_internal(port, channel, command)
-    }
-
-    #[cfg(not(test))]
-    fn send_all_notes_off_internal(
-        &mut self,
-        _port: &MidiPortRef,
-        _channel: u8,
-        command: MidiOutputCommand,
-    ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        self.sender.send(command).map_err(|error| error.to_string())
-    }
-
-    #[cfg(test)]
-    fn send_all_notes_off_internal(
+    pub fn schedule_note_off_at(
         &mut self,
         port: &MidiPortRef,
         channel: u8,
-        command: MidiOutputCommand,
+        pitch: u8,
+        due_at: Instant,
+        priority: MidiEventPriority,
     ) -> Result<(), String> {
-        self.record_command_for_test(&command);
-        if let Ok(mut sent) = self.sent_messages.lock() {
-            sent.push((port.name.clone(), channel, 123, None));
+        let event = self.build_event(
+            due_at,
+            priority,
+            MidiOutputPayload::NoteOff {
+                port: port.clone(),
+                channel,
+                pitch,
+            },
+        );
+        self.record_command_for_test(&event);
+        #[cfg(test)]
+        {
+            self.record_sent_payload(&event.payload);
+            return Ok(());
         }
-        Ok(())
+        #[cfg(not(test))]
+        {
+            self.sender
+                .send(MidiSchedulerCommand::Enqueue(event))
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    pub fn prewarm_port(&mut self, port: &MidiPortRef) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            self.record_prewarm_for_test(port);
+            return Ok(());
+        }
+        #[cfg(not(test))]
+        {
+            self.sender
+                .send(MidiSchedulerCommand::Prewarm(port.clone()))
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    fn build_event(
+        &self,
+        due_at: Instant,
+        priority: MidiEventPriority,
+        payload: MidiOutputPayload,
+    ) -> QueuedMidiEvent {
+        QueuedMidiEvent {
+            due_at,
+            priority,
+            sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
+            payload,
+        }
     }
 
     #[cfg(test)]
-    fn record_command_for_test(&self, command: &MidiOutputCommand) {
+    fn record_command_for_test(&self, event: &QueuedMidiEvent) {
+        let label = match &event.payload {
+            MidiOutputPayload::NoteOn {
+                port,
+                channel,
+                pitch,
+                velocity,
+            } => format!(
+                "note_on:{}:{}:{}:{}:{:?}:{:?}",
+                port.name, channel, pitch, velocity, event.priority, event.due_at
+            ),
+            MidiOutputPayload::NoteOff {
+                port,
+                channel,
+                pitch,
+            } => format!(
+                "note_off:{}:{}:{}:{:?}:{:?}",
+                port.name, channel, pitch, event.priority, event.due_at
+            ),
+            MidiOutputPayload::AllNotesOff { port, channel } => format!(
+                "all_notes_off:{}:{}:{:?}:{:?}",
+                port.name, channel, event.priority, event.due_at
+            ),
+        };
         self.sent_commands
             .lock()
             .expect("test midi output log should lock")
-            .push(command.clone());
+            .push(label);
     }
 
     #[cfg(not(test))]
-    fn record_command_for_test(&self, _command: &MidiOutputCommand) {}
+    fn record_command_for_test(&self, _event: &QueuedMidiEvent) {}
 
     #[cfg(test)]
-    pub fn sent_all_notes_off_count(&self) -> usize {
+    fn record_sent_payload(&self, payload: &MidiOutputPayload) {
+        let mut sent = self
+            .sent_messages
+            .lock()
+            .expect("test midi output log should lock");
+        match payload {
+            MidiOutputPayload::NoteOn {
+                port,
+                channel,
+                pitch,
+                velocity,
+            } => sent.push((port.name.clone(), *channel, *pitch, Some(*velocity))),
+            MidiOutputPayload::NoteOff {
+                port,
+                channel,
+                pitch,
+            } => sent.push((port.name.clone(), *channel, *pitch, None)),
+            MidiOutputPayload::AllNotesOff { port, channel } => {
+                sent.push((port.name.clone(), *channel, 123, None))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn record_prewarm_for_test(&self, port: &MidiPortRef) {
         self.sent_commands
             .lock()
             .expect("test midi output log should lock")
+            .push(format!("prewarm:{}", port.name));
+    }
+
+    #[cfg(test)]
+    pub fn sent_all_notes_off_count(&self) -> usize {
+        self.sent_messages
+            .lock()
+            .expect("test midi output log should lock")
             .iter()
-            .filter(|command| matches!(command, MidiOutputCommand::AllNotesOff { .. }))
+            .filter(|(_, _, pitch, velocity)| *pitch == 123 && velocity.is_none())
             .count()
     }
-}
 
-impl MidiOutputRuntime {
     #[cfg(test)]
     pub fn sent_messages(&self) -> Vec<(String, u8, u8, Option<u8>)> {
         self.sent_messages
             .lock()
             .map(|messages| messages.clone())
             .unwrap_or_default()
+    }
+}
+
+impl Drop for MidiOutputRuntime {
+    fn drop(&mut self) {
+        #[cfg(not(test))]
+        {
+            let _ = self.sender.send(MidiSchedulerCommand::Shutdown);
+        }
     }
 }
 
@@ -479,21 +629,99 @@ impl MidiInputRuntime {
     }
 }
 
+#[cfg(not(test))]
 impl MidiOutputWorker {
-    fn handle(&mut self, command: MidiOutputCommand) -> Result<(), String> {
-        match command {
-            MidiOutputCommand::NoteOn {
+    fn run(&mut self, receiver: Receiver<MidiSchedulerCommand>) {
+        let mut heap: BinaryHeap<Reverse<QueuedMidiEvent>> = BinaryHeap::new();
+        loop {
+            self.send_due_events(&mut heap, Instant::now());
+            let next_due = heap.peek().map(|entry| entry.0.due_at);
+            let command = match next_due {
+                Some(due_at) => {
+                    let timeout = due_at.saturating_duration_since(Instant::now());
+                    match receiver.recv_timeout(timeout) {
+                        Ok(command) => Some(command),
+                        Err(RecvTimeoutError::Timeout) => None,
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+                None => match receiver.recv() {
+                    Ok(command) => Some(command),
+                    Err(_) => return,
+                },
+            };
+
+            match command {
+                Some(MidiSchedulerCommand::Enqueue(event)) => {
+                    if matches!(event.payload, MidiOutputPayload::AllNotesOff { .. }) {
+                        heap.clear();
+                    }
+                    heap.push(Reverse(event));
+                }
+                Some(MidiSchedulerCommand::Prewarm(port)) => {
+                    let _ = self.connection_for(&port);
+                }
+                Some(MidiSchedulerCommand::Shutdown) => return,
+                None => self.send_due_events(&mut heap, Instant::now()),
+            }
+        }
+    }
+
+    fn send_due_events(&mut self, heap: &mut BinaryHeap<Reverse<QueuedMidiEvent>>, now: Instant) {
+        while heap.peek().is_some_and(|entry| entry.0.due_at <= now) {
+            let Some(Reverse(event)) = heap.pop() else {
+                break;
+            };
+            let _ = self.handle_event(event, now);
+        }
+    }
+
+    fn handle_event(&mut self, event: QueuedMidiEvent, now: Instant) -> Result<(), String> {
+        let scheduled_lag = now.saturating_duration_since(event.due_at);
+        match event.payload {
+            MidiOutputPayload::NoteOn {
                 port,
                 channel,
                 pitch,
                 velocity,
-            } => self.send_message(&port, [status_byte(0x90, channel), pitch, velocity]),
-            MidiOutputCommand::NoteOff {
+            } => {
+                log_midi_output(format!(
+                    "send due={:?} lag_ms={} priority={:?} kind=on port={} channel={} pitch={} velocity={}",
+                    event.due_at,
+                    scheduled_lag.as_millis(),
+                    event.priority,
+                    port.name,
+                    channel,
+                    pitch,
+                    velocity
+                ));
+                self.send_message(&port, [status_byte(0x90, channel), pitch, velocity])
+            }
+            MidiOutputPayload::NoteOff {
                 port,
                 channel,
                 pitch,
-            } => self.send_message(&port, [status_byte(0x80, channel), pitch, 0]),
-            MidiOutputCommand::AllNotesOff { port, channel } => {
+            } => {
+                log_midi_output(format!(
+                    "send due={:?} lag_ms={} priority={:?} kind=off port={} channel={} pitch={}",
+                    event.due_at,
+                    scheduled_lag.as_millis(),
+                    event.priority,
+                    port.name,
+                    channel,
+                    pitch
+                ));
+                self.send_message(&port, [status_byte(0x80, channel), pitch, 0])
+            }
+            MidiOutputPayload::AllNotesOff { port, channel } => {
+                log_midi_output(format!(
+                    "send due={:?} lag_ms={} priority={:?} kind=all_notes_off port={} channel={}",
+                    event.due_at,
+                    scheduled_lag.as_millis(),
+                    event.priority,
+                    port.name,
+                    channel
+                ));
                 self.send_message(&port, [status_byte(0xB0, channel), 123, 0])
             }
         }
@@ -520,6 +748,7 @@ impl MidiOutputWorker {
     }
 }
 
+#[cfg(not(test))]
 fn connect_output_by_name(
     app_name: &str,
     target_name: &str,
@@ -534,6 +763,27 @@ fn connect_output_by_name(
     midi_out
         .connect(&port, app_name)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(not(test))]
+fn log_midi_output(message: String) {
+    if std::env::var("TREKR_MIDI_OUTPUT_LOG")
+        .ok()
+        .is_none_or(|value| value == "0")
+    {
+        return;
+    }
+    let line = format!("[midiout] {message}");
+    eprintln!("{line}");
+    append_env_log("TREKR_MIDI_OUTPUT_LOG_PATH", "trekr-midi-output.log", &line);
+}
+
+#[cfg(not(test))]
+fn append_env_log(path_var: &str, default_name: &str, line: &str) {
+    let path = std::env::var(path_var).unwrap_or_else(|_| default_name.to_string());
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 #[cfg_attr(test, allow(dead_code))]
@@ -597,11 +847,33 @@ fn status_byte(base: u8, channel: u8) -> u8 {
 }
 
 #[cfg(test)]
+fn ordered_payloads(mut events: Vec<QueuedMidiEvent>) -> Vec<&'static str> {
+    events.sort_by(|left, right| {
+        (left.due_at, left.priority, left.sequence).cmp(&(
+            right.due_at,
+            right.priority,
+            right.sequence,
+        ))
+    });
+    events
+        .into_iter()
+        .map(|event| match event.payload {
+            MidiOutputPayload::NoteOn { .. } => "on",
+            MidiOutputPayload::NoteOff { .. } => "off",
+            MidiOutputPayload::AllNotesOff { .. } => "panic",
+        })
+        .collect()
+}
+
+#[cfg(test)]
 mod tests {
     use super::{
-        MidiDeviceCatalog, MidiInputMessage, MidiPortRef, parse_input_event, preserve_selection,
-        status_byte,
+        MidiDeviceCatalog, MidiEventPriority, MidiInputMessage, MidiOutputPayload, MidiPortRef,
+        QueuedMidiEvent, ordered_payloads, parse_input_event, preserve_selection, status_byte,
     };
+    #[cfg(test)]
+    use std::time::Duration;
+    use std::time::Instant;
 
     #[test]
     fn status_byte_uses_one_based_channel_numbers() {
@@ -661,5 +933,131 @@ mod tests {
         let catalog = MidiDeviceCatalog::scan();
 
         assert_eq!(catalog, MidiDeviceCatalog::demo());
+    }
+
+    #[test]
+    fn immediate_event_preempts_future_delayed_event() {
+        let now = Instant::now();
+        let events = vec![
+            QueuedMidiEvent {
+                due_at: now + Duration::from_millis(100),
+                priority: MidiEventPriority::Playback,
+                sequence: 0,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 60,
+                    velocity: 100,
+                },
+            },
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::LiveImmediate,
+                sequence: 1,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 61,
+                    velocity: 100,
+                },
+            },
+        ];
+
+        assert_eq!(ordered_payloads(events), vec!["on", "on"]);
+    }
+
+    #[test]
+    fn note_off_sorts_before_note_on_at_same_due_time() {
+        let now = Instant::now();
+        let events = vec![
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::Playback,
+                sequence: 1,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 60,
+                    velocity: 100,
+                },
+            },
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::NoteOff,
+                sequence: 0,
+                payload: MidiOutputPayload::NoteOff {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 60,
+                },
+            },
+        ];
+
+        assert_eq!(ordered_payloads(events), vec!["off", "on"]);
+    }
+
+    #[test]
+    fn panic_sorts_before_other_same_due_time_events() {
+        let now = Instant::now();
+        let events = vec![
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::DelayedFx,
+                sequence: 2,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 67,
+                    velocity: 100,
+                },
+            },
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::Panic,
+                sequence: 1,
+                payload: MidiOutputPayload::AllNotesOff {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                },
+            },
+        ];
+
+        assert_eq!(ordered_payloads(events), vec!["panic", "on"]);
+    }
+
+    #[test]
+    fn sequence_preserves_deterministic_order_for_equal_due_time_and_priority() {
+        let now = Instant::now();
+        let events = vec![
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::Playback,
+                sequence: 0,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 60,
+                    velocity: 100,
+                },
+            },
+            QueuedMidiEvent {
+                due_at: now,
+                priority: MidiEventPriority::Playback,
+                sequence: 1,
+                payload: MidiOutputPayload::NoteOn {
+                    port: MidiPortRef::new("Out"),
+                    channel: 1,
+                    pitch: 61,
+                    velocity: 100,
+                },
+            },
+        ];
+
+        let ordered = events
+            .into_iter()
+            .map(|event| (event.due_at, event.priority, event.sequence))
+            .collect::<Vec<_>>();
+        assert_eq!(ordered[0].2, 0);
+        assert_eq!(ordered[1].2, 1);
     }
 }

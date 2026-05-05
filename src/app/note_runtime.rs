@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn scheduled_note_occurrences(
+pub(in crate::app) fn scheduled_note_occurrences(
     track: &Track,
     notes: &[MidiNote],
     previous_ticks: u64,
@@ -52,7 +52,7 @@ pub(super) fn scheduled_note_occurrences(
     occurrences
 }
 
-pub(super) fn occurrence_note_events(
+pub(in crate::app) fn occurrence_note_events(
     track: &Track,
     notes: &[MidiNote],
     previous_ticks: u64,
@@ -65,7 +65,7 @@ pub(super) fn occurrence_note_events(
     }
 }
 
-pub(super) fn occurrence_note_events_unmuted(
+pub(in crate::app) fn occurrence_note_events_unmuted(
     notes: &[MidiNote],
     previous_ticks: u64,
     advanced_ticks: u64,
@@ -114,7 +114,7 @@ fn ranged_segments(
     segments
 }
 
-pub(super) fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
+pub(in crate::app) fn ticks_per_second_for_tempo(tempo_bpm: f64, ppqn: u16) -> u64 {
     let clamped_bpm = tempo_bpm.clamp(20.0, 400.0);
     ((clamped_bpm * f64::from(ppqn.max(1))) / 60.0).round() as u64
 }
