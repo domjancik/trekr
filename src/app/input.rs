@@ -3,6 +3,7 @@ use super::*;
 
 impl App {
     pub(super) fn poll_midi_input(&mut self) {
+        self.apply_midi_runtime_snapshot();
         let events = self.midi_input.drain_events();
         for event in events {
             self.handle_midi_input_event(event);

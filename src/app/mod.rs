@@ -85,6 +85,7 @@ use support::labels::{
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
 };
+use support::midi_runtime::{MidiRuntime, MidiRuntimeState};
 use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
@@ -112,6 +113,7 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
+    midi_runtime: Option<MidiRuntime>,
     link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
@@ -149,6 +151,7 @@ impl App {
     pub fn new_demo() -> Self {
         let mut app = Self::with_project(Project::demo(), demo_mappings(), AppPageState::default());
         app.seed_demo_routing();
+        app.sync_midi_runtime_state();
         app
     }
 
@@ -159,6 +162,7 @@ impl App {
         for track in &mut app.project.tracks {
             track.clear_content();
         }
+        app.sync_midi_runtime_state();
         app
     }
 
@@ -169,6 +173,7 @@ impl App {
         app.playhead_ticks = state.playhead_ticks;
         app.live_fx_ticks = state.transport_ticks;
         app.sync_midi_inputs();
+        app.sync_midi_runtime_state();
         app
     }
 
@@ -181,6 +186,38 @@ impl App {
             transport_ticks: self.transport_ticks,
             playhead_ticks: self.playhead_ticks,
         }
+    }
+
+    fn midi_runtime_state(&self) -> MidiRuntimeState {
+        MidiRuntimeState {
+            project: self.project.clone(),
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+            default_output_port: self.default_output_port().cloned(),
+        }
+    }
+
+    fn sync_midi_runtime_state(&mut self) {
+        self.apply_midi_runtime_snapshot();
+        let state = self.midi_runtime_state();
+        if let Some(runtime) = self.midi_runtime.as_ref() {
+            runtime.sync_state(state);
+        }
+    }
+
+    fn apply_midi_runtime_snapshot(&mut self) {
+        if let Some(runtime) = self.midi_runtime.as_ref() {
+            let snapshot = runtime.latest_snapshot();
+            self.transport_ticks = snapshot.transport_ticks;
+            self.playhead_ticks = snapshot.playhead_ticks;
+        }
+    }
+
+    fn runtime_handles_playback(&self) -> bool {
+        self.midi_runtime.is_some()
+            && self.project.transport.playing
+            && !self.project.transport.recording
+            && !self.project.transport.link_enabled
     }
 
     pub(crate) fn theme(&self) -> &'static Theme {
@@ -208,7 +245,7 @@ impl App {
         link.set_start_stop_sync(project.transport.link_start_stop_sync);
         let link_snapshot = link.refresh();
         let track_count = project.tracks.len();
-        Self {
+        let mut app = Self {
             project,
             engine_config: EngineConfig::default(),
             layout_mode: LayoutMode::FixedFit,
@@ -218,6 +255,7 @@ impl App {
             midi_devices: scanned_devices,
             midi_input: MidiInputRuntime::default(),
             midi_output: MidiOutputRuntime::default(),
+            midi_runtime: None,
             link,
             mappings,
             overlay_state: OverlayState::default(),
@@ -245,7 +283,9 @@ impl App {
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             undo_history: UndoHistory::default(),
-        }
+        };
+        app.midi_runtime = MidiRuntime::start_if_enabled(app.midi_runtime_state());
+        app
     }
 
     pub fn set_ui_scale_override(&mut self, scale: Option<f32>) {
@@ -1488,6 +1528,11 @@ impl App {
             return;
         }
 
+        if self.runtime_handles_playback() {
+            self.apply_midi_runtime_snapshot();
+            return;
+        }
+
         if !self.project.transport.playing {
             self.advance_stopped_live_fx(delta, None);
             return;
@@ -1761,6 +1806,7 @@ impl App {
             self.midi_devices.outputs.len(),
         );
         self.sync_midi_inputs();
+        self.sync_midi_runtime_state();
     }
 
     fn input_port_is_available(&self, name: &str) -> bool {
@@ -1792,6 +1838,7 @@ impl App {
         };
         self.preferred_default_output_name = Some(port.name.clone());
         self.midi_devices.set_selected_output(index);
+        self.sync_midi_runtime_state();
     }
 
     pub(super) fn default_input_port(&self) -> Option<&MidiPortRef> {
@@ -2400,6 +2447,7 @@ impl App {
         action: AppAction,
         source: crate::actions::ActionSource,
     ) -> AppControl {
+        self.apply_midi_runtime_snapshot();
         self.status_state.hovered_target = None;
         self.direct_mapping_state.status_message = None;
         if !matches!(
@@ -2416,7 +2464,9 @@ impl App {
             self.status_state.history_message = None;
         }
         self.status_state.last_action = Some(LastActionStatus { action, source });
-        self.apply_action(action)
+        let control = self.apply_action(action);
+        self.sync_midi_runtime_state();
+        control
     }
 }
 
