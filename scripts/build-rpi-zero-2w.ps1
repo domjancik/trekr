@@ -34,7 +34,9 @@ $cargoArgs = @("build", "--target", $Target)
 if ($Release) {
     $cargoArgs += "--release"
 }
-$sdlUnixConsoleBuildValue = if ($SdlUnixConsoleBuild) { "ON" } else { "OFF" }
+if ($SdlUnixConsoleBuild) {
+    $cargoArgs += @("--features", "sdl3/build-from-source-unix-console")
+}
 
 $linuxCommand = @(
     "set -euo pipefail"
@@ -56,7 +58,6 @@ $linuxCommand = @(
     'export PKG_CONFIG_ALLOW_CROSS=1'
     'export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig'
     'export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig'
-    "export SDL_UNIX_CONSOLE_BUILD=$sdlUnixConsoleBuildValue"
     "cargo $($cargoArgs -join ' ')"
 ) -join '; '
 $encodedLinuxCommand = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($linuxCommand))

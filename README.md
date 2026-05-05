@@ -344,10 +344,22 @@ Recommended deployed Pi build:
 powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w.ps1 -Release
 ```
 
+Debian Bookworm-compatible Pi build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-rpi-zero-2w-bookworm.ps1 -Release
+```
+
 SSH deployment entrypoint:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1
+```
+
+Deploy with the Debian Bookworm-compatible artifact set:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1 -BookwormBuild
 ```
 
 Pi runtime package setup:
@@ -385,7 +397,9 @@ sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64
 Notes:
 
 - `scripts/build-rpi-zero-2w.ps1` fails fast if WSL is unavailable or the required Linux-side toolchain is missing.
-- the normal deployed Pi path should use the standard SDL build. `-SdlUnixConsoleBuild` is retained as a diagnostic/experimental option, but it is not the recommended default for the fullscreen KMSDRM app path.
+- `scripts/build-rpi-zero-2w-bookworm.ps1` uses a Debian Bookworm Docker build environment and writes artifacts under `target/bookworm/aarch64-unknown-linux-gnu/release` so they remain compatible with Debian 12's glibc 2.36 baseline.
+- the Bookworm build defaults SDL to the Pi console/KMSDRM configuration, which avoids requiring X11 or Wayland development libraries in the container. Use `-DesktopSdlBuild` only when intentionally building a desktop SDL variant from that container.
+- `-SdlUnixConsoleBuild` on the WSL build path is retained for console/KMSDRM diagnostics, but the Bookworm Docker path is the recommended compatibility baseline for Debian 12 Pi deployment.
 - Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.
 - Runtime on a minimal Pi console is opt-in: launch the binary with `--video-mode kmsdrm-console` to force SDL onto the `kmsdrm` backend. Desktop targets should stay on the default `windowed` mode.
 - the deployed Pi launcher currently prefers `SDL_RENDER_DRIVER=opengles2` and sets `SDL_KMSDRM_ATOMIC=0`, which is the first compatibility path to try on Raspberry Pi when KMSDRM presents a black screen.

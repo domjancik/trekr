@@ -2,6 +2,7 @@
 param(
     [string]$ConfigPath = ".\scripts\rpi-deploy.local.psd1",
     [switch]$SkipBuild,
+    [switch]$BookwormBuild,
     [switch]$InstallRuntimeDeps,
     [switch]$StartAfterDeploy
 )
@@ -83,6 +84,20 @@ function Escape-BashSingleQuoted {
     return "'" + ($Value -replace "'", "'`"`'`"`'") + "'"
 }
 
+function Invoke-NativeChecked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-RemoteCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -97,7 +112,7 @@ function Invoke-RemoteCommand {
         $sshArgs += Get-OpenSshArguments -Config $Config
         $sshArgs += $targets.UserAtHost
         $sshArgs += $Command
-        & ssh.exe @sshArgs
+        Invoke-NativeChecked -FilePath "ssh.exe" -Arguments $sshArgs
         return
     }
 
@@ -110,7 +125,7 @@ function Invoke-RemoteCommand {
     $plinkArgs += Get-PlinkArguments -Config $Config
     $plinkArgs += $targets.UserAtHost
     $plinkArgs += $Command
-    & $plink.Source @plinkArgs
+    Invoke-NativeChecked -FilePath $plink.Source -Arguments $plinkArgs
 }
 
 function Copy-RemoteFiles {
@@ -127,7 +142,7 @@ function Copy-RemoteFiles {
         $scpArgs += Get-OpenSshArguments -Config $Config
         $scpArgs += $Paths
         $scpArgs += $targets.ScpTarget
-        & scp.exe @scpArgs
+        Invoke-NativeChecked -FilePath "scp.exe" -Arguments $scpArgs
         return
     }
 
@@ -140,18 +155,20 @@ function Copy-RemoteFiles {
     $pscpArgs += Get-PlinkArguments -Config $Config
     $pscpArgs += $Paths
     $pscpArgs += $targets.ScpTarget
-    & $pscp.Source @pscpArgs
+    Invoke-NativeChecked -FilePath $pscp.Source -Arguments $pscpArgs
 }
 
 $repoRoot = Get-RepoRoot
 $config = Get-DeployConfig -Path $ConfigPath
-$artifactPath = Join-Path $repoRoot "target\aarch64-unknown-linux-gnu\release\trekr"
-$sdlLibraryPath = Join-Path $repoRoot "target\aarch64-unknown-linux-gnu\release\libSDL3.so.0"
+$targetRoot = if ($BookwormBuild) { "target\bookworm\aarch64-unknown-linux-gnu" } else { "target\aarch64-unknown-linux-gnu" }
+$artifactPath = Join-Path $repoRoot "$targetRoot\release\trekr"
+$sdlLibraryPath = Join-Path $repoRoot "$targetRoot\release\libSDL3.so.0"
 $launchScriptPath = Join-Path $repoRoot "scripts\launch-rpi-zero-2w.sh"
 $runtimeSetupPath = Join-Path $repoRoot "scripts\setup-rpi-zero-2w-runtime.sh"
 
 if (-not $SkipBuild) {
-    $buildScriptPath = Join-Path $repoRoot "scripts\build-rpi-zero-2w.ps1"
+    $buildScriptName = if ($BookwormBuild) { "build-rpi-zero-2w-bookworm.ps1" } else { "build-rpi-zero-2w.ps1" }
+    $buildScriptPath = Join-Path $repoRoot "scripts\$buildScriptName"
     if ($PSCmdlet.ShouldProcess($artifactPath, "Build Pi Zero 2 W release artifact")) {
         & $buildScriptPath -Release
     }
