@@ -125,6 +125,7 @@ Pi console launch on-device:
 This wrapper starts `trekr` with `--video-mode kmsdrm-console` for a minimal Raspberry Pi console session.
 It pins `SDL_VIDEODRIVER=kmsdrm`, `SDL_KMSDRM_REQUIRE_DRM_MASTER=1`, `SDL_KMSDRM_ATOMIC=0`, GLES loader hints, and `LD_LIBRARY_PATH` so the deployed binary uses the shipped SDL runtime and a Pi-oriented KMSDRM launch path.
 It prefers `SDL_RENDER_DRIVER=opengles2` and you can override that to `software` only if the Pi image cannot initialize GLES.
+On KMSDRM, `trekr` queries SDL's current primary display mode before creating the fullscreen window so native panels such as `1024x600` are not forced through the desktop default `1280x720` size. Override the detected size with `TREKR_KMSDRM_SIZE=1024x600 ./launch-rpi-zero-2w.sh` when SDL reports the wrong mode.
 
 Current working KMSDRM init path:
 
