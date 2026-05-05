@@ -312,7 +312,8 @@ impl App {
         let video = sdl_context.video()?;
         println!("trekr video driver: {}", video.current_video_driver());
 
-        let mut window_builder = video.window("trekr", 1280, 720);
+        let (window_width, window_height) = initial_window_size(&video, options.video_mode);
+        let mut window_builder = video.window("trekr", window_width, window_height);
         match options.video_mode {
             VideoMode::Windowed => {
                 window_builder
@@ -2420,6 +2421,57 @@ impl App {
     }
 }
 
+fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (u32, u32) {
+    if video_mode != VideoMode::KmsDrmConsole {
+        return (1280, 720);
+    }
+
+    if let Some(size) = parse_kmsdrm_size_override() {
+        println!("trekr kmsdrm window size override: {}x{}", size.0, size.1);
+        return size;
+    }
+
+    match video
+        .get_primary_display()
+        .and_then(|display| display.get_mode())
+    {
+        Ok(mode) if mode.w > 0 && mode.h > 0 => {
+            let size = (mode.w as u32, mode.h as u32);
+            println!("trekr kmsdrm display mode: {}x{}", size.0, size.1);
+            size
+        }
+        Ok(mode) => {
+            eprintln!(
+                "trekr kmsdrm display mode was invalid ({}x{}); falling back to 1280x720",
+                mode.w, mode.h
+            );
+            (1280, 720)
+        }
+        Err(err) => {
+            eprintln!(
+                "trekr could not query kmsdrm display mode ({err}); falling back to 1280x720"
+            );
+            (1280, 720)
+        }
+    }
+}
+
+fn parse_kmsdrm_size_override() -> Option<(u32, u32)> {
+    std::env::var("TREKR_KMSDRM_SIZE")
+        .ok()
+        .and_then(|value| parse_window_size(&value))
+}
+
+fn parse_window_size(value: &str) -> Option<(u32, u32)> {
+    let (width, height) = value.trim().split_once(['x', 'X'])?;
+    let width = width.trim().parse::<u32>().ok()?;
+    let height = height.trim().parse::<u32>().ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    Some((width, height))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppControl {
     Continue,
@@ -2428,13 +2480,27 @@ pub(crate) enum AppControl {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppControl, LastActionStatus};
+    use super::{App, AppControl, LastActionStatus, parse_window_size};
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
+
+    #[test]
+    fn parse_window_size_accepts_kmsdrm_override_format() {
+        assert_eq!(parse_window_size("1024x600"), Some((1024, 600)));
+        assert_eq!(parse_window_size(" 1024 X 600 "), Some((1024, 600)));
+    }
+
+    #[test]
+    fn parse_window_size_rejects_invalid_kmsdrm_override_format() {
+        assert_eq!(parse_window_size("1024"), None);
+        assert_eq!(parse_window_size("1024x0"), None);
+        assert_eq!(parse_window_size("0x600"), None);
+        assert_eq!(parse_window_size("widextall"), None);
+    }
 
     #[test]
     fn apply_action_sets_active_track_and_current_track_flags() {
