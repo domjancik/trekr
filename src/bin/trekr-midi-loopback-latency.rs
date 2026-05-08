@@ -1,6 +1,9 @@
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fs;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -24,6 +27,21 @@ struct Config {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunMode {
+    SelfSend,
+    DeviceInitiated,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct PersistedSelections {
+    run_mode: Option<PersistedRunMode>,
+    input_name: Option<String>,
+    output_name: Option<String>,
+    trigger_input_name: Option<String>,
+    return_input_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum PersistedRunMode {
     SelfSend,
     DeviceInitiated,
 }
@@ -103,13 +121,19 @@ fn run(config: &Config) -> Result<(), String> {
         return Ok(());
     }
 
-    match detect_run_mode(config)? {
-        RunMode::SelfSend => run_self_send(config, &input_names, &output_names),
-        RunMode::DeviceInitiated => run_device_initiated(config, &input_names, &output_names),
+    let persisted = load_persisted_selections();
+    match detect_run_mode(config, persisted.as_ref())? {
+        RunMode::SelfSend => run_self_send(config, &input_names, &output_names, persisted.as_ref()),
+        RunMode::DeviceInitiated => {
+            run_device_initiated(config, &input_names, &output_names, persisted.as_ref())
+        }
     }
 }
 
-fn detect_run_mode(config: &Config) -> Result<RunMode, String> {
+fn detect_run_mode(
+    config: &Config,
+    persisted: Option<&PersistedSelections>,
+) -> Result<RunMode, String> {
     if config.trigger_input_name.is_some() || config.return_input_name.is_some() {
         return Ok(RunMode::DeviceInitiated);
     }
@@ -118,10 +142,23 @@ fn detect_run_mode(config: &Config) -> Result<RunMode, String> {
         return Ok(RunMode::SelfSend);
     }
 
-    prompt_for_run_mode()
+    prompt_for_run_mode(persisted.and_then(|state| state.run_mode))
 }
 
-fn prompt_for_run_mode() -> Result<RunMode, String> {
+fn prompt_for_run_mode(default_mode: Option<PersistedRunMode>) -> Result<RunMode, String> {
+    if let Some(default_mode) = default_mode {
+        let label = match default_mode {
+            PersistedRunMode::SelfSend => "self-send loopback",
+            PersistedRunMode::DeviceInitiated => "device-initiated trigger -> output -> return",
+        };
+        if confirm_default(&format!("use last measurement mode ({label})"), true)? {
+            return Ok(match default_mode {
+                PersistedRunMode::SelfSend => RunMode::SelfSend,
+                PersistedRunMode::DeviceInitiated => RunMode::DeviceInitiated,
+            });
+        }
+    }
+
     println!("select measurement mode:");
     println!("  1. self-send loopback");
     println!("  2. device-initiated trigger -> output -> return");
@@ -149,9 +186,28 @@ fn run_self_send(
     config: &Config,
     input_names: &[String],
     output_names: &[String],
+    persisted: Option<&PersistedSelections>,
 ) -> Result<(), String> {
-    let input_name = resolve_port_name(config.input_name.as_deref(), input_names, "input")?;
-    let output_name = resolve_port_name(config.output_name.as_deref(), output_names, "output")?;
+    let input_name = resolve_port_name(
+        config.input_name.as_deref(),
+        persisted.and_then(|state| state.input_name.as_deref()),
+        input_names,
+        "input",
+    )?;
+    let output_name = resolve_port_name(
+        config.output_name.as_deref(),
+        persisted.and_then(|state| state.output_name.as_deref()),
+        output_names,
+        "output",
+    )?;
+
+    save_persisted_selections(&PersistedSelections {
+        run_mode: Some(PersistedRunMode::SelfSend),
+        input_name: Some(input_name.clone()),
+        output_name: Some(output_name.clone()),
+        trigger_input_name: None,
+        return_input_name: None,
+    });
 
     let (input_receiver, _input_connection) = connect_input_by_name(
         &input_name,
@@ -203,21 +259,37 @@ fn run_device_initiated(
     config: &Config,
     input_names: &[String],
     output_names: &[String],
+    persisted: Option<&PersistedSelections>,
 ) -> Result<(), String> {
     let trigger_input_name = resolve_port_name(
         config
             .trigger_input_name
             .as_deref()
             .or(config.input_name.as_deref()),
+        persisted.and_then(|state| state.trigger_input_name.as_deref()),
         input_names,
         "trigger input",
     )?;
-    let output_name = resolve_port_name(config.output_name.as_deref(), output_names, "output")?;
+    let output_name = resolve_port_name(
+        config.output_name.as_deref(),
+        persisted.and_then(|state| state.output_name.as_deref()),
+        output_names,
+        "output",
+    )?;
     let return_input_name = resolve_port_name(
         config.return_input_name.as_deref(),
+        persisted.and_then(|state| state.return_input_name.as_deref()),
         input_names,
         "return input",
     )?;
+
+    save_persisted_selections(&PersistedSelections {
+        run_mode: Some(PersistedRunMode::DeviceInitiated),
+        input_name: None,
+        output_name: Some(output_name.clone()),
+        trigger_input_name: Some(trigger_input_name.clone()),
+        return_input_name: Some(return_input_name.clone()),
+    });
 
     let (trigger_receiver, _trigger_connection) = connect_input_by_name(
         &trigger_input_name,
@@ -284,6 +356,7 @@ fn print_summary(samples: &[LoopbackSample]) {
 
 fn resolve_port_name(
     configured_name: Option<&str>,
+    default_name: Option<&str>,
     available_names: &[String],
     port_kind: &str,
 ) -> Result<String, String> {
@@ -295,6 +368,14 @@ fn resolve_port_name(
             "requested MIDI {} port '{}' was not found",
             port_kind, name
         ));
+    }
+
+    if let Some(name) = default_name {
+        if available_names.iter().any(|available| available == name)
+            && confirm_default(&format!("use last {port_kind} ({name})"), true)?
+        {
+            return Ok(name.to_string());
+        }
     }
 
     prompt_for_port_selection(available_names, port_kind)
@@ -388,8 +469,9 @@ fn send_and_measure_self_send(
             )
         })?;
 
-    let timeout = Duration::from_millis(config.timeout_ms.max(1));
-    let received = wait_for_matching_note_on(input_receiver, note_on, timeout, sent_at, "return")?;
+    let timeout_ms = Some(config.timeout_ms.max(1));
+    let received =
+        wait_for_matching_note_on(input_receiver, note_on, timeout_ms, sent_at, "return")?;
     let sample = LoopbackSample {
         pitch,
         latency: received.received_at.saturating_duration_since(sent_at),
@@ -431,8 +513,8 @@ fn send_and_measure_device_initiated(
     drain_pending(trigger_receiver);
     drain_pending(return_receiver);
 
-    let timeout = Duration::from_millis(config.timeout_ms.max(1));
-    let trigger = wait_for_any_note_on(trigger_receiver, timeout, "trigger")?;
+    let trigger =
+        wait_for_any_note_on(trigger_receiver, Some(config.timeout_ms.max(1)), "trigger")?;
     let trigger_note = trigger
         .note_on
         .ok_or_else(|| "trigger wait returned non-note-on event unexpectedly".to_string())?;
@@ -467,7 +549,7 @@ fn send_and_measure_device_initiated(
     let received = wait_for_matching_note_on(
         return_receiver,
         forwarded_note,
-        timeout,
+        None,
         forwarded_at,
         "return",
     )?;
@@ -510,28 +592,13 @@ fn send_and_measure_device_initiated(
 
 fn wait_for_any_note_on(
     input_receiver: &Receiver<MidiObservedEvent>,
-    timeout: Duration,
+    timeout_ms: Option<u64>,
     expected_source: &str,
 ) -> Result<MidiObservedEvent, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
     loop {
-        let now = Instant::now();
-        if now >= deadline {
-            return Err(format!(
-                "timed out waiting for {} note-on after {} ms",
-                expected_source,
-                timeout.as_millis()
-            ));
-        }
-        let remaining = deadline.saturating_duration_since(now);
-        let event = input_receiver.recv_timeout(remaining).map_err(|_| {
-            format!(
-                "timed out waiting for {} note-on after {} ms",
-                expected_source,
-                timeout.as_millis()
-            )
-        })?;
-        log_observed_event(&event, now, expected_source);
+        let event = receive_event(input_receiver, deadline, expected_source)?;
+        log_observed_event(&event, Instant::now(), expected_source);
         if event.note_on.is_some() {
             return Ok(event);
         }
@@ -541,38 +608,54 @@ fn wait_for_any_note_on(
 fn wait_for_matching_note_on(
     input_receiver: &Receiver<MidiObservedEvent>,
     expected_note: MidiNoteOn,
-    timeout: Duration,
+    timeout_ms: Option<u64>,
     sent_at: Instant,
     expected_source: &str,
 ) -> Result<MidiObservedEvent, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
     loop {
-        let now = Instant::now();
-        if now >= deadline {
-            return Err(format!(
-                "timed out waiting for {} note-on pitch={} velocity={} after {} ms",
-                expected_source,
-                expected_note.pitch,
-                expected_note.velocity,
-                timeout.as_millis()
-            ));
-        }
-        let remaining = deadline.saturating_duration_since(now);
-        let event = input_receiver.recv_timeout(remaining).map_err(|_| {
-            format!(
-                "timed out waiting for {} note-on pitch={} velocity={} after {} ms",
-                expected_source,
-                expected_note.pitch,
-                expected_note.velocity,
-                timeout.as_millis()
-            )
-        })?;
+        let event = receive_event(input_receiver, deadline, expected_source)?;
         log_observed_event(&event, sent_at, expected_source);
         if let Some(note_on) = event.note_on {
             if note_on.pitch == expected_note.pitch && note_on.velocity == expected_note.velocity {
+                println!(
+                    "  MATCH source={} pitch={} velocity={} latency_ms={:.3}",
+                    expected_source,
+                    note_on.pitch,
+                    note_on.velocity,
+                    duration_ms(event.received_at.saturating_duration_since(sent_at))
+                );
                 return Ok(event);
             }
         }
+    }
+}
+
+fn receive_event(
+    input_receiver: &Receiver<MidiObservedEvent>,
+    deadline: Option<Instant>,
+    expected_source: &str,
+) -> Result<MidiObservedEvent, String> {
+    match deadline {
+        Some(deadline) => loop {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(format!(
+                    "timed out waiting for {expected_source} MIDI activity"
+                ));
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            match input_receiver.recv_timeout(remaining) {
+                Ok(event) => return Ok(event),
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(format!("{expected_source} MIDI input disconnected"));
+                }
+            }
+        },
+        None => input_receiver
+            .recv()
+            .map_err(|_| format!("{expected_source} MIDI input disconnected")),
     }
 }
 
@@ -840,14 +923,53 @@ fn print_usage() {
     println!("  --warmup-count <n>          Warmup samples not included in stats. Default: 4");
     println!("  --interval-ms <ms>          Delay between measured pings. Default: 40");
     println!("  --note-length-ms <ms>       Note hold before note-off. Default: 10");
-    println!("  --timeout-ms <ms>           Per-sample timeout. Default: 500");
+    println!("  --timeout-ms <ms>           Self-send and trigger wait timeout. Default: 500");
+}
+
+fn persisted_selections_path() -> PathBuf {
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".trekr-midi-loopback-latency.json")
+}
+
+fn load_persisted_selections() -> Option<PersistedSelections> {
+    let path = persisted_selections_path();
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn save_persisted_selections(state: &PersistedSelections) {
+    let path = persisted_selections_path();
+    if let Ok(json) = serde_json::to_string_pretty(state) {
+        let _ = fs::write(path, json);
+    }
+}
+
+fn confirm_default(prompt: &str, default_yes: bool) -> Result<bool, String> {
+    let suffix = if default_yes { "[Y/n]" } else { "[y/N]" };
+    loop {
+        print!("{prompt} {suffix}: ");
+        io::stdout()
+            .flush()
+            .map_err(|error| format!("failed flushing confirmation prompt: {error}"))?;
+        let mut line = String::new();
+        io::stdin()
+            .read_line(&mut line)
+            .map_err(|error| format!("failed reading confirmation prompt: {error}"))?;
+        match line.trim().to_ascii_lowercase().as_str() {
+            "" => return Ok(default_yes),
+            "y" | "yes" => return Ok(true),
+            "n" | "no" => return Ok(false),
+            other => eprintln!("invalid selection '{other}': enter y or n"),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        LoopbackSample, MidiNoteOn, RunMode, detect_run_mode, duration_ms, parse_note_on,
-        percentile, prompt_for_port_selection, resolve_port_name, summarize,
+        LoopbackSample, MidiNoteOn, PersistedSelections, RunMode, detect_run_mode, duration_ms,
+        parse_note_on, percentile, prompt_for_port_selection, resolve_port_name, summarize,
     };
     use std::time::Duration;
 
@@ -868,10 +990,40 @@ mod tests {
             note_length_ms: 0,
             timeout_ms: 100,
         };
-        assert_eq!(detect_run_mode(&config).unwrap(), RunMode::DeviceInitiated);
+        assert_eq!(
+            detect_run_mode(&config, None).unwrap(),
+            RunMode::DeviceInitiated
+        );
         config.trigger_input_name = None;
         config.input_name = Some("Input".to_string());
-        assert_eq!(detect_run_mode(&config).unwrap(), RunMode::SelfSend);
+        assert_eq!(detect_run_mode(&config, None).unwrap(), RunMode::SelfSend);
+    }
+
+    #[test]
+    fn detect_run_mode_uses_persisted_default_when_no_mode_args_are_set() {
+        let config = super::Config {
+            list_only: false,
+            input_name: None,
+            output_name: None,
+            trigger_input_name: None,
+            return_input_name: None,
+            note: 60,
+            velocity: 100,
+            channel: 1,
+            count: 1,
+            warmup_count: 0,
+            interval_ms: 0,
+            note_length_ms: 0,
+            timeout_ms: 100,
+        };
+        let persisted = PersistedSelections {
+            run_mode: Some(super::PersistedRunMode::DeviceInitiated),
+            ..PersistedSelections::default()
+        };
+        assert_eq!(
+            detect_run_mode(&config, Some(&persisted)).unwrap(),
+            RunMode::DeviceInitiated
+        );
     }
 
     #[test]
@@ -891,7 +1043,7 @@ mod tests {
     fn resolve_port_name_accepts_existing_configured_name() {
         let ports = vec!["In A".to_string(), "In B".to_string()];
         assert_eq!(
-            resolve_port_name(Some("In B"), &ports, "input").unwrap(),
+            resolve_port_name(Some("In B"), None, &ports, "input").unwrap(),
             "In B".to_string()
         );
     }
@@ -899,7 +1051,7 @@ mod tests {
     #[test]
     fn resolve_port_name_rejects_missing_configured_name() {
         let ports = vec!["In A".to_string()];
-        assert!(resolve_port_name(Some("Missing"), &ports, "input").is_err());
+        assert!(resolve_port_name(Some("Missing"), None, &ports, "input").is_err());
     }
 
     #[test]
