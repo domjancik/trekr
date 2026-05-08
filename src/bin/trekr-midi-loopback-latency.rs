@@ -549,7 +549,7 @@ fn send_and_measure_device_initiated(
     let received = wait_for_matching_note_on(
         return_receiver,
         forwarded_note,
-        None,
+        Some(config.timeout_ms.max(1)),
         forwarded_at,
         "return",
     )?;
