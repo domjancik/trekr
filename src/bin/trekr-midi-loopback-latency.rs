@@ -217,18 +217,24 @@ fn send_and_measure(
     let status_on = status_byte(0x90, config.channel);
     let status_off = status_byte(0x80, config.channel);
     let sent_at = Instant::now();
+    println!(
+        "  sent note-on pitch={} velocity={} channel={} at {:?}",
+        pitch, config.velocity, config.channel, sent_at
+    );
     output_connection
         .send(&[status_on, pitch, config.velocity])
         .map_err(|error| format!("failed sending note-on for pitch {pitch}: {error}"))?;
 
     let timeout = Duration::from_millis(config.timeout_ms.max(1));
-    let received = wait_for_matching_event(input_receiver, pitch, config.velocity, timeout)?;
+    let received =
+        wait_for_matching_event(input_receiver, pitch, config.velocity, timeout, sent_at)?;
     let sample = LoopbackSample {
         pitch,
         latency: received.received_at.saturating_duration_since(sent_at),
     };
 
     thread::sleep(Duration::from_millis(config.note_length_ms.max(1)));
+    println!("  sent note-off pitch={} channel={}", pitch, config.channel);
     output_connection
         .send(&[status_off, pitch, 0])
         .map_err(|error| format!("failed sending note-off for pitch {pitch}: {error}"))?;
@@ -250,6 +256,7 @@ fn wait_for_matching_event(
     pitch: u8,
     velocity: u8,
     timeout: Duration,
+    sent_at: Instant,
 ) -> Result<LoopbackInputEvent, String> {
     let deadline = Instant::now() + timeout;
     loop {
@@ -271,8 +278,18 @@ fn wait_for_matching_event(
                 timeout.as_millis()
             )
         })?;
-        if event.pitch == pitch && event.velocity == velocity {
-            return Ok(event);
+        println!(
+            "  rx bytes={:?} note_on={} pitch={:?} velocity={:?} age_ms={:.3}",
+            event.message_bytes,
+            event.note_on.is_some(),
+            event.note_on.as_ref().map(|note| note.0),
+            event.note_on.as_ref().map(|note| note.1),
+            duration_ms(event.received_at.saturating_duration_since(sent_at))
+        );
+        if let Some((event_pitch, event_velocity)) = event.note_on {
+            if event_pitch == pitch && event_velocity == velocity {
+                return Ok(event);
+            }
         }
     }
 }
@@ -328,8 +345,8 @@ fn duration_ms(duration: Duration) -> f64 {
 
 #[derive(Debug, Clone)]
 struct LoopbackInputEvent {
-    pitch: u8,
-    velocity: u8,
+    note_on: Option<(u8, u8)>,
+    message_bytes: Vec<u8>,
     received_at: Instant,
 }
 
@@ -349,13 +366,13 @@ fn connect_input_by_name(
             &port,
             "trekr-midi-loopback-input-connection",
             move |_timestamp, message, _state| {
-                if let Some(event) = parse_note_on(message) {
-                    let _ = sender.send(LoopbackInputEvent {
-                        pitch: event.0,
-                        velocity: event.1,
-                        received_at: Instant::now(),
-                    });
-                }
+                let received_at = Instant::now();
+                println!("  midi input activity bytes={:?}", message);
+                let _ = sender.send(LoopbackInputEvent {
+                    note_on: parse_note_on(message),
+                    message_bytes: message.to_vec(),
+                    received_at,
+                });
             },
             (),
         )
