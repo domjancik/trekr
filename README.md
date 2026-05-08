@@ -367,6 +367,12 @@ Deploy with the Debian Bookworm-compatible artifact set:
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1 -BookwormBuild
 ```
 
+Deploy the dedicated MIDI loopback latency harness alongside `trekr`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1 -BookwormBuild -DeployMidiLoopbackHarness
+```
+
 Pi runtime package setup:
 
 ```bash
@@ -410,11 +416,54 @@ Notes:
 - the deployed Pi launcher currently prefers `SDL_RENDER_DRIVER=opengles2` and sets `SDL_KMSDRM_ATOMIC=0`, which is the first compatibility path to try on Raspberry Pi when KMSDRM presents a black screen.
 - `scripts/deploy-rpi-zero-2w.ps1` reads untracked local SSH settings from `scripts/rpi-deploy.local.psd1`. Start from the committed example file at `scripts/rpi-deploy.example.psd1`.
 - the deploy flow copies `trekr`, `libSDL3.so.0`, and `launch-rpi-zero-2w.sh` into the remote app directory so the Pi does not need a system-installed SDL3 runtime.
+- `-DeployMidiLoopbackHarness` also cross-builds and deploys `trekr-midi-loopback-latency` into the same remote app directory for dedicated round-trip latency and jitter measurements.
 - `scripts/setup-rpi-zero-2w-runtime.sh` installs the minimal Pi runtime packages needed for SDL KMSDRM, EGL/GLES loader discovery, and ALSA on a console-first image.
 - `scripts/deploy-rpi-zero-2w.ps1 -InstallRuntimeDeps` can run that package setup remotely. If the local deploy config has no `Password`, the remote user needs passwordless `sudo`; otherwise the configured password is passed to `sudo -S`.
 - Leaving `Password` blank in the deploy config uses normal OpenSSH key or agent auth through `ssh.exe` and `scp.exe`.
 - Setting `Password` in the deploy config is supported only when `plink.exe` and `pscp.exe` are available on `PATH`.
 - this path targets Pi Zero 2 W. The original Pi Zero / Zero W is a 32-bit ARMv6 device and needs a different target strategy.
+
+
+## MIDI Loopback Latency Harness
+
+The repo includes a dedicated native MIDI latency harness for measuring round-trip delay separately from the Trekr UI/render loop:
+
+- binary: `trekr-midi-loopback-latency`
+- source: `src/bin/trekr-midi-loopback-latency.rs`
+
+Design goals:
+
+- measure target-device loopback latency and jitter outside the main app UI
+- provide quick ground-truth numbers before attributing delay to Trekr runtime scheduling
+- stay deployable on the Raspberry Pi Bookworm path
+
+What it measures:
+
+- sends a rotating note-on pattern to a chosen output port
+- waits for matching note-on loopback on a chosen input port
+- reports per-sample latency plus `min / p50 / p95 / p99 / max / mean`
+- excludes configurable warmup samples from the final summary
+
+Quick local usage:
+
+```powershell
+cargo run --bin trekr-midi-loopback-latency -- --list-only
+cargo run --bin trekr-midi-loopback-latency -- --input-name <input> --output-name <output>
+```
+
+Quick Pi deploy + test:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1 -BookwormBuild -DeployMidiLoopbackHarness
+ssh <user>@<host> "cd <remote-dir> && ./trekr-midi-loopback-latency --list-only"
+ssh <user>@<host> "cd <remote-dir> && ./trekr-midi-loopback-latency --input-name '<loopback-in>' --output-name '<target-out>' --count 64 --warmup-count 8 --interval-ms 40"
+```
+
+Recommended measurement workflow:
+
+1. wire the target device or MIDI loopback so sent notes return to the selected input
+2. run the harness first to establish hardware/backend round-trip latency
+3. then compare against Trekr with runtime diagnostics enabled to isolate app-added delay
 
 ## UI Review Loop
 
