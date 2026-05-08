@@ -85,6 +85,7 @@ use support::labels::{
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
 };
+use support::midi_runtime::{MidiRuntime, MidiRuntimeStateSync, MidiRuntimeUiSnapshot};
 use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
@@ -112,6 +113,7 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
+    midi_runtime: MidiRuntime,
     link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
@@ -139,6 +141,8 @@ pub struct App {
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
     undo_history: UndoHistory,
+    midi_runtime_dirty: bool,
+    last_runtime_snapshot: MidiRuntimeUiSnapshot,
 }
 
 impl App {
@@ -208,6 +212,10 @@ impl App {
         link.set_start_stop_sync(project.transport.link_start_stop_sync);
         let link_snapshot = link.refresh();
         let track_count = project.tracks.len();
+        let midi_output = MidiOutputRuntime::default();
+        let midi_runtime = MidiRuntime::new(midi_output.clone());
+        let mut midi_input = MidiInputRuntime::default();
+        midi_input.set_fanout_sender(Some(midi_runtime.input_sender()));
         Self {
             project,
             engine_config: EngineConfig::default(),
@@ -216,8 +224,9 @@ impl App {
             keyboard_bindings: KeyboardBindings,
             page_state,
             midi_devices: scanned_devices,
-            midi_input: MidiInputRuntime::default(),
-            midi_output: MidiOutputRuntime::default(),
+            midi_input,
+            midi_output,
+            midi_runtime,
             link,
             mappings,
             overlay_state: OverlayState::default(),
@@ -245,6 +254,8 @@ impl App {
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             undo_history: UndoHistory::default(),
+            midi_runtime_dirty: true,
+            last_runtime_snapshot: MidiRuntimeUiSnapshot::default(),
         }
     }
 
@@ -1484,6 +1495,11 @@ impl App {
     }
 
     fn advance_playhead(&mut self, delta: Duration) {
+        if self.midi_runtime.is_enabled() {
+            self.advance_runtime_clock(delta);
+            return;
+        }
+
         if self.project.transport.link_enabled {
             self.advance_linked_playhead(delta);
             return;
@@ -1552,6 +1568,33 @@ impl App {
         let previous_ticks = self.live_fx_ticks;
         self.live_fx_ticks = self.live_fx_ticks.saturating_add(advanced_ticks as u64);
         self.dispatch_live_arp_events(previous_ticks, self.live_fx_ticks);
+    }
+
+    fn advance_runtime_clock(&mut self, _delta: Duration) {
+        if self.project.transport.link_enabled {
+            let previous_tempo = self.project.transport.tempo_bpm;
+            let previous_playing = self.project.transport.playing;
+            self.link_snapshot = self.link.refresh();
+            self.project.transport.tempo_bpm =
+                self.link_snapshot.tempo_bpm.round().clamp(20.0, 400.0) as u16;
+            if self.project.transport.link_start_stop_sync {
+                self.project.transport.playing = self.link_snapshot.is_playing;
+            }
+            let linked_ticks = (self.link_snapshot.beat.max(0.0)
+                * f64::from(self.project.transport.ppqn.max(1)))
+            .round() as u64;
+            self.transport_ticks = linked_ticks;
+            self.playhead_ticks = self.song_playhead_for_transport(linked_ticks);
+            self.live_fx_ticks = linked_ticks;
+            if previous_tempo != self.project.transport.tempo_bpm
+                || previous_playing != self.project.transport.playing
+            {
+                self.mark_midi_runtime_dirty();
+            }
+        }
+        self.sync_midi_runtime_state_if_needed();
+        self.update_timing_from_runtime();
+        self.live_fx_ticks = self.transport_ticks.max(self.live_fx_ticks);
     }
 
     fn set_transport_tempo(&mut self, bpm: u16) {
@@ -1762,6 +1805,44 @@ impl App {
             self.midi_devices.outputs.len(),
         );
         self.sync_midi_inputs();
+        self.midi_runtime_dirty = true;
+    }
+
+    fn build_midi_runtime_state_sync(&self) -> MidiRuntimeStateSync {
+        MidiRuntimeStateSync {
+            project: self.project.clone(),
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+            live_fx_ticks: self.live_fx_ticks,
+            default_input_port: self.default_input_port().cloned(),
+            default_output_port: self.default_output_port().cloned(),
+        }
+    }
+
+    fn sync_midi_runtime_state_if_needed(&mut self) {
+        if !self.midi_runtime.is_enabled() || !self.midi_runtime_dirty {
+            return;
+        }
+        self.midi_runtime
+            .sync_state(self.build_midi_runtime_state_sync());
+        self.midi_runtime_dirty = false;
+    }
+
+    fn mark_midi_runtime_dirty(&mut self) {
+        self.midi_runtime_dirty = true;
+    }
+
+    fn update_timing_from_runtime(&mut self) {
+        if !self.midi_runtime.is_enabled() {
+            return;
+        }
+        let previous_transport_ticks = self.transport_ticks;
+        let snapshot = self.midi_runtime.snapshot();
+        self.transport_ticks = snapshot.transport_ticks;
+        self.playhead_ticks = snapshot.playhead_ticks;
+        self.live_fx_ticks = snapshot.live_fx_ticks;
+        self.last_runtime_snapshot = snapshot;
+        self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
     }
 
     fn input_port_is_available(&self, name: &str) -> bool {
@@ -1785,6 +1866,7 @@ impl App {
         self.preferred_default_input_name = Some(port.name.clone());
         self.midi_devices.set_selected_input(index);
         self.sync_midi_inputs();
+        self.midi_runtime_dirty = true;
     }
 
     fn set_preferred_default_output_from_index(&mut self, index: usize) {
@@ -1793,6 +1875,7 @@ impl App {
         };
         self.preferred_default_output_name = Some(port.name.clone());
         self.midi_devices.set_selected_output(index);
+        self.midi_runtime_dirty = true;
     }
 
     pub(super) fn default_input_port(&self) -> Option<&MidiPortRef> {
@@ -1875,6 +1958,7 @@ impl App {
             }
         }
         self.midi_input.sync_ports(&ports);
+        self.midi_runtime_dirty = true;
     }
 
     fn ensure_fx_live_state_len(&mut self) {
@@ -2417,7 +2501,9 @@ impl App {
             self.status_state.history_message = None;
         }
         self.status_state.last_action = Some(LastActionStatus { action, source });
-        self.apply_action(action)
+        let control = self.apply_action(action);
+        self.mark_midi_runtime_dirty();
+        control
     }
 }
 

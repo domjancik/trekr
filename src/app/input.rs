@@ -38,6 +38,8 @@ impl App {
             .map(|(index, _)| index)
             .collect();
 
+        let runtime_handles_live_output = self.midi_runtime.is_enabled();
+        let mut runtime_dirty = false;
         for index in matching_tracks {
             let input_ticks = self
                 .project
@@ -92,12 +94,13 @@ impl App {
                             for record_event in record_events {
                                 if let LiveMidiFxEvent::NoteOn { pitch, velocity } = record_event {
                                     track.record_note_on(pitch, velocity, input_ticks);
+                                    runtime_dirty = true;
                                 }
                             }
                         }
                     }
                     self.propagate_live_clone_events(index, &post_input_events);
-                    if passthrough {
+                    if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,
                             &output_chain,
@@ -128,12 +131,13 @@ impl App {
                             for record_event in record_events {
                                 if let LiveMidiFxEvent::NoteOff { pitch } = record_event {
                                     track.record_note_off(pitch, input_ticks);
+                                    runtime_dirty = true;
                                 }
                             }
                         }
                     }
                     self.propagate_live_clone_events(index, &post_input_events);
-                    if passthrough {
+                    if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,
                             &output_chain,
@@ -146,6 +150,9 @@ impl App {
                 }
                 MidiInputMessage::ControlChange { .. } => {}
             }
+        }
+        if runtime_dirty {
+            self.mark_midi_runtime_dirty();
         }
     }
 

@@ -465,6 +465,26 @@ Recommended measurement workflow:
 2. run the harness first to establish hardware/backend round-trip latency
 3. then compare against Trekr with runtime diagnostics enabled to isolate app-added delay
 
+## MIDI Runtime Diagnostics
+
+Trekr now runs its main playback and live-monitor MIDI path through a background MIDI runtime thread instead of treating the render loop as the effective MIDI clock.
+
+For low-overhead timing summaries while testing on Pi-class hardware, enable:
+
+```powershell
+$env:TREKR_MIDI_RUNTIME_LOG = "1"
+cargo run
+```
+
+The runtime summary is designed to help compare:
+
+- callback-to-runtime delay
+- callback-to-output delay
+- scheduled due-time miss
+- output queue depth
+
+Use the loopback harness first to measure hardware/backend baseline latency, then compare Trekr with runtime diagnostics enabled to estimate app-added delay and jitter.
+
 ## UI Review Loop
 
 The repo includes a scripted screenshot-and-review loop for visual QA:
