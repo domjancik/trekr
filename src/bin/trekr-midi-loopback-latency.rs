@@ -10,6 +10,8 @@ struct Config {
     list_only: bool,
     input_name: Option<String>,
     output_name: Option<String>,
+    trigger_input_name: Option<String>,
+    return_input_name: Option<String>,
     note: u8,
     velocity: u8,
     channel: u8,
@@ -18,6 +20,12 @@ struct Config {
     interval_ms: u64,
     note_length_ms: u64,
     timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunMode {
+    SelfSend,
+    DeviceInitiated,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +43,21 @@ struct SummaryStats {
     p50_ms: f64,
     p95_ms: f64,
     p99_ms: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MidiNoteOn {
+    channel: u8,
+    pitch: u8,
+    velocity: u8,
+}
+
+#[derive(Debug, Clone)]
+struct MidiObservedEvent {
+    source_label: String,
+    note_on: Option<MidiNoteOn>,
+    message_bytes: Vec<u8>,
+    received_at: Instant,
 }
 
 fn main() {
@@ -80,14 +103,37 @@ fn run(config: &Config) -> Result<(), String> {
         return Ok(());
     }
 
-    let input_name = resolve_port_name(config.input_name.as_deref(), &input_names, "input")?;
-    let output_name = resolve_port_name(config.output_name.as_deref(), &output_names, "output")?;
+    match detect_run_mode(config) {
+        RunMode::SelfSend => run_self_send(config, &input_names, &output_names),
+        RunMode::DeviceInitiated => run_device_initiated(config, &input_names, &output_names),
+    }
+}
 
-    let (input_receiver, _input_connection) = connect_input_by_name(midi_in, &input_name)?;
-    let mut output_connection = connect_output_by_name(midi_out, &output_name)?;
+fn detect_run_mode(config: &Config) -> RunMode {
+    if config.trigger_input_name.is_some() || config.return_input_name.is_some() {
+        RunMode::DeviceInitiated
+    } else {
+        RunMode::SelfSend
+    }
+}
+
+fn run_self_send(
+    config: &Config,
+    input_names: &[String],
+    output_names: &[String],
+) -> Result<(), String> {
+    let input_name = resolve_port_name(config.input_name.as_deref(), input_names, "input")?;
+    let output_name = resolve_port_name(config.output_name.as_deref(), output_names, "output")?;
+
+    let (input_receiver, _input_connection) = connect_input_by_name(
+        &input_name,
+        "trekr-midi-loopback-input-connection",
+        "return",
+    )?;
+    let mut output_connection = connect_output_by_name(&output_name)?;
 
     println!(
-        "starting loopback test channel={} base_note={} velocity={} warmup={} count={} interval_ms={} timeout_ms={}",
+        "starting self-send loopback test channel={} base_note={} velocity={} warmup={} count={} interval_ms={} timeout_ms={}",
         config.channel,
         config.note,
         config.velocity,
@@ -99,7 +145,7 @@ fn run(config: &Config) -> Result<(), String> {
 
     for index in 0..config.warmup_count {
         let pitch = cycle_pitch(config.note, index)?;
-        let _ = send_and_measure(
+        let _ = send_and_measure_self_send(
             config,
             &mut output_connection,
             &input_receiver,
@@ -111,12 +157,93 @@ fn run(config: &Config) -> Result<(), String> {
     let mut samples = Vec::with_capacity(config.count as usize);
     for index in 0..config.count {
         let pitch = cycle_pitch(config.note, config.warmup_count + index)?;
-        let sample =
-            send_and_measure(config, &mut output_connection, &input_receiver, pitch, true)?;
+        let sample = send_and_measure_self_send(
+            config,
+            &mut output_connection,
+            &input_receiver,
+            pitch,
+            true,
+        )?;
         samples.push(sample);
     }
 
-    let stats = summarize(&samples);
+    print_summary(&samples);
+    Ok(())
+}
+
+fn run_device_initiated(
+    config: &Config,
+    input_names: &[String],
+    output_names: &[String],
+) -> Result<(), String> {
+    let trigger_input_name = resolve_port_name(
+        config
+            .trigger_input_name
+            .as_deref()
+            .or(config.input_name.as_deref()),
+        input_names,
+        "trigger input",
+    )?;
+    let output_name = resolve_port_name(config.output_name.as_deref(), output_names, "output")?;
+    let return_input_name = resolve_port_name(
+        config.return_input_name.as_deref(),
+        input_names,
+        "return input",
+    )?;
+
+    let (trigger_receiver, _trigger_connection) = connect_input_by_name(
+        &trigger_input_name,
+        "trekr-midi-loopback-trigger-input-connection",
+        "trigger",
+    )?;
+    let (return_receiver, _return_connection) = connect_input_by_name(
+        &return_input_name,
+        "trekr-midi-loopback-return-input-connection",
+        "return",
+    )?;
+    let mut output_connection = connect_output_by_name(&output_name)?;
+
+    println!(
+        "starting device-initiated loopback test output_channel={} warmup={} count={} interval_ms={} timeout_ms={} trigger_input='{}' return_input='{}' output='{}'",
+        config.channel,
+        config.warmup_count,
+        config.count,
+        config.interval_ms,
+        config.timeout_ms,
+        trigger_input_name,
+        return_input_name,
+        output_name
+    );
+    println!("  play a note on the trigger device to start each sample");
+
+    for _ in 0..config.warmup_count {
+        let _ = send_and_measure_device_initiated(
+            config,
+            &mut output_connection,
+            &trigger_receiver,
+            &return_receiver,
+            false,
+        )?;
+    }
+
+    let mut samples = Vec::with_capacity(config.count as usize);
+    for _ in 0..config.count {
+        let sample = send_and_measure_device_initiated(
+            config,
+            &mut output_connection,
+            &trigger_receiver,
+            &return_receiver,
+            true,
+        )?;
+        samples.push(sample);
+    }
+
+    print_summary(&samples);
+    Ok(())
+}
+
+fn print_summary(samples: &[LoopbackSample]) {
+    let stats = summarize(samples);
     println!("completed loopback test");
     println!("  samples: {}", stats.count);
     println!("  min_ms: {:.3}", stats.min_ms);
@@ -125,8 +252,6 @@ fn run(config: &Config) -> Result<(), String> {
     println!("  p99_ms: {:.3}", stats.p99_ms);
     println!("  max_ms: {:.3}", stats.max_ms);
     println!("  mean_ms: {:.3}", stats.mean_ms);
-
-    Ok(())
 }
 
 fn resolve_port_name(
@@ -205,39 +330,56 @@ fn prompt_for_port_selection(
     }
 }
 
-fn send_and_measure(
+fn send_and_measure_self_send(
     config: &Config,
     output_connection: &mut MidiOutputConnection,
-    input_receiver: &Receiver<LoopbackInputEvent>,
+    input_receiver: &Receiver<MidiObservedEvent>,
     pitch: u8,
     print_sample: bool,
 ) -> Result<LoopbackSample, String> {
     drain_pending(input_receiver);
 
-    let status_on = status_byte(0x90, config.channel);
-    let status_off = status_byte(0x80, config.channel);
+    let note_on = MidiNoteOn {
+        channel: config.channel,
+        pitch,
+        velocity: config.velocity,
+    };
+    let status_on = status_byte(0x90, note_on.channel);
+    let status_off = status_byte(0x80, note_on.channel);
     let sent_at = Instant::now();
     println!(
         "  sent note-on pitch={} velocity={} channel={} at {:?}",
-        pitch, config.velocity, config.channel, sent_at
+        note_on.pitch, note_on.velocity, note_on.channel, sent_at
     );
     output_connection
-        .send(&[status_on, pitch, config.velocity])
-        .map_err(|error| format!("failed sending note-on for pitch {pitch}: {error}"))?;
+        .send(&[status_on, note_on.pitch, note_on.velocity])
+        .map_err(|error| {
+            format!(
+                "failed sending note-on for pitch {}: {error}",
+                note_on.pitch
+            )
+        })?;
 
     let timeout = Duration::from_millis(config.timeout_ms.max(1));
-    let received =
-        wait_for_matching_event(input_receiver, pitch, config.velocity, timeout, sent_at)?;
+    let received = wait_for_matching_note_on(input_receiver, note_on, timeout, sent_at, "return")?;
     let sample = LoopbackSample {
         pitch,
         latency: received.received_at.saturating_duration_since(sent_at),
     };
 
     thread::sleep(Duration::from_millis(config.note_length_ms.max(1)));
-    println!("  sent note-off pitch={} channel={}", pitch, config.channel);
+    println!(
+        "  sent note-off pitch={} channel={}",
+        note_on.pitch, note_on.channel
+    );
     output_connection
-        .send(&[status_off, pitch, 0])
-        .map_err(|error| format!("failed sending note-off for pitch {pitch}: {error}"))?;
+        .send(&[status_off, note_on.pitch, 0])
+        .map_err(|error| {
+            format!(
+                "failed sending note-off for pitch {}: {error}",
+                note_on.pitch
+            )
+        })?;
 
     if print_sample {
         println!(
@@ -251,50 +393,176 @@ fn send_and_measure(
     Ok(sample)
 }
 
-fn wait_for_matching_event(
-    input_receiver: &Receiver<LoopbackInputEvent>,
-    pitch: u8,
-    velocity: u8,
+fn send_and_measure_device_initiated(
+    config: &Config,
+    output_connection: &mut MidiOutputConnection,
+    trigger_receiver: &Receiver<MidiObservedEvent>,
+    return_receiver: &Receiver<MidiObservedEvent>,
+    print_sample: bool,
+) -> Result<LoopbackSample, String> {
+    drain_pending(trigger_receiver);
+    drain_pending(return_receiver);
+
+    let timeout = Duration::from_millis(config.timeout_ms.max(1));
+    let trigger = wait_for_any_note_on(trigger_receiver, timeout, "trigger")?;
+    let trigger_note = trigger
+        .note_on
+        .ok_or_else(|| "trigger wait returned non-note-on event unexpectedly".to_string())?;
+
+    let forwarded_note = MidiNoteOn {
+        channel: config.channel,
+        pitch: trigger_note.pitch,
+        velocity: trigger_note.velocity,
+    };
+    let forwarded_at = Instant::now();
+    println!(
+        "  forwarding trigger pitch={} velocity={} from channel {} to output channel {} at {:?}",
+        trigger_note.pitch,
+        trigger_note.velocity,
+        trigger_note.channel,
+        forwarded_note.channel,
+        forwarded_at
+    );
+    output_connection
+        .send(&[
+            status_byte(0x90, forwarded_note.channel),
+            forwarded_note.pitch,
+            forwarded_note.velocity,
+        ])
+        .map_err(|error| {
+            format!(
+                "failed forwarding note-on for pitch {}: {error}",
+                forwarded_note.pitch
+            )
+        })?;
+
+    let received = wait_for_matching_note_on(
+        return_receiver,
+        forwarded_note,
+        timeout,
+        forwarded_at,
+        "return",
+    )?;
+    let sample = LoopbackSample {
+        pitch: forwarded_note.pitch,
+        latency: received
+            .received_at
+            .saturating_duration_since(trigger.received_at),
+    };
+
+    thread::sleep(Duration::from_millis(config.note_length_ms.max(1)));
+    println!(
+        "  sent forwarded note-off pitch={} channel={}",
+        forwarded_note.pitch, forwarded_note.channel
+    );
+    output_connection
+        .send(&[
+            status_byte(0x80, forwarded_note.channel),
+            forwarded_note.pitch,
+            0,
+        ])
+        .map_err(|error| {
+            format!(
+                "failed forwarding note-off for pitch {}: {error}",
+                forwarded_note.pitch
+            )
+        })?;
+
+    if print_sample {
+        println!(
+            "  sample pitch={} trigger_to_return_ms={:.3}",
+            sample.pitch,
+            duration_ms(sample.latency)
+        );
+    }
+
+    thread::sleep(Duration::from_millis(config.interval_ms));
+    Ok(sample)
+}
+
+fn wait_for_any_note_on(
+    input_receiver: &Receiver<MidiObservedEvent>,
     timeout: Duration,
-    sent_at: Instant,
-) -> Result<LoopbackInputEvent, String> {
+    expected_source: &str,
+) -> Result<MidiObservedEvent, String> {
     let deadline = Instant::now() + timeout;
     loop {
         let now = Instant::now();
         if now >= deadline {
             return Err(format!(
-                "timed out waiting for loopback note-on pitch={} velocity={} after {} ms",
-                pitch,
-                velocity,
+                "timed out waiting for {} note-on after {} ms",
+                expected_source,
                 timeout.as_millis()
             ));
         }
         let remaining = deadline.saturating_duration_since(now);
         let event = input_receiver.recv_timeout(remaining).map_err(|_| {
             format!(
-                "timed out waiting for loopback note-on pitch={} velocity={} after {} ms",
-                pitch,
-                velocity,
+                "timed out waiting for {} note-on after {} ms",
+                expected_source,
                 timeout.as_millis()
             )
         })?;
-        println!(
-            "  rx bytes={:?} note_on={} pitch={:?} velocity={:?} age_ms={:.3}",
-            event.message_bytes,
-            event.note_on.is_some(),
-            event.note_on.as_ref().map(|note| note.0),
-            event.note_on.as_ref().map(|note| note.1),
-            duration_ms(event.received_at.saturating_duration_since(sent_at))
-        );
-        if let Some((event_pitch, event_velocity)) = event.note_on {
-            if event_pitch == pitch && event_velocity == velocity {
+        log_observed_event(&event, now, expected_source);
+        if event.note_on.is_some() {
+            return Ok(event);
+        }
+    }
+}
+
+fn wait_for_matching_note_on(
+    input_receiver: &Receiver<MidiObservedEvent>,
+    expected_note: MidiNoteOn,
+    timeout: Duration,
+    sent_at: Instant,
+    expected_source: &str,
+) -> Result<MidiObservedEvent, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out waiting for {} note-on pitch={} velocity={} after {} ms",
+                expected_source,
+                expected_note.pitch,
+                expected_note.velocity,
+                timeout.as_millis()
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(now);
+        let event = input_receiver.recv_timeout(remaining).map_err(|_| {
+            format!(
+                "timed out waiting for {} note-on pitch={} velocity={} after {} ms",
+                expected_source,
+                expected_note.pitch,
+                expected_note.velocity,
+                timeout.as_millis()
+            )
+        })?;
+        log_observed_event(&event, sent_at, expected_source);
+        if let Some(note_on) = event.note_on {
+            if note_on.pitch == expected_note.pitch && note_on.velocity == expected_note.velocity {
                 return Ok(event);
             }
         }
     }
 }
 
-fn drain_pending(input_receiver: &Receiver<LoopbackInputEvent>) {
+fn log_observed_event(event: &MidiObservedEvent, sent_at: Instant, expected_source: &str) {
+    println!(
+        "  {} rx source={} bytes={:?} note_on={} channel={:?} pitch={:?} velocity={:?} age_ms={:.3}",
+        expected_source,
+        event.source_label,
+        event.message_bytes,
+        event.note_on.is_some(),
+        event.note_on.map(|note| note.channel),
+        event.note_on.map(|note| note.pitch),
+        event.note_on.map(|note| note.velocity),
+        duration_ms(event.received_at.saturating_duration_since(sent_at))
+    );
+}
+
+fn drain_pending(input_receiver: &Receiver<MidiObservedEvent>) {
     while input_receiver.try_recv().is_ok() {}
 }
 
@@ -343,32 +611,30 @@ fn duration_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
 
-#[derive(Debug, Clone)]
-struct LoopbackInputEvent {
-    note_on: Option<(u8, u8)>,
-    message_bytes: Vec<u8>,
-    received_at: Instant,
-}
-
 fn connect_input_by_name(
-    midi_in: MidiInput,
     target_name: &str,
-) -> Result<(Receiver<LoopbackInputEvent>, MidiInputConnection<()>), String> {
+    connection_name: &str,
+    source_label: &str,
+) -> Result<(Receiver<MidiObservedEvent>, MidiInputConnection<()>), String> {
+    let mut midi_in = MidiInput::new(connection_name).map_err(|error| error.to_string())?;
+    midi_in.ignore(Ignore::None);
     let (sender, receiver) = mpsc::channel();
     let port = midi_in
         .ports()
         .into_iter()
         .find(|port| midi_in.port_name(port).ok().as_deref() == Some(target_name))
-        .ok_or_else(|| format!("MIDI input port '{target_name}' not found"))?;
+        .ok_or_else(|| format!("MIDI input port '{}' not found", target_name))?;
+    let source_label = source_label.to_string();
 
     let connection = midi_in
         .connect(
             &port,
-            "trekr-midi-loopback-input-connection",
+            connection_name,
             move |_timestamp, message, _state| {
                 let received_at = Instant::now();
-                println!("  midi input activity bytes={:?}", message);
-                let _ = sender.send(LoopbackInputEvent {
+                println!("  {} midi input activity bytes={:?}", source_label, message);
+                let _ = sender.send(MidiObservedEvent {
+                    source_label: source_label.clone(),
                     note_on: parse_note_on(message),
                     message_bytes: message.to_vec(),
                     received_at,
@@ -381,29 +647,32 @@ fn connect_input_by_name(
     Ok((receiver, connection))
 }
 
-fn connect_output_by_name(
-    midi_out: MidiOutput,
-    target_name: &str,
-) -> Result<MidiOutputConnection, String> {
+fn connect_output_by_name(target_name: &str) -> Result<MidiOutputConnection, String> {
+    let midi_out = MidiOutput::new("trekr-midi-loopback-output-connection")
+        .map_err(|error| error.to_string())?;
     let port = midi_out
         .ports()
         .into_iter()
         .find(|port| midi_out.port_name(port).ok().as_deref() == Some(target_name))
-        .ok_or_else(|| format!("MIDI output port '{target_name}' not found"))?;
+        .ok_or_else(|| format!("MIDI output port '{}' not found", target_name))?;
 
     midi_out
         .connect(&port, "trekr-midi-loopback-output-connection")
         .map_err(|error| error.to_string())
 }
 
-fn parse_note_on(message: &[u8]) -> Option<(u8, u8)> {
+fn parse_note_on(message: &[u8]) -> Option<MidiNoteOn> {
     let status = *message.first()?;
     if status & 0xF0 != 0x90 {
         return None;
     }
     let pitch = *message.get(1)?;
     let velocity = *message.get(2)?;
-    (velocity > 0).then_some((pitch, velocity))
+    (velocity > 0).then_some(MidiNoteOn {
+        channel: (status & 0x0F) + 1,
+        pitch,
+        velocity,
+    })
 }
 
 fn port_names<P: Clone>(midi_io: &impl PortName<P>, ports: &[P]) -> Result<Vec<String>, String> {
@@ -438,6 +707,8 @@ fn parse_args() -> Result<Config, String> {
         list_only: false,
         input_name: None,
         output_name: None,
+        trigger_input_name: None,
+        return_input_name: None,
         note: 60,
         velocity: 100,
         channel: 1,
@@ -462,6 +733,18 @@ fn parse_args() -> Result<Config, String> {
                 config.output_name = Some(
                     args.next()
                         .ok_or_else(|| "missing value for --output-name".to_string())?,
+                );
+            }
+            "--trigger-input-name" => {
+                config.trigger_input_name = Some(
+                    args.next()
+                        .ok_or_else(|| "missing value for --trigger-input-name".to_string())?,
+                );
+            }
+            "--return-input-name" => {
+                config.return_input_name = Some(
+                    args.next()
+                        .ok_or_else(|| "missing value for --return-input-name".to_string())?,
                 );
             }
             "--note" => config.note = parse_value(&mut args, "--note")?,
@@ -511,29 +794,69 @@ fn print_usage() {
         "  cargo run --bin trekr-midi-loopback-latency -- --input-name <name> --output-name <name> [options]"
     );
     println!(
+        "  cargo run --bin trekr-midi-loopback-latency -- --trigger-input-name <name> --output-name <name> --return-input-name <name> [options]"
+    );
+    println!(
         "  cargo run --bin trekr-midi-loopback-latency -- [options]    # prompts interactively when ports are omitted"
     );
     println!("Options:");
     println!("  --list-only                 Enumerate native MIDI ports and exit");
-    println!("  --input-name <name>         Open a native MIDI input by exact port name");
-    println!("  --output-name <name>        Open a native MIDI output by exact port name");
-    println!("  --note <0-127>              Base test note. Default: 60");
-    println!("  --velocity <0-127>          Default: 100");
-    println!("  --channel <1-16>            Default: 1");
+    println!("  --input-name <name>         Self-send loopback input by exact port name");
+    println!("  --output-name <name>        MIDI output by exact port name");
+    println!("  --trigger-input-name <name> Device-initiated trigger input by exact port name");
+    println!("  --return-input-name <name>  Device-initiated return input by exact port name");
+    println!("  --note <0-127>              Base self-send test note. Default: 60");
+    println!("  --velocity <0-127>          Default self-send velocity: 100");
+    println!("  --channel <1-16>            Output channel. Default: 1");
     println!("  --count <n>                 Measured samples. Default: 32");
     println!("  --warmup-count <n>          Warmup samples not included in stats. Default: 4");
     println!("  --interval-ms <ms>          Delay between measured pings. Default: 40");
     println!("  --note-length-ms <ms>       Note hold before note-off. Default: 10");
-    println!("  --timeout-ms <ms>           Per-sample loopback timeout. Default: 500");
+    println!("  --timeout-ms <ms>           Per-sample timeout. Default: 500");
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        LoopbackSample, duration_ms, percentile, prompt_for_port_selection, resolve_port_name,
-        summarize,
+        LoopbackSample, MidiNoteOn, RunMode, detect_run_mode, duration_ms, parse_note_on,
+        percentile, prompt_for_port_selection, resolve_port_name, summarize,
     };
     use std::time::Duration;
+
+    #[test]
+    fn detect_run_mode_switches_when_trigger_path_is_configured() {
+        let mut config = super::Config {
+            list_only: false,
+            input_name: None,
+            output_name: None,
+            trigger_input_name: Some("Trigger".to_string()),
+            return_input_name: None,
+            note: 60,
+            velocity: 100,
+            channel: 1,
+            count: 1,
+            warmup_count: 0,
+            interval_ms: 0,
+            note_length_ms: 0,
+            timeout_ms: 100,
+        };
+        assert_eq!(detect_run_mode(&config), RunMode::DeviceInitiated);
+        config.trigger_input_name = None;
+        assert_eq!(detect_run_mode(&config), RunMode::SelfSend);
+    }
+
+    #[test]
+    fn parse_note_on_extracts_channel_pitch_and_velocity() {
+        assert_eq!(
+            parse_note_on(&[0x92, 64, 100]),
+            Some(MidiNoteOn {
+                channel: 3,
+                pitch: 64,
+                velocity: 100,
+            })
+        );
+        assert_eq!(parse_note_on(&[0x82, 64, 0]), None);
+    }
 
     #[test]
     fn resolve_port_name_accepts_existing_configured_name() {
