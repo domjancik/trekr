@@ -1,5 +1,6 @@
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::cmp::Ordering;
+use std::io::{self, Write};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -79,17 +80,11 @@ fn run(config: &Config) -> Result<(), String> {
         return Ok(());
     }
 
-    let input_name = config
-        .input_name
-        .as_deref()
-        .ok_or_else(|| "missing --input-name".to_string())?;
-    let output_name = config
-        .output_name
-        .as_deref()
-        .ok_or_else(|| "missing --output-name".to_string())?;
+    let input_name = resolve_port_name(config.input_name.as_deref(), &input_names, "input")?;
+    let output_name = resolve_port_name(config.output_name.as_deref(), &output_names, "output")?;
 
-    let (input_receiver, _input_connection) = connect_input_by_name(midi_in, input_name)?;
-    let mut output_connection = connect_output_by_name(midi_out, output_name)?;
+    let (input_receiver, _input_connection) = connect_input_by_name(midi_in, &input_name)?;
+    let mut output_connection = connect_output_by_name(midi_out, &output_name)?;
 
     println!(
         "starting loopback test channel={} base_note={} velocity={} warmup={} count={} interval_ms={} timeout_ms={}",
@@ -132,6 +127,82 @@ fn run(config: &Config) -> Result<(), String> {
     println!("  mean_ms: {:.3}", stats.mean_ms);
 
     Ok(())
+}
+
+fn resolve_port_name(
+    configured_name: Option<&str>,
+    available_names: &[String],
+    port_kind: &str,
+) -> Result<String, String> {
+    if let Some(name) = configured_name {
+        if available_names.iter().any(|available| available == name) {
+            return Ok(name.to_string());
+        }
+        return Err(format!(
+            "requested MIDI {} port '{}' was not found",
+            port_kind, name
+        ));
+    }
+
+    prompt_for_port_selection(available_names, port_kind)
+}
+
+fn prompt_for_port_selection(
+    available_names: &[String],
+    port_kind: &str,
+) -> Result<String, String> {
+    if available_names.is_empty() {
+        return Err(format!(
+            "no MIDI {} ports are available to select",
+            port_kind
+        ));
+    }
+
+    println!("select MIDI {} port:", port_kind);
+    for (index, name) in available_names.iter().enumerate() {
+        println!("  {}. {}", index + 1, name);
+    }
+
+    loop {
+        print!(
+            "enter {} port number [1-{}]: ",
+            port_kind,
+            available_names.len()
+        );
+        io::stdout()
+            .flush()
+            .map_err(|error| format!("failed flushing prompt: {error}"))?;
+
+        let mut line = String::new();
+        io::stdin()
+            .read_line(&mut line)
+            .map_err(|error| format!("failed reading {} selection: {error}", port_kind))?;
+        let trimmed = line.trim();
+        let selection = trimmed.parse::<usize>().map_err(|_| {
+            format!(
+                "invalid {} selection '{}': enter a number from 1 to {}",
+                port_kind,
+                trimmed,
+                available_names.len()
+            )
+        });
+
+        match selection {
+            Ok(value) if (1..=available_names.len()).contains(&value) => {
+                return Ok(available_names[value - 1].clone());
+            }
+            Ok(_) => {
+                eprintln!(
+                    "selection out of range for MIDI {} port: enter a number from 1 to {}",
+                    port_kind,
+                    available_names.len()
+                );
+            }
+            Err(message) => {
+                eprintln!("{message}");
+            }
+        }
+    }
 }
 
 fn send_and_measure(
@@ -394,9 +465,6 @@ fn parse_args() -> Result<Config, String> {
         }
     }
 
-    if !config.list_only && (config.input_name.is_none() || config.output_name.is_none()) {
-        return Err("provide --list-only or both --input-name and --output-name".to_string());
-    }
     if !(1..=16).contains(&config.channel) {
         return Err(format!(
             "invalid channel '{}': expected 1-16",
@@ -425,6 +493,9 @@ fn print_usage() {
     println!(
         "  cargo run --bin trekr-midi-loopback-latency -- --input-name <name> --output-name <name> [options]"
     );
+    println!(
+        "  cargo run --bin trekr-midi-loopback-latency -- [options]    # prompts interactively when ports are omitted"
+    );
     println!("Options:");
     println!("  --list-only                 Enumerate native MIDI ports and exit");
     println!("  --input-name <name>         Open a native MIDI input by exact port name");
@@ -441,8 +512,31 @@ fn print_usage() {
 
 #[cfg(test)]
 mod tests {
-    use super::{LoopbackSample, duration_ms, percentile, summarize};
+    use super::{
+        LoopbackSample, duration_ms, percentile, prompt_for_port_selection, resolve_port_name,
+        summarize,
+    };
     use std::time::Duration;
+
+    #[test]
+    fn resolve_port_name_accepts_existing_configured_name() {
+        let ports = vec!["In A".to_string(), "In B".to_string()];
+        assert_eq!(
+            resolve_port_name(Some("In B"), &ports, "input").unwrap(),
+            "In B".to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_port_name_rejects_missing_configured_name() {
+        let ports = vec!["In A".to_string()];
+        assert!(resolve_port_name(Some("Missing"), &ports, "input").is_err());
+    }
+
+    #[test]
+    fn prompt_selection_fails_without_ports() {
+        assert!(prompt_for_port_selection(&[], "output").is_err());
+    }
 
     #[test]
     fn percentile_uses_sorted_values() {
