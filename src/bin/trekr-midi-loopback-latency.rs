@@ -103,17 +103,45 @@ fn run(config: &Config) -> Result<(), String> {
         return Ok(());
     }
 
-    match detect_run_mode(config) {
+    match detect_run_mode(config)? {
         RunMode::SelfSend => run_self_send(config, &input_names, &output_names),
         RunMode::DeviceInitiated => run_device_initiated(config, &input_names, &output_names),
     }
 }
 
-fn detect_run_mode(config: &Config) -> RunMode {
+fn detect_run_mode(config: &Config) -> Result<RunMode, String> {
     if config.trigger_input_name.is_some() || config.return_input_name.is_some() {
-        RunMode::DeviceInitiated
-    } else {
-        RunMode::SelfSend
+        return Ok(RunMode::DeviceInitiated);
+    }
+
+    if config.input_name.is_some() || config.output_name.is_some() {
+        return Ok(RunMode::SelfSend);
+    }
+
+    prompt_for_run_mode()
+}
+
+fn prompt_for_run_mode() -> Result<RunMode, String> {
+    println!("select measurement mode:");
+    println!("  1. self-send loopback");
+    println!("  2. device-initiated trigger -> output -> return");
+
+    loop {
+        print!("enter mode number [1-2]: ");
+        io::stdout()
+            .flush()
+            .map_err(|error| format!("failed flushing mode prompt: {error}"))?;
+
+        let mut line = String::new();
+        io::stdin()
+            .read_line(&mut line)
+            .map_err(|error| format!("failed reading mode selection: {error}"))?;
+
+        match line.trim() {
+            "1" => return Ok(RunMode::SelfSend),
+            "2" => return Ok(RunMode::DeviceInitiated),
+            other => eprintln!("invalid mode selection '{}': enter 1 or 2", other),
+        }
     }
 }
 
@@ -797,7 +825,7 @@ fn print_usage() {
         "  cargo run --bin trekr-midi-loopback-latency -- --trigger-input-name <name> --output-name <name> --return-input-name <name> [options]"
     );
     println!(
-        "  cargo run --bin trekr-midi-loopback-latency -- [options]    # prompts interactively when ports are omitted"
+        "  cargo run --bin trekr-midi-loopback-latency -- [options]    # prompts interactively for mode and ports when omitted"
     );
     println!("Options:");
     println!("  --list-only                 Enumerate native MIDI ports and exit");
@@ -840,9 +868,10 @@ mod tests {
             note_length_ms: 0,
             timeout_ms: 100,
         };
-        assert_eq!(detect_run_mode(&config), RunMode::DeviceInitiated);
+        assert_eq!(detect_run_mode(&config).unwrap(), RunMode::DeviceInitiated);
         config.trigger_input_name = None;
-        assert_eq!(detect_run_mode(&config), RunMode::SelfSend);
+        config.input_name = Some("Input".to_string());
+        assert_eq!(detect_run_mode(&config).unwrap(), RunMode::SelfSend);
     }
 
     #[test]
