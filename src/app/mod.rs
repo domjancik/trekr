@@ -1838,11 +1838,28 @@ impl App {
         }
         let previous_transport_ticks = self.transport_ticks;
         let snapshot = self.midi_runtime.snapshot();
+        self.apply_runtime_snapshot(snapshot);
+        self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
+    }
+
+    fn apply_runtime_snapshot(&mut self, snapshot: MidiRuntimeUiSnapshot) {
         self.transport_ticks = snapshot.transport_ticks;
         self.playhead_ticks = snapshot.playhead_ticks;
         self.live_fx_ticks = snapshot.live_fx_ticks;
+        self.merge_runtime_recording_takes(&snapshot);
         self.last_runtime_snapshot = snapshot;
-        self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
+    }
+
+    fn merge_runtime_recording_takes(&mut self, snapshot: &MidiRuntimeUiSnapshot) {
+        for (track, active_take) in self
+            .project
+            .tracks
+            .iter_mut()
+            .zip(snapshot.recording_takes.iter())
+        {
+            track.active_take =
+                merge_recording_takes(track.active_take.as_ref(), active_take.as_ref());
+        }
     }
 
     fn input_port_is_available(&self, name: &str) -> bool {
@@ -2531,6 +2548,33 @@ impl App {
     }
 }
 
+fn merge_recording_takes(
+    current: Option<&crate::timeline::RecordingTake>,
+    runtime: Option<&crate::timeline::RecordingTake>,
+) -> Option<crate::timeline::RecordingTake> {
+    match (current, runtime) {
+        (None, None) => None,
+        (Some(current), None) => Some(current.clone()),
+        (None, Some(runtime)) => Some(runtime.clone()),
+        (Some(current), Some(runtime)) => {
+            let mut merged = current.clone();
+            merged.pressed_at_ticks = merged.pressed_at_ticks.min(runtime.pressed_at_ticks);
+            merged.released_at_ticks = runtime.released_at_ticks.or(merged.released_at_ticks);
+            for recorded_note in &runtime.recorded_notes {
+                if !merged.recorded_notes.contains(recorded_note) {
+                    merged.recorded_notes.push(*recorded_note);
+                }
+            }
+            for pending_note in &runtime.pending_notes {
+                if !merged.pending_notes.contains(pending_note) {
+                    merged.pending_notes.push(*pending_note);
+                }
+            }
+            Some(merged)
+        }
+    }
+}
+
 fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (u32, u32) {
     if video_mode != VideoMode::KmsDrmConsole {
         return (1280, 720);
@@ -2962,7 +3006,7 @@ mod tests {
             .active_track()
             .and_then(|track| track.routing.input_port.as_named_port().cloned())
             .expect("test track should have explicit input port");
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
@@ -2977,7 +3021,7 @@ mod tests {
 
         app.transport_ticks = 1_920;
         app.playhead_ticks = 1_920;
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 64 },

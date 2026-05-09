@@ -97,9 +97,16 @@ impl App {
         }
         self.project.transport.recording = true;
         self.project.transport.playing = true;
+        self.mark_midi_runtime_dirty();
+        self.sync_midi_runtime_state_if_needed();
     }
 
     pub(crate) fn finish_recording(&mut self) {
+        if self.midi_runtime.is_enabled() {
+            self.sync_midi_runtime_state_if_needed();
+            let snapshot = self.midi_runtime.capture_snapshot();
+            self.merge_runtime_recording_takes(&snapshot);
+        }
         let transport = self.project.transport;
         let track_count = self.project.tracks.len();
 

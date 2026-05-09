@@ -8,6 +8,7 @@ use crate::midi_io::{
 };
 use crate::project::{MidiNote, Project, RecordContext, Track};
 use crate::routing::{MidiChannelFilter, TrackPortSelection};
+use crate::timeline::RecordingTake;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
@@ -34,11 +35,12 @@ pub(crate) struct MidiRuntimeStateSync {
     pub default_output_port: Option<MidiPortRef>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct MidiRuntimeUiSnapshot {
     pub transport_ticks: u64,
     pub playhead_ticks: u64,
     pub live_fx_ticks: u64,
+    pub recording_takes: Arc<Vec<Option<RecordingTake>>>,
     #[allow(dead_code)]
     pub updated_at: Instant,
 }
@@ -49,6 +51,7 @@ impl Default for MidiRuntimeUiSnapshot {
             transport_ticks: 0,
             playhead_ticks: 0,
             live_fx_ticks: 0,
+            recording_takes: Arc::new(Vec::new()),
             updated_at: Instant::now(),
         }
     }
@@ -212,8 +215,16 @@ impl MidiRuntime {
     pub(crate) fn snapshot(&self) -> MidiRuntimeUiSnapshot {
         self.snapshot
             .lock()
-            .map(|snapshot| *snapshot)
+            .map(|snapshot| snapshot.clone())
             .unwrap_or_default()
+    }
+
+    pub(crate) fn capture_snapshot(&self) -> MidiRuntimeUiSnapshot {
+        let (sender, receiver) = mpsc::channel();
+        let _ = self
+            .sender
+            .send(MidiRuntimeCommand::CaptureSnapshot(sender));
+        receiver.recv().unwrap_or_else(|_| self.snapshot())
     }
 
     #[cfg(test)]
@@ -235,6 +246,7 @@ impl Drop for MidiRuntime {
 
 enum MidiRuntimeCommand {
     SyncState(MidiRuntimeStateSync),
+    CaptureSnapshot(Sender<MidiRuntimeUiSnapshot>),
     #[cfg(test)]
     Flush(Sender<()>),
     Shutdown,
@@ -335,6 +347,22 @@ impl MidiRuntimeEngine {
     fn handle_command(&mut self, command: MidiRuntimeCommand) -> bool {
         match command {
             MidiRuntimeCommand::SyncState(state) => self.sync_state(state),
+            MidiRuntimeCommand::CaptureSnapshot(sender) => {
+                while let Ok(event) = self.input_events.try_recv() {
+                    self.handle_input_event(event);
+                }
+                let now = Instant::now();
+                self.advance_clock(now);
+                self.dispatch_due_events(now);
+                while let Ok(event) = self.output_events.try_recv() {
+                    self.metrics.observe_output(&event);
+                }
+                let snapshot = self.build_snapshot(now);
+                if let Ok(mut target) = self.snapshot.lock() {
+                    *target = snapshot.clone();
+                }
+                let _ = sender.send(snapshot);
+            }
             #[cfg(test)]
             MidiRuntimeCommand::Flush(sender) => {
                 while let Ok(event) = self.input_events.try_recv() {
@@ -346,6 +374,7 @@ impl MidiRuntimeEngine {
                 while let Ok(event) = self.output_events.try_recv() {
                     self.metrics.observe_output(&event);
                 }
+                self.publish_snapshot(now);
                 let _ = sender.send(());
             }
             MidiRuntimeCommand::Shutdown => return true,
@@ -447,6 +476,7 @@ impl MidiRuntimeEngine {
             };
             let input_chain = track_view.midi_fx.input_fx.clone();
             let output_chain = track_view.midi_fx.output_fx.clone();
+            let record_mode = track_view.midi_fx.record_input_fx_mode;
             let passthrough = track_view.state.passthrough;
             let monitor_input_fx = track_view.midi_fx.monitor_input_fx;
             let output_port = state
@@ -465,6 +495,14 @@ impl MidiRuntimeEngine {
                 } else {
                     vec![note_event.clone()]
                 };
+            self.record_live_input_events(
+                &mut state,
+                track_index,
+                record_mode,
+                &note_event,
+                &processed,
+                input_ticks,
+            );
             let monitor_source = if monitor_input_fx {
                 processed.clone()
             } else {
@@ -492,6 +530,39 @@ impl MidiRuntimeEngine {
             }
         }
         self.state = Some(state);
+    }
+
+    fn record_live_input_events(
+        &mut self,
+        state: &mut RuntimeState,
+        track_index: usize,
+        record_mode: crate::midi_fx::RecordInputFxMode,
+        raw_event: &LiveMidiFxEvent,
+        post_input_events: &[LiveMidiFxEvent],
+        input_ticks: u64,
+    ) {
+        let Some(track) = state.project.tracks.get_mut(track_index) else {
+            return;
+        };
+        if track.active_take.is_none() {
+            return;
+        }
+        let record_events = if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
+            post_input_events.to_vec()
+        } else {
+            vec![raw_event.clone()]
+        };
+        for record_event in record_events {
+            match record_event {
+                LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                    track.record_note_on(pitch, velocity, input_ticks);
+                }
+                LiveMidiFxEvent::NoteOff { pitch } => {
+                    track.record_note_off(pitch, input_ticks);
+                }
+            }
+        }
+        state.refresh_recording_takes_snapshot();
     }
 
     fn propagate_live_clone_events(
@@ -897,11 +968,19 @@ impl MidiRuntimeEngine {
     }
 
     fn publish_snapshot(&self, now: Instant) {
-        let snapshot = if let Some(state) = self.state.as_ref() {
+        let snapshot = self.build_snapshot(now);
+        if let Ok(mut target) = self.snapshot.lock() {
+            *target = snapshot;
+        }
+    }
+
+    fn build_snapshot(&self, now: Instant) -> MidiRuntimeUiSnapshot {
+        if let Some(state) = self.state.as_ref() {
             MidiRuntimeUiSnapshot {
                 transport_ticks: state.transport_ticks,
                 playhead_ticks: state.playhead_ticks,
                 live_fx_ticks: state.live_fx_ticks,
+                recording_takes: state.recording_takes_snapshot.clone(),
                 updated_at: now,
             }
         } else {
@@ -909,9 +988,6 @@ impl MidiRuntimeEngine {
                 updated_at: now,
                 ..MidiRuntimeUiSnapshot::default()
             }
-        };
-        if let Ok(mut target) = self.snapshot.lock() {
-            *target = snapshot;
         }
     }
 
@@ -945,6 +1021,7 @@ struct RuntimeState {
     scheduled_until_ticks: u64,
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
+    recording_takes_snapshot: Arc<Vec<Option<RecordingTake>>>,
 }
 
 impl RuntimeState {
@@ -963,15 +1040,23 @@ impl RuntimeState {
             scheduled_until_ticks: sync.transport_ticks,
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
+            recording_takes_snapshot: Arc::new(Vec::new()),
         }
+        .with_recording_snapshot()
     }
 
     fn copy_live_states_from(&mut self, previous: Self) {
         self.input_fx_live_states = previous.input_fx_live_states;
         self.output_fx_live_states = previous.output_fx_live_states;
+        for (track, previous_track) in self.project.tracks.iter_mut().zip(previous.project.tracks) {
+            if track.active_take.is_some() && previous_track.active_take.is_some() {
+                track.active_take = previous_track.active_take;
+            }
+        }
         self.scheduled_until_ticks = previous
             .scheduled_until_ticks
             .min(self.transport_ticks.max(previous.scheduled_until_ticks));
+        self.refresh_recording_takes_snapshot();
     }
 
     fn reset_live_states(&mut self) {
@@ -981,6 +1066,21 @@ impl RuntimeState {
         for state in &mut self.output_fx_live_states {
             reset_live_fx_timing(state, self.live_fx_ticks);
         }
+    }
+
+    fn with_recording_snapshot(mut self) -> Self {
+        self.refresh_recording_takes_snapshot();
+        self
+    }
+
+    fn refresh_recording_takes_snapshot(&mut self) {
+        self.recording_takes_snapshot = Arc::new(
+            self.project
+                .tracks
+                .iter()
+                .map(|track| track.active_take.clone())
+                .collect(),
+        );
     }
 
     fn transport_ticks_at(&self, now: Instant) -> u64 {
