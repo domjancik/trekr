@@ -101,6 +101,7 @@ use types::{
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
+const MIDI_RUNTIME_APP_DIAG_INTERVAL: Duration = Duration::from_secs(1);
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
@@ -143,6 +144,12 @@ pub struct App {
     undo_history: UndoHistory,
     midi_runtime_dirty: bool,
     last_runtime_snapshot: MidiRuntimeUiSnapshot,
+    midi_runtime_diag_enabled: bool,
+    last_midi_runtime_diag_at: Instant,
+    midi_runtime_sync_count: u64,
+    midi_runtime_sync_skipped_count: u64,
+    midi_runtime_sync_total_ns: u64,
+    midi_runtime_sync_max_ns: u64,
 }
 
 impl App {
@@ -256,6 +263,14 @@ impl App {
             undo_history: UndoHistory::default(),
             midi_runtime_dirty: true,
             last_runtime_snapshot: MidiRuntimeUiSnapshot::default(),
+            midi_runtime_diag_enabled: std::env::var("TREKR_MIDI_RUNTIME_LOG")
+                .ok()
+                .is_some_and(|value| value != "0"),
+            last_midi_runtime_diag_at: Instant::now(),
+            midi_runtime_sync_count: 0,
+            midi_runtime_sync_skipped_count: 0,
+            midi_runtime_sync_total_ns: 0,
+            midi_runtime_sync_max_ns: 0,
         }
     }
 
@@ -1823,8 +1838,14 @@ impl App {
         if !self.midi_runtime.is_enabled() || !self.midi_runtime_dirty {
             return;
         }
+        let started_at = Instant::now();
         self.midi_runtime
             .sync_state(self.build_midi_runtime_state_sync());
+        let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.midi_runtime_sync_count = self.midi_runtime_sync_count.saturating_add(1);
+        self.midi_runtime_sync_total_ns =
+            self.midi_runtime_sync_total_ns.saturating_add(elapsed_ns);
+        self.midi_runtime_sync_max_ns = self.midi_runtime_sync_max_ns.max(elapsed_ns);
         self.midi_runtime_dirty = false;
     }
 
@@ -1840,6 +1861,31 @@ impl App {
         let snapshot = self.midi_runtime.snapshot();
         self.apply_runtime_snapshot(snapshot);
         self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
+        self.maybe_print_midi_runtime_app_summary();
+    }
+
+    fn maybe_print_midi_runtime_app_summary(&mut self) {
+        if !self.midi_runtime_diag_enabled
+            || self.last_midi_runtime_diag_at.elapsed() < MIDI_RUNTIME_APP_DIAG_INTERVAL
+        {
+            return;
+        }
+        self.last_midi_runtime_diag_at = Instant::now();
+        let avg_sync_ms = if self.midi_runtime_sync_count == 0 {
+            0.0
+        } else {
+            (self.midi_runtime_sync_total_ns / self.midi_runtime_sync_count) as f64 / 1_000_000.0
+        };
+        let max_sync_ms = self.midi_runtime_sync_max_ns as f64 / 1_000_000.0;
+        eprintln!(
+            "trekr midi app sync: syncs={} skipped_actions={} avg_sync_ms={:.3} max_sync_ms={:.3} recording={} playing={}",
+            self.midi_runtime_sync_count,
+            self.midi_runtime_sync_skipped_count,
+            avg_sync_ms,
+            max_sync_ms,
+            self.project.transport.recording,
+            self.project.transport.playing
+        );
     }
 
     fn apply_runtime_snapshot(&mut self, snapshot: MidiRuntimeUiSnapshot) {
@@ -2531,7 +2577,12 @@ impl App {
         }
         self.status_state.last_action = Some(LastActionStatus { action, source });
         let control = self.apply_action(action);
-        self.mark_midi_runtime_dirty();
+        if action_affects_midi_runtime(action) {
+            self.mark_midi_runtime_dirty();
+        } else {
+            self.midi_runtime_sync_skipped_count =
+                self.midi_runtime_sync_skipped_count.saturating_add(1);
+        }
         control
     }
 
@@ -2592,6 +2643,46 @@ fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (
             (1280, 720)
         }
     }
+}
+
+fn action_affects_midi_runtime(action: AppAction) -> bool {
+    !matches!(
+        action,
+        AppAction::Quit
+            | AppAction::UndoUi
+            | AppAction::RedoUi
+            | AppAction::ShowPage(_)
+            | AppAction::ShowNextPage
+            | AppAction::ShowPreviousPage
+            | AppAction::SelectPreviousPageItem
+            | AppAction::SelectNextPageItem
+            | AppAction::CancelCurrentMode
+            | AppAction::ToggleMappingsOverlay
+            | AppAction::ToggleDiscoverabilityOverlay
+            | AppAction::ToggleDirectMappingMode
+            | AppAction::ToggleMappingsWriteMode
+            | AppAction::AddMappingRow
+            | AppAction::RemoveSelectedMapping
+            | AppAction::SelectPreviousPageField
+            | AppAction::SelectNextPageField
+            | AppAction::ToggleFocusedTrackView
+            | AppAction::SelectNextTrack
+            | AppAction::SelectPreviousTrack
+            | AppAction::SelectTrack(_)
+            | AppAction::SelectNotesAtPlayhead
+            | AppAction::SelectNotesAtPlayheadAdd
+            | AppAction::DeselectTrackNotes
+            | AppAction::SelectNextNote
+            | AppAction::SelectPreviousNote
+            | AppAction::FocusFirstSelectedNote
+            | AppAction::FocusLastSelectedNote
+            | AppAction::ExtendNoteSelectionForward
+            | AppAction::ExtendNoteSelectionBackward
+            | AppAction::ExtendNoteSelectionBoth
+            | AppAction::ContractNoteSelection
+            | AppAction::BeginNoteAdditiveSelectionHold
+            | AppAction::EndNoteAdditiveSelectionHold
+    )
 }
 
 fn parse_kmsdrm_size_override() -> Option<(u32, u32)> {
