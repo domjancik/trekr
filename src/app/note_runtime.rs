@@ -300,7 +300,20 @@ mod tests {
     use super::*;
     use crate::project::{RecordContext, TrackKind};
     use crate::transport::QuantizeMode;
+    use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, Instant};
+
+    fn runtime_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static RUNTIME_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        RUNTIME_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn runtime_test_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
 
     fn wait_for_sent_messages<F>(
         app: &mut App,
@@ -312,7 +325,6 @@ mod tests {
     {
         let started_at = Instant::now();
         loop {
-            app.wait_for_midi_runtime();
             let sent = app.midi_output.sent_messages();
             if predicate(sent.as_slice()) {
                 return sent;
@@ -473,6 +485,7 @@ mod tests {
 
     #[test]
     fn stopped_live_input_delay_uses_live_fx_clock_for_note_on_and_note_off() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -507,7 +520,7 @@ mod tests {
         });
         assert!(app.midi_output.sent_messages().is_empty());
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter().any(|(port, channel, pitch, velocity)| {
                 port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
             })
@@ -526,7 +539,7 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter().any(|(port, channel, pitch, velocity)| {
                 port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
             })
@@ -538,6 +551,7 @@ mod tests {
 
     #[test]
     fn stopped_live_input_duration_uses_live_fx_clock_when_note_starts_late() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -573,7 +587,7 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter().any(|(port, channel, pitch, velocity)| {
                 port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
             })
@@ -581,7 +595,7 @@ mod tests {
         assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
             port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
         }));
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter().any(|(port, channel, pitch, velocity)| {
                 port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
             })
@@ -606,11 +620,7 @@ mod tests {
         app.dispatch_midi_notes(0, 960);
         app.apply_action(AppAction::ToggleCurrentTrackMute);
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
-            sent.iter().any(|(port, channel, pitch, velocity)| {
-                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
-            })
-        });
+        let sent = app.midi_output.sent_messages();
         assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
             port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
         }));
@@ -621,6 +631,7 @@ mod tests {
 
     #[test]
     fn track_clone_passthrough_sends_live_output_to_target_track() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -659,6 +670,11 @@ mod tests {
             backend_timestamp_micros: None,
             sequence: 0,
         });
+        let _sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+            })
+        });
         app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
@@ -669,7 +685,7 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter().any(|(port, channel, pitch, velocity)| {
                 port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
             }) && sent.iter().any(|(port, channel, pitch, velocity)| {
@@ -710,6 +726,7 @@ mod tests {
 
     #[test]
     fn track_clone_monitor_fx_sends_live_output_without_passthrough() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -751,6 +768,11 @@ mod tests {
             backend_timestamp_micros: None,
             sequence: 0,
         });
+        let _sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+            })
+        });
         app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
@@ -761,7 +783,11 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = app.midi_output.sent_messages();
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+            })
+        });
         assert!(
             sent.iter()
                 .any(|(port, channel, pitch, velocity)| port == "Out B"
@@ -925,6 +951,7 @@ mod tests {
 
     #[test]
     fn live_input_arp_passthrough_emits_timed_notes() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -973,7 +1000,7 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
             sent.iter()
                 .filter(|(port, channel, _pitch, velocity)| {
                     port == "Out A" && *channel == 1 && velocity.is_some()
@@ -1126,6 +1153,7 @@ mod tests {
 
     #[test]
     fn stopped_live_arp_ticks_without_advancing_playhead() {
+        let _guard = runtime_test_guard();
         let mut app = App::new();
         app.project.clear_all_track_content();
         app.project.tracks[0].routing.input_port =
@@ -1188,7 +1216,7 @@ mod tests {
                 break sent;
             }
             assert!(
-                started_at.elapsed() < Duration::from_secs(1),
+                started_at.elapsed() < runtime_test_timeout(),
                 "expected stopped live arp runtime to emit a note within 1s, got {:?}",
                 sent
             );

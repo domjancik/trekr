@@ -13,7 +13,7 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use super::super::note_runtime::{
@@ -162,6 +162,7 @@ pub(crate) struct MidiRuntime {
     input_sender: Sender<MidiInputEvent>,
     snapshot: Arc<Mutex<MidiRuntimeUiSnapshot>>,
     active: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
 impl MidiRuntime {
     pub(crate) fn new(midi_output: MidiOutputRuntime) -> Self {
@@ -172,7 +173,7 @@ impl MidiRuntime {
         let active = Arc::new(AtomicBool::new(true));
         let thread_snapshot = snapshot.clone();
         let thread_active = active.clone();
-        thread::Builder::new()
+        let thread = thread::Builder::new()
             .name("trekr-midi-runtime".to_string())
             .spawn(move || {
                 MidiRuntimeEngine::new(
@@ -192,6 +193,7 @@ impl MidiRuntime {
             input_sender,
             snapshot,
             active,
+            thread: Some(thread),
         }
     }
 
@@ -225,6 +227,9 @@ impl MidiRuntime {
 impl Drop for MidiRuntime {
     fn drop(&mut self) {
         let _ = self.sender.send(MidiRuntimeCommand::Shutdown);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -282,6 +287,9 @@ impl MidiRuntimeEngine {
 
     fn run(mut self) {
         while self.active.load(AtomicOrdering::Relaxed) {
+            if self.drain_pending_commands() {
+                break;
+            }
             while let Ok(event) = self.output_events.try_recv() {
                 self.metrics.observe_output(&event);
             }
@@ -304,19 +312,45 @@ impl MidiRuntimeEngine {
                 .commands
                 .recv_timeout(timeout.min(Duration::from_millis(IDLE_WAKE_INTERVAL_MS)))
             {
-                Ok(MidiRuntimeCommand::SyncState(state)) => self.sync_state(state),
-                #[cfg(test)]
-                Ok(MidiRuntimeCommand::Flush(sender)) => {
-                    while let Ok(event) = self.output_events.try_recv() {
-                        self.metrics.observe_output(&event);
+                Ok(command) => {
+                    if self.handle_command(command) {
+                        break;
                     }
-                    let _ = sender.send(());
                 }
-                Ok(MidiRuntimeCommand::Shutdown) => break,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
+    }
+
+    fn drain_pending_commands(&mut self) -> bool {
+        while let Ok(command) = self.commands.try_recv() {
+            if self.handle_command(command) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn handle_command(&mut self, command: MidiRuntimeCommand) -> bool {
+        match command {
+            MidiRuntimeCommand::SyncState(state) => self.sync_state(state),
+            #[cfg(test)]
+            MidiRuntimeCommand::Flush(sender) => {
+                while let Ok(event) = self.input_events.try_recv() {
+                    self.handle_input_event(event);
+                }
+                let now = Instant::now();
+                self.advance_clock(now);
+                self.dispatch_due_events(now);
+                while let Ok(event) = self.output_events.try_recv() {
+                    self.metrics.observe_output(&event);
+                }
+                let _ = sender.send(());
+            }
+            MidiRuntimeCommand::Shutdown => return true,
+        }
+        false
     }
 
     fn sync_state(&mut self, sync: MidiRuntimeStateSync) {

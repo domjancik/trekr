@@ -2517,6 +2517,7 @@ impl App {
     pub(crate) fn inject_midi_input_event(&mut self, event: MidiInputEvent) {
         self.midi_runtime_dirty = true;
         self.sync_midi_runtime_state_if_needed();
+        self.wait_for_midi_runtime();
         let _ = self.midi_runtime.input_sender().send(event.clone());
         self.handle_midi_input_event(event);
         self.wait_for_midi_runtime();
