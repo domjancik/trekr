@@ -467,13 +467,17 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
         assert!(app.midi_output.sent_messages().is_empty());
 
@@ -483,10 +487,14 @@ mod tests {
             vec![("Out A".to_string(), 1, 60, Some(120))]
         );
 
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 60 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         app.dispatch_live_arp_events(240, 480);
@@ -515,6 +523,7 @@ mod tests {
             effect: MidiFx::Duration { ticks: 240 },
         });
         app.live_fx_ticks = 960;
+        app.force_sync_midi_runtime();
 
         let input_port = app.project.tracks[0]
             .routing
@@ -522,13 +531,17 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(
@@ -598,18 +611,26 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 60 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         let sent = app.midi_output.sent_messages();
@@ -660,18 +681,26 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 60 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         let sent = app.midi_output.sent_messages();
@@ -744,20 +773,28 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
         app.transport_ticks = 960;
         app.playhead_ticks = 960;
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 60 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
         app.apply_action(AppAction::ToggleRecording);
 
@@ -853,21 +890,29 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 64,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         app.dispatch_live_arp_events(0, 480);
@@ -1041,31 +1086,51 @@ mod tests {
             .as_named_port()
             .cloned()
             .unwrap();
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 64,
                 velocity: 100,
             },
-        });
 
-        app.advance_playhead(Duration::from_millis(250));
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
 
         assert_eq!(app.transport_ticks, 0);
         assert_eq!(app.playhead_ticks, 0);
-        assert!(app.live_fx_ticks > 0);
-        let sent = app.midi_output.sent_messages();
-        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
-            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        let started_at = std::time::Instant::now();
+        let sent = loop {
+            app.wait_for_midi_runtime();
+            let sent = app.midi_output.sent_messages();
+            if sent.iter().any(|(port, channel, _pitch, velocity)| {
+                port == "Out A" && *channel == 1 && velocity.is_some()
+            }) {
+                break sent;
+            }
+            assert!(
+                started_at.elapsed() < Duration::from_secs(1),
+                "expected stopped live arp runtime to emit a note within 1s, got {:?}",
+                sent
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert!(sent.iter().any(|(port, channel, _pitch, velocity)| {
+            port == "Out A" && *channel == 1 && velocity.is_some()
         }));
     }
 }

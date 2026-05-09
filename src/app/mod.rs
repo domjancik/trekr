@@ -2505,6 +2505,28 @@ impl App {
         self.mark_midi_runtime_dirty();
         control
     }
+
+    #[cfg(test)]
+    pub(crate) fn wait_for_midi_runtime(&mut self) {
+        self.midi_runtime.wait_until_idle();
+        self.update_timing_from_runtime();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_midi_input_event(&mut self, event: MidiInputEvent) {
+        self.midi_runtime_dirty = true;
+        self.sync_midi_runtime_state_if_needed();
+        let _ = self.midi_runtime.input_sender().send(event.clone());
+        self.handle_midi_input_event(event);
+        self.wait_for_midi_runtime();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn force_sync_midi_runtime(&mut self) {
+        self.midi_runtime_dirty = true;
+        self.sync_midi_runtime_state_if_needed();
+        self.wait_for_midi_runtime();
+    }
 }
 
 fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (u32, u32) {
@@ -2660,6 +2682,10 @@ mod tests {
                 pitch: 36,
                 velocity: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(app.note_additive_select_held);
@@ -2669,6 +2695,10 @@ mod tests {
             port: MidiPortRef::new("Port A"),
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 36 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(!app.note_additive_select_held);
@@ -2937,6 +2967,10 @@ mod tests {
                 pitch: 64,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         app.transport_ticks = 1_920;
@@ -2945,6 +2979,10 @@ mod tests {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 64 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
         app.apply_action(AppAction::ToggleRecording);
 
@@ -3100,6 +3138,10 @@ mod tests {
                 pitch: 64,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(app.midi_output.sent_messages().is_empty());

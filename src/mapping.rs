@@ -1218,6 +1218,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
 
         assert_eq!(
@@ -1248,6 +1252,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
 
         assert_eq!(
@@ -1269,6 +1277,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
         let cases = [
             ("Previous Page Item", AppAction::SelectPreviousPageItem),
@@ -1310,6 +1322,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
         let cases = [
             ("Tempo Down", AppAction::DecreaseTempo),

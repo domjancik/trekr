@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(dead_code, unused_imports))]
-
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, playback_timing_lookback_ticks,
     process_live_chain_event, process_live_chain_tick, reset_live_fx_timing, transform_notes,
@@ -15,7 +13,6 @@ use std::collections::{BinaryHeap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-#[cfg(not(test))]
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -160,20 +157,12 @@ impl RuntimeMetrics {
     }
 }
 
-#[cfg(not(test))]
 pub(crate) struct MidiRuntime {
     sender: Sender<MidiRuntimeCommand>,
     input_sender: Sender<MidiInputEvent>,
     snapshot: Arc<Mutex<MidiRuntimeUiSnapshot>>,
     active: Arc<AtomicBool>,
 }
-
-#[cfg(test)]
-pub(crate) struct MidiRuntime {
-    snapshot: Arc<Mutex<MidiRuntimeUiSnapshot>>,
-}
-
-#[cfg(not(test))]
 impl MidiRuntime {
     pub(crate) fn new(midi_output: MidiOutputRuntime) -> Self {
         let (sender, receiver) = mpsc::channel();
@@ -224,36 +213,15 @@ impl MidiRuntime {
             .map(|snapshot| *snapshot)
             .unwrap_or_default()
     }
-}
 
-#[cfg(test)]
-impl MidiRuntime {
-    pub(crate) fn new(_midi_output: MidiOutputRuntime) -> Self {
-        Self {
-            snapshot: Arc::new(Mutex::new(MidiRuntimeUiSnapshot::default())),
-        }
-    }
-
-    pub(crate) fn is_enabled(&self) -> bool {
-        false
-    }
-
-    pub(crate) fn input_sender(&self) -> Sender<MidiInputEvent> {
-        let (sender, _receiver) = mpsc::channel();
-        sender
-    }
-
-    pub(crate) fn sync_state(&self, _state: MidiRuntimeStateSync) {}
-
-    pub(crate) fn snapshot(&self) -> MidiRuntimeUiSnapshot {
-        self.snapshot
-            .lock()
-            .map(|snapshot| *snapshot)
-            .unwrap_or_default()
+    #[cfg(test)]
+    pub(crate) fn wait_until_idle(&self) {
+        let (sender, receiver) = mpsc::channel();
+        let _ = self.sender.send(MidiRuntimeCommand::Flush(sender));
+        let _ = receiver.recv_timeout(Duration::from_secs(1));
     }
 }
 
-#[cfg(not(test))]
 impl Drop for MidiRuntime {
     fn drop(&mut self) {
         let _ = self.sender.send(MidiRuntimeCommand::Shutdown);
@@ -262,6 +230,8 @@ impl Drop for MidiRuntime {
 
 enum MidiRuntimeCommand {
     SyncState(MidiRuntimeStateSync),
+    #[cfg(test)]
+    Flush(Sender<()>),
     Shutdown,
 }
 
@@ -335,6 +305,13 @@ impl MidiRuntimeEngine {
                 .recv_timeout(timeout.min(Duration::from_millis(IDLE_WAKE_INTERVAL_MS)))
             {
                 Ok(MidiRuntimeCommand::SyncState(state)) => self.sync_state(state),
+                #[cfg(test)]
+                Ok(MidiRuntimeCommand::Flush(sender)) => {
+                    while let Ok(event) = self.output_events.try_recv() {
+                        self.metrics.observe_output(&event);
+                    }
+                    let _ = sender.send(());
+                }
                 Ok(MidiRuntimeCommand::Shutdown) => break,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,

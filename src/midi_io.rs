@@ -2,12 +2,8 @@ use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnec
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
-#[cfg(not(test))]
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
-#[cfg(test)]
-use std::sync::{Arc, Mutex};
-#[cfg(not(test))]
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -46,24 +42,14 @@ pub struct MidiInputEvent {
     pub port: MidiPortRef,
     pub channel: u8,
     pub message: MidiInputMessage,
-    #[cfg(not(test))]
     pub received_at: Instant,
-    #[cfg(not(test))]
     pub backend_timestamp_micros: Option<u64>,
-    #[cfg(not(test))]
     pub sequence: u64,
 }
 
 impl MidiInputEvent {
     pub fn received_at(&self) -> Instant {
-        #[cfg(not(test))]
-        {
-            self.received_at
-        }
-        #[cfg(test)]
-        {
-            Instant::now()
-        }
+        self.received_at
     }
 }
 
@@ -222,7 +208,6 @@ pub struct MidiInputRuntime {
     sender: Sender<MidiInputEvent>,
     receiver: Receiver<MidiInputEvent>,
     connections: HashMap<String, MidiInputConnection<()>>,
-    #[cfg(not(test))]
     fanout_sender: Arc<Mutex<Option<Sender<MidiInputEvent>>>>,
     sequence: Arc<AtomicU64>,
     #[cfg(test)]
@@ -294,7 +279,6 @@ impl Default for MidiInputRuntime {
             sender,
             receiver,
             connections: HashMap::new(),
-            #[cfg(not(test))]
             fanout_sender: Arc::new(Mutex::new(None)),
             sequence: Arc::new(AtomicU64::new(1)),
             #[cfg(test)]
@@ -499,15 +483,11 @@ impl MidiOutputRuntime {
 }
 
 impl MidiInputRuntime {
-    #[cfg(not(test))]
     pub fn set_fanout_sender(&mut self, sender: Option<Sender<MidiInputEvent>>) {
         if let Ok(mut target) = self.fanout_sender.lock() {
             *target = sender;
         }
     }
-
-    #[cfg(test)]
-    pub fn set_fanout_sender(&mut self, _sender: Option<Sender<MidiInputEvent>>) {}
 
     pub fn sync_ports(&mut self, ports: &[MidiPortRef]) {
         let wanted: Vec<String> = ports.iter().map(|port| port.name.clone()).collect();
@@ -749,11 +729,8 @@ fn parse_input_event(
         port: MidiPortRef::new(port_name),
         channel,
         message,
-        #[cfg(not(test))]
         received_at: _received_at,
-        #[cfg(not(test))]
         backend_timestamp_micros: _backend_timestamp_micros,
-        #[cfg(not(test))]
         sequence: _sequence.fetch_add(1, Ordering::Relaxed),
     })
 }

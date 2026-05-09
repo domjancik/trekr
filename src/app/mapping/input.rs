@@ -74,6 +74,10 @@ mod tests {
                 pitch: 60,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
         assert_eq!(midi_learn_label(&note), "Note C4 Ch2");
 
@@ -86,6 +90,10 @@ mod tests {
                 controller: 74,
                 value: 64,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
         assert_eq!(midi_learn_label(&cc), "CC74 Ch4");
     }
@@ -106,6 +114,10 @@ mod tests {
                 name: "Port".to_string(),
             },
             message: MidiInputMessage::NoteOff { pitch: 60 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         };
         assert!(midi_mapping_matches_event(&entry, &note_off));
 

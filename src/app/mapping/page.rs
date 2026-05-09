@@ -1248,6 +1248,10 @@ mod tests {
                 controller: 24,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.mappings[0].source_label, "CC24 Ch3");
@@ -1295,6 +1299,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(app.project.tracks[1].state.armed);
@@ -1321,6 +1329,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(!app.project.tracks[1].state.armed);
@@ -1347,6 +1359,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.project.active_track_index, 2);
