@@ -7,6 +7,7 @@ This document formalizes a single substantial implementation pass to move Trekr 
 The goal of this pass is to materially improve:
 
 - live MIDI passthrough latency stability
+- live recording capture fidelity under load
 - scheduled playback timing precision
 - live timing FX stability
 - runtime observability for delay and jitter attribution
@@ -36,6 +37,7 @@ This architecture adds jitter and can accumulate drift under load, especially on
 ### Functional goals
 
 - Move live passthrough off the frame-polled app loop.
+- Move the live recording hot path off the UI thread so captured note timing stays close to the runtime passthrough stream.
 - Move live timing FX advancement off the frame-polled app loop.
 - Move playback dispatch to absolute due-time scheduling rather than frame-window emission.
 - Preserve current routing, monitor, passthrough, recording, and clone semantics as closely as possible.
@@ -75,6 +77,7 @@ This pass should not attempt to solve unrelated or later-stage concerns, includi
 ### Functional
 
 - Live passthrough no longer depends on `poll_midi_input()` frame cadence for its hot path.
+- Live recording no longer depends on app-thread `handle_midi_input_event()` mutation for per-note capture.
 - Live timing FX no longer depend on `advance_playhead()` or stopped-frame advancement for emission timing.
 - Playback note output is dispatched against explicit deadlines rather than “all notes due this frame.”
 - Existing routing and monitor semantics remain behaviorally compatible.
@@ -145,6 +148,16 @@ The app thread still owns too much timing-sensitive work:
 - record capture decisions
 - passthrough output generation
 
+### 4a. Recording capture is still app-bound
+
+Even after the runtime passthrough improvements, `active_take` mutation and `record_note_on` /
+`record_note_off` still happen on the app thread. This means active recording can still:
+
+- add per-note UI-thread work under dense input
+- trigger frequent runtime resyncs because project state changes on every note
+- diverge from the runtime passthrough stream under load
+- reduce UI frame rate while simultaneously increasing MIDI jitter
+
 ### 5. Missing callback timestamp preservation
 
 The current input callback does not preserve the callback timestamp in a way that Trekr can use for end-to-end latency measurement.
@@ -189,6 +202,7 @@ Responsible for:
 - final message send calls
 
 The UI should configure the engine, not act as the engine’s clock.
+It should also observe recording state rather than perform per-note recording mutation.
 
 ## Proposed single-pass design
 
@@ -282,7 +296,27 @@ This should preserve current semantics for:
 
 UI-facing MIDI actions such as learn and mapping capture may remain on the app side or be duplicated to a lighter app-control queue, but they must not block the live output path.
 
-## F. Move live timing FX advancement into the engine
+## F. Move live recording capture into the engine fast path
+
+Recording must become a first-class part of the runtime design, not an app-thread afterthought.
+
+The engine should own:
+
+- live track matching for armed and actively recording tracks
+- pre-input-fx vs post-input-fx record stream selection
+- per-note `note_on` / `note_off` capture into runtime-owned take state
+- timing alignment between captured notes and the runtime passthrough stream
+
+The app thread should remain responsible only for:
+
+- toggling record start/stop state
+- previewing active-take state in the UI
+- committing, discarding, or materializing completed takes into project data
+
+This keeps recorded note timing as close as possible to runtime-owned passthrough and avoids
+per-note project mutation on the UI thread.
+
+## G. Move live timing FX advancement into the engine
 
 The engine must own a monotonic timing source for live timing FX so they are no longer advanced by app frames.
 
@@ -299,7 +333,7 @@ The engine should derive live musical tick progression from:
 - current tempo and PPQN
 - transport playing state and linkage state
 
-## G. Move scheduled playback dispatch into engine-side due-time scheduling
+## H. Move scheduled playback dispatch into engine-side due-time scheduling
 
 Scheduled playback should no longer emit directly from frame-window processing.
 
@@ -313,7 +347,7 @@ A practical one-pass design is:
 
 This keeps the project-model traversal largely app-owned while moving the timing-critical dispatch into the engine.
 
-## H. Use explicit output priorities
+## I. Use explicit output priorities
 
 The engine should prioritize, at minimum:
 
@@ -326,7 +360,7 @@ The engine should prioritize, at minimum:
 
 This prevents live play from sitting behind playback bursts or deferred events.
 
-## I. Keep the output worker simple in the first pass
+## J. Keep the output worker simple in the first pass
 
 The output worker does not need to become a second scheduler in this pass.
 
@@ -442,6 +476,7 @@ Expected additions:
 
 - remove ownership of latency-critical live musical path
 - keep UI/mapping and control-oriented responsibilities
+- remove per-note recording mutation once runtime-owned take capture lands
 
 ### `src/app/mod.rs`
 
@@ -450,11 +485,13 @@ Expected additions:
 - publish transport updates
 - publish playback schedule updates
 - stop using the frame loop as the authoritative live MIDI clock
+- restrict recording responsibilities to session control, preview integration, and commit/cancel orchestration
 
 ### `src/app/note_runtime.rs`
 
 - refactor direct-send playback logic into upcoming playback plan generation
 - stop sending playback MIDI directly from the app loop
+- add regression coverage for runtime-owned passthrough-plus-recording behavior and recording-time contention scenarios
 
 ### `README.md`
 
@@ -540,6 +577,9 @@ Add targeted tests for:
 - engine snapshot update handling
 - due-time queue ordering
 - deadline miss accounting
+- active recording preserving live passthrough output across repeated note bursts
+- post-input-fx recording matching the transformed live output stream
+- deterministic runtime flush/sync behavior while recording is active
 
 ## Manual validation
 
@@ -549,7 +589,8 @@ Use the dedicated loopback and trigger-based harness to compare:
 2. Trekr live passthrough on a minimal page
 3. Trekr live passthrough on the Timeline page
 4. Trekr scheduled playback under load
-5. logging enabled versus disabled
+5. Trekr live recording with passthrough enabled
+6. logging enabled versus disabled
 
 Key outputs to compare:
 
@@ -557,6 +598,7 @@ Key outputs to compare:
 - worst-case spikes
 - drift over time
 - deadline miss counts
+- queue depth and callback→output behavior while recording
 
 ## Acceptance thresholds
 

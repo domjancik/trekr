@@ -920,6 +920,234 @@ mod tests {
     }
 
     #[test]
+    fn active_recording_preserves_live_passthrough_across_multiple_notes() {
+        let _guard = runtime_test_guard();
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[0].state.armed = true;
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].midi_fx.monitor_input_fx = true;
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.tracks[0].active_take.is_some());
+
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
+
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        let _sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+            })
+        });
+
+        app.transport_ticks = 120;
+        app.playhead_ticks = 120;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        app.transport_ticks = 240;
+        app.playhead_ticks = 240;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 96,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter()
+                .filter(|(port, channel, _pitch, _velocity)| port == "Out A" && *channel == 1)
+                .count()
+                >= 3
+        });
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 64 && *velocity == Some(96)
+        }));
+
+        app.transport_ticks = 360;
+        app.playhead_ticks = 360;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter()
+                .filter(|(port, channel, _pitch, _velocity)| port == "Out A" && *channel == 1)
+                .count()
+                >= 4
+        });
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_some()
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_none()
+                })
+                .count(),
+            1
+        );
+
+        app.transport_ticks = 480;
+        app.playhead_ticks = 480;
+        app.apply_action(AppAction::ToggleRecording);
+
+        let target = &app.project.tracks[0];
+        assert!(target.active_take.is_none());
+        assert!(target.midi_notes.iter().any(|note| note.pitch == 60));
+        assert!(target.midi_notes.iter().any(|note| note.pitch == 64));
+    }
+
+    #[test]
+    fn post_input_fx_recording_matches_live_passthrough_output() {
+        let _guard = runtime_test_guard();
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.select_track(0);
+        app.project.tracks[0].state.armed = true;
+        app.project.tracks[0].state.passthrough = true;
+        app.project.tracks[0].midi_fx.monitor_input_fx = true;
+        app.project.tracks[0].midi_fx.record_input_fx_mode =
+            crate::midi_fx::RecordInputFxMode::PostInputFx;
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0].midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        app.project.tracks[0].midi_fx.input_fx[0] = Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::Transpose { semitones: 12 },
+        });
+
+        app.apply_action(AppAction::ToggleRecording);
+        assert!(app.project.tracks[0].active_take.is_some());
+
+        let input_port = app.project.tracks[0]
+            .routing
+            .input_port
+            .as_named_port()
+            .cloned()
+            .unwrap();
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 60,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        app.transport_ticks = 120;
+        app.playhead_ticks = 120;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 60 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        let sent = wait_for_sent_messages(&mut app, runtime_test_timeout(), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 72 && velocity.is_some()
+            }) && sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 72 && velocity.is_none()
+            })
+        });
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 72 && velocity.is_some()
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 72 && velocity.is_none()
+                })
+                .count(),
+            1
+        );
+
+        app.transport_ticks = 240;
+        app.playhead_ticks = 240;
+        app.apply_action(AppAction::ToggleRecording);
+
+        let target = &app.project.tracks[0];
+        assert!(target.midi_notes.iter().any(|note| note.pitch == 72));
+        assert!(
+            !target.midi_notes.iter().any(|note| note.pitch == 60),
+            "expected committed recording to match post-input-fx stream"
+        );
+    }
+
+    #[test]
     fn track_clone_follows_source_track_loop_phase() {
         let mut app = App::new();
         app.project.clear_all_track_content();
