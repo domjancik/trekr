@@ -2067,7 +2067,7 @@ impl App {
         };
         let runtime_metrics = self.midi_runtime.metrics_snapshot();
         eprintln!(
-            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} recording={} playing={}",
+            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} playback_schedule_late_count={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_underfed_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} recording={} playing={}",
             self.midi_runtime_full_sync_count,
             self.midi_runtime_timing_sync_count,
             self.midi_runtime_sync_skipped_count,
@@ -2092,6 +2092,12 @@ impl App {
             runtime_metrics.page_switch_due_miss_count,
             runtime_metrics.page_switch_callback_to_output_avg_ms,
             runtime_metrics.page_switch_callback_to_output_max_ms,
+            runtime_metrics.playback_schedule_late_count,
+            runtime_metrics.playback_schedule_late_avg_ms,
+            runtime_metrics.playback_schedule_late_max_ms,
+            runtime_metrics.playback_underfed_count,
+            runtime_metrics.playback_underfed_avg_ticks,
+            runtime_metrics.playback_underfed_max_ticks,
             self.project.transport.recording,
             self.project.transport.playing
         );

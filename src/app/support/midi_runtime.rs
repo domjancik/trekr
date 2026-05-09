@@ -84,6 +84,12 @@ struct RuntimeMetrics {
     playback_send_count: AtomicU64,
     live_send_count: AtomicU64,
     queue_depth_max: AtomicU64,
+    playback_schedule_late_total_ns: AtomicU64,
+    playback_schedule_late_max_ns: AtomicU64,
+    playback_schedule_late_count: AtomicU64,
+    playback_underfed_total_ticks: AtomicU64,
+    playback_underfed_max_ticks: AtomicU64,
+    playback_underfed_count: AtomicU64,
     page_switch_count: AtomicU64,
     page_switch_output_count: AtomicU64,
     page_switch_due_miss_count: AtomicU64,
@@ -106,6 +112,12 @@ pub(crate) struct MidiRuntimeMetricsSnapshot {
     pub due_miss_max_ms: f64,
     pub due_miss_count: u64,
     pub queue_depth_max: u64,
+    pub playback_schedule_late_avg_ms: f64,
+    pub playback_schedule_late_max_ms: f64,
+    pub playback_schedule_late_count: u64,
+    pub playback_underfed_avg_ticks: f64,
+    pub playback_underfed_max_ticks: u64,
+    pub playback_underfed_count: u64,
     pub page_switch_count: u64,
     pub page_switch_output_count: u64,
     pub page_switch_due_miss_count: u64,
@@ -180,6 +192,23 @@ impl RuntimeMetrics {
         atomic_update_max(&self.queue_depth_max, depth as u64);
     }
 
+    fn observe_playback_schedule_late(&self, late: Duration) {
+        let nanos = saturating_nanos_u64(late);
+        self.playback_schedule_late_total_ns
+            .fetch_add(nanos, AtomicOrdering::Relaxed);
+        self.playback_schedule_late_count
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        atomic_update_max(&self.playback_schedule_late_max_ns, nanos);
+    }
+
+    fn observe_playback_underfed(&self, behind_ticks: u64) {
+        self.playback_underfed_total_ticks
+            .fetch_add(behind_ticks, AtomicOrdering::Relaxed);
+        self.playback_underfed_count
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        atomic_update_max(&self.playback_underfed_max_ticks, behind_ticks);
+    }
+
     fn note_page_switch(&self, page: AppPage, switched_at: Instant) {
         self.page_switch_count.fetch_add(1, AtomicOrdering::Relaxed);
         self.page_switch_page
@@ -191,6 +220,10 @@ impl RuntimeMetrics {
         let runtime_inputs = self.runtime_input_count.load(AtomicOrdering::Relaxed);
         let callback_to_output_count = self.callback_to_output_count.load(AtomicOrdering::Relaxed);
         let due_miss_count = self.due_miss_count.load(AtomicOrdering::Relaxed);
+        let playback_schedule_late_count = self
+            .playback_schedule_late_count
+            .load(AtomicOrdering::Relaxed);
+        let playback_underfed_count = self.playback_underfed_count.load(AtomicOrdering::Relaxed);
         let page_switch_output_count = self.page_switch_output_count.load(AtomicOrdering::Relaxed);
         let last_page = decode_page(self.page_switch_page.load(AtomicOrdering::Relaxed));
         MidiRuntimeMetricsSnapshot {
@@ -222,6 +255,25 @@ impl RuntimeMetrics {
             due_miss_max_ms: nanos_to_ms(self.due_miss_max_ns.load(AtomicOrdering::Relaxed)),
             due_miss_count,
             queue_depth_max: self.queue_depth_max.load(AtomicOrdering::Relaxed),
+            playback_schedule_late_avg_ms: avg_ms(
+                self.playback_schedule_late_total_ns
+                    .load(AtomicOrdering::Relaxed),
+                playback_schedule_late_count,
+            ),
+            playback_schedule_late_max_ms: nanos_to_ms(
+                self.playback_schedule_late_max_ns
+                    .load(AtomicOrdering::Relaxed),
+            ),
+            playback_schedule_late_count,
+            playback_underfed_avg_ticks: avg_value(
+                self.playback_underfed_total_ticks
+                    .load(AtomicOrdering::Relaxed),
+                playback_underfed_count,
+            ),
+            playback_underfed_max_ticks: self
+                .playback_underfed_max_ticks
+                .load(AtomicOrdering::Relaxed),
+            playback_underfed_count,
             page_switch_count: self.page_switch_count.load(AtomicOrdering::Relaxed),
             page_switch_output_count,
             page_switch_due_miss_count: self
@@ -244,7 +296,7 @@ impl RuntimeMetrics {
         let snapshot = self.snapshot();
         let page = snapshot.last_page.map(|page| page.label()).unwrap_or("-");
         format!(
-            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={} page_switches={} page={} page_cb_to_output_avg_ms={:.3} page_cb_to_output_max_ms={:.3} page_due_miss_count={}",
+            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_schedule_late_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} playback_underfed_count={} page_switches={} page={} page_cb_to_output_avg_ms={:.3} page_cb_to_output_max_ms={:.3} page_due_miss_count={}",
             snapshot.runtime_input_count,
             snapshot.output_send_count,
             snapshot.live_send_count,
@@ -257,6 +309,12 @@ impl RuntimeMetrics {
             snapshot.due_miss_max_ms,
             snapshot.due_miss_count,
             snapshot.queue_depth_max,
+            snapshot.playback_schedule_late_avg_ms,
+            snapshot.playback_schedule_late_max_ms,
+            snapshot.playback_schedule_late_count,
+            snapshot.playback_underfed_avg_ticks,
+            snapshot.playback_underfed_max_ticks,
+            snapshot.playback_underfed_count,
             snapshot.page_switch_count,
             page,
             snapshot.page_switch_callback_to_output_avg_ms,
@@ -1029,6 +1087,13 @@ impl MidiRuntimeEngine {
             self.state = Some(state);
             return;
         }
+        if state.scheduled_until_ticks < state.transport_ticks {
+            self.metrics.observe_playback_underfed(
+                state
+                    .transport_ticks
+                    .saturating_sub(state.scheduled_until_ticks),
+            );
+        }
         let previous_ticks = state.scheduled_until_ticks.max(state.transport_ticks);
         let advanced_ticks = target_ticks.saturating_sub(previous_ticks);
         if advanced_ticks == 0 {
@@ -1047,6 +1112,10 @@ impl MidiRuntimeEngine {
             };
             for (event_ticks, note_on, pitch, velocity) in events {
                 let due_at = tick_due_at(&state, event_ticks, now);
+                if due_at <= now {
+                    self.metrics
+                        .observe_playback_schedule_late(now.saturating_duration_since(due_at));
+                }
                 if note_on {
                     let sequence = self.next_sequence();
                     self.scheduler.push(ScheduledMidiEvent::note_on(
@@ -1787,5 +1856,13 @@ fn avg_ms(total_nanos: u64, count: u64) -> f64 {
         0.0
     } else {
         nanos_to_ms(total_nanos / count.max(1))
+    }
+}
+
+fn avg_value(total: u64, count: u64) -> f64 {
+    if count == 0 {
+        0.0
+    } else {
+        total as f64 / count.max(1) as f64
     }
 }
