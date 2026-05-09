@@ -1068,10 +1068,14 @@ impl RuntimeState {
         self.input_fx_live_states = previous.input_fx_live_states;
         self.output_fx_live_states = previous.output_fx_live_states;
         for (track, previous_track) in self.project.tracks.iter_mut().zip(previous.project.tracks) {
-            track.active_take = merge_runtime_take_state(
-                track.active_take.as_ref(),
-                previous_track.active_take.as_ref(),
-            );
+            track.active_take = if self.project.transport.recording {
+                merge_runtime_take_state(
+                    track.active_take.as_ref(),
+                    previous_track.active_take.as_ref(),
+                )
+            } else {
+                track.active_take.clone()
+            };
         }
         self.scheduled_until_ticks = previous
             .scheduled_until_ticks

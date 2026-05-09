@@ -130,6 +130,12 @@ impl App {
         }
 
         self.project.transport.recording = false;
+        self.mark_midi_runtime_dirty();
+        self.sync_midi_runtime_state_if_needed();
+        if self.midi_runtime.is_enabled() {
+            let snapshot = self.midi_runtime.capture_snapshot();
+            self.merge_runtime_recording_takes(&snapshot);
+        }
         self.sync_active_track_recording_clip_scroll();
     }
 
@@ -1368,6 +1374,50 @@ mod tests {
 
         assert!(!app.project.transport.recording);
         assert!(!app.project.transport.playing);
+        assert!(!app.project.active_track().unwrap().regions.is_empty());
+        assert!(app.project.active_track().unwrap().active_take.is_none());
+    }
+
+    #[test]
+    fn stopping_recording_syncs_cleared_take_back_to_runtime() {
+        let mut app = App::new();
+        app.project.active_track_mut().unwrap().clear_content();
+        app.project.active_track_mut().unwrap().routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("Test Input"));
+
+        app.apply_action(AppAction::ToggleRecording);
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
+            .expect("test track should have explicit input port");
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        app.apply_action(AppAction::ToggleRecording);
+        app.update_timing_from_runtime();
+
+        assert!(!app.project.transport.recording);
+        assert!(app.project.active_track().unwrap().active_take.is_none());
         assert!(!app.project.active_track().unwrap().regions.is_empty());
     }
 
