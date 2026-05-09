@@ -85,7 +85,9 @@ use support::labels::{
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
 };
-use support::midi_runtime::{MidiRuntime, MidiRuntimeStateSync, MidiRuntimeUiSnapshot};
+use support::midi_runtime::{
+    MidiRuntime, MidiRuntimeStateSync, MidiRuntimeTimingSync, MidiRuntimeUiSnapshot,
+};
 use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
     displayed_track_fx_band_height, timeline_subcolumn_content_rect, timeline_subcolumn_label_rect,
@@ -143,13 +145,17 @@ pub struct App {
     output_fx_live_states: Vec<LiveMidiFxState>,
     undo_history: UndoHistory,
     midi_runtime_dirty: bool,
+    midi_runtime_timing_dirty: bool,
     last_runtime_snapshot: MidiRuntimeUiSnapshot,
     midi_runtime_diag_enabled: bool,
     last_midi_runtime_diag_at: Instant,
-    midi_runtime_sync_count: u64,
+    midi_runtime_full_sync_count: u64,
+    midi_runtime_timing_sync_count: u64,
     midi_runtime_sync_skipped_count: u64,
-    midi_runtime_sync_total_ns: u64,
-    midi_runtime_sync_max_ns: u64,
+    midi_runtime_full_sync_total_ns: u64,
+    midi_runtime_full_sync_max_ns: u64,
+    midi_runtime_timing_sync_total_ns: u64,
+    midi_runtime_timing_sync_max_ns: u64,
 }
 
 impl App {
@@ -262,15 +268,19 @@ impl App {
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             undo_history: UndoHistory::default(),
             midi_runtime_dirty: true,
+            midi_runtime_timing_dirty: true,
             last_runtime_snapshot: MidiRuntimeUiSnapshot::default(),
             midi_runtime_diag_enabled: std::env::var("TREKR_MIDI_RUNTIME_LOG")
                 .ok()
                 .is_some_and(|value| value != "0"),
             last_midi_runtime_diag_at: Instant::now(),
-            midi_runtime_sync_count: 0,
+            midi_runtime_full_sync_count: 0,
+            midi_runtime_timing_sync_count: 0,
             midi_runtime_sync_skipped_count: 0,
-            midi_runtime_sync_total_ns: 0,
-            midi_runtime_sync_max_ns: 0,
+            midi_runtime_full_sync_total_ns: 0,
+            midi_runtime_full_sync_max_ns: 0,
+            midi_runtime_timing_sync_total_ns: 0,
+            midi_runtime_timing_sync_max_ns: 0,
         }
     }
 
@@ -1604,10 +1614,11 @@ impl App {
             if previous_tempo != self.project.transport.tempo_bpm
                 || previous_playing != self.project.transport.playing
             {
-                self.mark_midi_runtime_dirty();
+                self.mark_midi_runtime_timing_dirty();
             }
         }
         self.sync_midi_runtime_state_if_needed();
+        self.sync_midi_runtime_timing_if_needed();
         self.update_timing_from_runtime();
         self.live_fx_ticks = self.transport_ticks.max(self.live_fx_ticks);
     }
@@ -1834,6 +1845,15 @@ impl App {
         }
     }
 
+    fn build_midi_runtime_timing_sync(&self) -> MidiRuntimeTimingSync {
+        MidiRuntimeTimingSync {
+            transport: self.project.transport,
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+            live_fx_ticks: self.live_fx_ticks,
+        }
+    }
+
     fn sync_midi_runtime_state_if_needed(&mut self) {
         if !self.midi_runtime.is_enabled() || !self.midi_runtime_dirty {
             return;
@@ -1842,15 +1862,41 @@ impl App {
         self.midi_runtime
             .sync_state(self.build_midi_runtime_state_sync());
         let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-        self.midi_runtime_sync_count = self.midi_runtime_sync_count.saturating_add(1);
-        self.midi_runtime_sync_total_ns =
-            self.midi_runtime_sync_total_ns.saturating_add(elapsed_ns);
-        self.midi_runtime_sync_max_ns = self.midi_runtime_sync_max_ns.max(elapsed_ns);
+        self.midi_runtime_full_sync_count = self.midi_runtime_full_sync_count.saturating_add(1);
+        self.midi_runtime_full_sync_total_ns = self
+            .midi_runtime_full_sync_total_ns
+            .saturating_add(elapsed_ns);
+        self.midi_runtime_full_sync_max_ns = self.midi_runtime_full_sync_max_ns.max(elapsed_ns);
         self.midi_runtime_dirty = false;
+        self.midi_runtime_timing_dirty = false;
+    }
+
+    fn sync_midi_runtime_timing_if_needed(&mut self) {
+        if !self.midi_runtime.is_enabled()
+            || !self.midi_runtime_timing_dirty
+            || self.midi_runtime_dirty
+        {
+            return;
+        }
+        let started_at = Instant::now();
+        self.midi_runtime
+            .sync_timing(self.build_midi_runtime_timing_sync());
+        let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.midi_runtime_timing_sync_count = self.midi_runtime_timing_sync_count.saturating_add(1);
+        self.midi_runtime_timing_sync_total_ns = self
+            .midi_runtime_timing_sync_total_ns
+            .saturating_add(elapsed_ns);
+        self.midi_runtime_timing_sync_max_ns = self.midi_runtime_timing_sync_max_ns.max(elapsed_ns);
+        self.midi_runtime_timing_dirty = false;
     }
 
     fn mark_midi_runtime_dirty(&mut self) {
         self.midi_runtime_dirty = true;
+        self.midi_runtime_timing_dirty = true;
+    }
+
+    fn mark_midi_runtime_timing_dirty(&mut self) {
+        self.midi_runtime_timing_dirty = true;
     }
 
     fn update_timing_from_runtime(&mut self) {
@@ -1871,18 +1917,29 @@ impl App {
             return;
         }
         self.last_midi_runtime_diag_at = Instant::now();
-        let avg_sync_ms = if self.midi_runtime_sync_count == 0 {
+        let avg_sync_ms = if self.midi_runtime_full_sync_count == 0 {
             0.0
         } else {
-            (self.midi_runtime_sync_total_ns / self.midi_runtime_sync_count) as f64 / 1_000_000.0
+            (self.midi_runtime_full_sync_total_ns / self.midi_runtime_full_sync_count) as f64
+                / 1_000_000.0
         };
-        let max_sync_ms = self.midi_runtime_sync_max_ns as f64 / 1_000_000.0;
+        let max_sync_ms = self.midi_runtime_full_sync_max_ns as f64 / 1_000_000.0;
+        let avg_timing_sync_ms = if self.midi_runtime_timing_sync_count == 0 {
+            0.0
+        } else {
+            (self.midi_runtime_timing_sync_total_ns / self.midi_runtime_timing_sync_count) as f64
+                / 1_000_000.0
+        };
+        let max_timing_sync_ms = self.midi_runtime_timing_sync_max_ns as f64 / 1_000_000.0;
         eprintln!(
-            "trekr midi app sync: syncs={} skipped_actions={} avg_sync_ms={:.3} max_sync_ms={:.3} recording={} playing={}",
-            self.midi_runtime_sync_count,
+            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} recording={} playing={}",
+            self.midi_runtime_full_sync_count,
+            self.midi_runtime_timing_sync_count,
             self.midi_runtime_sync_skipped_count,
             avg_sync_ms,
             max_sync_ms,
+            avg_timing_sync_ms,
+            max_timing_sync_ms,
             self.project.transport.recording,
             self.project.transport.playing
         );
@@ -1928,7 +1985,7 @@ impl App {
         self.preferred_default_input_name = Some(port.name.clone());
         self.midi_devices.set_selected_input(index);
         self.sync_midi_inputs();
-        self.midi_runtime_dirty = true;
+        self.mark_midi_runtime_dirty();
     }
 
     fn set_preferred_default_output_from_index(&mut self, index: usize) {
@@ -1937,7 +1994,7 @@ impl App {
         };
         self.preferred_default_output_name = Some(port.name.clone());
         self.midi_devices.set_selected_output(index);
-        self.midi_runtime_dirty = true;
+        self.mark_midi_runtime_dirty();
     }
 
     pub(super) fn default_input_port(&self) -> Option<&MidiPortRef> {
@@ -2020,7 +2077,7 @@ impl App {
             }
         }
         self.midi_input.sync_ports(&ports);
-        self.midi_runtime_dirty = true;
+        self.mark_midi_runtime_dirty();
     }
 
     fn ensure_fx_live_state_len(&mut self) {
@@ -2577,11 +2634,13 @@ impl App {
         }
         self.status_state.last_action = Some(LastActionStatus { action, source });
         let control = self.apply_action(action);
-        if action_affects_midi_runtime(action) {
-            self.mark_midi_runtime_dirty();
-        } else {
-            self.midi_runtime_sync_skipped_count =
-                self.midi_runtime_sync_skipped_count.saturating_add(1);
+        match action_midi_runtime_sync_kind(action) {
+            MidiRuntimeSyncKind::Full => self.mark_midi_runtime_dirty(),
+            MidiRuntimeSyncKind::TimingOnly => self.mark_midi_runtime_timing_dirty(),
+            MidiRuntimeSyncKind::None => {
+                self.midi_runtime_sync_skipped_count =
+                    self.midi_runtime_sync_skipped_count.saturating_add(1);
+            }
         }
         control
     }
@@ -2594,7 +2653,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn inject_midi_input_event(&mut self, event: MidiInputEvent) {
-        self.midi_runtime_dirty = true;
+        self.mark_midi_runtime_dirty();
         self.sync_midi_runtime_state_if_needed();
         self.wait_for_midi_runtime();
         let _ = self.midi_runtime.input_sender().send(event.clone());
@@ -2604,7 +2663,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn force_sync_midi_runtime(&mut self) {
-        self.midi_runtime_dirty = true;
+        self.mark_midi_runtime_dirty();
         self.sync_midi_runtime_state_if_needed();
         self.wait_for_midi_runtime();
     }
@@ -2645,44 +2704,61 @@ fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (
     }
 }
 
-fn action_affects_midi_runtime(action: AppAction) -> bool {
-    !matches!(
-        action,
+enum MidiRuntimeSyncKind {
+    None,
+    TimingOnly,
+    Full,
+}
+
+fn action_midi_runtime_sync_kind(action: AppAction) -> MidiRuntimeSyncKind {
+    match action {
         AppAction::Quit
-            | AppAction::UndoUi
-            | AppAction::RedoUi
-            | AppAction::ShowPage(_)
-            | AppAction::ShowNextPage
-            | AppAction::ShowPreviousPage
-            | AppAction::SelectPreviousPageItem
-            | AppAction::SelectNextPageItem
-            | AppAction::CancelCurrentMode
-            | AppAction::ToggleMappingsOverlay
-            | AppAction::ToggleDiscoverabilityOverlay
-            | AppAction::ToggleDirectMappingMode
-            | AppAction::ToggleMappingsWriteMode
-            | AppAction::AddMappingRow
-            | AppAction::RemoveSelectedMapping
-            | AppAction::SelectPreviousPageField
-            | AppAction::SelectNextPageField
-            | AppAction::ToggleFocusedTrackView
-            | AppAction::SelectNextTrack
-            | AppAction::SelectPreviousTrack
-            | AppAction::SelectTrack(_)
-            | AppAction::SelectNotesAtPlayhead
-            | AppAction::SelectNotesAtPlayheadAdd
-            | AppAction::DeselectTrackNotes
-            | AppAction::SelectNextNote
-            | AppAction::SelectPreviousNote
-            | AppAction::FocusFirstSelectedNote
-            | AppAction::FocusLastSelectedNote
-            | AppAction::ExtendNoteSelectionForward
-            | AppAction::ExtendNoteSelectionBackward
-            | AppAction::ExtendNoteSelectionBoth
-            | AppAction::ContractNoteSelection
-            | AppAction::BeginNoteAdditiveSelectionHold
-            | AppAction::EndNoteAdditiveSelectionHold
-    )
+        | AppAction::UndoUi
+        | AppAction::RedoUi
+        | AppAction::ShowPage(_)
+        | AppAction::ShowNextPage
+        | AppAction::ShowPreviousPage
+        | AppAction::SelectPreviousPageItem
+        | AppAction::SelectNextPageItem
+        | AppAction::CancelCurrentMode
+        | AppAction::ToggleMappingsOverlay
+        | AppAction::ToggleDiscoverabilityOverlay
+        | AppAction::ToggleDirectMappingMode
+        | AppAction::ToggleMappingsWriteMode
+        | AppAction::AddMappingRow
+        | AppAction::RemoveSelectedMapping
+        | AppAction::SelectPreviousPageField
+        | AppAction::SelectNextPageField
+        | AppAction::ToggleFocusedTrackView
+        | AppAction::SelectNextTrack
+        | AppAction::SelectPreviousTrack
+        | AppAction::SelectTrack(_)
+        | AppAction::SelectNotesAtPlayhead
+        | AppAction::SelectNotesAtPlayheadAdd
+        | AppAction::DeselectTrackNotes
+        | AppAction::SelectNextNote
+        | AppAction::SelectPreviousNote
+        | AppAction::FocusFirstSelectedNote
+        | AppAction::FocusLastSelectedNote
+        | AppAction::ExtendNoteSelectionForward
+        | AppAction::ExtendNoteSelectionBackward
+        | AppAction::ExtendNoteSelectionBoth
+        | AppAction::ContractNoteSelection
+        | AppAction::BeginNoteAdditiveSelectionHold
+        | AppAction::EndNoteAdditiveSelectionHold => MidiRuntimeSyncKind::None,
+        AppAction::TogglePlayback
+        | AppAction::ToggleRecording
+        | AppAction::StartRecording
+        | AppAction::StopRecording
+        | AppAction::DecreaseTempo
+        | AppAction::IncreaseTempo
+        | AppAction::HalfTempo
+        | AppAction::DoubleTempo
+        | AppAction::TapTempo
+        | AppAction::ToggleLinkEnabled
+        | AppAction::ToggleLinkStartStopSync => MidiRuntimeSyncKind::TimingOnly,
+        _ => MidiRuntimeSyncKind::Full,
+    }
 }
 
 fn parse_kmsdrm_size_override() -> Option<(u32, u32)> {

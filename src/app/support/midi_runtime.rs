@@ -9,6 +9,7 @@ use crate::midi_io::{
 use crate::project::{MidiNote, Project, RecordContext, Track};
 use crate::routing::{MidiChannelFilter, TrackPortSelection};
 use crate::timeline::RecordingTake;
+use crate::transport::Transport;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
@@ -33,6 +34,14 @@ pub(crate) struct MidiRuntimeStateSync {
     pub live_fx_ticks: u64,
     pub default_input_port: Option<MidiPortRef>,
     pub default_output_port: Option<MidiPortRef>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MidiRuntimeTimingSync {
+    pub transport: Transport,
+    pub transport_ticks: u64,
+    pub playhead_ticks: u64,
+    pub live_fx_ticks: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +221,10 @@ impl MidiRuntime {
         let _ = self.sender.send(MidiRuntimeCommand::SyncState(state));
     }
 
+    pub(crate) fn sync_timing(&self, timing: MidiRuntimeTimingSync) {
+        let _ = self.sender.send(MidiRuntimeCommand::SyncTiming(timing));
+    }
+
     pub(crate) fn snapshot(&self) -> MidiRuntimeUiSnapshot {
         self.snapshot
             .lock()
@@ -246,6 +259,7 @@ impl Drop for MidiRuntime {
 
 enum MidiRuntimeCommand {
     SyncState(MidiRuntimeStateSync),
+    SyncTiming(MidiRuntimeTimingSync),
     CaptureSnapshot(Sender<MidiRuntimeUiSnapshot>),
     #[cfg(test)]
     Flush(Sender<()>),
@@ -347,6 +361,7 @@ impl MidiRuntimeEngine {
     fn handle_command(&mut self, command: MidiRuntimeCommand) -> bool {
         match command {
             MidiRuntimeCommand::SyncState(state) => self.sync_state(state),
+            MidiRuntimeCommand::SyncTiming(timing) => self.sync_timing(timing),
             MidiRuntimeCommand::CaptureSnapshot(sender) => {
                 while let Ok(event) = self.input_events.try_recv() {
                     self.handle_input_event(event);
@@ -407,6 +422,29 @@ impl MidiRuntimeEngine {
             self.scheduler.clear();
         }
         self.prewarm_outputs(&state);
+        self.state = Some(state);
+    }
+
+    fn sync_timing(&mut self, timing: MidiRuntimeTimingSync) {
+        let now = Instant::now();
+        let Some(mut state) = self.state.take() else {
+            return;
+        };
+        let previous_playing = state.project.transport.playing;
+        state.project.transport = timing.transport;
+        state.transport_ticks = timing.transport_ticks;
+        state.playhead_ticks = timing.playhead_ticks;
+        state.live_fx_ticks = timing.live_fx_ticks;
+        state.anchor_instant = now;
+        state.anchor_transport_ticks = timing.transport_ticks;
+        state.anchor_live_ticks = timing.live_fx_ticks;
+        if previous_playing && !state.project.transport.playing {
+            self.scheduler.clear();
+            self.sequence = self.sequence.saturating_add(1);
+            self.schedule_panic_for_all_tracks(&state, now);
+        } else if !previous_playing && state.project.transport.playing {
+            self.scheduler.clear();
+        }
         self.state = Some(state);
     }
 
