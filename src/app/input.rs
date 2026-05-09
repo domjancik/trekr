@@ -23,6 +23,8 @@ impl App {
             let _ = self.apply_action_with_source(action, ActionSource::Midi);
         }
 
+        let runtime_handles_live_output = self.midi_runtime.is_enabled();
+
         let matching_tracks: Vec<usize> = self
             .project
             .tracks
@@ -38,7 +40,6 @@ impl App {
             .map(|(index, _)| index)
             .collect();
 
-        let runtime_handles_live_output = self.midi_runtime.is_enabled();
         let mut runtime_dirty = false;
         for index in matching_tracks {
             let input_ticks = self
@@ -99,7 +100,11 @@ impl App {
                             }
                         }
                     }
-                    self.propagate_live_clone_events(index, &post_input_events);
+                    self.propagate_live_clone_events(
+                        index,
+                        &post_input_events,
+                        !runtime_handles_live_output,
+                    );
                     if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,
@@ -136,7 +141,11 @@ impl App {
                             }
                         }
                     }
-                    self.propagate_live_clone_events(index, &post_input_events);
+                    self.propagate_live_clone_events(
+                        index,
+                        &post_input_events,
+                        !runtime_handles_live_output,
+                    );
                     if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,

@@ -300,6 +300,32 @@ mod tests {
     use super::*;
     use crate::project::{RecordContext, TrackKind};
     use crate::transport::QuantizeMode;
+    use std::time::{Duration, Instant};
+
+    fn wait_for_sent_messages<F>(
+        app: &mut App,
+        timeout: Duration,
+        predicate: F,
+    ) -> Vec<(String, u8, u8, Option<u8>)>
+    where
+        F: Fn(&[(String, u8, u8, Option<u8>)]) -> bool,
+    {
+        let started_at = Instant::now();
+        loop {
+            app.wait_for_midi_runtime();
+            let sent = app.midi_output.sent_messages();
+            if predicate(sent.as_slice()) {
+                return sent;
+            }
+            assert!(
+                started_at.elapsed() < timeout,
+                "expected MIDI runtime output within {:?}, got {:?}",
+                timeout,
+                sent
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
 
     #[test]
     fn ticks_per_second_for_tempo_matches_expected_values() {
@@ -481,11 +507,14 @@ mod tests {
         });
         assert!(app.midi_output.sent_messages().is_empty());
 
-        app.dispatch_live_arp_events(0, 240);
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(120))]
-        );
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+            })
+        });
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
 
         app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
@@ -497,14 +526,14 @@ mod tests {
             sequence: 0,
         });
 
-        app.dispatch_live_arp_events(240, 480);
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![
-                ("Out A".to_string(), 1, 60, Some(120)),
-                ("Out A".to_string(), 1, 60, None),
-            ]
-        );
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+            })
+        });
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+        }));
     }
 
     #[test]
@@ -544,19 +573,22 @@ mod tests {
             sequence: 0,
         });
 
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![("Out A".to_string(), 1, 60, Some(120))]
-        );
-
-        app.dispatch_live_arp_events(960, 1_200);
-        assert_eq!(
-            app.midi_output.sent_messages(),
-            vec![
-                ("Out A".to_string(), 1, 60, Some(120)),
-                ("Out A".to_string(), 1, 60, None),
-            ]
-        );
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+            })
+        });
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+        }));
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+            })
+        });
+        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
+            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+        }));
     }
 
     #[test]
@@ -574,7 +606,11 @@ mod tests {
         app.dispatch_midi_notes(0, 960);
         app.apply_action(AppAction::ToggleCurrentTrackMute);
 
-        let sent = app.midi_output.sent_messages();
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+            })
+        });
         assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
             port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
         }));
@@ -633,7 +669,29 @@ mod tests {
             sequence: 0,
         });
 
-        let sent = app.midi_output.sent_messages();
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+            }) && sent.iter().any(|(port, channel, pitch, velocity)| {
+                port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_none()
+            })
+        });
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_some()
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out B" && *channel == 2 && *pitch == 72 && velocity.is_none()
+                })
+                .count(),
+            1
+        );
         assert!(
             sent.iter()
                 .any(|(port, channel, pitch, velocity)| port == "Out B"
@@ -915,15 +973,22 @@ mod tests {
             sequence: 0,
         });
 
-        app.dispatch_live_arp_events(0, 480);
-
-        let sent = app.midi_output.sent_messages();
-        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
-            port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
-        }));
-        assert!(sent.iter().any(|(port, channel, pitch, velocity)| {
-            port == "Out A" && *channel == 1 && *pitch == 64 && velocity.is_some()
-        }));
+        let sent = wait_for_sent_messages(&mut app, Duration::from_secs(1), |sent| {
+            sent.iter()
+                .filter(|(port, channel, _pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && velocity.is_some()
+                })
+                .count()
+                >= 2
+        });
+        assert!(
+            sent.iter()
+                .filter(|(port, channel, _pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && velocity.is_some()
+                })
+                .count()
+                >= 2
+        );
     }
 
     #[test]

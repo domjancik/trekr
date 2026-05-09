@@ -2030,6 +2030,7 @@ impl App {
         &mut self,
         source_track_index: usize,
         source_events: &[LiveMidiFxEvent],
+        emit_live_output: bool,
     ) {
         if source_events.is_empty() || !self.track_emits_clone_source(source_track_index) {
             return;
@@ -2122,7 +2123,7 @@ impl App {
                 }
             }
 
-            if target.monitor_input_fx {
+            if emit_live_output && target.monitor_input_fx {
                 self.send_live_monitor_events(
                     target.target_index,
                     &target.output_chain,
