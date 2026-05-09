@@ -219,12 +219,17 @@ impl App {
             track_events.into_iter().enumerate()
         {
             if let Some(track) = self.project.tracks.get_mut(track_index) {
+                let mut recorded = false;
                 for (event_ticks, note_on, pitch, velocity) in &record_events {
                     if *note_on {
                         track.record_note_on(*pitch, *velocity, *event_ticks);
                     } else {
                         track.record_note_off(*pitch, *event_ticks);
                     }
+                    recorded = true;
+                }
+                if recorded {
+                    self.mark_midi_runtime_dirty();
                 }
             }
 

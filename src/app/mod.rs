@@ -1857,8 +1857,7 @@ impl App {
             .iter_mut()
             .zip(snapshot.recording_takes.iter())
         {
-            track.active_take =
-                merge_recording_takes(track.active_take.as_ref(), active_take.as_ref());
+            track.active_take = active_take.clone();
         }
     }
 
@@ -2127,15 +2126,21 @@ impl App {
                 if track.active_take.is_some()
                     && target.record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
                 {
+                    let mut recorded = false;
                     for record_event in &post_input_events {
                         match *record_event {
                             LiveMidiFxEvent::NoteOn { pitch, velocity } => {
                                 track.record_note_on(pitch, velocity, input_ticks);
+                                recorded = true;
                             }
                             LiveMidiFxEvent::NoteOff { pitch } => {
                                 track.record_note_off(pitch, input_ticks);
+                                recorded = true;
                             }
                         }
+                    }
+                    if recorded {
+                        self.mark_midi_runtime_dirty();
                     }
                 }
             }
@@ -2273,15 +2278,21 @@ impl App {
                 if track.active_take.is_some()
                     && record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
                 {
+                    let mut recorded = false;
                     for (tick, event) in &input_events {
                         match *event {
                             LiveMidiFxEvent::NoteOn { pitch, velocity } => {
                                 track.record_note_on(pitch, velocity, *tick);
+                                recorded = true;
                             }
                             LiveMidiFxEvent::NoteOff { pitch } => {
                                 track.record_note_off(pitch, *tick);
+                                recorded = true;
                             }
                         }
+                    }
+                    if recorded {
+                        self.mark_midi_runtime_dirty();
                     }
                 }
             }
@@ -2545,33 +2556,6 @@ impl App {
         self.midi_runtime_dirty = true;
         self.sync_midi_runtime_state_if_needed();
         self.wait_for_midi_runtime();
-    }
-}
-
-fn merge_recording_takes(
-    current: Option<&crate::timeline::RecordingTake>,
-    runtime: Option<&crate::timeline::RecordingTake>,
-) -> Option<crate::timeline::RecordingTake> {
-    match (current, runtime) {
-        (None, None) => None,
-        (Some(current), None) => Some(current.clone()),
-        (None, Some(runtime)) => Some(runtime.clone()),
-        (Some(current), Some(runtime)) => {
-            let mut merged = current.clone();
-            merged.pressed_at_ticks = merged.pressed_at_ticks.min(runtime.pressed_at_ticks);
-            merged.released_at_ticks = runtime.released_at_ticks.or(merged.released_at_ticks);
-            for recorded_note in &runtime.recorded_notes {
-                if !merged.recorded_notes.contains(recorded_note) {
-                    merged.recorded_notes.push(*recorded_note);
-                }
-            }
-            for pending_note in &runtime.pending_notes {
-                if !merged.pending_notes.contains(pending_note) {
-                    merged.pending_notes.push(*pending_note);
-                }
-            }
-            Some(merged)
-        }
     }
 }
 
@@ -3037,6 +3021,105 @@ mod tests {
         assert!(active.active_take.is_none());
         assert!(!active.regions.is_empty());
         assert!(active.midi_notes.iter().any(|note| note.pitch == 64));
+    }
+
+    #[test]
+    fn runtime_recording_snapshot_clears_pending_note_after_note_off() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
+
+        app.apply_action(AppAction::ToggleRecording);
+
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
+            .expect("test track should have explicit input port");
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        assert_eq!(
+            app.project
+                .active_track()
+                .unwrap()
+                .active_take
+                .as_ref()
+                .map(|take| take.pending_notes.len()),
+            Some(1)
+        );
+
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        let take = app
+            .project
+            .active_track()
+            .unwrap()
+            .active_take
+            .as_ref()
+            .expect("active take should still exist while recording");
+        assert!(take.pending_notes.is_empty());
+        assert_eq!(take.recorded_notes.len(), 1);
+        assert_eq!(take.recorded_notes[0].pitch, 64);
+    }
+
+    #[test]
+    fn runtime_recording_snapshot_clears_active_take_after_stop() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
+
+        app.apply_action(AppAction::ToggleRecording);
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
+            .expect("test track should have explicit input port");
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        app.apply_action(AppAction::ToggleRecording);
+
+        assert!(!app.project.transport.recording);
+        assert!(app.project.active_track().unwrap().active_take.is_none());
     }
 
     #[test]

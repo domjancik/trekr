@@ -581,6 +581,7 @@ impl MidiRuntimeEngine {
         #[derive(Clone)]
         struct CloneTarget {
             target_index: usize,
+            record_mode: crate::midi_fx::RecordInputFxMode,
             monitor_input_fx: bool,
             output_port: Option<MidiPortRef>,
             output_channel: Option<u8>,
@@ -610,6 +611,7 @@ impl MidiRuntimeEngine {
             }
             let base = CloneTarget {
                 target_index,
+                record_mode: track.midi_fx.record_input_fx_mode,
                 monitor_input_fx: track.midi_fx.monitor_input_fx,
                 output_port: state
                     .resolve_output_port(&track.routing.output_port)
@@ -638,6 +640,23 @@ impl MidiRuntimeEngine {
             } else {
                 Vec::new()
             };
+            if let Some(track) = state.project.tracks.get_mut(target.target_index) {
+                if track.active_take.is_some()
+                    && target.record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
+                {
+                    for record_event in &post_input_events {
+                        match *record_event {
+                            LiveMidiFxEvent::NoteOn { pitch, velocity } => {
+                                track.record_note_on(pitch, velocity, current_ticks);
+                            }
+                            LiveMidiFxEvent::NoteOff { pitch } => {
+                                track.record_note_off(pitch, current_ticks);
+                            }
+                        }
+                    }
+                    state.refresh_recording_takes_snapshot();
+                }
+            }
             if target.monitor_input_fx {
                 self.send_live_monitor_events(
                     state,
@@ -1049,9 +1068,10 @@ impl RuntimeState {
         self.input_fx_live_states = previous.input_fx_live_states;
         self.output_fx_live_states = previous.output_fx_live_states;
         for (track, previous_track) in self.project.tracks.iter_mut().zip(previous.project.tracks) {
-            if track.active_take.is_some() && previous_track.active_take.is_some() {
-                track.active_take = previous_track.active_take;
-            }
+            track.active_take = merge_runtime_take_state(
+                track.active_take.as_ref(),
+                previous_track.active_take.as_ref(),
+            );
         }
         self.scheduled_until_ticks = previous
             .scheduled_until_ticks
@@ -1123,6 +1143,33 @@ impl RuntimeState {
         selection: &'a TrackPortSelection,
     ) -> Option<&'a MidiPortRef> {
         selection.resolve(self.default_output_port.as_ref())
+    }
+}
+
+fn merge_runtime_take_state(
+    synced: Option<&RecordingTake>,
+    previous_runtime: Option<&RecordingTake>,
+) -> Option<RecordingTake> {
+    match (synced, previous_runtime) {
+        (None, None) => None,
+        (Some(synced), None) => Some(synced.clone()),
+        (None, Some(previous_runtime)) => Some(previous_runtime.clone()),
+        (Some(synced), Some(previous_runtime)) => {
+            let mut merged = previous_runtime.clone();
+            merged.pressed_at_ticks = merged.pressed_at_ticks.min(synced.pressed_at_ticks);
+            merged.released_at_ticks = synced.released_at_ticks.or(merged.released_at_ticks);
+            for recorded_note in &synced.recorded_notes {
+                if !merged.recorded_notes.contains(recorded_note) {
+                    merged.recorded_notes.push(*recorded_note);
+                }
+            }
+            for pending_note in &synced.pending_notes {
+                if !merged.pending_notes.contains(pending_note) {
+                    merged.pending_notes.push(*pending_note);
+                }
+            }
+            Some(merged)
+        }
     }
 }
 
