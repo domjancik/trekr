@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Region {
@@ -156,6 +157,24 @@ impl RecordingTake {
             velocity,
             started_at_ticks,
         });
+    }
+
+    pub(crate) fn midi_runtime_signature(&self, hasher: &mut impl Hasher) {
+        self.pressed_at_ticks.hash(hasher);
+        self.released_at_ticks.hash(hasher);
+        self.recorded_notes.len().hash(hasher);
+        for note in &self.recorded_notes {
+            note.pitch.hash(hasher);
+            note.velocity.hash(hasher);
+            note.started_at_ticks.hash(hasher);
+            note.ended_at_ticks.hash(hasher);
+        }
+        self.pending_notes.len().hash(hasher);
+        for note in &self.pending_notes {
+            note.pitch.hash(hasher);
+            note.velocity.hash(hasher);
+            note.started_at_ticks.hash(hasher);
+        }
     }
 
     pub fn note_off(&mut self, pitch: u8, ended_at_ticks: u64) {

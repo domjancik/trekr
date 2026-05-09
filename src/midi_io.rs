@@ -1,3 +1,4 @@
+use crate::thread_priority::promote_current_thread_for_midi;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -254,6 +255,14 @@ impl Default for MidiOutputRuntime {
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
             .spawn(move || {
+                let diag_enabled = std::env::var("TREKR_MIDI_RUNTIME_LOG")
+                    .ok()
+                    .is_some_and(|value| value != "0");
+                if let Err(error) = promote_current_thread_for_midi("midi output") {
+                    if diag_enabled {
+                        eprintln!("trekr midi runtime: thread_priority midi_output={error}");
+                    }
+                }
                 let mut worker = MidiOutputWorker::default();
                 while let Ok(command) = receiver.recv() {
                     let _ = worker.handle(command);

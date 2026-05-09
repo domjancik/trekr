@@ -42,6 +42,7 @@ use sdl3::rect::Rect;
 use sdl3::render::{Canvas, RenderTarget};
 use sdl3::surface::SurfaceRef;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -104,6 +105,7 @@ pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 const MIDI_RUNTIME_APP_DIAG_INTERVAL: Duration = Duration::from_secs(1);
+const MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW: Duration = Duration::from_millis(350);
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
@@ -152,10 +154,22 @@ pub struct App {
     midi_runtime_full_sync_count: u64,
     midi_runtime_timing_sync_count: u64,
     midi_runtime_sync_skipped_count: u64,
+    midi_runtime_identical_sync_skipped_count: u64,
     midi_runtime_full_sync_total_ns: u64,
     midi_runtime_full_sync_max_ns: u64,
     midi_runtime_timing_sync_total_ns: u64,
     midi_runtime_timing_sync_max_ns: u64,
+    last_midi_runtime_full_sync_signature: Option<u64>,
+    ui_frame_count: u64,
+    ui_frame_total_ns: u64,
+    ui_frame_max_ns: u64,
+    ui_update_total_ns: u64,
+    ui_update_max_ns: u64,
+    ui_draw_total_ns: u64,
+    ui_draw_max_ns: u64,
+    ui_page_switch_count: u64,
+    last_ui_page_switch_at: Option<Instant>,
+    ui_page_switch_frame_max_ns: u64,
 }
 
 impl App {
@@ -277,10 +291,22 @@ impl App {
             midi_runtime_full_sync_count: 0,
             midi_runtime_timing_sync_count: 0,
             midi_runtime_sync_skipped_count: 0,
+            midi_runtime_identical_sync_skipped_count: 0,
             midi_runtime_full_sync_total_ns: 0,
             midi_runtime_full_sync_max_ns: 0,
             midi_runtime_timing_sync_total_ns: 0,
             midi_runtime_timing_sync_max_ns: 0,
+            last_midi_runtime_full_sync_signature: None,
+            ui_frame_count: 0,
+            ui_frame_total_ns: 0,
+            ui_frame_max_ns: 0,
+            ui_update_total_ns: 0,
+            ui_update_max_ns: 0,
+            ui_draw_total_ns: 0,
+            ui_draw_max_ns: 0,
+            ui_page_switch_count: 0,
+            last_ui_page_switch_at: None,
+            ui_page_switch_frame_max_ns: 0,
         }
     }
 
@@ -408,18 +434,27 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
             if options.video_mode != VideoMode::Windowed {
                 let _ = canvas.window_mut().sync();
             }
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
             std::thread::sleep(Duration::from_millis(16));
         }
 
@@ -462,16 +497,25 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
             let _ = canvas.window_mut().sync();
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
             std::thread::sleep(Duration::from_millis(16));
         }
 
@@ -513,13 +557,16 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.viewport_size = window.size_in_pixels();
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(&mut window)?;
 
             let mut window_surface = window.surface(&event_pump)?;
@@ -536,6 +583,12 @@ impl App {
             }
             window_surface.finish()?;
             let _ = window.sync();
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
 
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -791,29 +844,35 @@ impl App {
             AppAction::Quit => AppControl::Quit,
             AppAction::ShowPage(page) => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = page;
                 if page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, page);
                 AppControl::Continue
             }
             AppAction::ShowNextPage => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = self.page_state.current_page.next();
                 if self.page_state.current_page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, self.page_state.current_page);
                 AppControl::Continue
             }
             AppAction::ShowPreviousPage => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = self.page_state.current_page.previous();
                 if self.page_state.current_page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, self.page_state.current_page);
                 AppControl::Continue
             }
             AppAction::SelectPreviousPageItem => {
@@ -1834,15 +1893,29 @@ impl App {
         self.midi_runtime_dirty = true;
     }
 
-    fn build_midi_runtime_state_sync(&self) -> MidiRuntimeStateSync {
-        MidiRuntimeStateSync {
-            project: self.project.clone(),
-            transport_ticks: self.transport_ticks,
-            playhead_ticks: self.playhead_ticks,
-            live_fx_ticks: self.live_fx_ticks,
-            default_input_port: self.default_input_port().cloned(),
-            default_output_port: self.default_output_port().cloned(),
-        }
+    fn build_midi_runtime_state_sync(&self) -> (MidiRuntimeStateSync, u64) {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let project = self.project.clone_for_midi_runtime();
+        let project_signature = project.midi_runtime_signature();
+        project_signature.hash(&mut hasher);
+        self.default_input_port()
+            .map(|port| port.name.as_str())
+            .hash(&mut hasher);
+        self.default_output_port()
+            .map(|port| port.name.as_str())
+            .hash(&mut hasher);
+        let signature = hasher.finish();
+        (
+            MidiRuntimeStateSync {
+                project,
+                transport_ticks: self.transport_ticks,
+                playhead_ticks: self.playhead_ticks,
+                live_fx_ticks: self.live_fx_ticks,
+                default_input_port: self.default_input_port().cloned(),
+                default_output_port: self.default_output_port().cloned(),
+            },
+            signature,
+        )
     }
 
     fn build_midi_runtime_timing_sync(&self) -> MidiRuntimeTimingSync {
@@ -1859,8 +1932,16 @@ impl App {
             return;
         }
         let started_at = Instant::now();
-        self.midi_runtime
-            .sync_state(self.build_midi_runtime_state_sync());
+        let (state_sync, signature) = self.build_midi_runtime_state_sync();
+        if self.last_midi_runtime_full_sync_signature == Some(signature) {
+            self.midi_runtime_identical_sync_skipped_count = self
+                .midi_runtime_identical_sync_skipped_count
+                .saturating_add(1);
+            self.midi_runtime_dirty = false;
+            self.mark_midi_runtime_timing_dirty();
+            return;
+        }
+        self.midi_runtime.sync_state(state_sync);
         let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.midi_runtime_full_sync_count = self.midi_runtime_full_sync_count.saturating_add(1);
         self.midi_runtime_full_sync_total_ns = self
@@ -1869,6 +1950,7 @@ impl App {
         self.midi_runtime_full_sync_max_ns = self.midi_runtime_full_sync_max_ns.max(elapsed_ns);
         self.midi_runtime_dirty = false;
         self.midi_runtime_timing_dirty = false;
+        self.last_midi_runtime_full_sync_signature = Some(signature);
     }
 
     fn sync_midi_runtime_timing_if_needed(&mut self) {
@@ -1897,6 +1979,43 @@ impl App {
 
     fn mark_midi_runtime_timing_dirty(&mut self) {
         self.midi_runtime_timing_dirty = true;
+    }
+
+    fn note_page_switch(&mut self, previous_page: AppPage, next_page: AppPage) {
+        if previous_page == next_page {
+            return;
+        }
+        let switched_at = Instant::now();
+        self.ui_page_switch_count = self.ui_page_switch_count.saturating_add(1);
+        self.last_ui_page_switch_at = Some(switched_at);
+        if self.midi_runtime.is_enabled() {
+            self.midi_runtime.note_page_switch(next_page, switched_at);
+        }
+    }
+
+    fn record_ui_frame_metrics(
+        &mut self,
+        frame_elapsed: Duration,
+        update_elapsed: Duration,
+        draw_elapsed: Duration,
+    ) {
+        let frame_ns = frame_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        let update_ns = update_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        let draw_ns = draw_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.ui_frame_count = self.ui_frame_count.saturating_add(1);
+        self.ui_frame_total_ns = self.ui_frame_total_ns.saturating_add(frame_ns);
+        self.ui_update_total_ns = self.ui_update_total_ns.saturating_add(update_ns);
+        self.ui_draw_total_ns = self.ui_draw_total_ns.saturating_add(draw_ns);
+        self.ui_frame_max_ns = self.ui_frame_max_ns.max(frame_ns);
+        self.ui_update_max_ns = self.ui_update_max_ns.max(update_ns);
+        self.ui_draw_max_ns = self.ui_draw_max_ns.max(draw_ns);
+        if self.last_ui_page_switch_at.is_some_and(|switched_at| {
+            frame_elapsed <= MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW
+                && Instant::now().saturating_duration_since(switched_at)
+                    <= MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW
+        }) {
+            self.ui_page_switch_frame_max_ns = self.ui_page_switch_frame_max_ns.max(frame_ns);
+        }
     }
 
     fn update_timing_from_runtime(&mut self) {
@@ -1931,15 +2050,48 @@ impl App {
                 / 1_000_000.0
         };
         let max_timing_sync_ms = self.midi_runtime_timing_sync_max_ns as f64 / 1_000_000.0;
+        let avg_frame_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_frame_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let avg_update_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_update_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let avg_draw_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_draw_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let runtime_metrics = self.midi_runtime.metrics_snapshot();
         eprintln!(
-            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} recording={} playing={}",
+            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} recording={} playing={}",
             self.midi_runtime_full_sync_count,
             self.midi_runtime_timing_sync_count,
             self.midi_runtime_sync_skipped_count,
+            self.midi_runtime_identical_sync_skipped_count,
             avg_sync_ms,
             max_sync_ms,
             avg_timing_sync_ms,
             max_timing_sync_ms,
+            avg_frame_ms,
+            self.ui_frame_max_ns as f64 / 1_000_000.0,
+            avg_update_ms,
+            self.ui_update_max_ns as f64 / 1_000_000.0,
+            avg_draw_ms,
+            self.ui_draw_max_ns as f64 / 1_000_000.0,
+            self.ui_page_switch_count,
+            self.ui_page_switch_frame_max_ns as f64 / 1_000_000.0,
+            runtime_metrics
+                .last_page
+                .map(|page| page.label())
+                .unwrap_or("-"),
+            runtime_metrics.page_switch_output_count,
+            runtime_metrics.page_switch_due_miss_count,
+            runtime_metrics.page_switch_callback_to_output_avg_ms,
+            runtime_metrics.page_switch_callback_to_output_max_ms,
             self.project.transport.recording,
             self.project.transport.playing
         );

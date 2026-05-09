@@ -6,8 +6,10 @@ use crate::midi_io::{
     MidiInputEvent, MidiInputMessage, MidiOutputCommandMeta, MidiOutputObservedEvent,
     MidiOutputOrigin, MidiOutputRuntime, MidiPortRef,
 };
+use crate::pages::AppPage;
 use crate::project::{MidiNote, Project, RecordContext, Track};
 use crate::routing::{MidiChannelFilter, TrackPortSelection};
+use crate::thread_priority::promote_current_thread_for_midi;
 use crate::timeline::RecordingTake;
 use crate::transport::Transport;
 use std::cmp::Ordering;
@@ -25,6 +27,7 @@ use super::super::note_runtime::{
 const PLAYBACK_LOOKAHEAD_MS: u64 = 150;
 const IDLE_WAKE_INTERVAL_MS: u64 = 2;
 const DIAG_SUMMARY_INTERVAL: Duration = Duration::from_secs(1);
+const PAGE_SWITCH_DIAG_WINDOW: Duration = Duration::from_millis(350);
 
 #[derive(Debug, Clone)]
 pub(crate) struct MidiRuntimeStateSync {
@@ -81,6 +84,34 @@ struct RuntimeMetrics {
     playback_send_count: AtomicU64,
     live_send_count: AtomicU64,
     queue_depth_max: AtomicU64,
+    page_switch_count: AtomicU64,
+    page_switch_output_count: AtomicU64,
+    page_switch_due_miss_count: AtomicU64,
+    page_switch_callback_to_output_total_ns: AtomicU64,
+    page_switch_callback_to_output_max_ns: AtomicU64,
+    page_switch_page: AtomicU64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct MidiRuntimeMetricsSnapshot {
+    pub runtime_input_count: u64,
+    pub output_send_count: u64,
+    pub live_send_count: u64,
+    pub playback_send_count: u64,
+    pub callback_to_runtime_avg_ms: f64,
+    pub callback_to_runtime_max_ms: f64,
+    pub callback_to_output_avg_ms: f64,
+    pub callback_to_output_max_ms: f64,
+    pub due_miss_avg_ms: f64,
+    pub due_miss_max_ms: f64,
+    pub due_miss_count: u64,
+    pub queue_depth_max: u64,
+    pub page_switch_count: u64,
+    pub page_switch_output_count: u64,
+    pub page_switch_due_miss_count: u64,
+    pub page_switch_callback_to_output_avg_ms: f64,
+    pub page_switch_callback_to_output_max_ms: f64,
+    pub last_page: Option<AppPage>,
 }
 
 impl RuntimeMetrics {
@@ -93,7 +124,7 @@ impl RuntimeMetrics {
         atomic_update_max(&self.callback_to_runtime_max_ns, nanos);
     }
 
-    fn observe_output(&self, observed: &MidiOutputObservedEvent) {
+    fn observe_output(&self, observed: &MidiOutputObservedEvent, within_page_switch_window: bool) {
         self.output_send_count.fetch_add(1, AtomicOrdering::Relaxed);
         match observed.origin {
             MidiOutputOrigin::Playback => {
@@ -124,6 +155,23 @@ impl RuntimeMetrics {
                     .fetch_add(nanos, AtomicOrdering::Relaxed);
                 self.due_miss_count.fetch_add(1, AtomicOrdering::Relaxed);
                 atomic_update_max(&self.due_miss_max_ns, nanos);
+                if within_page_switch_window {
+                    self.page_switch_due_miss_count
+                        .fetch_add(1, AtomicOrdering::Relaxed);
+                }
+            }
+        }
+        if within_page_switch_window {
+            self.page_switch_output_count
+                .fetch_add(1, AtomicOrdering::Relaxed);
+            if let Some(callback_received_at) = observed.callback_received_at {
+                let elapsed = observed
+                    .sent_at
+                    .saturating_duration_since(callback_received_at);
+                let nanos = saturating_nanos_u64(elapsed);
+                self.page_switch_callback_to_output_total_ns
+                    .fetch_add(nanos, AtomicOrdering::Relaxed);
+                atomic_update_max(&self.page_switch_callback_to_output_max_ns, nanos);
             }
         }
     }
@@ -132,39 +180,88 @@ impl RuntimeMetrics {
         atomic_update_max(&self.queue_depth_max, depth as u64);
     }
 
-    fn summary(&self) -> String {
+    fn note_page_switch(&self, page: AppPage, switched_at: Instant) {
+        self.page_switch_count.fetch_add(1, AtomicOrdering::Relaxed);
+        self.page_switch_page
+            .store(page as u64 + 1, AtomicOrdering::Relaxed);
+        let _ = switched_at;
+    }
+
+    fn snapshot(&self) -> MidiRuntimeMetricsSnapshot {
         let runtime_inputs = self.runtime_input_count.load(AtomicOrdering::Relaxed);
-        let output_sends = self.output_send_count.load(AtomicOrdering::Relaxed);
         let callback_to_output_count = self.callback_to_output_count.load(AtomicOrdering::Relaxed);
         let due_miss_count = self.due_miss_count.load(AtomicOrdering::Relaxed);
-        format!(
-            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={}",
-            runtime_inputs,
-            output_sends,
-            self.live_send_count.load(AtomicOrdering::Relaxed),
-            self.playback_send_count.load(AtomicOrdering::Relaxed),
-            avg_ms(
+        let page_switch_output_count = self.page_switch_output_count.load(AtomicOrdering::Relaxed);
+        let last_page = decode_page(self.page_switch_page.load(AtomicOrdering::Relaxed));
+        MidiRuntimeMetricsSnapshot {
+            runtime_input_count: runtime_inputs,
+            output_send_count: self.output_send_count.load(AtomicOrdering::Relaxed),
+            live_send_count: self.live_send_count.load(AtomicOrdering::Relaxed),
+            playback_send_count: self.playback_send_count.load(AtomicOrdering::Relaxed),
+            callback_to_runtime_avg_ms: avg_ms(
                 self.callback_to_runtime_total_ns
                     .load(AtomicOrdering::Relaxed),
-                runtime_inputs
+                runtime_inputs,
             ),
-            nanos_to_ms(
+            callback_to_runtime_max_ms: nanos_to_ms(
                 self.callback_to_runtime_max_ns
-                    .load(AtomicOrdering::Relaxed)
+                    .load(AtomicOrdering::Relaxed),
             ),
-            avg_ms(
+            callback_to_output_avg_ms: avg_ms(
                 self.callback_to_output_total_ns
                     .load(AtomicOrdering::Relaxed),
-                callback_to_output_count
+                callback_to_output_count,
             ),
-            nanos_to_ms(self.callback_to_output_max_ns.load(AtomicOrdering::Relaxed)),
-            avg_ms(
+            callback_to_output_max_ms: nanos_to_ms(
+                self.callback_to_output_max_ns.load(AtomicOrdering::Relaxed),
+            ),
+            due_miss_avg_ms: avg_ms(
                 self.due_miss_total_ns.load(AtomicOrdering::Relaxed),
-                due_miss_count
+                due_miss_count,
             ),
-            nanos_to_ms(self.due_miss_max_ns.load(AtomicOrdering::Relaxed)),
+            due_miss_max_ms: nanos_to_ms(self.due_miss_max_ns.load(AtomicOrdering::Relaxed)),
             due_miss_count,
-            self.queue_depth_max.load(AtomicOrdering::Relaxed),
+            queue_depth_max: self.queue_depth_max.load(AtomicOrdering::Relaxed),
+            page_switch_count: self.page_switch_count.load(AtomicOrdering::Relaxed),
+            page_switch_output_count,
+            page_switch_due_miss_count: self
+                .page_switch_due_miss_count
+                .load(AtomicOrdering::Relaxed),
+            page_switch_callback_to_output_avg_ms: avg_ms(
+                self.page_switch_callback_to_output_total_ns
+                    .load(AtomicOrdering::Relaxed),
+                page_switch_output_count,
+            ),
+            page_switch_callback_to_output_max_ms: nanos_to_ms(
+                self.page_switch_callback_to_output_max_ns
+                    .load(AtomicOrdering::Relaxed),
+            ),
+            last_page,
+        }
+    }
+
+    fn summary(&self) -> String {
+        let snapshot = self.snapshot();
+        let page = snapshot.last_page.map(|page| page.label()).unwrap_or("-");
+        format!(
+            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={} page_switches={} page={} page_cb_to_output_avg_ms={:.3} page_cb_to_output_max_ms={:.3} page_due_miss_count={}",
+            snapshot.runtime_input_count,
+            snapshot.output_send_count,
+            snapshot.live_send_count,
+            snapshot.playback_send_count,
+            snapshot.callback_to_runtime_avg_ms,
+            snapshot.callback_to_runtime_max_ms,
+            snapshot.callback_to_output_avg_ms,
+            snapshot.callback_to_output_max_ms,
+            snapshot.due_miss_avg_ms,
+            snapshot.due_miss_max_ms,
+            snapshot.due_miss_count,
+            snapshot.queue_depth_max,
+            snapshot.page_switch_count,
+            page,
+            snapshot.page_switch_callback_to_output_avg_ms,
+            snapshot.page_switch_callback_to_output_max_ms,
+            snapshot.page_switch_due_miss_count,
         )
     }
 }
@@ -188,6 +285,14 @@ impl MidiRuntime {
         let thread = thread::Builder::new()
             .name("trekr-midi-runtime".to_string())
             .spawn(move || {
+                let diag_enabled = std::env::var("TREKR_MIDI_RUNTIME_LOG")
+                    .ok()
+                    .is_some_and(|value| value != "0");
+                if let Err(error) = promote_current_thread_for_midi("midi runtime") {
+                    if diag_enabled {
+                        eprintln!("trekr midi runtime: thread_priority midi_runtime={error}");
+                    }
+                }
                 MidiRuntimeEngine::new(
                     midi_output,
                     receiver,
@@ -225,6 +330,12 @@ impl MidiRuntime {
         let _ = self.sender.send(MidiRuntimeCommand::SyncTiming(timing));
     }
 
+    pub(crate) fn note_page_switch(&self, page: AppPage, switched_at: Instant) {
+        let _ = self
+            .sender
+            .send(MidiRuntimeCommand::NotePageSwitch { page, switched_at });
+    }
+
     pub(crate) fn snapshot(&self) -> MidiRuntimeUiSnapshot {
         self.snapshot
             .lock()
@@ -238,6 +349,14 @@ impl MidiRuntime {
             .sender
             .send(MidiRuntimeCommand::CaptureSnapshot(sender));
         receiver.recv().unwrap_or_else(|_| self.snapshot())
+    }
+
+    pub(crate) fn metrics_snapshot(&self) -> MidiRuntimeMetricsSnapshot {
+        let (sender, receiver) = mpsc::channel();
+        let _ = self
+            .sender
+            .send(MidiRuntimeCommand::MetricsSnapshot(sender));
+        receiver.recv().unwrap_or_default()
     }
 
     #[cfg(test)]
@@ -260,7 +379,12 @@ impl Drop for MidiRuntime {
 enum MidiRuntimeCommand {
     SyncState(MidiRuntimeStateSync),
     SyncTiming(MidiRuntimeTimingSync),
+    NotePageSwitch {
+        page: AppPage,
+        switched_at: Instant,
+    },
     CaptureSnapshot(Sender<MidiRuntimeUiSnapshot>),
+    MetricsSnapshot(Sender<MidiRuntimeMetricsSnapshot>),
     #[cfg(test)]
     Flush(Sender<()>),
     Shutdown,
@@ -280,6 +404,12 @@ struct MidiRuntimeEngine {
     sequence: u64,
     last_diag_at: Instant,
     diag_enabled: bool,
+    page_switch_diag: Option<PageSwitchDiag>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PageSwitchDiag {
+    switched_at: Instant,
 }
 
 impl MidiRuntimeEngine {
@@ -308,6 +438,7 @@ impl MidiRuntimeEngine {
             diag_enabled: std::env::var("TREKR_MIDI_RUNTIME_LOG")
                 .ok()
                 .is_some_and(|value| value != "0"),
+            page_switch_diag: None,
         }
     }
 
@@ -317,7 +448,8 @@ impl MidiRuntimeEngine {
                 break;
             }
             while let Ok(event) = self.output_events.try_recv() {
-                self.metrics.observe_output(&event);
+                self.metrics
+                    .observe_output(&event, self.is_within_page_switch_window(event.sent_at));
             }
             while let Ok(event) = self.input_events.try_recv() {
                 self.handle_input_event(event);
@@ -362,6 +494,10 @@ impl MidiRuntimeEngine {
         match command {
             MidiRuntimeCommand::SyncState(state) => self.sync_state(state),
             MidiRuntimeCommand::SyncTiming(timing) => self.sync_timing(timing),
+            MidiRuntimeCommand::NotePageSwitch { page, switched_at } => {
+                self.page_switch_diag = Some(PageSwitchDiag { switched_at });
+                self.metrics.note_page_switch(page, switched_at);
+            }
             MidiRuntimeCommand::CaptureSnapshot(sender) => {
                 while let Ok(event) = self.input_events.try_recv() {
                     self.handle_input_event(event);
@@ -370,13 +506,17 @@ impl MidiRuntimeEngine {
                 self.advance_clock(now);
                 self.dispatch_due_events(now);
                 while let Ok(event) = self.output_events.try_recv() {
-                    self.metrics.observe_output(&event);
+                    self.metrics
+                        .observe_output(&event, self.is_within_page_switch_window(event.sent_at));
                 }
                 let snapshot = self.build_snapshot(now);
                 if let Ok(mut target) = self.snapshot.lock() {
                     *target = snapshot.clone();
                 }
                 let _ = sender.send(snapshot);
+            }
+            MidiRuntimeCommand::MetricsSnapshot(sender) => {
+                let _ = sender.send(self.metrics.snapshot());
             }
             #[cfg(test)]
             MidiRuntimeCommand::Flush(sender) => {
@@ -387,7 +527,8 @@ impl MidiRuntimeEngine {
                 self.advance_clock(now);
                 self.dispatch_due_events(now);
                 while let Ok(event) = self.output_events.try_recv() {
-                    self.metrics.observe_output(&event);
+                    self.metrics
+                        .observe_output(&event, self.is_within_page_switch_window(event.sent_at));
                 }
                 self.publish_snapshot(now);
                 let _ = sender.send(());
@@ -1063,6 +1204,12 @@ impl MidiRuntimeEngine {
         self.sequence = self.sequence.saturating_add(1);
         next
     }
+
+    fn is_within_page_switch_window(&self, now: Instant) -> bool {
+        self.page_switch_diag.is_some_and(|diag| {
+            now.saturating_duration_since(diag.switched_at) <= PAGE_SWITCH_DIAG_WINDOW
+        })
+    }
 }
 
 struct RuntimeState {
@@ -1619,6 +1766,16 @@ fn atomic_update_max(target: &AtomicU64, candidate: u64) {
 
 fn saturating_nanos_u64(duration: Duration) -> u64 {
     duration.as_nanos().min(u128::from(u64::MAX)) as u64
+}
+
+fn decode_page(encoded: u64) -> Option<AppPage> {
+    match encoded {
+        1 => Some(AppPage::Timeline),
+        2 => Some(AppPage::Mappings),
+        3 => Some(AppPage::MidiIo),
+        4 => Some(AppPage::Routing),
+        _ => None,
+    }
 }
 
 fn nanos_to_ms(nanos: u64) -> f64 {

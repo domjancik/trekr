@@ -3,6 +3,7 @@ use crate::routing::TrackRouting;
 use crate::timeline::{LoopRegion, RecordedMidiNote, RecordingTake, Region};
 use crate::transport::{LaunchQuantizeMode, RecordMode, Transport};
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 
 pub const STORED_LOOP_SLOT_COUNT: usize = 8;
 
@@ -112,6 +113,47 @@ impl Project {
         for track in &mut self.tracks {
             track.clear_content();
         }
+    }
+
+    pub fn clone_for_midi_runtime(&self) -> Self {
+        Self {
+            name: String::new(),
+            transport: self.transport,
+            loop_region: self.loop_region,
+            global_harmony: self.global_harmony,
+            active_track_index: 0,
+            tracks: self
+                .tracks
+                .iter()
+                .map(Track::clone_for_midi_runtime)
+                .collect(),
+        }
+    }
+
+    pub fn midi_runtime_signature(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.transport_signature(&mut hasher);
+        self.loop_region.start_ticks.hash(&mut hasher);
+        self.loop_region.length_ticks.hash(&mut hasher);
+        self.global_harmony.root.hash(&mut hasher);
+        self.tracks.len().hash(&mut hasher);
+        for track in &self.tracks {
+            track.midi_runtime_signature(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    fn transport_signature(&self, hasher: &mut impl Hasher) {
+        self.transport.tempo_bpm.hash(hasher);
+        self.transport.ppqn.hash(hasher);
+        self.transport.quantize.hash(hasher);
+        self.transport.record_mode.hash(hasher);
+        self.transport.loop_recording_extends_clip.hash(hasher);
+        self.transport.stored_loop_recall_quantized.hash(hasher);
+        self.transport.stored_loop_launch_quantize.hash(hasher);
+        self.transport.loop_enabled.hash(hasher);
+        self.transport.playing.hash(hasher);
+        self.transport.recording.hash(hasher);
     }
 }
 
@@ -396,6 +438,72 @@ impl Track {
             stored_loops: default_stored_loops(),
             active_stored_loop_slot: None,
             queued_stored_loop_recall: None,
+        }
+    }
+
+    pub fn clone_for_midi_runtime(&self) -> Self {
+        Self {
+            name: String::new(),
+            kind: self.kind,
+            state: self.state,
+            routing: self.routing.clone(),
+            midi_fx: self.midi_fx.clone_for_runtime(),
+            loop_region: self.loop_region,
+            active_take: self.active_take.clone(),
+            midi_notes: self.midi_notes.clone(),
+            regions: self.regions.clone(),
+            recording_clips: self.recording_clips.clone(),
+            recording_view: RecordingView::default(),
+            selected_recording_clip_id: None,
+            recording_clip_scroll: 0,
+            next_recording_clip_id: self.next_recording_clip_id,
+            note_selection: NoteSelection::default(),
+            stored_loops: Vec::new(),
+            active_stored_loop_slot: None,
+            queued_stored_loop_recall: None,
+        }
+    }
+
+    fn midi_runtime_signature(&self, hasher: &mut impl Hasher) {
+        self.kind.hash(hasher);
+        self.state.hash(hasher);
+        self.routing.midi_runtime_signature(hasher);
+        self.midi_fx.midi_runtime_signature(hasher);
+        self.loop_region.start_ticks.hash(hasher);
+        self.loop_region.length_ticks.hash(hasher);
+        self.next_recording_clip_id.hash(hasher);
+        self.midi_notes.len().hash(hasher);
+        for note in &self.midi_notes {
+            note.pitch.hash(hasher);
+            note.start_ticks.hash(hasher);
+            note.length_ticks.hash(hasher);
+            note.velocity.hash(hasher);
+            note.recording_clip_id.hash(hasher);
+        }
+        self.regions.len().hash(hasher);
+        for region in &self.regions {
+            region.start_ticks.hash(hasher);
+            region.length_ticks.hash(hasher);
+            region.recording_clip_id.hash(hasher);
+        }
+        self.recording_clips.len().hash(hasher);
+        for clip in &self.recording_clips {
+            clip.id.hash(hasher);
+            clip.region.start_ticks.hash(hasher);
+            clip.region.length_ticks.hash(hasher);
+            clip.region.recording_clip_id.hash(hasher);
+            clip.muted.hash(hasher);
+            clip.native_start_ticks.hash(hasher);
+            clip.native_end_ticks.hash(hasher);
+            clip.native_duration_ticks.hash(hasher);
+            clip.native_capture_tempo_bpm.hash(hasher);
+        }
+        match &self.active_take {
+            Some(take) => {
+                true.hash(hasher);
+                take.midi_runtime_signature(hasher);
+            }
+            None => false.hash(hasher),
         }
     }
 
@@ -1785,7 +1893,7 @@ fn project_ticks_ceil(ticks: u64, source: LoopRegion, destination: LoopRegion) -
     destination.start_ticks + scaled
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TrackKind {
     Midi,
     Audio,
@@ -1845,7 +1953,7 @@ impl MidiNote {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct TrackState {
     pub armed: bool,
     pub loop_enabled: bool,

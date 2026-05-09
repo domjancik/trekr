@@ -15,6 +15,7 @@ pub mod render;
 pub mod routing;
 pub mod state;
 pub mod theme;
+pub mod thread_priority;
 pub mod timeline;
 pub mod timeline_fx;
 pub mod transport;
