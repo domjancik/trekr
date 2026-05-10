@@ -165,6 +165,10 @@ pub struct App {
     midi_runtime_timing_sync_total_ns: u64,
     midi_runtime_timing_sync_max_ns: u64,
     last_midi_runtime_full_sync_signature: Option<u64>,
+    runtime_transport_tick_regressions: u64,
+    runtime_transport_rate_last_sample: Option<(Instant, u64)>,
+    runtime_transport_rate_ticks_per_second: f64,
+    runtime_transport_rate_ratio: f64,
     ui_frame_count: u64,
     ui_frame_total_ns: u64,
     ui_frame_max_ns: u64,
@@ -304,6 +308,10 @@ impl App {
             midi_runtime_timing_sync_total_ns: 0,
             midi_runtime_timing_sync_max_ns: 0,
             last_midi_runtime_full_sync_signature: None,
+            runtime_transport_tick_regressions: 0,
+            runtime_transport_rate_last_sample: None,
+            runtime_transport_rate_ticks_per_second: 0.0,
+            runtime_transport_rate_ratio: 0.0,
             ui_frame_count: 0,
             ui_frame_total_ns: 0,
             ui_frame_max_ns: 0,
@@ -2041,9 +2049,32 @@ impl App {
         }
         let previous_transport_ticks = self.transport_ticks;
         let snapshot = self.midi_runtime.snapshot();
+        self.observe_runtime_transport_clock(&snapshot);
         self.apply_runtime_snapshot(snapshot);
         self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
         self.maybe_print_midi_runtime_app_summary();
+    }
+
+    fn observe_runtime_transport_clock(&mut self, snapshot: &MidiRuntimeUiSnapshot) {
+        if snapshot.transport_ticks < self.transport_ticks {
+            self.runtime_transport_tick_regressions =
+                self.runtime_transport_tick_regressions.saturating_add(1);
+        }
+        let now = snapshot.updated_at;
+        if let Some((previous_at, previous_ticks)) = self.runtime_transport_rate_last_sample {
+            let elapsed = now.saturating_duration_since(previous_at).as_secs_f64();
+            if elapsed > 0.0 && snapshot.transport_ticks >= previous_ticks {
+                let delta_ticks = (snapshot.transport_ticks - previous_ticks) as f64;
+                self.runtime_transport_rate_ticks_per_second = delta_ticks / elapsed;
+                let expected = self.project.transport.ticks_per_second() as f64;
+                self.runtime_transport_rate_ratio = if expected > 0.0 {
+                    self.runtime_transport_rate_ticks_per_second / expected
+                } else {
+                    0.0
+                };
+            }
+        }
+        self.runtime_transport_rate_last_sample = Some((now, snapshot.transport_ticks));
     }
 
     fn maybe_print_midi_runtime_app_summary(&mut self) {
@@ -2084,7 +2115,7 @@ impl App {
         };
         let runtime_metrics = self.midi_runtime.metrics_snapshot();
         eprintln!(
-            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} playback_schedule_late_count={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_underfed_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} recording={} playing={}",
+            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} playback_schedule_late_count={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_underfed_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} runtime_tick_rate_tps={:.1} runtime_tick_rate_ratio={:.3} runtime_tick_regressions={} recording={} playing={}",
             self.midi_runtime_full_sync_count,
             self.midi_runtime_timing_sync_count,
             self.midi_runtime_sync_skipped_count,
@@ -2115,6 +2146,9 @@ impl App {
             runtime_metrics.playback_underfed_count,
             runtime_metrics.playback_underfed_avg_ticks,
             runtime_metrics.playback_underfed_max_ticks,
+            self.runtime_transport_rate_ticks_per_second,
+            self.runtime_transport_rate_ratio,
+            self.runtime_transport_tick_regressions,
             self.project.transport.recording,
             self.project.transport.playing
         );
