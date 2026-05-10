@@ -39,7 +39,7 @@ use crate::undo::UndoHistory;
 use image::RgbaImage;
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
-use sdl3::render::{Canvas, RenderTarget};
+use sdl3::render::{Canvas, RenderTarget, Texture};
 use sdl3::surface::SurfaceRef;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -107,6 +107,11 @@ const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
 const MIDI_RUNTIME_APP_DIAG_INTERVAL: Duration = Duration::from_secs(1);
 const MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW: Duration = Duration::from_millis(350);
 
+struct WindowFrameTextureCache {
+    logical_size: (u32, u32),
+    texture: Texture,
+}
+
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
     project: Project,
@@ -170,6 +175,8 @@ pub struct App {
     ui_page_switch_count: u64,
     last_ui_page_switch_at: Option<Instant>,
     ui_page_switch_frame_max_ns: u64,
+    window_frame_texture_cache: Option<WindowFrameTextureCache>,
+    renderer_backend_logged: bool,
 }
 
 impl App {
@@ -307,6 +314,8 @@ impl App {
             ui_page_switch_count: 0,
             last_ui_page_switch_at: None,
             ui_page_switch_frame_max_ns: 0,
+            window_frame_texture_cache: None,
+            renderer_backend_logged: false,
         }
     }
 

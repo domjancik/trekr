@@ -15,7 +15,7 @@ libc = "0.2.177"
 midir = "0.10.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-sdl3 = { version = "0.17.3", features = ["build-from-source"] }
+sdl3 = { version = "0.17.3", features = ["build-from-source", "unsafe_textures"] }
 
 [build-dependencies]
 cc = "1.2.28"
