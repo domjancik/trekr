@@ -97,7 +97,7 @@ impl App {
         }
         self.project.transport.recording = true;
         self.project.transport.playing = true;
-        self.mark_midi_runtime_dirty();
+        self.mark_midi_runtime_dirty_and_timing();
         self.sync_midi_runtime_state_if_needed();
     }
 

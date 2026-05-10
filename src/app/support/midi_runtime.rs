@@ -37,6 +37,7 @@ pub(crate) struct MidiRuntimeStateSync {
     pub live_fx_ticks: u64,
     pub default_input_port: Option<MidiPortRef>,
     pub default_output_port: Option<MidiPortRef>,
+    pub preserve_clock: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -598,6 +599,7 @@ impl MidiRuntimeEngine {
 
     fn sync_state(&mut self, sync: MidiRuntimeStateSync) {
         let now = Instant::now();
+        let preserve_clock = sync.preserve_clock;
         let previous_playing = self
             .state
             .as_ref()
@@ -611,6 +613,9 @@ impl MidiRuntimeEngine {
         if should_reset {
             state.reset_live_states();
         } else if let Some(previous) = self.state.take() {
+            if preserve_clock {
+                state.copy_clock_from(&previous, now);
+            }
             state.copy_live_states_from(previous);
         }
         if previous_playing && !state.project.transport.playing {
@@ -1335,6 +1340,24 @@ impl RuntimeState {
             .scheduled_until_ticks
             .min(self.transport_ticks.max(previous.scheduled_until_ticks));
         self.refresh_recording_takes_snapshot();
+    }
+
+    fn copy_clock_from(&mut self, previous: &Self, now: Instant) {
+        let transport_ticks = if previous.project.transport.playing {
+            previous.transport_ticks_at(now)
+        } else {
+            previous.transport_ticks
+        };
+        let live_fx_ticks = previous.live_ticks_at(now);
+        self.transport_ticks = transport_ticks;
+        self.playhead_ticks = self.song_playhead_for_transport(transport_ticks);
+        self.live_fx_ticks = live_fx_ticks;
+        self.anchor_instant = now;
+        self.anchor_transport_ticks = transport_ticks;
+        self.anchor_live_ticks = live_fx_ticks;
+        self.scheduled_until_ticks = previous
+            .scheduled_until_ticks
+            .min(transport_ticks.max(previous.scheduled_until_ticks));
     }
 
     fn reset_live_states(&mut self) {

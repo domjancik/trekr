@@ -1664,6 +1664,7 @@ impl App {
     }
 
     fn advance_runtime_clock(&mut self, _delta: Duration) {
+        self.update_timing_from_runtime();
         if self.project.transport.link_enabled {
             let previous_tempo = self.project.transport.tempo_bpm;
             let previous_playing = self.project.transport.playing;
@@ -1922,6 +1923,7 @@ impl App {
                 live_fx_ticks: self.live_fx_ticks,
                 default_input_port: self.default_input_port().cloned(),
                 default_output_port: self.default_output_port().cloned(),
+                preserve_clock: !self.midi_runtime_timing_dirty,
             },
             signature,
         )
@@ -1942,12 +1944,12 @@ impl App {
         }
         let started_at = Instant::now();
         let (state_sync, signature) = self.build_midi_runtime_state_sync();
+        let preserve_clock = state_sync.preserve_clock;
         if self.last_midi_runtime_full_sync_signature == Some(signature) {
             self.midi_runtime_identical_sync_skipped_count = self
                 .midi_runtime_identical_sync_skipped_count
                 .saturating_add(1);
             self.midi_runtime_dirty = false;
-            self.mark_midi_runtime_timing_dirty();
             return;
         }
         self.midi_runtime.sync_state(state_sync);
@@ -1958,7 +1960,9 @@ impl App {
             .saturating_add(elapsed_ns);
         self.midi_runtime_full_sync_max_ns = self.midi_runtime_full_sync_max_ns.max(elapsed_ns);
         self.midi_runtime_dirty = false;
-        self.midi_runtime_timing_dirty = false;
+        if !preserve_clock {
+            self.midi_runtime_timing_dirty = false;
+        }
         self.last_midi_runtime_full_sync_signature = Some(signature);
     }
 
@@ -1982,6 +1986,10 @@ impl App {
     }
 
     fn mark_midi_runtime_dirty(&mut self) {
+        self.midi_runtime_dirty = true;
+    }
+
+    fn mark_midi_runtime_dirty_and_timing(&mut self) {
         self.midi_runtime_dirty = true;
         self.midi_runtime_timing_dirty = true;
     }
@@ -2244,7 +2252,6 @@ impl App {
             }
         }
         self.midi_input.sync_ports(&ports);
-        self.mark_midi_runtime_dirty();
     }
 
     fn ensure_fx_live_state_len(&mut self) {
@@ -2820,7 +2827,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn inject_midi_input_event(&mut self, event: MidiInputEvent) {
-        self.mark_midi_runtime_dirty();
+        self.mark_midi_runtime_dirty_and_timing();
         self.sync_midi_runtime_state_if_needed();
         self.wait_for_midi_runtime();
         let _ = self.midi_runtime.input_sender().send(event.clone());
@@ -2830,7 +2837,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn force_sync_midi_runtime(&mut self) {
-        self.mark_midi_runtime_dirty();
+        self.mark_midi_runtime_dirty_and_timing();
         self.sync_midi_runtime_state_if_needed();
         self.wait_for_midi_runtime();
     }
@@ -2956,6 +2963,7 @@ mod tests {
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
+    use crate::pages::AppPage;
     use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -3454,6 +3462,44 @@ mod tests {
 
         assert!(!app.project.transport.recording);
         assert!(app.project.active_track().unwrap().active_take.is_none());
+    }
+
+    #[test]
+    fn page_switch_does_not_dirty_runtime_clock_sync() {
+        let mut app = App::new();
+        app.project.transport.playing = true;
+        app.force_sync_midi_runtime();
+
+        assert!(!app.midi_runtime_dirty);
+        assert!(!app.midi_runtime_timing_dirty);
+
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+
+        assert!(!app.midi_runtime_dirty);
+        assert!(!app.midi_runtime_timing_dirty);
+    }
+
+    #[test]
+    fn full_runtime_sync_preserves_clock_when_only_state_changes() {
+        let mut app = App::new();
+        app.project.transport.playing = true;
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.live_fx_ticks = 960;
+        app.force_sync_midi_runtime();
+
+        let runtime_ticks = app.midi_runtime.snapshot().transport_ticks;
+        let stale_ticks = runtime_ticks.saturating_sub(240);
+        app.transport_ticks = stale_ticks;
+        app.playhead_ticks = stale_ticks;
+        app.live_fx_ticks = stale_ticks;
+        app.mark_midi_runtime_dirty();
+        app.sync_midi_runtime_state_if_needed();
+        app.wait_for_midi_runtime();
+
+        let synced = app.midi_runtime.snapshot();
+        assert!(synced.transport_ticks >= runtime_ticks);
+        assert!(synced.transport_ticks > stale_ticks);
     }
 
     #[test]
