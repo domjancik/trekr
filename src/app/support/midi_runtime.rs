@@ -25,7 +25,8 @@ use super::super::note_runtime::{
     occurrence_note_events, scheduled_note_occurrences, ticks_per_second_for_tempo,
 };
 
-const PLAYBACK_LOOKAHEAD_MS: u64 = 150;
+const PLAYBACK_LOOKAHEAD_MS_DEFAULT: u64 = 300;
+const PLAYBACK_HEADROOM_LOW_WATERMARK_MS: u64 = 80;
 const IDLE_WAKE_INTERVAL_MS: u64 = 2;
 const DIAG_SUMMARY_INTERVAL: Duration = Duration::from_secs(1);
 const PAGE_SWITCH_DIAG_WINDOW: Duration = Duration::from_millis(350);
@@ -73,7 +74,7 @@ impl Default for MidiRuntimeUiSnapshot {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct RuntimeMetrics {
     callback_to_runtime_total_ns: AtomicU64,
     callback_to_runtime_max_ns: AtomicU64,
@@ -94,12 +95,52 @@ struct RuntimeMetrics {
     playback_underfed_total_ticks: AtomicU64,
     playback_underfed_max_ticks: AtomicU64,
     playback_underfed_count: AtomicU64,
+    playback_headroom_total_ticks: AtomicU64,
+    playback_headroom_samples: AtomicU64,
+    playback_headroom_min_ticks: AtomicU64,
+    playback_headroom_low_count: AtomicU64,
     page_switch_count: AtomicU64,
     page_switch_output_count: AtomicU64,
     page_switch_due_miss_count: AtomicU64,
     page_switch_callback_to_output_total_ns: AtomicU64,
     page_switch_callback_to_output_max_ns: AtomicU64,
     page_switch_page: AtomicU64,
+}
+
+impl Default for RuntimeMetrics {
+    fn default() -> Self {
+        Self {
+            callback_to_runtime_total_ns: AtomicU64::new(0),
+            callback_to_runtime_max_ns: AtomicU64::new(0),
+            callback_to_output_total_ns: AtomicU64::new(0),
+            callback_to_output_max_ns: AtomicU64::new(0),
+            callback_to_output_count: AtomicU64::new(0),
+            due_miss_total_ns: AtomicU64::new(0),
+            due_miss_max_ns: AtomicU64::new(0),
+            due_miss_count: AtomicU64::new(0),
+            runtime_input_count: AtomicU64::new(0),
+            output_send_count: AtomicU64::new(0),
+            playback_send_count: AtomicU64::new(0),
+            live_send_count: AtomicU64::new(0),
+            queue_depth_max: AtomicU64::new(0),
+            playback_schedule_late_total_ns: AtomicU64::new(0),
+            playback_schedule_late_max_ns: AtomicU64::new(0),
+            playback_schedule_late_count: AtomicU64::new(0),
+            playback_underfed_total_ticks: AtomicU64::new(0),
+            playback_underfed_max_ticks: AtomicU64::new(0),
+            playback_underfed_count: AtomicU64::new(0),
+            playback_headroom_total_ticks: AtomicU64::new(0),
+            playback_headroom_samples: AtomicU64::new(0),
+            playback_headroom_min_ticks: AtomicU64::new(u64::MAX),
+            playback_headroom_low_count: AtomicU64::new(0),
+            page_switch_count: AtomicU64::new(0),
+            page_switch_output_count: AtomicU64::new(0),
+            page_switch_due_miss_count: AtomicU64::new(0),
+            page_switch_callback_to_output_total_ns: AtomicU64::new(0),
+            page_switch_callback_to_output_max_ns: AtomicU64::new(0),
+            page_switch_page: AtomicU64::new(0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -122,6 +163,9 @@ pub(crate) struct MidiRuntimeMetricsSnapshot {
     pub playback_underfed_avg_ticks: f64,
     pub playback_underfed_max_ticks: u64,
     pub playback_underfed_count: u64,
+    pub playback_headroom_avg_ticks: f64,
+    pub playback_headroom_min_ticks: u64,
+    pub playback_headroom_low_count: u64,
     pub page_switch_count: u64,
     pub page_switch_output_count: u64,
     pub page_switch_due_miss_count: u64,
@@ -213,6 +257,18 @@ impl RuntimeMetrics {
         atomic_update_max(&self.playback_underfed_max_ticks, behind_ticks);
     }
 
+    fn observe_playback_headroom(&self, headroom_ticks: u64, low_watermark_ticks: u64) {
+        self.playback_headroom_total_ticks
+            .fetch_add(headroom_ticks, AtomicOrdering::Relaxed);
+        self.playback_headroom_samples
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        atomic_update_min(&self.playback_headroom_min_ticks, headroom_ticks);
+        if headroom_ticks <= low_watermark_ticks {
+            self.playback_headroom_low_count
+                .fetch_add(1, AtomicOrdering::Relaxed);
+        }
+    }
+
     fn note_page_switch(&self, page: AppPage, switched_at: Instant) {
         self.page_switch_count.fetch_add(1, AtomicOrdering::Relaxed);
         self.page_switch_page
@@ -228,6 +284,11 @@ impl RuntimeMetrics {
             .playback_schedule_late_count
             .load(AtomicOrdering::Relaxed);
         let playback_underfed_count = self.playback_underfed_count.load(AtomicOrdering::Relaxed);
+        let playback_headroom_samples =
+            self.playback_headroom_samples.load(AtomicOrdering::Relaxed);
+        let playback_headroom_min_ticks = self
+            .playback_headroom_min_ticks
+            .load(AtomicOrdering::Relaxed);
         let page_switch_output_count = self.page_switch_output_count.load(AtomicOrdering::Relaxed);
         let last_page = decode_page(self.page_switch_page.load(AtomicOrdering::Relaxed));
         MidiRuntimeMetricsSnapshot {
@@ -278,6 +339,19 @@ impl RuntimeMetrics {
                 .playback_underfed_max_ticks
                 .load(AtomicOrdering::Relaxed),
             playback_underfed_count,
+            playback_headroom_avg_ticks: avg_value(
+                self.playback_headroom_total_ticks
+                    .load(AtomicOrdering::Relaxed),
+                playback_headroom_samples,
+            ),
+            playback_headroom_min_ticks: if playback_headroom_min_ticks == 0 {
+                0
+            } else {
+                playback_headroom_min_ticks
+            },
+            playback_headroom_low_count: self
+                .playback_headroom_low_count
+                .load(AtomicOrdering::Relaxed),
             page_switch_count: self.page_switch_count.load(AtomicOrdering::Relaxed),
             page_switch_output_count,
             page_switch_due_miss_count: self
@@ -300,7 +374,7 @@ impl RuntimeMetrics {
         let snapshot = self.snapshot();
         let page = snapshot.last_page.map(|page| page.label()).unwrap_or("-");
         format!(
-            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_schedule_late_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} playback_underfed_count={} page_switches={} page={} page_cb_to_output_avg_ms={:.3} page_cb_to_output_max_ms={:.3} page_due_miss_count={}",
+            "trekr midi runtime: inputs={} outputs={} live={} playback={} cb_to_runtime_avg_ms={:.3} cb_to_runtime_max_ms={:.3} cb_to_output_avg_ms={:.3} cb_to_output_max_ms={:.3} due_miss_avg_ms={:.3} due_miss_max_ms={:.3} due_miss_count={} queue_depth_max={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_schedule_late_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} playback_underfed_count={} playback_headroom_avg_ticks={:.1} playback_headroom_min_ticks={} playback_headroom_low_count={} page_switches={} page={} page_cb_to_output_avg_ms={:.3} page_cb_to_output_max_ms={:.3} page_due_miss_count={}",
             snapshot.runtime_input_count,
             snapshot.output_send_count,
             snapshot.live_send_count,
@@ -319,6 +393,9 @@ impl RuntimeMetrics {
             snapshot.playback_underfed_avg_ticks,
             snapshot.playback_underfed_max_ticks,
             snapshot.playback_underfed_count,
+            snapshot.playback_headroom_avg_ticks,
+            snapshot.playback_headroom_min_ticks,
+            snapshot.playback_headroom_low_count,
             snapshot.page_switch_count,
             page,
             snapshot.page_switch_callback_to_output_avg_ms,
@@ -464,6 +541,7 @@ struct MidiRuntimeEngine {
     active: Arc<AtomicBool>,
     metrics: Arc<RuntimeMetrics>,
     state: Option<RuntimeState>,
+    playback_lookahead_ms: u64,
     scheduler: BinaryHeap<ScheduledMidiEvent>,
     sequence: u64,
     last_diag_at: Instant,
@@ -500,6 +578,7 @@ impl MidiRuntimeEngine {
             active,
             metrics: Arc::new(RuntimeMetrics::default()),
             state: None,
+            playback_lookahead_ms: playback_lookahead_ms_from_env(),
             scheduler: BinaryHeap::new(),
             sequence: 1,
             last_diag_at: Instant::now(),
@@ -1125,9 +1204,18 @@ impl MidiRuntimeEngine {
             return;
         }
         let ticks_per_second = state.project.transport.ticks_per_second();
-        let lookahead_ticks =
-            ((u128::from(ticks_per_second) * u128::from(PLAYBACK_LOOKAHEAD_MS)) / 1_000) as u64;
+        let lookahead_ticks = ((u128::from(ticks_per_second)
+            * u128::from(self.playback_lookahead_ms))
+            / 1_000) as u64;
+        let low_headroom_ticks = ((u128::from(ticks_per_second)
+            * u128::from(PLAYBACK_HEADROOM_LOW_WATERMARK_MS))
+            / 1_000) as u64;
         let target_ticks = state.transport_ticks.saturating_add(lookahead_ticks.max(1));
+        let headroom_ticks = state
+            .scheduled_until_ticks
+            .saturating_sub(state.transport_ticks);
+        self.metrics
+            .observe_playback_headroom(headroom_ticks, low_headroom_ticks.max(1));
         if target_ticks <= state.scheduled_until_ticks {
             self.state = Some(state);
             return;
@@ -1941,8 +2029,31 @@ fn atomic_update_max(target: &AtomicU64, candidate: u64) {
     }
 }
 
+fn atomic_update_min(target: &AtomicU64, candidate: u64) {
+    let mut current = target.load(AtomicOrdering::Relaxed);
+    while candidate < current {
+        match target.compare_exchange_weak(
+            current,
+            candidate,
+            AtomicOrdering::Relaxed,
+            AtomicOrdering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(next) => current = next,
+        }
+    }
+}
+
 fn saturating_nanos_u64(duration: Duration) -> u64 {
     duration.as_nanos().min(u128::from(u64::MAX)) as u64
+}
+
+fn playback_lookahead_ms_from_env() -> u64 {
+    std::env::var("TREKR_MIDI_PLAYBACK_LOOKAHEAD_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|value| value.clamp(50, 2_000))
+        .unwrap_or(PLAYBACK_LOOKAHEAD_MS_DEFAULT)
 }
 
 fn decode_page(encoded: u64) -> Option<AppPage> {
