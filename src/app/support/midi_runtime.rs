@@ -1,3 +1,4 @@
+use crate::link::{LinkRuntime, LinkSnapshot};
 use crate::midi_fx::{
     LiveMidiFxEvent, LiveMidiFxState, MidiFx, MidiFxSlot, playback_timing_lookback_ticks,
     process_live_chain_event, process_live_chain_tick, reset_live_fx_timing, transform_notes,
@@ -53,6 +54,7 @@ pub(crate) struct MidiRuntimeUiSnapshot {
     pub transport_ticks: u64,
     pub playhead_ticks: u64,
     pub live_fx_ticks: u64,
+    pub link_snapshot: LinkSnapshot,
     pub recording_takes: Arc<Vec<Option<RecordingTake>>>,
     #[allow(dead_code)]
     pub updated_at: Instant,
@@ -64,6 +66,7 @@ impl Default for MidiRuntimeUiSnapshot {
             transport_ticks: 0,
             playhead_ticks: 0,
             live_fx_ticks: 0,
+            link_snapshot: LinkSnapshot::default(),
             recording_takes: Arc::new(Vec::new()),
             updated_at: Instant::now(),
         }
@@ -451,6 +454,8 @@ enum MidiRuntimeCommand {
 
 struct MidiRuntimeEngine {
     midi_output: MidiOutputRuntime,
+    link: LinkRuntime,
+    link_snapshot: LinkSnapshot,
     commands: Receiver<MidiRuntimeCommand>,
     input_events: Receiver<MidiInputEvent>,
     completion_sender: Sender<MidiOutputObservedEvent>,
@@ -481,8 +486,12 @@ impl MidiRuntimeEngine {
         snapshot: Arc<Mutex<MidiRuntimeUiSnapshot>>,
         active: Arc<AtomicBool>,
     ) -> Self {
+        let mut link = LinkRuntime::new(120.0);
+        let link_snapshot = link.refresh();
         Self {
             midi_output,
+            link,
+            link_snapshot,
             commands,
             input_events,
             completion_sender,
@@ -618,6 +627,7 @@ impl MidiRuntimeEngine {
             }
             state.copy_live_states_from(previous);
         }
+        self.apply_link_transport_state(&mut state, now);
         if previous_playing && !state.project.transport.playing {
             self.scheduler.clear();
             self.sequence = self.sequence.saturating_add(1);
@@ -636,12 +646,16 @@ impl MidiRuntimeEngine {
         };
         let previous_playing = state.project.transport.playing;
         state.project.transport = timing.transport;
-        state.transport_ticks = timing.transport_ticks;
-        state.playhead_ticks = timing.playhead_ticks;
-        state.live_fx_ticks = timing.live_fx_ticks;
-        state.anchor_instant = now;
-        state.anchor_transport_ticks = timing.transport_ticks;
-        state.anchor_live_ticks = timing.live_fx_ticks;
+        if state.project.transport.link_enabled {
+            self.apply_link_transport_state(&mut state, now);
+        } else {
+            state.transport_ticks = timing.transport_ticks;
+            state.playhead_ticks = timing.playhead_ticks;
+            state.live_fx_ticks = timing.live_fx_ticks;
+            state.anchor_instant = now;
+            state.anchor_transport_ticks = timing.transport_ticks;
+            state.anchor_live_ticks = timing.live_fx_ticks;
+        }
         if previous_playing && !state.project.transport.playing {
             self.scheduler.clear();
             self.sequence = self.sequence.saturating_add(1);
@@ -656,6 +670,32 @@ impl MidiRuntimeEngine {
         let Some(mut state) = self.state.take() else {
             return;
         };
+
+        if state.project.transport.link_enabled {
+            let previous_ticks = state.transport_ticks;
+            self.apply_link_transport_state(&mut state, now);
+            let current_ticks = state.transport_ticks;
+            let current_live_ticks = state.live_fx_ticks;
+            if state.project.transport.playing {
+                if current_ticks < previous_ticks {
+                    self.scheduler.clear();
+                    self.sequence = self.sequence.saturating_add(1);
+                    self.schedule_panic_for_all_tracks(&state, now);
+                    self.state = Some(state);
+                    return;
+                }
+                self.state = Some(state);
+                self.schedule_playback_up_to(now);
+                return;
+            }
+            if current_live_ticks > previous_ticks {
+                self.state = Some(state);
+                self.advance_live_fx_for_state(previous_ticks, current_live_ticks);
+                return;
+            }
+            self.state = Some(state);
+            return;
+        }
 
         if state.project.transport.playing {
             let current_ticks = state.transport_ticks_at(now);
@@ -1222,6 +1262,49 @@ impl MidiRuntimeEngine {
         }
     }
 
+    fn apply_link_transport_state(&mut self, state: &mut RuntimeState, now: Instant) {
+        if self.link_snapshot.enabled != state.project.transport.link_enabled {
+            self.link.set_enabled(state.project.transport.link_enabled);
+        }
+        if self.link_snapshot.start_stop_sync != state.project.transport.link_start_stop_sync {
+            self.link
+                .set_start_stop_sync(state.project.transport.link_start_stop_sync);
+        }
+        if state.project.transport.link_enabled {
+            let target_tempo = f64::from(state.project.transport.tempo_bpm);
+            if (self.link_snapshot.tempo_bpm - target_tempo).abs() > 0.01 {
+                self.link.commit_tempo(target_tempo);
+            }
+            let beat =
+                state.transport_ticks as f64 / f64::from(state.project.transport.ppqn.max(1));
+            if self.link_snapshot.is_playing != state.project.transport.playing {
+                self.link
+                    .commit_playing(state.project.transport.playing, beat);
+            }
+        }
+        self.link_snapshot = self.link.refresh();
+        if !state.project.transport.link_enabled {
+            return;
+        }
+        state.project.transport.tempo_bpm =
+            self.link_snapshot.tempo_bpm.round().clamp(20.0, 400.0) as u16;
+        if state.project.transport.link_start_stop_sync {
+            state.project.transport.playing = self.link_snapshot.is_playing;
+        }
+        let linked_ticks = (self.link_snapshot.beat.max(0.0)
+            * f64::from(state.project.transport.ppqn.max(1)))
+        .round() as u64;
+        state.transport_ticks = linked_ticks;
+        state.playhead_ticks = state.song_playhead_for_transport(linked_ticks);
+        state.live_fx_ticks = linked_ticks;
+        state.anchor_instant = now;
+        state.anchor_transport_ticks = linked_ticks;
+        state.anchor_live_ticks = linked_ticks;
+        state.scheduled_until_ticks = state
+            .scheduled_until_ticks
+            .min(linked_ticks.max(state.scheduled_until_ticks));
+    }
+
     fn prewarm_outputs(&self, state: &RuntimeState) {
         let mut outputs = VecDeque::new();
         for track in &state.project.tracks {
@@ -1252,11 +1335,13 @@ impl MidiRuntimeEngine {
                 transport_ticks: state.transport_ticks,
                 playhead_ticks: state.playhead_ticks,
                 live_fx_ticks: state.live_fx_ticks,
+                link_snapshot: self.link_snapshot,
                 recording_takes: state.recording_takes_snapshot.clone(),
                 updated_at: now,
             }
         } else {
             MidiRuntimeUiSnapshot {
+                link_snapshot: self.link_snapshot,
                 updated_at: now,
                 ..MidiRuntimeUiSnapshot::default()
             }

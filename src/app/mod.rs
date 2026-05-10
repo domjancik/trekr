@@ -979,16 +979,20 @@ impl App {
             }
             AppAction::ToggleLinkEnabled => {
                 self.project.transport.link_enabled = !self.project.transport.link_enabled;
-                self.link.set_enabled(self.project.transport.link_enabled);
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link.set_enabled(self.project.transport.link_enabled);
+                    self.link_snapshot = self.link.refresh();
+                }
                 AppControl::Continue
             }
             AppAction::ToggleLinkStartStopSync => {
                 self.project.transport.link_start_stop_sync =
                     !self.project.transport.link_start_stop_sync;
-                self.link
-                    .set_start_stop_sync(self.project.transport.link_start_stop_sync);
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link
+                        .set_start_stop_sync(self.project.transport.link_start_stop_sync);
+                    self.link_snapshot = self.link.refresh();
+                }
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
@@ -997,7 +1001,7 @@ impl App {
                     self.finish_recording();
                 }
                 self.project.transport.playing = !self.project.transport.playing;
-                if self.project.transport.link_enabled {
+                if self.project.transport.link_enabled && !self.midi_runtime.is_enabled() {
                     self.link.commit_playing(
                         self.project.transport.playing,
                         self.transport_ticks as f64 / f64::from(self.project.transport.ppqn.max(1)),
@@ -1673,27 +1677,6 @@ impl App {
 
     fn advance_runtime_clock(&mut self, _delta: Duration) {
         self.update_timing_from_runtime();
-        if self.project.transport.link_enabled {
-            let previous_tempo = self.project.transport.tempo_bpm;
-            let previous_playing = self.project.transport.playing;
-            self.link_snapshot = self.link.refresh();
-            self.project.transport.tempo_bpm =
-                self.link_snapshot.tempo_bpm.round().clamp(20.0, 400.0) as u16;
-            if self.project.transport.link_start_stop_sync {
-                self.project.transport.playing = self.link_snapshot.is_playing;
-            }
-            let linked_ticks = (self.link_snapshot.beat.max(0.0)
-                * f64::from(self.project.transport.ppqn.max(1)))
-            .round() as u64;
-            self.transport_ticks = linked_ticks;
-            self.playhead_ticks = self.song_playhead_for_transport(linked_ticks);
-            self.live_fx_ticks = linked_ticks;
-            if previous_tempo != self.project.transport.tempo_bpm
-                || previous_playing != self.project.transport.playing
-            {
-                self.mark_midi_runtime_timing_dirty();
-            }
-        }
         self.sync_midi_runtime_state_if_needed();
         self.sync_midi_runtime_timing_if_needed();
         self.update_timing_from_runtime();
@@ -1704,8 +1687,10 @@ impl App {
         let bpm = bpm.clamp(20, 400);
         self.project.transport.tempo_bpm = bpm;
         self.last_tempo_tap_at = None;
-        self.link.commit_tempo(f64::from(bpm));
-        self.link_snapshot = self.link.refresh();
+        if !self.midi_runtime.is_enabled() {
+            self.link.commit_tempo(f64::from(bpm));
+            self.link_snapshot = self.link.refresh();
+        }
     }
 
     fn tap_transport_tempo(&mut self) {
@@ -1715,8 +1700,10 @@ impl App {
             if (150..=3_000).contains(&interval_ms) {
                 let bpm = (60_000 / interval_ms).clamp(20, 400) as u16;
                 self.project.transport.tempo_bpm = bpm;
-                self.link.commit_tempo(f64::from(bpm));
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link.commit_tempo(f64::from(bpm));
+                    self.link_snapshot = self.link.refresh();
+                }
             }
         }
         self.last_tempo_tap_at = Some(now);
@@ -2158,6 +2145,7 @@ impl App {
         self.transport_ticks = snapshot.transport_ticks;
         self.playhead_ticks = snapshot.playhead_ticks;
         self.live_fx_ticks = snapshot.live_fx_ticks;
+        self.link_snapshot = snapshot.link_snapshot;
         self.merge_runtime_recording_takes(&snapshot);
         self.last_runtime_snapshot = snapshot;
     }

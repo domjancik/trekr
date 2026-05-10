@@ -40,6 +40,7 @@ This architecture adds jitter and can accumulate drift under load, especially on
 - Move the live recording hot path off the UI thread so captured note timing stays close to the runtime passthrough stream.
 - Move live timing FX advancement off the frame-polled app loop.
 - Move playback dispatch to absolute due-time scheduling rather than frame-window emission.
+- Move Ableton Link polling and beat-to-tick clock authority into the runtime thread so UI work cannot slow linked playback.
 - Preserve current routing, monitor, passthrough, recording, and clone semantics as closely as possible.
 
 ### Timing goals
@@ -166,6 +167,10 @@ The current input callback does not preserve the callback timestamp in a way tha
 
 The output worker isolates sending from the UI thread, but it does not itself represent a precise scheduling layer.
 
+### 7. App-thread Link authority
+
+If Ableton Link polling, start/stop commits, or beat-to-tick conversion remain app-thread owned, UI load can still perturb the effective musical clock even after note scheduling moves to the runtime.
+
 ## Target architecture
 
 The single-pass implementation should explicitly separate three timing domains.
@@ -188,6 +193,7 @@ Responsible for:
 - live musical input handling
 - live passthrough processing
 - live timing FX advancement
+- Ableton Link polling and linked beat-to-tick clock authority
 - playback scheduling
 - output dispatch decisions
 - low-overhead telemetry capture
