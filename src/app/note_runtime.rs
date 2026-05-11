@@ -27,9 +27,7 @@ pub(crate) fn scheduled_note_occurrences(
             if track.recording_clip_is_muted(note.recording_clip_id) {
                 continue;
             }
-            let overlap_start = note.start_ticks.max(segment_start);
-            let overlap_end = note.end_ticks().min(segment_end);
-            if overlap_start >= overlap_end {
+            if note.start_ticks >= segment_end || note.end_ticks() < segment_start {
                 continue;
             }
             occurrences.push(MidiNote {
@@ -96,7 +94,8 @@ fn ranged_segments(
 
     let mut segments = Vec::new();
     let mut remaining = advanced_ticks;
-    let mut cursor = range.start_ticks + (previous_ticks % range.length_ticks);
+    let offset_within_loop = previous_ticks.saturating_sub(range.start_ticks) % range.length_ticks;
+    let mut cursor = range.start_ticks + offset_within_loop;
     let end = range.end_ticks();
 
     while remaining > 0 {
@@ -1342,6 +1341,69 @@ mod tests {
                 1
             );
         }
+    }
+
+    #[test]
+    fn scheduled_note_occurrences_respect_nonzero_loop_start_phase() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = crate::timeline::LoopRegion::new(240, 960);
+        let notes = vec![MidiNote::new(60, 240, 120, 100)];
+
+        let occurrences =
+            scheduled_note_occurrences(&track, &notes, 1_200, 120, Some(track.loop_region));
+
+        assert_eq!(occurrences.len(), 1);
+        assert_eq!(occurrences[0].start_ticks, 1_200);
+    }
+
+    #[test]
+    fn scheduled_note_events_repeat_cleanly_across_nonzero_loop_start() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        app.project.transport.loop_enabled = true;
+        app.project.loop_region = crate::timeline::LoopRegion::new(240, 960);
+        app.project.tracks[0].state.loop_enabled = false;
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[0]
+            .midi_notes
+            .push(MidiNote::new(60, 240, 120, 100));
+
+        for start in [1_140_u64, 1_200, 1_260, 1_320, 2_100, 2_160, 2_220, 2_280] {
+            app.dispatch_midi_notes(start, 60);
+        }
+
+        let sent = app.midi_output.sent_messages();
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_some()
+                })
+                .count(),
+            2
+        );
+        assert_eq!(
+            sent.iter()
+                .filter(|(port, channel, pitch, velocity)| {
+                    port == "Out A" && *channel == 1 && *pitch == 60 && velocity.is_none()
+                })
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn scheduled_note_events_emit_note_off_when_looped_note_ends_at_window_start() {
+        let mut track = Track::new_empty("Track 1", TrackKind::Midi);
+        track.loop_region = crate::timeline::LoopRegion::new(240, 960);
+        let notes = vec![MidiNote::new(60, 240, 120, 100)];
+
+        let occurrences =
+            scheduled_note_occurrences(&track, &notes, 1_320, 60, Some(track.loop_region));
+        let events = occurrence_note_events_unmuted(&occurrences, 1_320, 60);
+
+        assert!(events.iter().any(|event| *event == (1_320, false, 60, 100)));
     }
 
     #[test]
