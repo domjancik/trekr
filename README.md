@@ -408,7 +408,7 @@ sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64
 Notes:
 
 - `scripts/build-rpi-zero-2w.ps1` fails fast if WSL is unavailable or the required Linux-side toolchain is missing.
-- `scripts/build-rpi-zero-2w-bookworm.ps1` uses a Debian Bookworm Docker build environment and writes artifacts under `target/bookworm/aarch64-unknown-linux-gnu/release` so they remain compatible with Debian 12's glibc 2.36 baseline.
+- `scripts/build-rpi-zero-2w-bookworm.ps1` uses a Debian Bookworm Docker build environment, persists Cargo registry/git caches in Docker volumes (`trekr-rpi-bookworm-cargo-registry` and `trekr-rpi-bookworm-cargo-git` by default), and writes artifacts under `target/bookworm/aarch64-unknown-linux-gnu/release` so they remain compatible with Debian 12's glibc 2.36 baseline.
 - the Bookworm build defaults SDL to the Pi console/KMSDRM configuration, which avoids requiring X11 or Wayland development libraries in the container. Use `-DesktopSdlBuild` only when intentionally building a desktop SDL variant from that container.
 - `-SdlUnixConsoleBuild` on the WSL build path is retained for console/KMSDRM diagnostics, but the Bookworm Docker path is the recommended compatibility baseline for Debian 12 Pi deployment.
 - Linux MIDI support goes through ALSA via `midir`, so if the final link step reports missing ALSA target libraries, install the matching ARM64 ALSA development package in the WSL distro/sysroot before retrying.

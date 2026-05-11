@@ -44,6 +44,8 @@ This path should build inside a Debian Bookworm container and place artifacts un
 target/bookworm/aarch64-unknown-linux-gnu/release/
 ```
 
+The Bookworm container build should persist Cargo registry and git caches in Docker volumes so repeated builds do not redownload the Rust dependency graph unnecessarily.
+
 The Bookworm container build should default SDL to the console/KMSDRM configuration so it does not require X11 or Wayland development packages. Desktop SDL variants may be supported through an explicit opt-in switch, but they are not the default deployment target.
 
 The Bookworm build is the compatibility baseline for Pi deployment because Debian 12 ships glibc 2.36. Artifacts built against this baseline should run on Bookworm and newer glibc images. Deploy should expose an explicit switch for that artifact set:
