@@ -272,6 +272,10 @@ impl App {
             ));
         }
 
+        if let Some(control) = self.handle_direct_mapping_navigation_key(event) {
+            return Some(control);
+        }
+
         if let Some(source_label) = direct_mapping_key_label(event) {
             if self.direct_mapping_state.mode != DirectMappingMode::Inactive {
                 if let DirectMappingMode::AwaitingInput(target) = self.direct_mapping_state.mode {
@@ -371,9 +375,7 @@ impl App {
         }
 
         if let Some(target) = self.direct_mapping_target_at(content_bounds, x, y) {
-            self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
-            self.direct_mapping_state.status_message = None;
-            self.sync_midi_inputs();
+            self.select_direct_mapping_target(target);
             return Some(AppControl::Continue);
         }
 
@@ -437,6 +439,113 @@ impl App {
     }
 }
 
+impl App {
+    fn handle_direct_mapping_navigation_key(
+        &mut self,
+        event: &sdl3::event::Event,
+    ) -> Option<AppControl> {
+        if self.direct_mapping_state.mode == DirectMappingMode::Inactive {
+            return None;
+        }
+
+        match event {
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Tab),
+                keymod,
+                repeat: false,
+                ..
+            } => {
+                let delta = if keymod
+                    .intersects(sdl3::keyboard::Mod::LSHIFTMOD | sdl3::keyboard::Mod::RSHIFTMOD)
+                {
+                    -1
+                } else {
+                    1
+                };
+                self.cycle_direct_mapping_target(delta);
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Left),
+                repeat: false,
+                ..
+            } => {
+                self.move_direct_mapping_target(-1, 0);
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Right),
+                repeat: false,
+                ..
+            } => {
+                self.move_direct_mapping_target(1, 0);
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Up),
+                repeat: false,
+                ..
+            } => {
+                self.move_direct_mapping_target(0, -1);
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Down),
+                repeat: false,
+                ..
+            } => {
+                self.move_direct_mapping_target(0, 1);
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Return),
+                repeat: false,
+                ..
+            } => {
+                if self.direct_mapping_state.mode == DirectMappingMode::Targeting
+                    && let Some(target) = self.current_direct_mapping_target()
+                {
+                    self.select_direct_mapping_target(target);
+                }
+                return Some(AppControl::Continue);
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(sdl3::keyboard::Keycode::Backspace),
+                repeat: false,
+                ..
+            } => {
+                if self.direct_mapping_state.mode == DirectMappingMode::Targeting {
+                    self.direct_mapping_state.jump_query.pop();
+                    return Some(AppControl::Continue);
+                }
+            }
+            sdl3::event::Event::KeyDown {
+                keycode: Some(keycode),
+                keymod,
+                repeat: false,
+                ..
+            } if self.direct_mapping_state.mode == DirectMappingMode::Targeting
+                && !keymod.intersects(
+                    sdl3::keyboard::Mod::LALTMOD
+                        | sdl3::keyboard::Mod::RALTMOD
+                        | sdl3::keyboard::Mod::LCTRLMOD
+                        | sdl3::keyboard::Mod::RCTRLMOD
+                        | sdl3::keyboard::Mod::LSHIFTMOD
+                        | sdl3::keyboard::Mod::RSHIFTMOD,
+                ) =>
+            {
+                if let Some(input) = direct_mapping_jump_key(*keycode) {
+                    self.apply_direct_mapping_jump_key(input);
+                    return Some(AppControl::Continue);
+                }
+            }
+            _ => {}
+        }
+
+        None
+    }
+}
+
 pub(crate) fn rect_contains(rect: Rect, x: i32, y: i32) -> bool {
     x >= rect.x
         && x < rect.x + rect.width() as i32
@@ -471,6 +580,38 @@ pub(crate) fn pointer_hover_position(
             (*x * viewport_size.0 as f32) as i32,
             (*y * viewport_size.1 as f32) as i32,
         )),
+        _ => None,
+    }
+}
+
+fn direct_mapping_jump_key(keycode: sdl3::keyboard::Keycode) -> Option<char> {
+    match keycode {
+        sdl3::keyboard::Keycode::A => Some('A'),
+        sdl3::keyboard::Keycode::B => Some('B'),
+        sdl3::keyboard::Keycode::C => Some('C'),
+        sdl3::keyboard::Keycode::D => Some('D'),
+        sdl3::keyboard::Keycode::E => Some('E'),
+        sdl3::keyboard::Keycode::F => Some('F'),
+        sdl3::keyboard::Keycode::G => Some('G'),
+        sdl3::keyboard::Keycode::H => Some('H'),
+        sdl3::keyboard::Keycode::I => Some('I'),
+        sdl3::keyboard::Keycode::J => Some('J'),
+        sdl3::keyboard::Keycode::K => Some('K'),
+        sdl3::keyboard::Keycode::L => Some('L'),
+        sdl3::keyboard::Keycode::M => Some('M'),
+        sdl3::keyboard::Keycode::N => Some('N'),
+        sdl3::keyboard::Keycode::O => Some('O'),
+        sdl3::keyboard::Keycode::P => Some('P'),
+        sdl3::keyboard::Keycode::Q => Some('Q'),
+        sdl3::keyboard::Keycode::R => Some('R'),
+        sdl3::keyboard::Keycode::S => Some('S'),
+        sdl3::keyboard::Keycode::T => Some('T'),
+        sdl3::keyboard::Keycode::U => Some('U'),
+        sdl3::keyboard::Keycode::V => Some('V'),
+        sdl3::keyboard::Keycode::W => Some('W'),
+        sdl3::keyboard::Keycode::X => Some('X'),
+        sdl3::keyboard::Keycode::Y => Some('Y'),
+        sdl3::keyboard::Keycode::Z => Some('Z'),
         _ => None,
     }
 }
@@ -568,5 +709,65 @@ mod tests {
             app.direct_mapping_state.mode,
             DirectMappingMode::AwaitingInput(record_target)
         );
+    }
+
+    #[test]
+    fn direct_mapping_tab_navigation_selects_target_without_pointer() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ToggleDirectMappingMode);
+        let first_index = app.direct_mapping_state.current_target_index;
+
+        let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::Tab),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert_ne!(app.direct_mapping_state.current_target_index, first_index);
+
+        let enter = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::Return),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+        assert_eq!(enter, Some(AppControl::Continue));
+        assert!(matches!(
+            app.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(_)
+        ));
+    }
+
+    #[test]
+    fn direct_mapping_jump_hint_can_select_target() {
+        let mut app = App::new();
+        app.apply_action(AppAction::ToggleDirectMappingMode);
+
+        let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::A),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(control, Some(AppControl::Continue));
+        assert!(matches!(
+            app.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(_)
+        ));
     }
 }

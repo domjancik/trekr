@@ -114,10 +114,17 @@ Notes:
   - cancel restores the original target/scope and closes the lookup
 - MIDI learn currently captures MIDI note and CC sources
 - direct UI mapping can now target supported timeline and routing controls from discoverability-backed hit targets
+- direct UI mapping now supports no-pointer target selection:
+  - entering direct mapping picks a current highlighted target when the page has supported controls
+  - `Left` / `Right` / `Up` / `Down` move among supported direct-mapping targets
+  - `Tab` / `Shift+Tab` cycle supported direct-mapping targets in stable page order
+  - `Enter` selects the current highlighted target and arms input capture
+  - typing direct-mapping hint letters such as `A`, `B`, `AA`, or `AB` jumps to a visible target without pointer hover
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
 - direct mapping entered from the mappings page returns there after commit, while in-place direct mapping stays on the current page so multiple controls can be mapped in sequence
 - after each direct mapping commit, the mode stays armed in target-selection state until canceled so full-surface mapping is faster
 - selecting a different supported control while direct mapping is awaiting input retargets the pending capture instead of requiring a cancel
+- if the current page has no supported direct-mapping targets, the footer now says so explicitly instead of failing silently
 - `Escape` and `F8` remain reserved to cancel direct mapping instead of being captured as mapping sources
 - MIDI mappings can now execute app actions from live MIDI input
 - key mappings can now execute app actions from live keyboard input before the built-in fallback bindings

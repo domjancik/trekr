@@ -42,7 +42,7 @@ impl TransportChipSpec {
 
 impl App {
     pub(crate) fn draw_frame_surface(
-        &self,
+        &mut self,
         pixel_format: PixelFormat,
     ) -> Result<sdl3::surface::Surface<'static>, Box<dyn std::error::Error>> {
         let width = self.viewport_size.0.max(1);
@@ -54,7 +54,7 @@ impl App {
     }
 
     pub(crate) fn draw<T: RenderTarget>(
-        &self,
+        &mut self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.draw_scene(canvas)?;
@@ -90,7 +90,7 @@ impl App {
     }
 
     fn draw_scene<T: RenderTarget>(
-        &self,
+        &mut self,
         canvas: &mut Canvas<T>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (width, height) = active_draw_size(canvas.output_size()?, self.viewport_size);
@@ -142,7 +142,7 @@ impl App {
     }
 
     pub(crate) fn draw_window(
-        &self,
+        &mut self,
         canvas: &mut Canvas<sdl3::video::Window>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (scale_x, scale_y) = canvas.scale();
@@ -181,7 +181,7 @@ impl App {
     }
 
     fn draw_overlay<T: RenderTarget>(
-        &self,
+        &mut self,
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -435,7 +435,7 @@ impl App {
     }
 
     fn draw_footer<T: RenderTarget>(
-        &self,
+        &mut self,
         canvas: &mut Canvas<T>,
         bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {

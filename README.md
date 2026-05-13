@@ -232,6 +232,7 @@ Mapping discoverability notes:
 - the footer falls back to the last performed action when nothing discoverable is hovered
 - `F7` enables a separate discoverability overlay with compact inline badges
 - `F8` enters a direct mapping mode that highlights supported controls and captures the next MIDI note or CC for the selected target
+- while direct mapping is in target-selection mode, `Left` / `Right` / `Up` / `Down` move among highlighted targets, `Tab` / `Shift+Tab` cycle them, `Enter` arms the current target, and typing visible hint letters jumps directly to a target without a pointer
 - direct mapping now also accepts the next keyboard keypress, including `Ctrl`, `Alt`, and `Shift` modifier combinations
 - discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
 - disabled mappings are hidden from the footer and discoverability overlay
@@ -284,12 +285,14 @@ The `Mappings` page now supports two modes:
 - mappings now also expose mappings-page editor/navigation actions as mapping targets, so row/field navigation and activation can be driven through the same canonical action model as the rest of the app
 - `Cancel` is now also exposed as a mapping target so lookup/direct-mapping cancel can be triggered from non-keyboard inputs too
 - direct UI mapping entry through `F8` or the `Tap Direct Map` chip, with target selection on supported timeline and routing controls
+- direct UI mapping can now be completed without mouse/touch by moving between highlighted targets with arrows or `Tab`, selecting with `Enter`, or typing the visible hint letters shown on supported controls
 
 MIDI learn notes:
 
 - in mappings `Write` mode, move to the `Source` field and press `Enter` to arm MIDI learn for the selected row
 - the next incoming MIDI note or CC updates that mapping source and exits learn mode
 - in direct mapping mode, select a supported control and the next incoming MIDI note or CC creates or replaces its mapping row
+- while direct mapping is in target-selection mode, the footer names the current target and the app shows an explicit no-target message on pages that do not yet expose supported direct-mapping controls
 - after each direct mapping commit, the app stays in direct mapping mode so you can keep selecting controls and map a full surface quickly
 - direct mapping entered from the mappings page returns to `Mappings` after commit; direct mapping entered in place keeps the current page so multiple controls can be mapped in sequence
 - while direct mapping is awaiting input, selecting a different supported control retargets the pending mapping instead of requiring cancel first

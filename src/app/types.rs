@@ -79,6 +79,8 @@ pub(crate) struct DirectMappingState {
     pub mode: DirectMappingMode,
     pub origin: DirectMappingOrigin,
     pub status_message: Option<String>,
+    pub current_target_index: Option<usize>,
+    pub jump_query: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
