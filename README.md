@@ -232,7 +232,7 @@ Mapping discoverability notes:
 - the footer falls back to the last performed action when nothing discoverable is hovered
 - `F7` enables a separate discoverability overlay with compact inline badges
 - `F8` enters a direct mapping mode that highlights supported controls and captures the next MIDI note or CC for the selected target
-- while direct mapping is in target-selection mode, `Left` / `Right` / `Up` / `Down` move among highlighted targets, `Tab` / `Shift+Tab` cycle them, `Enter` arms the current target, and typing visible hint letters jumps directly to a target without a pointer
+- while direct mapping is in target-selection mode, `Left` / `Right` / `Up` / `Down` move among highlighted targets, `Tab` / `Shift+Tab` cycle them, pressing a key maps the current highlighted target immediately, `Enter` explicitly arms the current target for the next MIDI or key input, and `/` enters hint-jump mode for typing visible target labels without a pointer
 - direct mapping now also accepts the next keyboard keypress, including `Ctrl`, `Alt`, and `Shift` modifier combinations
 - discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
 - disabled mappings are hidden from the footer and discoverability overlay

@@ -96,9 +96,12 @@ impl App {
                         "Jump {}... keep typing a hint, Backspace edits, Esc cancels.",
                         self.direct_mapping_state.jump_query
                     )
+                } else if self.direct_mapping_state.jump_input_active {
+                    "Jump mode: type hint letters for a highlighted control, Backspace edits, Esc cancels."
+                        .to_string()
                 } else {
                     self.direct_mapping_state.status_message.clone().unwrap_or_else(|| {
-                        "Arrows move, Tab cycles, Enter selects, type hint letters to jump, Esc cancels."
+                        "Arrows move, Tab cycles, Enter arms MIDI learn, press a key to map now, / starts jump mode, Esc cancels."
                             .to_string()
                     })
                 };
