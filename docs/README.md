@@ -11,6 +11,7 @@ This folder is organized by audience and intent:
 
 Recent/additional specs:
 
+- `docs/specs/feature-spec-direct-mapping-without-pointer.md` — keyboard-first directional and Vimium-style jump targeting for direct mapping without requiring mouse selection.
 - `docs/specs/ui-density-presets-spec.md` — implemented density preset model for default, compact, touch, and tiny layout metrics.
 - `docs/specs/ui-scaling-spec.md` — current implemented UI scaling behavior and constraints.
 - `docs/specs/rpi-display-mode-spec.md` — Raspberry Pi KMSDRM display resolution selection and override behavior.
