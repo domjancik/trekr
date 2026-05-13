@@ -80,6 +80,7 @@ pub(crate) struct DirectMappingState {
     pub origin: DirectMappingOrigin,
     pub status_message: Option<String>,
     pub current_target_index: Option<usize>,
+    pub jump_input_active: bool,
     pub jump_query: String,
 }
 

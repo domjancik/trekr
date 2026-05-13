@@ -12,6 +12,7 @@ impl App {
                 DirectMappingOrigin::InPlace
             };
             self.direct_mapping_state.status_message = None;
+            self.direct_mapping_state.jump_input_active = false;
             self.direct_mapping_state.jump_query.clear();
             self.page_state.mapping_midi_learn_armed = false;
             if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
@@ -30,6 +31,7 @@ impl App {
         self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
         self.direct_mapping_state.status_message = Some(message.to_string());
         self.direct_mapping_state.current_target_index = None;
+        self.direct_mapping_state.jump_input_active = false;
         self.direct_mapping_state.jump_query.clear();
         self.sync_midi_inputs();
     }
@@ -121,6 +123,7 @@ impl App {
             .min(targets.len() - 1) as i32;
         let next = (current + delta).rem_euclid(count) as usize;
         self.direct_mapping_state.current_target_index = Some(next);
+        self.direct_mapping_state.jump_input_active = false;
         self.direct_mapping_state.jump_query.clear();
         if matches!(
             self.direct_mapping_state.mode,
@@ -183,6 +186,7 @@ impl App {
             return false;
         };
         self.direct_mapping_state.current_target_index = Some(best_index);
+        self.direct_mapping_state.jump_input_active = false;
         self.direct_mapping_state.jump_query.clear();
         if matches!(
             self.direct_mapping_state.mode,
@@ -223,6 +227,7 @@ impl App {
             .collect::<Vec<_>>();
         if matches.is_empty() {
             self.direct_mapping_state.jump_query.clear();
+            self.direct_mapping_state.jump_input_active = false;
             self.direct_mapping_state.status_message =
                 Some("No matching direct-map hint on this page.".to_string());
             return true;
@@ -230,6 +235,7 @@ impl App {
         self.direct_mapping_state.current_target_index = Some(matches[0]);
         if let Some(exact_match) = labels.iter().position(|label| *label == query) {
             self.direct_mapping_state.jump_query.clear();
+            self.direct_mapping_state.jump_input_active = false;
             self.select_direct_mapping_target(targets[exact_match]);
             return true;
         }
@@ -320,6 +326,7 @@ impl App {
             )
         };
         self.direct_mapping_state.mode = DirectMappingMode::Targeting;
+        self.direct_mapping_state.jump_input_active = false;
         self.direct_mapping_state.status_message = Some(message);
         self.set_direct_mapping_current_target(target);
         self.sync_midi_inputs();
