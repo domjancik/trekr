@@ -65,7 +65,7 @@ impl App {
     }
 
     pub(super) fn direct_mapping_footer_content(
-        &self,
+        &mut self,
     ) -> Option<(String, String, Vec<MappingBadge>)> {
         match self.direct_mapping_state.mode {
             DirectMappingMode::Inactive => {
@@ -78,14 +78,36 @@ impl App {
                         .map(|message| ("Direct Map".to_string(), message.clone(), Vec::new()))
                 }
             }
-            DirectMappingMode::Targeting => Some((
-                "Direct Map".to_string(),
-                self.direct_mapping_state.status_message.clone().unwrap_or_else(|| {
-                    "Select a highlighted control, then move the next MIDI control or key. Esc cancels."
-                        .to_string()
-                }),
-                Vec::new(),
-            )),
+            DirectMappingMode::Targeting => {
+                let Some(target) = self.current_direct_mapping_target() else {
+                    return Some((
+                        "Direct Map".to_string(),
+                        "No supported controls on this page. Use F1-F4 to switch pages, or Esc to cancel."
+                            .to_string(),
+                        Vec::new(),
+                    ));
+                };
+                let title = match target.display_scope {
+                    Some(scope) => format!("Direct Map: {} ({scope})", target.target_label),
+                    None => format!("Direct Map: {}", target.target_label),
+                };
+                let detail = if !self.direct_mapping_state.jump_query.is_empty() {
+                    format!(
+                        "Jump {}... keep typing a hint, Backspace edits, Esc cancels.",
+                        self.direct_mapping_state.jump_query
+                    )
+                } else {
+                    self.direct_mapping_state.status_message.clone().unwrap_or_else(|| {
+                        "Arrows move, Tab cycles, Enter selects, type hint letters to jump, Esc cancels."
+                            .to_string()
+                    })
+                };
+                Some((
+                    title,
+                    detail,
+                    self.summarize_direct_mapping_target(target).badges,
+                ))
+            }
             DirectMappingMode::AwaitingInput(target) => {
                 let title = match target.display_scope {
                     Some(scope) => format!("Direct Map: {} ({scope})", target.target_label),
@@ -277,7 +299,7 @@ impl App {
     }
 
     pub(super) fn draw_direct_mapping_targets<T: RenderTarget>(
-        &self,
+        &mut self,
         canvas: &mut Canvas<T>,
         tabs_bounds: Rect,
         content_bounds: Rect,
@@ -292,7 +314,10 @@ impl App {
             canvas.draw_rect(page.hit_rect)?;
         }
 
-        for target in self.direct_mapping_targets(content_bounds) {
+        let targets = self.direct_mapping_targets(content_bounds);
+        let current_target = self.current_direct_mapping_target();
+        let hint_labels = self.direct_mapping_hint_labels(&targets);
+        for (index, target) in targets.iter().copied().enumerate() {
             canvas.set_draw_color(theme.discoverability.direct_target_border);
             canvas.draw_rect(Rect::new(
                 target.hit_rect.x - 1,
@@ -300,7 +325,10 @@ impl App {
                 target.hit_rect.width().saturating_add(2),
                 target.hit_rect.height().saturating_add(2),
             ))?;
-            if self.direct_mapping_state.mode == DirectMappingMode::AwaitingInput(target) {
+            if current_target
+                .is_some_and(|current| self.direct_mapping_targets_match(current, target))
+                || self.direct_mapping_state.mode == DirectMappingMode::AwaitingInput(target)
+            {
                 canvas.set_draw_color(theme.discoverability.direct_target_active_border);
                 canvas.draw_rect(Rect::new(
                     target.hit_rect.x - 3,
@@ -309,6 +337,19 @@ impl App {
                     target.hit_rect.height().saturating_add(6),
                 ))?;
             }
+            let hint_bounds = Rect::new(
+                target.hit_rect.x + 2,
+                target.hit_rect.y + 2,
+                target.hit_rect.width().min(26),
+                8,
+            );
+            crate::ui::draw_text_fitted(
+                canvas,
+                &hint_labels[index],
+                hint_bounds,
+                1,
+                theme.discoverability.direct_target_active_border,
+            )?;
         }
 
         Ok(())

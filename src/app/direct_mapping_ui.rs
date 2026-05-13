@@ -12,10 +12,12 @@ impl App {
                 DirectMappingOrigin::InPlace
             };
             self.direct_mapping_state.status_message = None;
+            self.direct_mapping_state.jump_query.clear();
             self.page_state.mapping_midi_learn_armed = false;
             if self.overlay_state.active == Some(AppOverlay::MappingsQuickView) {
                 self.overlay_state.active = None;
             }
+            self.reset_direct_mapping_target_selection();
         } else {
             self.cancel_direct_mapping("Canceled direct mapping.");
         }
@@ -27,7 +29,212 @@ impl App {
         self.direct_mapping_state.mode = DirectMappingMode::Inactive;
         self.direct_mapping_state.origin = DirectMappingOrigin::InPlace;
         self.direct_mapping_state.status_message = Some(message.to_string());
+        self.direct_mapping_state.current_target_index = None;
+        self.direct_mapping_state.jump_query.clear();
         self.sync_midi_inputs();
+    }
+
+    pub(super) fn direct_mapping_targets_for_current_page(&self) -> Vec<DirectMappingTarget> {
+        let surface = crate::ui::surface_rect(
+            self.viewport_size.0,
+            self.viewport_size.1,
+            self.ui_metrics(),
+        );
+        let Some(inset) = crate::ui::inset_rect(
+            surface,
+            self.ui_metrics().frame_inset_x_px,
+            self.ui_metrics().frame_inset_y_px,
+        )
+        .ok() else {
+            return Vec::new();
+        };
+        let Some((_, content_bounds, _)) = self.page_frame_layout(inset).ok() else {
+            return Vec::new();
+        };
+        self.direct_mapping_targets(content_bounds)
+    }
+
+    pub(super) fn reset_direct_mapping_target_selection(&mut self) {
+        self.direct_mapping_state.current_target_index =
+            (!self.direct_mapping_targets_for_current_page().is_empty()).then_some(0);
+        self.direct_mapping_state.jump_query.clear();
+    }
+
+    pub(super) fn normalize_direct_mapping_target_index(&mut self) -> Option<usize> {
+        let targets = self.direct_mapping_targets_for_current_page();
+        if targets.is_empty() {
+            self.direct_mapping_state.current_target_index = None;
+            return None;
+        }
+        let index = self
+            .direct_mapping_state
+            .current_target_index
+            .unwrap_or(0)
+            .min(targets.len() - 1);
+        self.direct_mapping_state.current_target_index = Some(index);
+        Some(index)
+    }
+
+    pub(super) fn current_direct_mapping_target(&mut self) -> Option<DirectMappingTarget> {
+        let index = self.normalize_direct_mapping_target_index()?;
+        self.direct_mapping_targets_for_current_page()
+            .get(index)
+            .copied()
+    }
+
+    pub(super) fn set_direct_mapping_current_target(&mut self, target: DirectMappingTarget) {
+        let targets = self.direct_mapping_targets_for_current_page();
+        self.direct_mapping_state.current_target_index = targets
+            .iter()
+            .position(|candidate| self.direct_mapping_targets_match(*candidate, target));
+        self.direct_mapping_state.jump_query.clear();
+    }
+
+    pub(super) fn direct_mapping_targets_match(
+        &self,
+        left: DirectMappingTarget,
+        right: DirectMappingTarget,
+    ) -> bool {
+        left.action == right.action
+            && left.target_label == right.target_label
+            && left.scope_label == right.scope_label
+    }
+
+    pub(super) fn select_direct_mapping_target(&mut self, target: DirectMappingTarget) {
+        self.set_direct_mapping_current_target(target);
+        self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(target);
+        self.direct_mapping_state.status_message = None;
+        self.sync_midi_inputs();
+    }
+
+    pub(super) fn cycle_direct_mapping_target(&mut self, delta: i32) -> bool {
+        let targets = self.direct_mapping_targets_for_current_page();
+        if targets.is_empty() {
+            self.direct_mapping_state.current_target_index = None;
+            return false;
+        }
+        let count = targets.len() as i32;
+        let current = self
+            .direct_mapping_state
+            .current_target_index
+            .unwrap_or(0)
+            .min(targets.len() - 1) as i32;
+        let next = (current + delta).rem_euclid(count) as usize;
+        self.direct_mapping_state.current_target_index = Some(next);
+        self.direct_mapping_state.jump_query.clear();
+        if matches!(
+            self.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(_)
+        ) {
+            self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(targets[next]);
+            self.direct_mapping_state.status_message = None;
+            self.sync_midi_inputs();
+        }
+        true
+    }
+
+    pub(super) fn move_direct_mapping_target(&mut self, dx: i32, dy: i32) -> bool {
+        let targets = self.direct_mapping_targets_for_current_page();
+        let Some(current_index) = self.normalize_direct_mapping_target_index() else {
+            return false;
+        };
+        let current = targets[current_index];
+        let current_center = (
+            current.hit_rect.x + current.hit_rect.width() as i32 / 2,
+            current.hit_rect.y + current.hit_rect.height() as i32 / 2,
+        );
+
+        let mut best_index = None;
+        let mut best_score = (i32::MAX, i32::MAX);
+        for (index, candidate) in targets.iter().copied().enumerate() {
+            if index == current_index {
+                continue;
+            }
+            let candidate_center = (
+                candidate.hit_rect.x + candidate.hit_rect.width() as i32 / 2,
+                candidate.hit_rect.y + candidate.hit_rect.height() as i32 / 2,
+            );
+            let delta_x = candidate_center.0 - current_center.0;
+            let delta_y = candidate_center.1 - current_center.1;
+            if dx != 0 && (delta_x.signum() != dx.signum() || delta_x == 0) {
+                continue;
+            }
+            if dy != 0 && (delta_y.signum() != dy.signum() || delta_y == 0) {
+                continue;
+            }
+            let primary = if dx != 0 {
+                delta_x.abs()
+            } else {
+                delta_y.abs()
+            };
+            let secondary = if dx != 0 {
+                delta_y.abs()
+            } else {
+                delta_x.abs()
+            };
+            let score = (primary, secondary);
+            if score < best_score {
+                best_score = score;
+                best_index = Some(index);
+            }
+        }
+
+        let Some(best_index) = best_index else {
+            return false;
+        };
+        self.direct_mapping_state.current_target_index = Some(best_index);
+        self.direct_mapping_state.jump_query.clear();
+        if matches!(
+            self.direct_mapping_state.mode,
+            DirectMappingMode::AwaitingInput(_)
+        ) {
+            self.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(targets[best_index]);
+            self.direct_mapping_state.status_message = None;
+            self.sync_midi_inputs();
+        }
+        true
+    }
+
+    pub(super) fn direct_mapping_hint_labels(
+        &self,
+        targets: &[DirectMappingTarget],
+    ) -> Vec<String> {
+        (0..targets.len()).map(direct_mapping_hint_label).collect()
+    }
+
+    pub(super) fn apply_direct_mapping_jump_key(&mut self, input: char) -> bool {
+        if self.direct_mapping_state.mode != DirectMappingMode::Targeting {
+            return false;
+        }
+        let targets = self.direct_mapping_targets_for_current_page();
+        if targets.is_empty() {
+            return false;
+        }
+        self.direct_mapping_state
+            .jump_query
+            .push(input.to_ascii_uppercase());
+        let labels = self.direct_mapping_hint_labels(&targets);
+        let query = self.direct_mapping_state.jump_query.clone();
+        let matches = labels
+            .iter()
+            .enumerate()
+            .filter(|(_, label)| label.starts_with(&query))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if matches.is_empty() {
+            self.direct_mapping_state.jump_query.clear();
+            self.direct_mapping_state.status_message =
+                Some("No matching direct-map hint on this page.".to_string());
+            return true;
+        }
+        self.direct_mapping_state.current_target_index = Some(matches[0]);
+        if let Some(exact_match) = labels.iter().position(|label| *label == query) {
+            self.direct_mapping_state.jump_query.clear();
+            self.select_direct_mapping_target(targets[exact_match]);
+            return true;
+        }
+        self.direct_mapping_state.status_message = None;
+        true
     }
 
     pub(super) fn capture_direct_mapping_input(&mut self, event: &MidiInputEvent) -> bool {
@@ -114,6 +321,7 @@ impl App {
         };
         self.direct_mapping_state.mode = DirectMappingMode::Targeting;
         self.direct_mapping_state.status_message = Some(message);
+        self.set_direct_mapping_current_target(target);
         self.sync_midi_inputs();
     }
 
@@ -151,6 +359,19 @@ impl App {
     }
 }
 
+fn direct_mapping_hint_label(mut index: usize) -> String {
+    let mut label = String::new();
+    loop {
+        let remainder = index % 26;
+        label.insert(0, (b'A' + remainder as u8) as char);
+        if index < 26 {
+            break;
+        }
+        index = index / 26 - 1;
+    }
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,6 +382,7 @@ mod tests {
 
         app.apply_action(AppAction::ToggleDirectMappingMode);
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
+        assert!(app.direct_mapping_state.current_target_index.is_some());
 
         app.apply_action(AppAction::ToggleDirectMappingMode);
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
@@ -402,5 +624,13 @@ mod tests {
         });
         assert_eq!(f8, Some(AppControl::Continue));
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Inactive);
+    }
+
+    #[test]
+    fn direct_mapping_hint_labels_progress_like_vimium_sequences() {
+        assert_eq!(direct_mapping_hint_label(0), "A");
+        assert_eq!(direct_mapping_hint_label(25), "Z");
+        assert_eq!(direct_mapping_hint_label(26), "AA");
+        assert_eq!(direct_mapping_hint_label(27), "AB");
     }
 }
