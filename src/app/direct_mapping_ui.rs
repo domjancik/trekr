@@ -203,7 +203,7 @@ impl App {
         &self,
         targets: &[DirectMappingTarget],
     ) -> Vec<String> {
-        (0..targets.len()).map(direct_mapping_hint_label).collect()
+        direct_mapping_hint_labels(targets.len())
     }
 
     pub(super) fn apply_direct_mapping_jump_key(&mut self, input: char) -> bool {
@@ -366,17 +366,32 @@ impl App {
     }
 }
 
-fn direct_mapping_hint_label(mut index: usize) -> String {
-    let mut label = String::new();
-    loop {
-        let remainder = index % 26;
-        label.insert(0, (b'A' + remainder as u8) as char);
-        if index < 26 {
-            break;
-        }
-        index = index / 26 - 1;
+fn direct_mapping_hint_labels(count: usize) -> Vec<String> {
+    if count == 0 {
+        return Vec::new();
     }
-    label
+
+    let alphabet_size = 26usize;
+    let mut width = 1usize;
+    let mut capacity = alphabet_size;
+    while capacity < count {
+        width += 1;
+        capacity *= alphabet_size;
+    }
+
+    (0..count)
+        .map(|index| direct_mapping_hint_label(index, width))
+        .collect()
+}
+
+fn direct_mapping_hint_label(mut index: usize, width: usize) -> String {
+    let mut label = vec!['A'; width];
+    for slot in (0..width).rev() {
+        let remainder = index % 26;
+        label[slot] = (b'A' + remainder as u8) as char;
+        index /= 26;
+    }
+    label.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -635,9 +650,24 @@ mod tests {
 
     #[test]
     fn direct_mapping_hint_labels_progress_like_vimium_sequences() {
-        assert_eq!(direct_mapping_hint_label(0), "A");
-        assert_eq!(direct_mapping_hint_label(25), "Z");
-        assert_eq!(direct_mapping_hint_label(26), "AA");
-        assert_eq!(direct_mapping_hint_label(27), "AB");
+        assert_eq!(direct_mapping_hint_labels(1), vec!["A"]);
+        assert_eq!(direct_mapping_hint_labels(26).last().unwrap(), "Z");
+        assert_eq!(
+            direct_mapping_hint_labels(27)[..4],
+            ["AA", "AB", "AC", "AD"]
+        );
+        assert_eq!(direct_mapping_hint_labels(27)[26], "BA");
+    }
+
+    #[test]
+    fn direct_mapping_hint_labels_are_prefix_free_when_multi_char() {
+        let labels = direct_mapping_hint_labels(40);
+        for label in &labels {
+            for other in &labels {
+                if label != other {
+                    assert!(!other.starts_with(label));
+                }
+            }
+        }
     }
 }

@@ -792,6 +792,7 @@ mod tests {
     fn direct_mapping_jump_hint_can_select_target() {
         let mut app = App::new();
         app.apply_action(AppAction::ToggleDirectMappingMode);
+        let labels = app.direct_mapping_hint_labels(&app.direct_mapping_targets_for_current_page());
 
         let jump_mode = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
             timestamp: 0,
@@ -805,18 +806,49 @@ mod tests {
         });
         assert_eq!(jump_mode, Some(AppControl::Continue));
 
-        let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
-            timestamp: 0,
-            window_id: 0,
-            keycode: Some(sdl3::keyboard::Keycode::A),
-            scancode: None,
-            keymod: sdl3::keyboard::Mod::NOMOD,
-            repeat: false,
-            which: 0,
-            raw: 0,
-        });
+        for ch in labels[0].chars() {
+            let keycode = match ch {
+                'A' => sdl3::keyboard::Keycode::A,
+                'B' => sdl3::keyboard::Keycode::B,
+                'C' => sdl3::keyboard::Keycode::C,
+                'D' => sdl3::keyboard::Keycode::D,
+                'E' => sdl3::keyboard::Keycode::E,
+                'F' => sdl3::keyboard::Keycode::F,
+                'G' => sdl3::keyboard::Keycode::G,
+                'H' => sdl3::keyboard::Keycode::H,
+                'I' => sdl3::keyboard::Keycode::I,
+                'J' => sdl3::keyboard::Keycode::J,
+                'K' => sdl3::keyboard::Keycode::K,
+                'L' => sdl3::keyboard::Keycode::L,
+                'M' => sdl3::keyboard::Keycode::M,
+                'N' => sdl3::keyboard::Keycode::N,
+                'O' => sdl3::keyboard::Keycode::O,
+                'P' => sdl3::keyboard::Keycode::P,
+                'Q' => sdl3::keyboard::Keycode::Q,
+                'R' => sdl3::keyboard::Keycode::R,
+                'S' => sdl3::keyboard::Keycode::S,
+                'T' => sdl3::keyboard::Keycode::T,
+                'U' => sdl3::keyboard::Keycode::U,
+                'V' => sdl3::keyboard::Keycode::V,
+                'W' => sdl3::keyboard::Keycode::W,
+                'X' => sdl3::keyboard::Keycode::X,
+                'Y' => sdl3::keyboard::Keycode::Y,
+                'Z' => sdl3::keyboard::Keycode::Z,
+                _ => panic!("unexpected hint char"),
+            };
+            let control = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+                timestamp: 0,
+                window_id: 0,
+                keycode: Some(keycode),
+                scancode: None,
+                keymod: sdl3::keyboard::Mod::NOMOD,
+                repeat: false,
+                which: 0,
+                raw: 0,
+            });
+            assert_eq!(control, Some(AppControl::Continue));
+        }
 
-        assert_eq!(control, Some(AppControl::Continue));
         assert!(matches!(
             app.direct_mapping_state.mode,
             DirectMappingMode::AwaitingInput(_)
