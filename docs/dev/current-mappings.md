@@ -127,6 +127,7 @@ Notes:
 - selecting a different supported control while direct mapping is awaiting input retargets the pending capture instead of requiring a cancel
 - if the current page has no supported direct-mapping targets, the footer now says so explicitly instead of failing silently
 - `Escape` and `F8` remain reserved to cancel direct mapping instead of being captured as mapping sources
+- `F1` / `F2` / `F3` / `F4` remain reserved for page switching while direct mapping is active instead of being captured as mapping sources
 - MIDI mappings can now execute app actions from live MIDI input
 - key mappings can now execute app actions from live keyboard input before the built-in fallback bindings
 - MIDI mappings can be filtered to `Any MIDI` or a specific input device name

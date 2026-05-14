@@ -234,6 +234,7 @@ Mapping discoverability notes:
 - `F8` enters a direct mapping mode that highlights supported controls and captures the next MIDI note or CC for the selected target
 - while direct mapping is in target-selection mode, `Left` / `Right` / `Up` / `Down` move among highlighted targets, `Tab` / `Shift+Tab` cycle them, pressing a key maps the current highlighted target immediately, `Enter` explicitly arms the current target for the next MIDI or key input, and `/` enters hint-jump mode, which is when the visible target labels appear
 - direct mapping now also accepts the next keyboard keypress, including `Ctrl`, `Alt`, and `Shift` modifier combinations
+- while direct mapping is active, `F1` / `F2` / `F3` / `F4` stay reserved for page switching and are not captured as direct key-mapping sources
 - discoverability badges use different colors for built-in keyboard bindings vs enabled user-defined mappings
 - disabled mappings are hidden from the footer and discoverability overlay
 - track-column discoverability is active-track scoped in V1, even when hovering non-active columns
@@ -297,7 +298,7 @@ MIDI learn notes:
 - direct mapping entered from the mappings page returns to `Mappings` after commit; direct mapping entered in place keeps the current page so multiple controls can be mapped in sequence
 - while direct mapping is awaiting input, selecting a different supported control retargets the pending mapping instead of requiring cancel first
 - direct mapping also accepts keyboard capture for the selected control and stores normalized labels such as `Shift+R` or `Ctrl+Alt+M`
-- `Escape` and `F8` stay reserved for cancel while direct mapping is armed
+- `Escape` and `F8` stay reserved for cancel while direct mapping is armed, and `F1` / `F2` / `F3` / `F4` stay reserved for page switching
 - learned MIDI mappings store the device name of the input that triggered learn
 - live MIDI input now resolves against enabled mappings and can trigger app actions from either `Any MIDI` or a specific device
 - `Shift+Left` / `Shift+Right` moves between editable mapping fields

@@ -84,6 +84,10 @@ pub(crate) fn direct_mapping_key_label(event: &Event) -> Option<String> {
             | Keycode::RGui
             | Keycode::Mode
             | Keycode::Escape
+            | Keycode::F1
+            | Keycode::F2
+            | Keycode::F3
+            | Keycode::F4
             | Keycode::F8
     ) {
         return None;
