@@ -243,6 +243,8 @@ impl App {
             let (fill, text) = mapping_badge_palette(badge, theme);
             canvas.set_draw_color(fill);
             canvas.fill_rect(chip)?;
+            canvas.set_draw_color(theme.discoverability.direct_target_border);
+            canvas.draw_rect(chip)?;
             crate::ui::draw_text_fitted(
                 canvas,
                 &draw_label,
