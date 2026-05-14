@@ -105,16 +105,17 @@ When `DirectMappingMode::Targeting` is active, actionable controls should be exp
 1. **Directional highlight**
    - exactly one target is considered the current navigator target
    - it receives the strong active outline
-2. **Optional jump hints**
-   - each visible actionable target can render a short label such as `A`, `S`, `D`, `F` or `AA`, `AS`
-   - these labels are only shown while direct mapping is active, or while the user holds a dedicated reveal action if the team prefers lower visual noise
+2. **Explicit jump hints**
+   - each visible actionable target can render a short label such as `A`, `B`, `C` or `AA`, `AB`
+   - these labels are only shown while the user is in the explicit jump submode
+   - jump hints should use the same clear chip treatment as discoverability overlays: high-contrast background, explicit border, and off-body placement that does not cover the control's own label text
 
 Recommended default:
 
 - always show the active highlight
-- show hint labels only when the user presses a dedicated reveal/jump action, or when the page has enough density that directional traversal would be slow
+- show hint labels only after the user explicitly enters jump mode
 
-This keeps the baseline understandable while still supporting a Vimium-like jump path.
+This keeps the baseline understandable while still supporting a Vimium-like jump path with an unmistakable mode change.
 
 ## Targeting Methods
 
@@ -126,7 +127,8 @@ Recommended controls while `DirectMappingMode::Targeting` is active:
 
 - `Left` / `Right` / `Up` / `Down`: move to the nearest eligible target in that direction
 - `Tab` / `Shift+Tab`: move to next/previous eligible target in stable reading order
-- `Enter`: select the current target and advance to `AwaitingInput`
+- plain key press: map that key immediately to the current highlighted target
+- `Enter`: explicitly arm the current target and advance to `AwaitingInput` for the next non-reserved input event
 - `Escape` / `F8`: cancel direct mapping
 
 Recommended spatial rule:
@@ -146,10 +148,10 @@ Hint jump is the fast dense-page path, inspired by Vimium.
 
 Behavior:
 
-- while in `Targeting`, the user can enter a temporary jump submode
+- while in `Targeting`, the user can press `/` to enter a temporary jump submode
 - visible actionable targets render short labels
-- typing the label selects that target immediately
-- once uniquely matched, the app enters `AwaitingInput`
+- typing the label retargets to that target
+- a plain non-jump key press outside jump mode must not be consumed as a jump prefix, because those keys are reserved for direct key mapping to the current highlighted target
 
 Recommended first-pass scope:
 
@@ -161,7 +163,10 @@ Recommended label rules:
 
 - deterministic per render pass
 - stable while the visible target set is unchanged
-- short labels first for likely-primary controls, then longer combinations for dense regions
+- prefix-free so no shorter exact label can block a longer one
+- fixed-width for the current visible target count:
+  - up to 26 visible targets: `A` ... `Z`
+  - more than 26 visible targets: `AA`, `AB`, ... `AZ`, `BA`, ...
 
 This should reuse the repo's existing lookup mindset from `src/app/mapping/lookup.rs`: a lightweight transient selection mode with explicit cancel behavior and no persistent text field state.
 
@@ -260,6 +265,7 @@ When direct mapping enters `Targeting`:
    - control label
    - scope
    - available selection methods
+   - whether the mode is plain targeting or explicit jump mode
 
 Recommended initial-target rule:
 
@@ -274,6 +280,11 @@ Selecting a target by any method should:
 - set `DirectMappingMode::AwaitingInput(current_target)`
 - show the existing capture footer with the target label and scope
 - suppress ordinary activation of the selected control
+
+Clarified activation rule:
+
+- `Enter` is the explicit path that converts the current target selection into armed next-input capture
+- plain keyboard key presses while in `Targeting` should map immediately to the current highlighted target instead of first entering `AwaitingInput`
 
 ### Retargeting While Awaiting Input
 
@@ -309,8 +320,9 @@ This is the primary target for the feature.
 - user enters direct mapping
 - directional highlight appears
 - user moves among targets with arrows or `Tab`
-- user presses `Enter`
-- user sends MIDI or keyboard source
+- user either:
+  - presses a plain key to map that key directly to the current target, or
+  - presses `Enter` and then sends the next MIDI/keyboard source
 - mapping commits and targeting stays active
 
 ### Desktop Pointer+Keyboard Hybrid
@@ -352,17 +364,18 @@ Footer/status copy while targeting should name the current selected target, not 
 
 Recommended example:
 
-`Direct Map | Play/Stop (Global) | Arrows move, Enter selects, Jump reveals hints, Esc cancels`
+`Direct Map | Play/Stop (Global) | Arrows move, Tab cycles, press a key to map, Enter arms next input, / shows hints, Esc cancels`
 
 Recommended example during jump mode:
 
-`Direct Map Jump | Type hint letters for a highlighted control | Esc cancels`
+`Direct Map Jump | Type hint letters to retarget, Enter arms next input, Esc cancels`
 
 Required visual distinction:
 
 - passive eligible outline for all actionable controls
 - active outline for the current navigator target
 - awaiting-input outline stronger than targeting-only outline
+- explicit jump hints reuse discoverability-style floating chips with clear background and border
 - hint labels must not permanently shift layout
 
 ## Acceptance Criteria
@@ -371,15 +384,17 @@ Required visual distinction:
 2. Entering direct mapping chooses a visible current target automatically when at least one target exists.
 3. `Left` / `Right` / `Up` / `Down` move among eligible direct-mapping targets without activating the underlying controls.
 4. `Tab` / `Shift+Tab` traverse eligible targets in a stable order.
-5. `Enter` on the current target enters `AwaitingInput` for the same canonical target and scope that pointer selection would produce.
-6. While awaiting input, selecting another target by keyboard retargets capture immediately.
-7. Hint-jump labels can expose visible targets without requiring pointer hover.
-8. Hint-jump selection produces the same canonical target descriptor as directional or pointer selection.
-9. Commit, replacement, and conflict behavior is identical regardless of target-selection method.
-10. Mappings-page-origin direct mapping still returns to the mappings page after commit.
-11. In-place-origin direct mapping still keeps the user on the current page after commit.
-12. Touch presentation does not depend on hover-only instructions.
-13. If no eligible targets exist on the current page, the app surfaces that state explicitly instead of silently doing nothing.
+5. Pressing a plain keyboard key while targeting maps that key immediately to the current canonical target and scope.
+6. `Enter` on the current target enters `AwaitingInput` for the same canonical target and scope that pointer selection would produce.
+7. Hint labels are shown only during explicit jump mode entered with `/`.
+8. Hint labels are prefix-free for the current visible target set.
+9. While awaiting input, selecting another target by keyboard retargets capture immediately.
+10. Hint-jump selection produces the same canonical target descriptor as directional or pointer selection.
+11. Commit, replacement, and conflict behavior is identical regardless of target-selection method.
+12. Mappings-page-origin direct mapping still returns to the mappings page after commit.
+13. In-place-origin direct mapping still keeps the user on the current page after commit.
+14. Touch presentation does not depend on hover-only instructions.
+15. If no eligible targets exist on the current page, the app surfaces that state explicitly instead of silently doing nothing.
 
 ## Likely Code Touch Points
 
