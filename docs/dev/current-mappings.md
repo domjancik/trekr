@@ -120,7 +120,7 @@ Notes:
   - `Tab` / `Shift+Tab` cycle supported direct-mapping targets in stable page order
   - pressing a key while targeting maps that key to the current highlighted target immediately
   - `Enter` explicitly selects the current highlighted target and arms next-input capture
-  - `/` enters hint-jump mode, after which typing labels such as `A`, `B`, `AA`, or `AB` jumps to a visible target without pointer hover
+  - `/` enters hint-jump mode, which is when hint labels become visible; typing labels such as `A`, `B`, `AA`, or `AB` then jumps to a visible target without pointer hover
 - direct UI mapping now captures either the next MIDI note/CC or the next keyboard keypress, including modifier combinations
 - direct mapping entered from the mappings page returns there after commit, while in-place direct mapping stays on the current page so multiple controls can be mapped in sequence
 - after each direct mapping commit, the mode stays armed in target-selection state until canceled so full-surface mapping is faster
