@@ -319,7 +319,11 @@ impl App {
 
         let targets = self.direct_mapping_targets(content_bounds);
         let current_target = self.current_direct_mapping_target();
-        let hint_labels = self.direct_mapping_hint_labels(&targets);
+        let hint_labels = self
+            .direct_mapping_state
+            .jump_input_active
+            .then(|| self.direct_mapping_hint_labels(&targets))
+            .unwrap_or_default();
         for (index, target) in targets.iter().copied().enumerate() {
             canvas.set_draw_color(theme.discoverability.direct_target_border);
             canvas.draw_rect(Rect::new(
@@ -340,21 +344,46 @@ impl App {
                     target.hit_rect.height().saturating_add(6),
                 ))?;
             }
-            let hint_bounds = Rect::new(
-                target.hit_rect.x + 2,
-                target.hit_rect.y + 2,
-                target.hit_rect.width().min(26),
-                8,
-            );
-            crate::ui::draw_text_fitted(
-                canvas,
-                &hint_labels[index],
-                hint_bounds,
-                1,
-                theme.discoverability.direct_target_active_border,
-            )?;
+            if self.direct_mapping_state.jump_input_active {
+                self.draw_direct_mapping_hint_chip(canvas, target.hit_rect, &hint_labels[index])?;
+            }
         }
 
+        Ok(())
+    }
+
+    pub(super) fn draw_direct_mapping_hint_chip<T: RenderTarget>(
+        &self,
+        canvas: &mut Canvas<T>,
+        anchor: Rect,
+        label: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let theme = self.theme();
+        let width = (crate::ui::text_width(label, 1) + 10).max(18);
+        let height = 12_u32;
+        let prefer_above = anchor.y >= 14;
+        let (x, y) = if prefer_above {
+            (anchor.x, anchor.y - height as i32 - 2)
+        } else {
+            (anchor.x + anchor.width() as i32 + 3, anchor.y)
+        };
+        let chip = Rect::new(x, y, width, height);
+        canvas.set_draw_color(theme.discoverability.slot_user_fill);
+        canvas.fill_rect(chip)?;
+        canvas.set_draw_color(theme.discoverability.direct_target_active_border);
+        canvas.draw_rect(chip)?;
+        crate::ui::draw_text_fitted(
+            canvas,
+            label,
+            Rect::new(
+                chip.x + 4,
+                chip.y + 2,
+                chip.width().saturating_sub(8),
+                chip.height().saturating_sub(4),
+            ),
+            1,
+            theme.discoverability.slot_count_text,
+        )?;
         Ok(())
     }
 
