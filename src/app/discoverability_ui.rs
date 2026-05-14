@@ -360,14 +360,7 @@ impl App {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let theme = self.theme();
         let width = (crate::ui::text_width(label, 1) + 10).max(18);
-        let height = 12_u32;
-        let prefer_above = anchor.y >= 14;
-        let (x, y) = if prefer_above {
-            (anchor.x, anchor.y - height as i32 - 2)
-        } else {
-            (anchor.x + anchor.width() as i32 + 3, anchor.y)
-        };
-        let chip = Rect::new(x, y, width, height);
+        let chip = self.floating_discoverability_chip_bounds(anchor, width, 12);
         canvas.set_draw_color(theme.discoverability.slot_user_fill);
         canvas.fill_rect(chip)?;
         canvas.set_draw_color(theme.discoverability.direct_target_active_border);
@@ -385,6 +378,16 @@ impl App {
             theme.discoverability.slot_count_text,
         )?;
         Ok(())
+    }
+
+    fn floating_discoverability_chip_bounds(&self, anchor: Rect, width: u32, height: u32) -> Rect {
+        let prefer_above = anchor.y >= (height as i32 + 4);
+        let (x, y) = if prefer_above {
+            (anchor.x, anchor.y - height as i32 - 2)
+        } else {
+            (anchor.x + anchor.width() as i32 + 3, anchor.y)
+        };
+        Rect::new(x, y, width, height)
     }
 
     pub(super) fn draw_inline_discoverability_badges<T: RenderTarget>(
@@ -407,19 +410,9 @@ impl App {
         } else {
             2
         };
-        let badge_height = 10_u32;
+        let badge_height = 12_u32;
         let label_width = if max_badges == 1 { 4 } else { 6 };
-        let y = if anchor.height() <= 12 {
-            anchor.y - badge_height as i32 - 2
-        } else {
-            anchor.y + 2
-        };
-        let x = if anchor.width() >= 44 {
-            anchor.x + anchor.width() as i32 - 32
-        } else {
-            anchor.x + anchor.width() as i32 + 3
-        };
-        let bounds = Rect::new(x, y, 72, badge_height + 4);
+        let bounds = self.floating_discoverability_chip_bounds(anchor, 72, badge_height + 4);
         self.draw_mapping_badges(
             canvas,
             bounds,
