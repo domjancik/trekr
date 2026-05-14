@@ -285,6 +285,13 @@ impl App {
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for (rect, target) in self.timeline_discoverability_targets(content_bounds) {
+            canvas.set_draw_color(self.theme().discoverability.direct_target_border);
+            canvas.draw_rect(Rect::new(
+                rect.x - 1,
+                rect.y - 1,
+                rect.width().saturating_add(2),
+                rect.height().saturating_add(2),
+            ))?;
             self.draw_inline_discoverability_badges(canvas, rect, target)?;
         }
         Ok(())
@@ -296,6 +303,13 @@ impl App {
         content_bounds: Rect,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for (rect, target) in self.routing_discoverability_targets(content_bounds) {
+            canvas.set_draw_color(self.theme().discoverability.direct_target_border);
+            canvas.draw_rect(Rect::new(
+                rect.x - 1,
+                rect.y - 1,
+                rect.width().saturating_add(2),
+                rect.height().saturating_add(2),
+            ))?;
             self.draw_inline_discoverability_badges(canvas, rect, target)?;
         }
         Ok(())
