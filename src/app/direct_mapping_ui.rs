@@ -649,6 +649,52 @@ mod tests {
     }
 
     #[test]
+    fn direct_mapping_keyboard_path_keeps_f1_through_f4_for_page_switching() {
+        let mut app = App::new();
+        app.mappings.clear();
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+        app.apply_action(AppAction::ToggleDirectMappingMode);
+
+        let f1 = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::F1),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(f1, Some(AppControl::Continue));
+        assert_eq!(app.page_state.current_page, AppPage::Timeline);
+        assert!(app.mappings.is_empty());
+
+        app.direct_mapping_state.mode = DirectMappingMode::AwaitingInput(DirectMappingTarget {
+            action: AppAction::TogglePlayback,
+            target_label: "Play/Stop",
+            scope_label: "Global",
+            display_scope: Some("Global"),
+            hit_rect: Rect::new(0, 0, 10, 10),
+        });
+
+        let f4 = app.handle_keyboard_event(&sdl3::event::Event::KeyDown {
+            timestamp: 0,
+            window_id: 0,
+            keycode: Some(sdl3::keyboard::Keycode::F4),
+            scancode: None,
+            keymod: sdl3::keyboard::Mod::NOMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        });
+
+        assert_eq!(f4, Some(AppControl::Continue));
+        assert_eq!(app.page_state.current_page, AppPage::Routing);
+        assert!(app.mappings.is_empty());
+    }
+
+    #[test]
     fn direct_mapping_hint_labels_progress_like_vimium_sequences() {
         assert_eq!(direct_mapping_hint_labels(1), vec!["A"]);
         assert_eq!(direct_mapping_hint_labels(26).last().unwrap(), "Z");

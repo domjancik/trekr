@@ -61,6 +61,7 @@ The current repository already gives this feature a strong foundation:
 - `DirectMappingTarget` is already derived from discoverability targets and canonical mapping labels.
 - Direct mapping already keeps capture armed across successive commits by returning to `Targeting`.
 - Keyboard capture already reserves `Escape` and `F8` for cancel instead of capturing them as mapping sources.
+- Built-in page switching on `F1`-`F4` remains available while direct mapping is active, especially so unsupported pages can follow the footer instruction to switch pages without canceling first.
 
 Important current limitations:
 
@@ -130,6 +131,7 @@ Recommended controls while `DirectMappingMode::Targeting` is active:
 - plain key press: map that key immediately to the current highlighted target
 - `Enter`: explicitly arm the current target and advance to `AwaitingInput` for the next non-reserved input event
 - `Escape` / `F8`: cancel direct mapping
+- `F1` / `F2` / `F3` / `F4`: keep their normal built-in page-switch behavior instead of being captured as mapping sources
 
 Recommended spatial rule:
 
@@ -378,6 +380,12 @@ Required visual distinction:
 - explicit jump hints reuse discoverability-style floating chips with clear background and border
 - hint labels must not permanently shift layout
 
+Required key reservation rule:
+
+- `Escape` and `F8` stay reserved for cancel
+- `F1`-`F4` stay reserved for built-in page switching while direct mapping is active
+- these reserved keys must not be captured as direct keyboard mapping sources
+
 ## Acceptance Criteria
 
 1. The user can fully complete a direct-mapping flow without mouse or touch.
@@ -395,6 +403,7 @@ Required visual distinction:
 13. In-place-origin direct mapping still keeps the user on the current page after commit.
 14. Touch presentation does not depend on hover-only instructions.
 15. If no eligible targets exist on the current page, the app surfaces that state explicitly instead of silently doing nothing.
+16. `F1`-`F4` still switch pages while direct mapping is active and are never captured as direct key-mapping sources.
 
 ## Likely Code Touch Points
 
