@@ -50,6 +50,7 @@ mod capture;
 mod direct_mapping_ui;
 mod discoverability_ui;
 mod input;
+mod preview_stream;
 mod support;
 
 mod mapping;
@@ -72,6 +73,8 @@ use mapping_input::{midi_learn_label, midi_mapping_matches_event};
 use mapping_lookup::mapping_target_lookup_input;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 use note_runtime::{scheduled_note_occurrences, ticks_per_second_for_tempo};
+use preview_stream::PreviewStreamRuntime;
+pub use preview_stream::{DEFAULT_PREVIEW_FPS, PreviewStreamOptions};
 use shell::scaling::{
     active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
 };
@@ -179,6 +182,7 @@ pub struct App {
     ui_page_switch_count: u64,
     last_ui_page_switch_at: Option<Instant>,
     ui_page_switch_frame_max_ns: u64,
+    preview_stream_runtime: Option<PreviewStreamRuntime>,
     window_frame_texture_cache: Option<WindowFrameTextureCache>,
     renderer_backend_logged: bool,
 }
@@ -322,6 +326,7 @@ impl App {
             ui_page_switch_count: 0,
             last_ui_page_switch_at: None,
             ui_page_switch_frame_max_ns: 0,
+            preview_stream_runtime: None,
             window_frame_texture_cache: None,
             renderer_backend_logged: false,
         }
@@ -371,6 +376,7 @@ impl App {
         options: RunOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.startup_started_at = Instant::now();
+        self.configure_preview_stream(options.preview_stream.clone())?;
 
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
@@ -463,6 +469,7 @@ impl App {
             let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
+            self.maybe_render_and_publish_preview_frame(canvas.window().window_pixel_format())?;
             if options.video_mode != VideoMode::Windowed {
                 let _ = canvas.window_mut().sync();
             }
@@ -475,6 +482,25 @@ impl App {
             std::thread::sleep(Duration::from_millis(16));
         }
 
+        Ok(())
+    }
+
+    fn configure_preview_stream(
+        &mut self,
+        options: Option<PreviewStreamOptions>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.preview_stream_runtime = match options {
+            Some(options) => {
+                let runtime = PreviewStreamRuntime::start(options.clone())?;
+                println!(
+                    "trekr preview stream: http://{}/preview.mjpg ({} fps)",
+                    runtime.listener_addr(),
+                    options.fps
+                );
+                Some(runtime)
+            }
+            None => None,
+        };
         Ok(())
     }
 
@@ -526,6 +552,7 @@ impl App {
             let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
+            self.maybe_render_and_publish_preview_frame(canvas.window().window_pixel_format())?;
             let _ = canvas.window_mut().sync();
             let draw_elapsed = draw_started_at.elapsed();
             self.record_ui_frame_metrics(
@@ -591,6 +618,9 @@ impl App {
                 self.draw_kmsdrm_test_pattern(&mut window_surface)?;
             } else {
                 let frame = self.draw_frame_surface(window.window_pixel_format())?;
+                if self.preview_capture_due() {
+                    self.maybe_publish_preview_surface(frame.as_ref())?;
+                }
                 frame.blit_scaled(
                     None,
                     &mut window_surface,
@@ -699,11 +729,42 @@ impl App {
         Ok(())
     }
 
-    fn capture_surface_to_png(
+    fn preview_capture_due(&self) -> bool {
+        let now = Instant::now();
+        self.preview_stream_runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.should_capture_now(now))
+    }
+
+    fn maybe_publish_preview_surface(
+        &mut self,
+        surface: &SurfaceRef,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.preview_stream_runtime.is_none() {
+            return Ok(());
+        }
+        let (width, height, pixels) = self.capture_surface_rgba_pixels(surface)?;
+        if let Some(runtime) = self.preview_stream_runtime.as_mut() {
+            runtime.publish_rgba_frame(width, height, pixels);
+        }
+        Ok(())
+    }
+
+    fn maybe_render_and_publish_preview_frame(
+        &mut self,
+        pixel_format: PixelFormat,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.preview_capture_due() {
+            return Ok(());
+        }
+        let frame = self.draw_frame_surface(pixel_format)?;
+        self.maybe_publish_preview_surface(frame.as_ref())
+    }
+
+    fn capture_surface_rgba_pixels(
         &self,
         surface: &SurfaceRef,
-        path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
         let surface = surface.convert_format(PixelFormat::RGBA32)?;
         let width = surface.width();
         let height = surface.height();
@@ -720,6 +781,15 @@ impl App {
             }
         });
 
+        Ok((width, height, pixels))
+    }
+
+    fn capture_surface_to_png(
+        &self,
+        surface: &SurfaceRef,
+        path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (width, height, pixels) = self.capture_surface_rgba_pixels(surface)?;
         let image = RgbaImage::from_raw(width, height, pixels)
             .ok_or_else(|| "failed to convert renderer pixels to image".to_owned())?;
         image.save(path)?;

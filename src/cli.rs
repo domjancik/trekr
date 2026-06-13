@@ -1,4 +1,7 @@
-use crate::app::{App, RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
+use crate::app::{
+    App, DEFAULT_PREVIEW_FPS, PreviewStreamOptions, RunOptions, UiCaptureOptions, UiScalingMode,
+    VideoMode,
+};
 use crate::state;
 use crate::theme::ThemePreset;
 use crate::ui_density::UiDensityPreset;
@@ -48,7 +51,7 @@ pub struct SuggestedCommand {
 pub const DEFAULT_STATE_FILE: &str = "artifacts/state/last-run.json";
 pub const DEFAULT_CAPTURE_DIR: &str = "artifacts/screenshots";
 
-const SUGGESTED_COMMANDS: [SuggestedCommand; 6] = [
+const SUGGESTED_COMMANDS: [SuggestedCommand; 7] = [
     SuggestedCommand {
         label: "Desktop persisted session",
         command: "cargo run -- run",
@@ -80,6 +83,21 @@ const SUGGESTED_COMMANDS: [SuggestedCommand; 6] = [
             "demo",
             "--video-mode",
             "kmsdrm-console",
+        ],
+        launchable: true,
+    },
+    SuggestedCommand {
+        label: "KMSDRM preview stream",
+        command: "cargo run -- run --state-mode demo --video-mode kmsdrm-console --preview-stream mjpeg:0.0.0.0:8090",
+        description: "Serve an app-owned MJPEG preview stream for OBS while trekr owns KMSDRM.",
+        args: &[
+            "run",
+            "--state-mode",
+            "demo",
+            "--video-mode",
+            "kmsdrm-console",
+            "--preview-stream",
+            "mjpeg:0.0.0.0:8090",
         ],
         launchable: true,
     },
@@ -269,6 +287,14 @@ pub fn print_help<W: Write>(writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(
         writer,
+        "  --preview-stream <mjpeg:host:port>   run only, env fallback: TREKR_PREVIEW_STREAM"
+    )?;
+    writeln!(
+        writer,
+        "  --preview-fps <n>              run only, default: {DEFAULT_PREVIEW_FPS}, env fallback: TREKR_PREVIEW_FPS"
+    )?;
+    writeln!(
+        writer,
         "  --capture-dir <path>          capture-ui only, default: {DEFAULT_CAPTURE_DIR}"
     )?;
     writeln!(writer)?;
@@ -414,6 +440,8 @@ where
     let mut capture_dir = capture_mode.then(|| PathBuf::from(DEFAULT_CAPTURE_DIR));
     let mut options = LaunchOptions::default();
     let mut run_options = RunOptions::default();
+    let mut preview_stream_cli = None::<String>;
+    let mut preview_fps_cli = None::<u32>;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -480,9 +508,45 @@ where
                 }
                 run_options.video_mode = parse_video_mode(&value)?;
             }
+            "--preview-stream" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--preview-stream requires mjpeg:host:port".to_owned())?;
+                if capture_mode {
+                    return Err("--preview-stream is only valid with the run command".to_owned());
+                }
+                preview_stream_cli = Some(value);
+            }
+            "--preview-fps" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--preview-fps requires a positive integer".to_owned())?;
+                if capture_mode {
+                    return Err("--preview-fps is only valid with the run command".to_owned());
+                }
+                preview_fps_cli = Some(parse_preview_fps(&value)?);
+            }
             "--help" | "-h" => return Err("use `help` to print the full CLI reference".to_owned()),
             other => return Err(format!("unknown argument: {other}")),
         }
+    }
+
+    if !capture_mode {
+        let preview_stream_value = match preview_stream_cli {
+            Some(value) => Some(value),
+            None => std::env::var("TREKR_PREVIEW_STREAM").ok(),
+        };
+        let preview_fps = match preview_fps_cli {
+            Some(value) => value,
+            None => match std::env::var("TREKR_PREVIEW_FPS") {
+                Ok(value) => parse_preview_fps(&value)?,
+                Err(_) => DEFAULT_PREVIEW_FPS,
+            },
+        };
+        run_options.preview_stream = preview_stream_value
+            .as_deref()
+            .map(|value| parse_preview_stream(value, preview_fps))
+            .transpose()?;
     }
 
     options.run_mode = match capture_dir {
@@ -500,6 +564,28 @@ fn parse_video_mode(value: &str) -> Result<VideoMode, String> {
         "kmsdrm-console" | "kmsdrm" => Ok(VideoMode::KmsDrmConsole),
         other => Err(format!("unknown video mode: {other}")),
     }
+}
+
+fn parse_preview_stream(value: &str, fps: u32) -> Result<PreviewStreamOptions, String> {
+    let value = value.trim();
+    let bind_addr = value.strip_prefix("mjpeg:").unwrap_or(value).trim();
+    if bind_addr.is_empty() {
+        return Err("preview stream address cannot be empty".to_owned());
+    }
+    Ok(PreviewStreamOptions {
+        bind_addr: bind_addr.to_owned(),
+        fps,
+    })
+}
+
+fn parse_preview_fps(value: &str) -> Result<u32, String> {
+    let fps = value
+        .parse::<u32>()
+        .map_err(|_| format!("invalid --preview-fps value: {value}"))?;
+    if fps == 0 {
+        return Err("--preview-fps must be at least 1".to_owned());
+    }
+    Ok(fps)
 }
 
 fn prompt_launch_options<R: BufRead, W: Write>(
@@ -529,7 +615,10 @@ fn prompt_launch_options<R: BufRead, W: Write>(
         LaunchMode::Capture(UiCaptureOptions { output_dir })
     } else {
         let video_mode = prompt_video_mode(writer, reader)?;
-        LaunchMode::Interactive(RunOptions { video_mode })
+        LaunchMode::Interactive(RunOptions {
+            video_mode,
+            preview_stream: None,
+        })
     };
 
     Ok(LaunchOptions {
@@ -765,6 +854,7 @@ mod tests {
         match options.run_mode {
             LaunchMode::Interactive(run_options) => {
                 assert_eq!(run_options.video_mode, VideoMode::Windowed);
+                assert_eq!(run_options.preview_stream, None);
             }
             LaunchMode::Capture(_) => panic!("expected interactive mode"),
         }
@@ -837,6 +927,40 @@ mod tests {
         ])
         .expect_err("capture-ui should reject video mode");
         assert_eq!(error, "--video-mode is only valid with the run command");
+    }
+
+    #[test]
+    fn run_subcommand_accepts_preview_stream_and_fps() {
+        let command = parse_app_command_from(vec![
+            "run".to_owned(),
+            "--preview-stream".to_owned(),
+            "mjpeg:0.0.0.0:8090".to_owned(),
+            "--preview-fps".to_owned(),
+            "15".to_owned(),
+        ])
+        .expect("parse command");
+        let AppCommand::Launch(options) = command else {
+            panic!("expected launch command");
+        };
+        match options.run_mode {
+            LaunchMode::Interactive(run_options) => {
+                let preview = run_options.preview_stream.expect("preview stream");
+                assert_eq!(preview.bind_addr, "0.0.0.0:8090");
+                assert_eq!(preview.fps, 15);
+            }
+            LaunchMode::Capture(_) => panic!("expected interactive mode"),
+        }
+    }
+
+    #[test]
+    fn capture_ui_rejects_preview_stream() {
+        let error = parse_app_command_from(vec![
+            "capture-ui".to_owned(),
+            "--preview-stream".to_owned(),
+            "mjpeg:0.0.0.0:8090".to_owned(),
+        ])
+        .expect_err("capture-ui should reject preview stream");
+        assert_eq!(error, "--preview-stream is only valid with the run command");
     }
 
     #[test]
