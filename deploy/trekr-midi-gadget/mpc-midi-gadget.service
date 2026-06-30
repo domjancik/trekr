@@ -1,0 +1,15 @@
+[Unit]
+Description=Configure Trekr USB MIDI gadget
+DefaultDependencies=no
+After=local-fs.target sys-kernel-config.mount
+Wants=sys-kernel-config.mount
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/setup-mpc-midi-gadget.sh --setup
+ExecStop=/usr/local/sbin/setup-mpc-midi-gadget.sh --teardown
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -136,6 +136,17 @@ Current working KMSDRM init path:
 - `trekr` then sets the SDL KMSDRM hints, creates a fullscreen borderless window, calls `window.sync()`, and uses the renderer-backed KMSDRM loop by default
 - keep `TREKR_KMSDRM_PRESENT_MODE=surface` only as a diagnostic fallback when the renderer path is not usable on a given Pi image
 
+Orange Pi Zero 2W Trekr MIDI sidecar:
+
+The self-contained Orange Pi Zero 2W USB MIDI gadget bundle lives in `deploy/trekr-midi-gadget/`.
+
+```text
+MPC One+ USB-A -> Orange Pi Zero 2W USB0 as Trekr MIDI gadget
+Orange Pi Zero 2W USB1 -> optional USB MIDI controller/interface
+```
+
+See `deploy/trekr-midi-gadget/README.md` for deployment, one-shot run, boot-service setup, teardown, and verification commands.
+
 Bootstrap and run:
 
 - prefer `cargo xtask run` as the single setup-and-run command
