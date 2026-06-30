@@ -136,6 +136,86 @@ Current working KMSDRM init path:
 - `trekr` then sets the SDL KMSDRM hints, creates a fullscreen borderless window, calls `window.sync()`, and uses the renderer-backed KMSDRM loop by default
 - keep `TREKR_KMSDRM_PRESENT_MODE=surface` only as a diagnostic fallback when the renderer path is not usable on a given Pi image
 
+Orange Pi Zero 2W Trekr MIDI sidecar:
+
+Cable topology:
+
+```text
+MPC One+ USB-A -> Orange Pi Zero 2W USB0 as MIDI gadget
+Orange Pi Zero 2W USB1 -> optional USB MIDI controller/interface
+```
+
+`scripts/setup-mpc-midi-gadget.sh` configures the Orange Pi Zero 2W USB0 / OTG / device-capable USB-C port as a class-compliant USB MIDI gadget named `Trekr` using the Linux libcomposite/configfs stack. It creates one bidirectional MIDI function with two input ports and two output ports, so the MPC can send MIDI to local ALSA clients and local apps can send MIDI back to the MPC on separate logical ports. USB1 is not touched and should remain available as a normal host port for class-compliant USB MIDI controllers or interfaces.
+
+Deploy the utility bundle to the Orange Pi:
+
+```powershell
+ssh <user>@<orange-pi-host> "mkdir -p ~/trekr-midi-gadget"
+scp .\scripts\setup-mpc-midi-gadget.sh .\scripts\mpc-midi-gadget.service .\scripts\trekr-midi-gadget.sh <user>@<orange-pi-host>:~/trekr-midi-gadget/
+ssh <user>@<orange-pi-host> "chmod +x ~/trekr-midi-gadget/*.sh"
+```
+
+Run once for this boot, without enabling autostart:
+
+```bash
+cd ~/trekr-midi-gadget
+./trekr-midi-gadget.sh run
+```
+
+Stop and remove the current gadget:
+
+```bash
+cd ~/trekr-midi-gadget
+./trekr-midi-gadget.sh stop
+```
+
+Verification commands on the Orange Pi:
+
+```bash
+ls /sys/class/udc
+aconnect -l
+amidi -l
+aseqdump -l
+```
+
+Basic MIDI inspection examples:
+
+```bash
+aseqdump -p '<client:port from aconnect -l>'
+amidi -l
+```
+
+From the MPC or another USB host, look for a class-compliant USB MIDI device named `Trekr`. From a Linux host, `lsusb` should show a composite gadget and ALSA should expose MIDI ports.
+
+If `/sys/class/udc` is empty, this is not a script problem: the running kernel/device tree is not exposing USB device controller support. On Orange Pi Zero 2W/H618, check that the cable is connected to USB0, not USB1, and that the device tree exposes USB0 in OTG/peripheral role. USB-C port roles are board-specific and the two ports are not equivalent.
+
+Enable boot-time setup after the manual test works:
+
+```bash
+cd ~/trekr-midi-gadget
+./trekr-midi-gadget.sh enable-boot
+```
+
+Disable boot-time setup and tear down the current gadget:
+
+```bash
+cd ~/trekr-midi-gadget
+./trekr-midi-gadget.sh disable-boot
+```
+
+Inspect service logs:
+
+```bash
+journalctl -u mpc-midi-gadget.service -b
+```
+
+Remove the installed service and setup script entirely:
+
+```bash
+cd ~/trekr-midi-gadget
+./trekr-midi-gadget.sh uninstall
+```
+
 Bootstrap and run:
 
 - prefer `cargo xtask run` as the single setup-and-run command
