@@ -609,7 +609,7 @@ impl App {
 
         if let Some(tempo_bpm) = result.applied_tempo_bpm {
             self.project.transport.tempo_bpm = tempo_bpm;
-            if self.project.transport.link_enabled {
+            if self.project.transport.link_enabled && !self.midi_runtime.is_enabled() {
                 self.link.commit_tempo(f64::from(tempo_bpm));
                 self.link_snapshot = self.link.refresh();
             }

@@ -3,7 +3,9 @@ param(
     [switch]$DesktopSdlBuild,
     [string]$Target = "aarch64-unknown-linux-gnu",
     [string]$Binary = "trekr",
-    [string]$ImageName = "trekr-rpi-bookworm-builder"
+    [string]$ImageName = "trekr-rpi-bookworm-builder",
+    [string]$CargoRegistryVolume = "trekr-rpi-bookworm-cargo-registry",
+    [string]$CargoGitVolume = "trekr-rpi-bookworm-cargo-git"
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,10 +71,26 @@ Invoke-Native -FilePath "docker.exe" -Arguments @(
 )
 
 Invoke-Native -FilePath "docker.exe" -Arguments @(
+    "volume",
+    "create",
+    $CargoRegistryVolume
+)
+
+Invoke-Native -FilePath "docker.exe" -Arguments @(
+    "volume",
+    "create",
+    $CargoGitVolume
+)
+
+Invoke-Native -FilePath "docker.exe" -Arguments @(
     "run",
     "--rm",
     "-v",
     "${dockerRepoRoot}:/work",
+    "-v",
+    "${CargoRegistryVolume}:/opt/cargo/registry",
+    "-v",
+    "${CargoGitVolume}:/opt/cargo/git",
     "-w",
     "/work",
     $ImageName,

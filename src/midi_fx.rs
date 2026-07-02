@@ -1,6 +1,7 @@
 use crate::project::MidiNote;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 pub const MIDI_FX_SLOT_COUNT: usize = 4;
 
@@ -24,6 +25,12 @@ impl RecordInputFxMode {
             Self::DryInput => "Dry",
             Self::PostInputFx => "Post FX",
         }
+    }
+}
+
+impl Hash for RecordInputFxMode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self as u8).hash(state);
     }
 }
 
@@ -58,6 +65,25 @@ impl Default for TrackMidiFx {
             output_fx: default_fx_slots(),
             timeline_ui: TimelineFxUiState::default(),
         }
+    }
+}
+
+impl TrackMidiFx {
+    pub(crate) fn clone_for_runtime(&self) -> Self {
+        Self {
+            record_input_fx_mode: self.record_input_fx_mode,
+            monitor_input_fx: self.monitor_input_fx,
+            input_fx: self.input_fx.clone(),
+            output_fx: self.output_fx.clone(),
+            timeline_ui: TimelineFxUiState::default(),
+        }
+    }
+
+    pub(crate) fn midi_runtime_signature(&self, hasher: &mut impl Hasher) {
+        self.record_input_fx_mode.hash(hasher);
+        self.monitor_input_fx.hash(hasher);
+        hash_midi_fx_chain(&self.input_fx, hasher);
+        hash_midi_fx_chain(&self.output_fx, hasher);
     }
 }
 
@@ -252,11 +278,23 @@ pub enum ArpOrder {
     AsPlayed,
 }
 
+impl Hash for ArpOrder {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self as u8).hash(state);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum QuantizeTarget {
     #[default]
     Local,
     Global,
+}
+
+impl Hash for QuantizeTarget {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self as u8).hash(state);
+    }
 }
 
 impl QuantizeTarget {
@@ -299,6 +337,75 @@ impl ArpOrder {
             .position(|candidate| *candidate == self)
             .unwrap_or(0);
         ALL[(index as i32 + delta).rem_euclid(ALL.len() as i32) as usize]
+    }
+}
+
+fn hash_midi_fx_chain(chain: &[Option<MidiFxSlot>], hasher: &mut impl Hasher) {
+    chain.len().hash(hasher);
+    for slot in chain {
+        match slot {
+            Some(slot) => {
+                true.hash(hasher);
+                slot.enabled.hash(hasher);
+                hash_midi_fx(&slot.effect, hasher);
+            }
+            None => false.hash(hasher),
+        }
+    }
+}
+
+fn hash_midi_fx(effect: &MidiFx, hasher: &mut impl Hasher) {
+    match effect {
+        MidiFx::Arp {
+            step_ticks,
+            order,
+            gate_percent,
+        } => {
+            0_u8.hash(hasher);
+            step_ticks.hash(hasher);
+            order.hash(hasher);
+            gate_percent.hash(hasher);
+        }
+        MidiFx::NoteFilter {
+            low,
+            high,
+            enabled_notes,
+        } => {
+            1_u8.hash(hasher);
+            low.hash(hasher);
+            high.hash(hasher);
+            enabled_notes.hash(hasher);
+        }
+        MidiFx::Transpose { semitones } => {
+            2_u8.hash(hasher);
+            semitones.hash(hasher);
+        }
+        MidiFx::Velocity { percent } => {
+            3_u8.hash(hasher);
+            percent.hash(hasher);
+        }
+        MidiFx::Duration { ticks } => {
+            4_u8.hash(hasher);
+            ticks.hash(hasher);
+        }
+        MidiFx::ScaleQuantize { root, target } => {
+            5_u8.hash(hasher);
+            root.hash(hasher);
+            target.hash(hasher);
+        }
+        MidiFx::ChordQuantize { root, target } => {
+            6_u8.hash(hasher);
+            root.hash(hasher);
+            target.hash(hasher);
+        }
+        MidiFx::Delay { ticks } => {
+            7_u8.hash(hasher);
+            ticks.hash(hasher);
+        }
+        MidiFx::TrackClone { source_track } => {
+            8_u8.hash(hasher);
+            source_track.hash(hasher);
+        }
     }
 }
 

@@ -138,6 +138,7 @@ impl App {
         let output_size = canvas.output_size()?;
         self.viewport_size = logical_viewport_size(output_size, scale);
         canvas.set_scale(scale, scale)?;
+        self.maybe_log_renderer_backend(canvas, output_size, scale);
         Ok(())
     }
 
@@ -154,16 +155,16 @@ impl App {
         let present_plan =
             window_present_plan(output_size, true, self.theme().app_chrome.window_clear);
         let logical_size = self.viewport_size;
-        let texture_creator = canvas.texture_creator();
-        let mut frame = texture_creator.create_texture_target(
-            Some(texture_creator.default_pixel_format()),
-            logical_size.0.max(1),
-            logical_size.1.max(1),
-        )?;
-        frame.set_scale_mode(sdl3::render::ScaleMode::Linear);
+        self.ensure_window_frame_texture(canvas, logical_size)?;
+        let Some(mut frame_cache) = self.window_frame_texture_cache.take() else {
+            return Err("window frame texture cache should exist".into());
+        };
+        frame_cache
+            .texture
+            .set_scale_mode(sdl3::render::ScaleMode::Linear);
 
         let mut draw_result: Result<(), Box<dyn std::error::Error>> = Ok(());
-        canvas.with_texture_canvas(&mut frame, |texture_canvas| {
+        canvas.with_texture_canvas(&mut frame_cache.texture, |texture_canvas| {
             draw_result = (|| -> Result<(), Box<dyn std::error::Error>> {
                 texture_canvas.set_scale(1.0, 1.0)?;
                 self.draw_scene(texture_canvas)
@@ -174,10 +175,69 @@ impl App {
         canvas.set_scale(1.0, 1.0)?;
         canvas.set_draw_color(present_plan.clear_color);
         canvas.clear();
-        canvas.copy(&frame, None, present_plan.destination)?;
+        canvas.copy(&frame_cache.texture, None, present_plan.destination)?;
         canvas.present();
         canvas.set_scale(scale_x, scale_y)?;
+        self.window_frame_texture_cache = Some(frame_cache);
         Ok(())
+    }
+
+    fn ensure_window_frame_texture(
+        &mut self,
+        canvas: &Canvas<sdl3::video::Window>,
+        logical_size: (u32, u32),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let logical_size = (logical_size.0.max(1), logical_size.1.max(1));
+        let needs_rebuild = self
+            .window_frame_texture_cache
+            .as_ref()
+            .is_none_or(|cache| cache.logical_size != logical_size);
+        if !needs_rebuild {
+            return Ok(());
+        }
+
+        if let Some(previous) = self.window_frame_texture_cache.take() {
+            unsafe {
+                previous.texture.destroy();
+            }
+        }
+
+        let texture = canvas.create_texture_target(
+            Some(canvas.default_pixel_format()),
+            logical_size.0,
+            logical_size.1,
+        )?;
+        self.window_frame_texture_cache = Some(WindowFrameTextureCache {
+            logical_size,
+            texture,
+        });
+        Ok(())
+    }
+
+    fn maybe_log_renderer_backend(
+        &mut self,
+        canvas: &Canvas<sdl3::video::Window>,
+        output_size: (u32, u32),
+        scale: f32,
+    ) {
+        if self.renderer_backend_logged {
+            return;
+        }
+        self.renderer_backend_logged = true;
+        eprintln!(
+            "trekr renderer: name={} video_driver={} render_driver_env={} opengl_library={} egl_library={} output={}x{} logical={}x{} scale={:.3} interp_mode={:?}",
+            canvas.renderer_name,
+            canvas.window().subsystem().current_video_driver(),
+            std::env::var("SDL_RENDER_DRIVER").unwrap_or_else(|_| "-".to_owned()),
+            std::env::var("SDL_OPENGL_LIBRARY").unwrap_or_else(|_| "-".to_owned()),
+            std::env::var("SDL_EGL_LIBRARY").unwrap_or_else(|_| "-".to_owned()),
+            output_size.0,
+            output_size.1,
+            self.viewport_size.0,
+            self.viewport_size.1,
+            scale,
+            self.ui_scaling_mode,
+        );
     }
 
     fn draw_overlay<T: RenderTarget>(

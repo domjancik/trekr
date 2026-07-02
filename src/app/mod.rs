@@ -39,9 +39,10 @@ use crate::undo::UndoHistory;
 use image::RgbaImage;
 use sdl3::pixels::{Color, PixelFormat};
 use sdl3::rect::Rect;
-use sdl3::render::{Canvas, RenderTarget};
+use sdl3::render::{Canvas, RenderTarget, Texture};
 use sdl3::surface::SurfaceRef;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -49,6 +50,7 @@ mod capture;
 mod direct_mapping_ui;
 mod discoverability_ui;
 mod input;
+mod preview_stream;
 mod support;
 
 mod mapping;
@@ -71,6 +73,8 @@ use mapping_input::{midi_learn_label, midi_mapping_matches_event};
 use mapping_lookup::mapping_target_lookup_input;
 use mapping_ui::{direct_mapping_key_label, mapping_target_label_for_action};
 use note_runtime::{scheduled_note_occurrences, ticks_per_second_for_tempo};
+use preview_stream::PreviewStreamRuntime;
+pub use preview_stream::{DEFAULT_PREVIEW_FPS, PreviewStreamOptions};
 use shell::scaling::{
     active_draw_size, effective_ui_scale, logical_viewport_size, should_interpolate_window_scale,
 };
@@ -84,6 +88,9 @@ use support::labels::{
     action_source_label, badge_kind_prefix, compact_badge_text, compact_scope_label,
     input_channel_label, launch_quantize_label, mapping_badge_palette, mapping_field_index,
     mapping_source_label, mapping_source_sort_key, on_off, output_channel_label, quantize_label,
+};
+use support::midi_runtime::{
+    MidiRuntime, MidiRuntimeStateSync, MidiRuntimeTimingSync, MidiRuntimeUiSnapshot,
 };
 use support::ui_helpers::{centered_text_rect, contrasting_text_color};
 use timeline::layout::{
@@ -100,6 +107,13 @@ use types::{
 pub use types::{RunOptions, UiCaptureOptions, UiScalingMode, VideoMode};
 
 const MIDI_REFRESH_INTERVAL: Duration = Duration::from_millis(1_000);
+const MIDI_RUNTIME_APP_DIAG_INTERVAL: Duration = Duration::from_secs(1);
+const MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW: Duration = Duration::from_millis(350);
+
+struct WindowFrameTextureCache {
+    logical_size: (u32, u32),
+    texture: Texture,
+}
 
 /// App is the top-level composition root for the first vertical slice.
 pub struct App {
@@ -112,6 +126,7 @@ pub struct App {
     midi_devices: MidiDeviceCatalog,
     midi_input: MidiInputRuntime,
     midi_output: MidiOutputRuntime,
+    midi_runtime: MidiRuntime,
     link: LinkRuntime,
     mappings: Vec<MappingEntry>,
     overlay_state: OverlayState,
@@ -139,6 +154,37 @@ pub struct App {
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
     undo_history: UndoHistory,
+    midi_runtime_dirty: bool,
+    midi_runtime_timing_dirty: bool,
+    last_runtime_snapshot: MidiRuntimeUiSnapshot,
+    midi_runtime_diag_enabled: bool,
+    last_midi_runtime_diag_at: Instant,
+    midi_runtime_full_sync_count: u64,
+    midi_runtime_timing_sync_count: u64,
+    midi_runtime_sync_skipped_count: u64,
+    midi_runtime_identical_sync_skipped_count: u64,
+    midi_runtime_full_sync_total_ns: u64,
+    midi_runtime_full_sync_max_ns: u64,
+    midi_runtime_timing_sync_total_ns: u64,
+    midi_runtime_timing_sync_max_ns: u64,
+    last_midi_runtime_full_sync_signature: Option<u64>,
+    runtime_transport_tick_regressions: u64,
+    runtime_transport_rate_last_sample: Option<(Instant, u64)>,
+    runtime_transport_rate_ticks_per_second: f64,
+    runtime_transport_rate_ratio: f64,
+    ui_frame_count: u64,
+    ui_frame_total_ns: u64,
+    ui_frame_max_ns: u64,
+    ui_update_total_ns: u64,
+    ui_update_max_ns: u64,
+    ui_draw_total_ns: u64,
+    ui_draw_max_ns: u64,
+    ui_page_switch_count: u64,
+    last_ui_page_switch_at: Option<Instant>,
+    ui_page_switch_frame_max_ns: u64,
+    preview_stream_runtime: Option<PreviewStreamRuntime>,
+    window_frame_texture_cache: Option<WindowFrameTextureCache>,
+    renderer_backend_logged: bool,
 }
 
 impl App {
@@ -208,6 +254,10 @@ impl App {
         link.set_start_stop_sync(project.transport.link_start_stop_sync);
         let link_snapshot = link.refresh();
         let track_count = project.tracks.len();
+        let midi_output = MidiOutputRuntime::default();
+        let midi_runtime = MidiRuntime::new(midi_output.clone());
+        let mut midi_input = MidiInputRuntime::default();
+        midi_input.set_fanout_sender(Some(midi_runtime.input_sender()));
         Self {
             project,
             engine_config: EngineConfig::default(),
@@ -216,8 +266,9 @@ impl App {
             keyboard_bindings: KeyboardBindings,
             page_state,
             midi_devices: scanned_devices,
-            midi_input: MidiInputRuntime::default(),
-            midi_output: MidiOutputRuntime::default(),
+            midi_input,
+            midi_output,
+            midi_runtime,
             link,
             mappings,
             overlay_state: OverlayState::default(),
@@ -245,6 +296,39 @@ impl App {
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             undo_history: UndoHistory::default(),
+            midi_runtime_dirty: true,
+            midi_runtime_timing_dirty: true,
+            last_runtime_snapshot: MidiRuntimeUiSnapshot::default(),
+            midi_runtime_diag_enabled: std::env::var("TREKR_MIDI_RUNTIME_LOG")
+                .ok()
+                .is_some_and(|value| value != "0"),
+            last_midi_runtime_diag_at: Instant::now(),
+            midi_runtime_full_sync_count: 0,
+            midi_runtime_timing_sync_count: 0,
+            midi_runtime_sync_skipped_count: 0,
+            midi_runtime_identical_sync_skipped_count: 0,
+            midi_runtime_full_sync_total_ns: 0,
+            midi_runtime_full_sync_max_ns: 0,
+            midi_runtime_timing_sync_total_ns: 0,
+            midi_runtime_timing_sync_max_ns: 0,
+            last_midi_runtime_full_sync_signature: None,
+            runtime_transport_tick_regressions: 0,
+            runtime_transport_rate_last_sample: None,
+            runtime_transport_rate_ticks_per_second: 0.0,
+            runtime_transport_rate_ratio: 0.0,
+            ui_frame_count: 0,
+            ui_frame_total_ns: 0,
+            ui_frame_max_ns: 0,
+            ui_update_total_ns: 0,
+            ui_update_max_ns: 0,
+            ui_draw_total_ns: 0,
+            ui_draw_max_ns: 0,
+            ui_page_switch_count: 0,
+            last_ui_page_switch_at: None,
+            ui_page_switch_frame_max_ns: 0,
+            preview_stream_runtime: None,
+            window_frame_texture_cache: None,
+            renderer_backend_logged: false,
         }
     }
 
@@ -292,6 +376,7 @@ impl App {
         options: RunOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.startup_started_at = Instant::now();
+        self.configure_preview_stream(options.preview_stream.clone())?;
 
         if options.video_mode == VideoMode::KmsDrmConsole {
             // Force SDL onto the DRM/KMS backend for minimal Linux console targets.
@@ -372,21 +457,50 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
+            self.maybe_render_and_publish_preview_frame(canvas.window().window_pixel_format())?;
             if options.video_mode != VideoMode::Windowed {
                 let _ = canvas.window_mut().sync();
             }
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
             std::thread::sleep(Duration::from_millis(16));
         }
 
+        Ok(())
+    }
+
+    fn configure_preview_stream(
+        &mut self,
+        options: Option<PreviewStreamOptions>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.preview_stream_runtime = match options {
+            Some(options) => {
+                let runtime = PreviewStreamRuntime::start(options.clone())?;
+                println!(
+                    "trekr preview stream: http://{}/preview.mjpg ({} fps)",
+                    runtime.listener_addr(),
+                    options.fps
+                );
+                Some(runtime)
+            }
+            None => None,
+        };
         Ok(())
     }
 
@@ -426,16 +540,26 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.configure_window_canvas(&mut canvas)?;
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(canvas.window_mut())?;
             self.draw_window(&mut canvas)?;
+            self.maybe_render_and_publish_preview_frame(canvas.window().window_pixel_format())?;
             let _ = canvas.window_mut().sync();
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
             std::thread::sleep(Duration::from_millis(16));
         }
 
@@ -477,13 +601,16 @@ impl App {
                 break 'running;
             }
 
+            let update_started_at = Instant::now();
             self.poll_midi_input();
             let now = Instant::now();
             self.maybe_refresh_midi_devices(now);
             self.advance_playhead(now.saturating_duration_since(last_frame_at));
             last_frame_at = now;
             self.viewport_size = window.size_in_pixels();
+            let update_elapsed = update_started_at.elapsed();
 
+            let draw_started_at = Instant::now();
             self.update_window_title(&mut window)?;
 
             let mut window_surface = window.surface(&event_pump)?;
@@ -491,6 +618,9 @@ impl App {
                 self.draw_kmsdrm_test_pattern(&mut window_surface)?;
             } else {
                 let frame = self.draw_frame_surface(window.window_pixel_format())?;
+                if self.preview_capture_due() {
+                    self.maybe_publish_preview_surface(frame.as_ref())?;
+                }
                 frame.blit_scaled(
                     None,
                     &mut window_surface,
@@ -500,6 +630,12 @@ impl App {
             }
             window_surface.finish()?;
             let _ = window.sync();
+            let draw_elapsed = draw_started_at.elapsed();
+            self.record_ui_frame_metrics(
+                update_elapsed.saturating_add(draw_elapsed),
+                update_elapsed,
+                draw_elapsed,
+            );
 
             std::thread::sleep(Duration::from_millis(16));
         }
@@ -593,11 +729,42 @@ impl App {
         Ok(())
     }
 
-    fn capture_surface_to_png(
+    fn preview_capture_due(&self) -> bool {
+        let now = Instant::now();
+        self.preview_stream_runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.should_capture_now(now))
+    }
+
+    fn maybe_publish_preview_surface(
+        &mut self,
+        surface: &SurfaceRef,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.preview_stream_runtime.is_none() {
+            return Ok(());
+        }
+        let (width, height, pixels) = self.capture_surface_rgba_pixels(surface)?;
+        if let Some(runtime) = self.preview_stream_runtime.as_mut() {
+            runtime.publish_rgba_frame(width, height, pixels);
+        }
+        Ok(())
+    }
+
+    fn maybe_render_and_publish_preview_frame(
+        &mut self,
+        pixel_format: PixelFormat,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.preview_capture_due() {
+            return Ok(());
+        }
+        let frame = self.draw_frame_surface(pixel_format)?;
+        self.maybe_publish_preview_surface(frame.as_ref())
+    }
+
+    fn capture_surface_rgba_pixels(
         &self,
         surface: &SurfaceRef,
-        path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
         let surface = surface.convert_format(PixelFormat::RGBA32)?;
         let width = surface.width();
         let height = surface.height();
@@ -614,6 +781,15 @@ impl App {
             }
         });
 
+        Ok((width, height, pixels))
+    }
+
+    fn capture_surface_to_png(
+        &self,
+        surface: &SurfaceRef,
+        path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (width, height, pixels) = self.capture_surface_rgba_pixels(surface)?;
         let image = RgbaImage::from_raw(width, height, pixels)
             .ok_or_else(|| "failed to convert renderer pixels to image".to_owned())?;
         image.save(path)?;
@@ -755,29 +931,35 @@ impl App {
             AppAction::Quit => AppControl::Quit,
             AppAction::ShowPage(page) => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = page;
                 if page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, page);
                 AppControl::Continue
             }
             AppAction::ShowNextPage => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = self.page_state.current_page.next();
                 if self.page_state.current_page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, self.page_state.current_page);
                 AppControl::Continue
             }
             AppAction::ShowPreviousPage => {
                 self.clear_mapping_target_lookup();
+                let previous_page = self.page_state.current_page;
                 self.page_state.current_page = self.page_state.current_page.previous();
                 if self.page_state.current_page != AppPage::Timeline {
                     self.close_clip_align();
                 }
                 self.sync_midi_inputs();
+                self.note_page_switch(previous_page, self.page_state.current_page);
                 AppControl::Continue
             }
             AppAction::SelectPreviousPageItem => {
@@ -867,16 +1049,20 @@ impl App {
             }
             AppAction::ToggleLinkEnabled => {
                 self.project.transport.link_enabled = !self.project.transport.link_enabled;
-                self.link.set_enabled(self.project.transport.link_enabled);
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link.set_enabled(self.project.transport.link_enabled);
+                    self.link_snapshot = self.link.refresh();
+                }
                 AppControl::Continue
             }
             AppAction::ToggleLinkStartStopSync => {
                 self.project.transport.link_start_stop_sync =
                     !self.project.transport.link_start_stop_sync;
-                self.link
-                    .set_start_stop_sync(self.project.transport.link_start_stop_sync);
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link
+                        .set_start_stop_sync(self.project.transport.link_start_stop_sync);
+                    self.link_snapshot = self.link.refresh();
+                }
                 AppControl::Continue
             }
             AppAction::TogglePlayback => {
@@ -885,7 +1071,7 @@ impl App {
                     self.finish_recording();
                 }
                 self.project.transport.playing = !self.project.transport.playing;
-                if self.project.transport.link_enabled {
+                if self.project.transport.link_enabled && !self.midi_runtime.is_enabled() {
                     self.link.commit_playing(
                         self.project.transport.playing,
                         self.transport_ticks as f64 / f64::from(self.project.transport.ppqn.max(1)),
@@ -1484,6 +1670,11 @@ impl App {
     }
 
     fn advance_playhead(&mut self, delta: Duration) {
+        if self.midi_runtime.is_enabled() {
+            self.advance_runtime_clock(delta);
+            return;
+        }
+
         if self.project.transport.link_enabled {
             self.advance_linked_playhead(delta);
             return;
@@ -1554,12 +1745,22 @@ impl App {
         self.dispatch_live_arp_events(previous_ticks, self.live_fx_ticks);
     }
 
+    fn advance_runtime_clock(&mut self, _delta: Duration) {
+        self.update_timing_from_runtime();
+        self.sync_midi_runtime_state_if_needed();
+        self.sync_midi_runtime_timing_if_needed();
+        self.update_timing_from_runtime();
+        self.live_fx_ticks = self.transport_ticks.max(self.live_fx_ticks);
+    }
+
     fn set_transport_tempo(&mut self, bpm: u16) {
         let bpm = bpm.clamp(20, 400);
         self.project.transport.tempo_bpm = bpm;
         self.last_tempo_tap_at = None;
-        self.link.commit_tempo(f64::from(bpm));
-        self.link_snapshot = self.link.refresh();
+        if !self.midi_runtime.is_enabled() {
+            self.link.commit_tempo(f64::from(bpm));
+            self.link_snapshot = self.link.refresh();
+        }
     }
 
     fn tap_transport_tempo(&mut self) {
@@ -1569,8 +1770,10 @@ impl App {
             if (150..=3_000).contains(&interval_ms) {
                 let bpm = (60_000 / interval_ms).clamp(20, 400) as u16;
                 self.project.transport.tempo_bpm = bpm;
-                self.link.commit_tempo(f64::from(bpm));
-                self.link_snapshot = self.link.refresh();
+                if !self.midi_runtime.is_enabled() {
+                    self.link.commit_tempo(f64::from(bpm));
+                    self.link_snapshot = self.link.refresh();
+                }
             }
         }
         self.last_tempo_tap_at = Some(now);
@@ -1762,6 +1965,273 @@ impl App {
             self.midi_devices.outputs.len(),
         );
         self.sync_midi_inputs();
+        self.midi_runtime_dirty = true;
+    }
+
+    fn build_midi_runtime_state_sync(&self) -> (MidiRuntimeStateSync, u64) {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let project = self.project.clone_for_midi_runtime();
+        let project_signature = project.midi_runtime_signature();
+        project_signature.hash(&mut hasher);
+        self.default_input_port()
+            .map(|port| port.name.as_str())
+            .hash(&mut hasher);
+        self.default_output_port()
+            .map(|port| port.name.as_str())
+            .hash(&mut hasher);
+        let signature = hasher.finish();
+        (
+            MidiRuntimeStateSync {
+                project,
+                transport_ticks: self.transport_ticks,
+                playhead_ticks: self.playhead_ticks,
+                live_fx_ticks: self.live_fx_ticks,
+                default_input_port: self.default_input_port().cloned(),
+                default_output_port: self.default_output_port().cloned(),
+                preserve_clock: !self.midi_runtime_timing_dirty,
+            },
+            signature,
+        )
+    }
+
+    fn build_midi_runtime_timing_sync(&self) -> MidiRuntimeTimingSync {
+        MidiRuntimeTimingSync {
+            transport: self.project.transport,
+            transport_ticks: self.transport_ticks,
+            playhead_ticks: self.playhead_ticks,
+            live_fx_ticks: self.live_fx_ticks,
+        }
+    }
+
+    fn sync_midi_runtime_state_if_needed(&mut self) {
+        if !self.midi_runtime.is_enabled() || !self.midi_runtime_dirty {
+            return;
+        }
+        let started_at = Instant::now();
+        let (state_sync, signature) = self.build_midi_runtime_state_sync();
+        let preserve_clock = state_sync.preserve_clock;
+        if self.last_midi_runtime_full_sync_signature == Some(signature) {
+            self.midi_runtime_identical_sync_skipped_count = self
+                .midi_runtime_identical_sync_skipped_count
+                .saturating_add(1);
+            self.midi_runtime_dirty = false;
+            return;
+        }
+        self.midi_runtime.sync_state(state_sync);
+        let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.midi_runtime_full_sync_count = self.midi_runtime_full_sync_count.saturating_add(1);
+        self.midi_runtime_full_sync_total_ns = self
+            .midi_runtime_full_sync_total_ns
+            .saturating_add(elapsed_ns);
+        self.midi_runtime_full_sync_max_ns = self.midi_runtime_full_sync_max_ns.max(elapsed_ns);
+        self.midi_runtime_dirty = false;
+        if !preserve_clock {
+            self.midi_runtime_timing_dirty = false;
+        }
+        self.last_midi_runtime_full_sync_signature = Some(signature);
+    }
+
+    fn sync_midi_runtime_timing_if_needed(&mut self) {
+        if !self.midi_runtime.is_enabled()
+            || !self.midi_runtime_timing_dirty
+            || self.midi_runtime_dirty
+        {
+            return;
+        }
+        let started_at = Instant::now();
+        self.midi_runtime
+            .sync_timing(self.build_midi_runtime_timing_sync());
+        let elapsed_ns = started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.midi_runtime_timing_sync_count = self.midi_runtime_timing_sync_count.saturating_add(1);
+        self.midi_runtime_timing_sync_total_ns = self
+            .midi_runtime_timing_sync_total_ns
+            .saturating_add(elapsed_ns);
+        self.midi_runtime_timing_sync_max_ns = self.midi_runtime_timing_sync_max_ns.max(elapsed_ns);
+        self.midi_runtime_timing_dirty = false;
+    }
+
+    fn mark_midi_runtime_dirty(&mut self) {
+        self.midi_runtime_dirty = true;
+    }
+
+    fn mark_midi_runtime_dirty_and_timing(&mut self) {
+        self.midi_runtime_dirty = true;
+        self.midi_runtime_timing_dirty = true;
+    }
+
+    fn mark_midi_runtime_timing_dirty(&mut self) {
+        self.midi_runtime_timing_dirty = true;
+    }
+
+    fn note_page_switch(&mut self, previous_page: AppPage, next_page: AppPage) {
+        if previous_page == next_page {
+            return;
+        }
+        let switched_at = Instant::now();
+        self.ui_page_switch_count = self.ui_page_switch_count.saturating_add(1);
+        self.last_ui_page_switch_at = Some(switched_at);
+        if self.midi_runtime.is_enabled() {
+            self.midi_runtime.note_page_switch(next_page, switched_at);
+        }
+    }
+
+    fn record_ui_frame_metrics(
+        &mut self,
+        frame_elapsed: Duration,
+        update_elapsed: Duration,
+        draw_elapsed: Duration,
+    ) {
+        let frame_ns = frame_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        let update_ns = update_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        let draw_ns = draw_elapsed.as_nanos().min(u128::from(u64::MAX)) as u64;
+        self.ui_frame_count = self.ui_frame_count.saturating_add(1);
+        self.ui_frame_total_ns = self.ui_frame_total_ns.saturating_add(frame_ns);
+        self.ui_update_total_ns = self.ui_update_total_ns.saturating_add(update_ns);
+        self.ui_draw_total_ns = self.ui_draw_total_ns.saturating_add(draw_ns);
+        self.ui_frame_max_ns = self.ui_frame_max_ns.max(frame_ns);
+        self.ui_update_max_ns = self.ui_update_max_ns.max(update_ns);
+        self.ui_draw_max_ns = self.ui_draw_max_ns.max(draw_ns);
+        if self.last_ui_page_switch_at.is_some_and(|switched_at| {
+            frame_elapsed <= MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW
+                && Instant::now().saturating_duration_since(switched_at)
+                    <= MIDI_RUNTIME_PAGE_SWITCH_DIAG_WINDOW
+        }) {
+            self.ui_page_switch_frame_max_ns = self.ui_page_switch_frame_max_ns.max(frame_ns);
+        }
+    }
+
+    fn update_timing_from_runtime(&mut self) {
+        if !self.midi_runtime.is_enabled() {
+            return;
+        }
+        let previous_transport_ticks = self.transport_ticks;
+        let snapshot = self.midi_runtime.snapshot();
+        self.observe_runtime_transport_clock(&snapshot);
+        self.apply_runtime_snapshot(snapshot);
+        self.process_queued_stored_loop_recalls(previous_transport_ticks, self.transport_ticks);
+        self.maybe_print_midi_runtime_app_summary();
+    }
+
+    fn observe_runtime_transport_clock(&mut self, snapshot: &MidiRuntimeUiSnapshot) {
+        if snapshot.transport_ticks < self.transport_ticks {
+            self.runtime_transport_tick_regressions =
+                self.runtime_transport_tick_regressions.saturating_add(1);
+        }
+        let now = snapshot.updated_at;
+        if let Some((previous_at, previous_ticks)) = self.runtime_transport_rate_last_sample {
+            let elapsed = now.saturating_duration_since(previous_at).as_secs_f64();
+            if elapsed > 0.0 && snapshot.transport_ticks >= previous_ticks {
+                let delta_ticks = (snapshot.transport_ticks - previous_ticks) as f64;
+                self.runtime_transport_rate_ticks_per_second = delta_ticks / elapsed;
+                let expected = self.project.transport.ticks_per_second() as f64;
+                self.runtime_transport_rate_ratio = if expected > 0.0 {
+                    self.runtime_transport_rate_ticks_per_second / expected
+                } else {
+                    0.0
+                };
+            }
+        }
+        self.runtime_transport_rate_last_sample = Some((now, snapshot.transport_ticks));
+    }
+
+    fn maybe_print_midi_runtime_app_summary(&mut self) {
+        if !self.midi_runtime_diag_enabled
+            || self.last_midi_runtime_diag_at.elapsed() < MIDI_RUNTIME_APP_DIAG_INTERVAL
+        {
+            return;
+        }
+        self.last_midi_runtime_diag_at = Instant::now();
+        let avg_sync_ms = if self.midi_runtime_full_sync_count == 0 {
+            0.0
+        } else {
+            (self.midi_runtime_full_sync_total_ns / self.midi_runtime_full_sync_count) as f64
+                / 1_000_000.0
+        };
+        let max_sync_ms = self.midi_runtime_full_sync_max_ns as f64 / 1_000_000.0;
+        let avg_timing_sync_ms = if self.midi_runtime_timing_sync_count == 0 {
+            0.0
+        } else {
+            (self.midi_runtime_timing_sync_total_ns / self.midi_runtime_timing_sync_count) as f64
+                / 1_000_000.0
+        };
+        let max_timing_sync_ms = self.midi_runtime_timing_sync_max_ns as f64 / 1_000_000.0;
+        let avg_frame_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_frame_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let avg_update_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_update_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let avg_draw_ms = if self.ui_frame_count == 0 {
+            0.0
+        } else {
+            (self.ui_draw_total_ns / self.ui_frame_count) as f64 / 1_000_000.0
+        };
+        let runtime_metrics = self.midi_runtime.metrics_snapshot();
+        eprintln!(
+            "trekr midi app sync: full_syncs={} timing_syncs={} skipped_actions={} skipped_identical={} full_avg_ms={:.3} full_max_ms={:.3} timing_avg_ms={:.3} timing_max_ms={:.3} frame_avg_ms={:.3} frame_max_ms={:.3} update_avg_ms={:.3} update_max_ms={:.3} draw_avg_ms={:.3} draw_max_ms={:.3} page_switches={} page_frame_max_ms={:.3} runtime_page={} runtime_page_outputs={} runtime_page_due_miss_count={} runtime_page_cb_to_output_avg_ms={:.3} runtime_page_cb_to_output_max_ms={:.3} playback_schedule_late_count={} playback_schedule_late_avg_ms={:.3} playback_schedule_late_max_ms={:.3} playback_underfed_count={} playback_underfed_avg_ticks={:.1} playback_underfed_max_ticks={} playback_headroom_avg_ticks={:.1} playback_headroom_min_ticks={} playback_headroom_low_count={} runtime_tick_rate_tps={:.1} runtime_tick_rate_ratio={:.3} runtime_tick_regressions={} recording={} playing={}",
+            self.midi_runtime_full_sync_count,
+            self.midi_runtime_timing_sync_count,
+            self.midi_runtime_sync_skipped_count,
+            self.midi_runtime_identical_sync_skipped_count,
+            avg_sync_ms,
+            max_sync_ms,
+            avg_timing_sync_ms,
+            max_timing_sync_ms,
+            avg_frame_ms,
+            self.ui_frame_max_ns as f64 / 1_000_000.0,
+            avg_update_ms,
+            self.ui_update_max_ns as f64 / 1_000_000.0,
+            avg_draw_ms,
+            self.ui_draw_max_ns as f64 / 1_000_000.0,
+            self.ui_page_switch_count,
+            self.ui_page_switch_frame_max_ns as f64 / 1_000_000.0,
+            runtime_metrics
+                .last_page
+                .map(|page| page.label())
+                .unwrap_or("-"),
+            runtime_metrics.page_switch_output_count,
+            runtime_metrics.page_switch_due_miss_count,
+            runtime_metrics.page_switch_callback_to_output_avg_ms,
+            runtime_metrics.page_switch_callback_to_output_max_ms,
+            runtime_metrics.playback_schedule_late_count,
+            runtime_metrics.playback_schedule_late_avg_ms,
+            runtime_metrics.playback_schedule_late_max_ms,
+            runtime_metrics.playback_underfed_count,
+            runtime_metrics.playback_underfed_avg_ticks,
+            runtime_metrics.playback_underfed_max_ticks,
+            runtime_metrics.playback_headroom_avg_ticks,
+            runtime_metrics.playback_headroom_min_ticks,
+            runtime_metrics.playback_headroom_low_count,
+            self.runtime_transport_rate_ticks_per_second,
+            self.runtime_transport_rate_ratio,
+            self.runtime_transport_tick_regressions,
+            self.project.transport.recording,
+            self.project.transport.playing
+        );
+    }
+
+    fn apply_runtime_snapshot(&mut self, snapshot: MidiRuntimeUiSnapshot) {
+        self.transport_ticks = snapshot.transport_ticks;
+        self.playhead_ticks = snapshot.playhead_ticks;
+        self.live_fx_ticks = snapshot.live_fx_ticks;
+        self.link_snapshot = snapshot.link_snapshot;
+        self.merge_runtime_recording_takes(&snapshot);
+        self.last_runtime_snapshot = snapshot;
+    }
+
+    fn merge_runtime_recording_takes(&mut self, snapshot: &MidiRuntimeUiSnapshot) {
+        for (track, active_take) in self
+            .project
+            .tracks
+            .iter_mut()
+            .zip(snapshot.recording_takes.iter())
+        {
+            track.active_take = active_take.clone();
+        }
     }
 
     fn input_port_is_available(&self, name: &str) -> bool {
@@ -1785,6 +2255,7 @@ impl App {
         self.preferred_default_input_name = Some(port.name.clone());
         self.midi_devices.set_selected_input(index);
         self.sync_midi_inputs();
+        self.mark_midi_runtime_dirty();
     }
 
     fn set_preferred_default_output_from_index(&mut self, index: usize) {
@@ -1793,6 +2264,7 @@ impl App {
         };
         self.preferred_default_output_name = Some(port.name.clone());
         self.midi_devices.set_selected_output(index);
+        self.mark_midi_runtime_dirty();
     }
 
     pub(super) fn default_input_port(&self) -> Option<&MidiPortRef> {
@@ -1946,6 +2418,7 @@ impl App {
         &mut self,
         source_track_index: usize,
         source_events: &[LiveMidiFxEvent],
+        emit_live_output: bool,
     ) {
         if source_events.is_empty() || !self.track_emits_clone_source(source_track_index) {
             return;
@@ -2025,20 +2498,26 @@ impl App {
                 if track.active_take.is_some()
                     && target.record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
                 {
+                    let mut recorded = false;
                     for record_event in &post_input_events {
                         match *record_event {
                             LiveMidiFxEvent::NoteOn { pitch, velocity } => {
                                 track.record_note_on(pitch, velocity, input_ticks);
+                                recorded = true;
                             }
                             LiveMidiFxEvent::NoteOff { pitch } => {
                                 track.record_note_off(pitch, input_ticks);
+                                recorded = true;
                             }
                         }
+                    }
+                    if recorded {
+                        self.mark_midi_runtime_dirty();
                     }
                 }
             }
 
-            if target.monitor_input_fx {
+            if emit_live_output && target.monitor_input_fx {
                 self.send_live_monitor_events(
                     target.target_index,
                     &target.output_chain,
@@ -2171,15 +2650,21 @@ impl App {
                 if track.active_take.is_some()
                     && record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx
                 {
+                    let mut recorded = false;
                     for (tick, event) in &input_events {
                         match *event {
                             LiveMidiFxEvent::NoteOn { pitch, velocity } => {
                                 track.record_note_on(pitch, velocity, *tick);
+                                recorded = true;
                             }
                             LiveMidiFxEvent::NoteOff { pitch } => {
                                 track.record_note_off(pitch, *tick);
+                                recorded = true;
                             }
                         }
+                    }
+                    if recorded {
+                        self.mark_midi_runtime_dirty();
                     }
                 }
             }
@@ -2417,7 +2902,39 @@ impl App {
             self.status_state.history_message = None;
         }
         self.status_state.last_action = Some(LastActionStatus { action, source });
-        self.apply_action(action)
+        let control = self.apply_action(action);
+        match action_midi_runtime_sync_kind(action) {
+            MidiRuntimeSyncKind::Full => self.mark_midi_runtime_dirty(),
+            MidiRuntimeSyncKind::TimingOnly => self.mark_midi_runtime_timing_dirty(),
+            MidiRuntimeSyncKind::None => {
+                self.midi_runtime_sync_skipped_count =
+                    self.midi_runtime_sync_skipped_count.saturating_add(1);
+            }
+        }
+        control
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_for_midi_runtime(&mut self) {
+        self.midi_runtime.wait_until_idle();
+        self.update_timing_from_runtime();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_midi_input_event(&mut self, event: MidiInputEvent) {
+        self.mark_midi_runtime_dirty_and_timing();
+        self.sync_midi_runtime_state_if_needed();
+        self.wait_for_midi_runtime();
+        let _ = self.midi_runtime.input_sender().send(event.clone());
+        self.handle_midi_input_event(event);
+        self.wait_for_midi_runtime();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn force_sync_midi_runtime(&mut self) {
+        self.mark_midi_runtime_dirty_and_timing();
+        self.sync_midi_runtime_state_if_needed();
+        self.wait_for_midi_runtime();
     }
 }
 
@@ -2456,6 +2973,63 @@ fn initial_window_size(video: &sdl3::VideoSubsystem, video_mode: VideoMode) -> (
     }
 }
 
+enum MidiRuntimeSyncKind {
+    None,
+    TimingOnly,
+    Full,
+}
+
+fn action_midi_runtime_sync_kind(action: AppAction) -> MidiRuntimeSyncKind {
+    match action {
+        AppAction::Quit
+        | AppAction::UndoUi
+        | AppAction::RedoUi
+        | AppAction::ShowPage(_)
+        | AppAction::ShowNextPage
+        | AppAction::ShowPreviousPage
+        | AppAction::SelectPreviousPageItem
+        | AppAction::SelectNextPageItem
+        | AppAction::CancelCurrentMode
+        | AppAction::ToggleMappingsOverlay
+        | AppAction::ToggleDiscoverabilityOverlay
+        | AppAction::ToggleDirectMappingMode
+        | AppAction::ToggleMappingsWriteMode
+        | AppAction::AddMappingRow
+        | AppAction::RemoveSelectedMapping
+        | AppAction::SelectPreviousPageField
+        | AppAction::SelectNextPageField
+        | AppAction::ToggleFocusedTrackView
+        | AppAction::SelectNextTrack
+        | AppAction::SelectPreviousTrack
+        | AppAction::SelectTrack(_)
+        | AppAction::SelectNotesAtPlayhead
+        | AppAction::SelectNotesAtPlayheadAdd
+        | AppAction::DeselectTrackNotes
+        | AppAction::SelectNextNote
+        | AppAction::SelectPreviousNote
+        | AppAction::FocusFirstSelectedNote
+        | AppAction::FocusLastSelectedNote
+        | AppAction::ExtendNoteSelectionForward
+        | AppAction::ExtendNoteSelectionBackward
+        | AppAction::ExtendNoteSelectionBoth
+        | AppAction::ContractNoteSelection
+        | AppAction::BeginNoteAdditiveSelectionHold
+        | AppAction::EndNoteAdditiveSelectionHold => MidiRuntimeSyncKind::None,
+        AppAction::TogglePlayback
+        | AppAction::ToggleRecording
+        | AppAction::StartRecording
+        | AppAction::StopRecording
+        | AppAction::DecreaseTempo
+        | AppAction::IncreaseTempo
+        | AppAction::HalfTempo
+        | AppAction::DoubleTempo
+        | AppAction::TapTempo
+        | AppAction::ToggleLinkEnabled
+        | AppAction::ToggleLinkStartStopSync => MidiRuntimeSyncKind::TimingOnly,
+        _ => MidiRuntimeSyncKind::Full,
+    }
+}
+
 fn parse_kmsdrm_size_override() -> Option<(u32, u32)> {
     std::env::var("TREKR_KMSDRM_SIZE")
         .ok()
@@ -2484,6 +3058,7 @@ mod tests {
     use crate::actions::{ActionSource, AppAction};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
+    use crate::pages::AppPage;
     use crate::routing::TrackPortSelection;
     use crate::transport::{QuantizeMode, RecordMode};
     use crate::ui::TimelineFlow;
@@ -2574,6 +3149,10 @@ mod tests {
                 pitch: 36,
                 velocity: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(app.note_additive_select_held);
@@ -2583,6 +3162,10 @@ mod tests {
             port: MidiPortRef::new("Port A"),
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 36 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(!app.note_additive_select_held);
@@ -2844,21 +3427,29 @@ mod tests {
             .active_track()
             .and_then(|track| track.routing.input_port.as_named_port().cloned())
             .expect("test track should have explicit input port");
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port.clone(),
             channel: 1,
             message: MidiInputMessage::NoteOn {
                 pitch: 64,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         app.transport_ticks = 1_920;
         app.playhead_ticks = 1_920;
-        app.handle_midi_input_event(MidiInputEvent {
+        app.inject_midi_input_event(MidiInputEvent {
             port: input_port,
             channel: 1,
             message: MidiInputMessage::NoteOff { pitch: 64 },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
         app.apply_action(AppAction::ToggleRecording);
 
@@ -2867,6 +3458,143 @@ mod tests {
         assert!(active.active_take.is_none());
         assert!(!active.regions.is_empty());
         assert!(active.midi_notes.iter().any(|note| note.pitch == 64));
+    }
+
+    #[test]
+    fn runtime_recording_snapshot_clears_pending_note_after_note_off() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
+
+        app.apply_action(AppAction::ToggleRecording);
+
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
+            .expect("test track should have explicit input port");
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        assert_eq!(
+            app.project
+                .active_track()
+                .unwrap()
+                .active_take
+                .as_ref()
+                .map(|take| take.pending_notes.len()),
+            Some(1)
+        );
+
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        let take = app
+            .project
+            .active_track()
+            .unwrap()
+            .active_take
+            .as_ref()
+            .expect("active take should still exist while recording");
+        assert!(take.pending_notes.is_empty());
+        assert_eq!(take.recorded_notes.len(), 1);
+        assert_eq!(take.recorded_notes[0].pitch, 64);
+    }
+
+    #[test]
+    fn runtime_recording_snapshot_clears_active_take_after_stop() {
+        let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
+
+        app.apply_action(AppAction::ToggleRecording);
+        let input_port = app
+            .project
+            .active_track()
+            .and_then(|track| track.routing.input_port.as_named_port().cloned())
+            .expect("test track should have explicit input port");
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port.clone(),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.inject_midi_input_event(MidiInputEvent {
+            port: input_port,
+            channel: 1,
+            message: MidiInputMessage::NoteOff { pitch: 64 },
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
+        });
+
+        app.apply_action(AppAction::ToggleRecording);
+
+        assert!(!app.project.transport.recording);
+        assert!(app.project.active_track().unwrap().active_take.is_none());
+    }
+
+    #[test]
+    fn page_switch_does_not_dirty_runtime_clock_sync() {
+        let mut app = App::new();
+        app.project.transport.playing = true;
+        app.force_sync_midi_runtime();
+
+        assert!(!app.midi_runtime_dirty);
+        assert!(!app.midi_runtime_timing_dirty);
+
+        app.apply_action(AppAction::ShowPage(AppPage::Mappings));
+
+        assert!(!app.midi_runtime_dirty);
+        assert!(!app.midi_runtime_timing_dirty);
+    }
+
+    #[test]
+    fn full_runtime_sync_preserves_clock_when_only_state_changes() {
+        let mut app = App::new();
+        app.project.transport.playing = true;
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+        app.live_fx_ticks = 960;
+        app.force_sync_midi_runtime();
+
+        let runtime_ticks = app.midi_runtime.snapshot().transport_ticks;
+        let stale_ticks = runtime_ticks.saturating_sub(240);
+        app.transport_ticks = stale_ticks;
+        app.playhead_ticks = stale_ticks;
+        app.live_fx_ticks = stale_ticks;
+        app.mark_midi_runtime_dirty();
+        app.sync_midi_runtime_state_if_needed();
+        app.wait_for_midi_runtime();
+
+        let synced = app.midi_runtime.snapshot();
+        assert!(synced.transport_ticks >= runtime_ticks);
+        assert!(synced.transport_ticks > stale_ticks);
     }
 
     #[test]
@@ -3014,6 +3742,10 @@ mod tests {
                 pitch: 64,
                 velocity: 100,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert!(app.midi_output.sent_messages().is_empty());

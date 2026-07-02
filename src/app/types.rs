@@ -1,4 +1,5 @@
 use crate::actions::{ActionSource, AppAction};
+use crate::app::preview_stream::PreviewStreamOptions;
 use crate::mapping::MappingSourceKind;
 use crate::pages::AppPage;
 use crate::project::{ClipAlignPreview, ClipAlignSettings};
@@ -243,9 +244,10 @@ pub enum UiScalingMode {
     Linear,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RunOptions {
     pub video_mode: VideoMode,
+    pub preview_stream: Option<PreviewStreamOptions>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

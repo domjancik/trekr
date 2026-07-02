@@ -1,10 +1,13 @@
+use crate::thread_priority::promote_current_thread_for_midi;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
-#[cfg(test)]
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MidiPortRef {
@@ -40,6 +43,15 @@ pub struct MidiInputEvent {
     pub port: MidiPortRef,
     pub channel: u8,
     pub message: MidiInputMessage,
+    pub received_at: Instant,
+    pub backend_timestamp_micros: Option<u64>,
+    pub sequence: u64,
+}
+
+impl MidiInputEvent {
+    pub fn received_at(&self) -> Instant {
+        self.received_at
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,6 +194,7 @@ fn preserve_selection(ports: &[MidiPortRef], selected: Option<&MidiPortRef>) -> 
 }
 
 #[cfg_attr(test, allow(dead_code))]
+#[derive(Clone)]
 pub struct MidiOutputRuntime {
     sender: Sender<MidiOutputCommand>,
     #[cfg(test)]
@@ -196,26 +209,34 @@ pub struct MidiInputRuntime {
     sender: Sender<MidiInputEvent>,
     receiver: Receiver<MidiInputEvent>,
     connections: HashMap<String, MidiInputConnection<()>>,
+    fanout_sender: Arc<Mutex<Option<Sender<MidiInputEvent>>>>,
+    sequence: Arc<AtomicU64>,
     #[cfg(test)]
     requested_ports: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum MidiOutputCommand {
     NoteOn {
         port: MidiPortRef,
         channel: u8,
         pitch: u8,
         velocity: u8,
+        meta: Option<MidiOutputCommandMeta>,
     },
     NoteOff {
         port: MidiPortRef,
         channel: u8,
         pitch: u8,
+        meta: Option<MidiOutputCommandMeta>,
     },
     AllNotesOff {
         port: MidiPortRef,
         channel: u8,
+        meta: Option<MidiOutputCommandMeta>,
+    },
+    Prewarm {
+        port: MidiPortRef,
     },
 }
 
@@ -234,6 +255,14 @@ impl Default for MidiOutputRuntime {
         thread::Builder::new()
             .name("trekr-midi-output".to_string())
             .spawn(move || {
+                let diag_enabled = std::env::var("TREKR_MIDI_RUNTIME_LOG")
+                    .ok()
+                    .is_some_and(|value| value != "0");
+                if let Err(error) = promote_current_thread_for_midi("midi output") {
+                    if diag_enabled {
+                        eprintln!("trekr midi runtime: thread_priority midi_output={error}");
+                    }
+                }
                 let mut worker = MidiOutputWorker::default();
                 while let Ok(command) = receiver.recv() {
                     let _ = worker.handle(command);
@@ -259,6 +288,8 @@ impl Default for MidiInputRuntime {
             sender,
             receiver,
             connections: HashMap::new(),
+            fanout_sender: Arc::new(Mutex::new(None)),
+            sequence: Arc::new(AtomicU64::new(1)),
             #[cfg(test)]
             requested_ports: Vec::new(),
         }
@@ -276,24 +307,36 @@ impl Default for MidiOutputWorker {
 
 impl MidiOutputRuntime {
     pub fn send_note_on(
-        &mut self,
+        &self,
         port: &MidiPortRef,
         channel: u8,
         pitch: u8,
         velocity: u8,
+    ) -> Result<(), String> {
+        self.send_note_on_with_meta(port, channel, pitch, velocity, None)
+    }
+
+    pub fn send_note_on_with_meta(
+        &self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: u8,
+        meta: Option<MidiOutputCommandMeta>,
     ) -> Result<(), String> {
         let command = MidiOutputCommand::NoteOn {
             port: port.clone(),
             channel,
             pitch,
             velocity,
+            meta,
         };
         self.send_note_on_internal(port, channel, pitch, velocity, command)
     }
 
     #[cfg(not(test))]
     fn send_note_on_internal(
-        &mut self,
+        &self,
         _port: &MidiPortRef,
         _channel: u8,
         _pitch: u8,
@@ -306,7 +349,7 @@ impl MidiOutputRuntime {
 
     #[cfg(test)]
     fn send_note_on_internal(
-        &mut self,
+        &self,
         port: &MidiPortRef,
         channel: u8,
         pitch: u8,
@@ -320,23 +363,29 @@ impl MidiOutputRuntime {
         Ok(())
     }
 
-    pub fn send_note_off(
-        &mut self,
+    pub fn send_note_off(&self, port: &MidiPortRef, channel: u8, pitch: u8) -> Result<(), String> {
+        self.send_note_off_with_meta(port, channel, pitch, None)
+    }
+
+    pub fn send_note_off_with_meta(
+        &self,
         port: &MidiPortRef,
         channel: u8,
         pitch: u8,
+        meta: Option<MidiOutputCommandMeta>,
     ) -> Result<(), String> {
         let command = MidiOutputCommand::NoteOff {
             port: port.clone(),
             channel,
             pitch,
+            meta,
         };
         self.send_note_off_internal(port, channel, pitch, command)
     }
 
     #[cfg(not(test))]
     fn send_note_off_internal(
-        &mut self,
+        &self,
         _port: &MidiPortRef,
         _channel: u8,
         _pitch: u8,
@@ -348,7 +397,7 @@ impl MidiOutputRuntime {
 
     #[cfg(test)]
     fn send_note_off_internal(
-        &mut self,
+        &self,
         port: &MidiPortRef,
         channel: u8,
         pitch: u8,
@@ -361,17 +410,27 @@ impl MidiOutputRuntime {
         Ok(())
     }
 
-    pub fn send_all_notes_off(&mut self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
+    pub fn send_all_notes_off(&self, port: &MidiPortRef, channel: u8) -> Result<(), String> {
+        self.send_all_notes_off_with_meta(port, channel, None)
+    }
+
+    pub fn send_all_notes_off_with_meta(
+        &self,
+        port: &MidiPortRef,
+        channel: u8,
+        meta: Option<MidiOutputCommandMeta>,
+    ) -> Result<(), String> {
         let command = MidiOutputCommand::AllNotesOff {
             port: port.clone(),
             channel,
+            meta,
         };
         self.send_all_notes_off_internal(port, channel, command)
     }
 
     #[cfg(not(test))]
     fn send_all_notes_off_internal(
-        &mut self,
+        &self,
         _port: &MidiPortRef,
         _channel: u8,
         command: MidiOutputCommand,
@@ -382,7 +441,7 @@ impl MidiOutputRuntime {
 
     #[cfg(test)]
     fn send_all_notes_off_internal(
-        &mut self,
+        &self,
         port: &MidiPortRef,
         channel: u8,
         command: MidiOutputCommand,
@@ -414,6 +473,12 @@ impl MidiOutputRuntime {
             .filter(|command| matches!(command, MidiOutputCommand::AllNotesOff { .. }))
             .count()
     }
+
+    pub fn prewarm(&self, port: &MidiPortRef) -> Result<(), String> {
+        let command = MidiOutputCommand::Prewarm { port: port.clone() };
+        self.record_command_for_test(&command);
+        self.sender.send(command).map_err(|error| error.to_string())
+    }
 }
 
 impl MidiOutputRuntime {
@@ -427,6 +492,12 @@ impl MidiOutputRuntime {
 }
 
 impl MidiInputRuntime {
+    pub fn set_fanout_sender(&mut self, sender: Option<Sender<MidiInputEvent>>) {
+        if let Ok(mut target) = self.fanout_sender.lock() {
+            *target = sender;
+        }
+    }
+
     pub fn sync_ports(&mut self, ports: &[MidiPortRef]) {
         let wanted: Vec<String> = ports.iter().map(|port| port.name.clone()).collect();
         self.sync_ports_internal(&wanted, ports);
@@ -448,9 +519,13 @@ impl MidiInputRuntime {
                 continue;
             }
 
-            if let Ok(connection) =
-                connect_input_by_name(self.app_name, &port.name, self.sender.clone())
-            {
+            if let Ok(connection) = connect_input_by_name(
+                self.app_name,
+                &port.name,
+                self.sender.clone(),
+                self.fanout_sender.clone(),
+                self.sequence.clone(),
+            ) {
                 self.connections.insert(port.name.clone(), connection);
             }
         }
@@ -487,21 +562,76 @@ impl MidiOutputWorker {
                 channel,
                 pitch,
                 velocity,
-            } => self.send_message(&port, [status_byte(0x90, channel), pitch, velocity]),
+                meta,
+            } => self.send_message(
+                &port,
+                channel,
+                pitch,
+                Some(velocity),
+                [status_byte(0x90, channel), pitch, velocity],
+                meta,
+            ),
             MidiOutputCommand::NoteOff {
                 port,
                 channel,
                 pitch,
-            } => self.send_message(&port, [status_byte(0x80, channel), pitch, 0]),
-            MidiOutputCommand::AllNotesOff { port, channel } => {
-                self.send_message(&port, [status_byte(0xB0, channel), 123, 0])
-            }
+                meta,
+            } => self.send_message(
+                &port,
+                channel,
+                pitch,
+                None,
+                [status_byte(0x80, channel), pitch, 0],
+                meta,
+            ),
+            MidiOutputCommand::AllNotesOff {
+                port,
+                channel,
+                meta,
+            } => self.send_message(
+                &port,
+                channel,
+                123,
+                None,
+                [status_byte(0xB0, channel), 123, 0],
+                meta,
+            ),
+            MidiOutputCommand::Prewarm { port } => self.connection_for(&port).map(|_| ()),
         }
     }
 
-    fn send_message(&mut self, port: &MidiPortRef, message: [u8; 3]) -> Result<(), String> {
+    fn send_message(
+        &mut self,
+        port: &MidiPortRef,
+        channel: u8,
+        pitch: u8,
+        velocity: Option<u8>,
+        message: [u8; 3],
+        meta: Option<MidiOutputCommandMeta>,
+    ) -> Result<(), String> {
         let connection = self.connection_for(port)?;
+        let dequeued_at = Instant::now();
         let result = connection.send(&message).map_err(|error| error.to_string());
+        let sent_at = Instant::now();
+        if result.is_ok() {
+            if let Some(meta) = meta {
+                if let Some(sender) = meta.completion_sender {
+                    let _ = sender.send(MidiOutputObservedEvent {
+                        origin: meta.origin,
+                        sequence: meta.sequence,
+                        port: port.clone(),
+                        channel,
+                        pitch,
+                        velocity,
+                        callback_received_at: meta.callback_received_at,
+                        due_at: meta.due_at,
+                        enqueued_at: meta.enqueued_at,
+                        dequeued_at,
+                        sent_at,
+                    });
+                }
+            }
+        }
         if result.is_err() {
             self.connections.remove(&port.name);
         }
@@ -541,6 +671,8 @@ fn connect_input_by_name(
     app_name: &str,
     target_name: &str,
     sender: Sender<MidiInputEvent>,
+    fanout_sender: Arc<Mutex<Option<Sender<MidiInputEvent>>>>,
+    sequence: Arc<AtomicU64>,
 ) -> Result<MidiInputConnection<()>, String> {
     let mut midi_in = MidiInput::new(app_name).map_err(|error| error.to_string())?;
     midi_in.ignore(Ignore::None);
@@ -555,9 +687,20 @@ fn connect_input_by_name(
         .connect(
             &port,
             app_name,
-            move |_timestamp, message, _state| {
-                if let Some(event) = parse_input_event(&port_name, message) {
-                    let _ = sender.send(event);
+            move |timestamp, message, _state| {
+                if let Some(event) = parse_input_event(
+                    &port_name,
+                    message,
+                    Instant::now(),
+                    Some(timestamp),
+                    &sequence,
+                ) {
+                    let _ = sender.send(event.clone());
+                    if let Ok(target) = fanout_sender.lock() {
+                        if let Some(ref fanout) = *target {
+                            let _ = fanout.send(event);
+                        }
+                    }
                 }
             },
             (),
@@ -565,7 +708,13 @@ fn connect_input_by_name(
         .map_err(|error| error.to_string())
 }
 
-fn parse_input_event(port_name: &str, message: &[u8]) -> Option<MidiInputEvent> {
+fn parse_input_event(
+    port_name: &str,
+    message: &[u8],
+    _received_at: Instant,
+    _backend_timestamp_micros: Option<u64>,
+    _sequence: &Arc<AtomicU64>,
+) -> Option<MidiInputEvent> {
     let status = *message.first()?;
     let channel = (status & 0x0F) + 1;
     let pitch = *message.get(1)?;
@@ -589,6 +738,9 @@ fn parse_input_event(port_name: &str, message: &[u8]) -> Option<MidiInputEvent> 
         port: MidiPortRef::new(port_name),
         channel,
         message,
+        received_at: _received_at,
+        backend_timestamp_micros: _backend_timestamp_micros,
+        sequence: _sequence.fetch_add(1, Ordering::Relaxed),
     })
 }
 
@@ -602,6 +754,9 @@ mod tests {
         MidiDeviceCatalog, MidiInputMessage, MidiPortRef, parse_input_event, preserve_selection,
         status_byte,
     };
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use std::time::Instant;
 
     #[test]
     fn status_byte_uses_one_based_channel_numbers() {
@@ -635,9 +790,13 @@ mod tests {
 
     #[test]
     fn parse_input_event_handles_note_on_and_off() {
-        let note_on = parse_input_event("In A", &[0x90, 64, 100]).unwrap();
-        let note_off = parse_input_event("In A", &[0x90, 64, 0]).unwrap();
-        let cc = parse_input_event("In A", &[0xB0, 21, 127]).unwrap();
+        let sequence = Arc::new(AtomicU64::new(1));
+        let note_on =
+            parse_input_event("In A", &[0x90, 64, 100], Instant::now(), None, &sequence).unwrap();
+        let note_off =
+            parse_input_event("In A", &[0x90, 64, 0], Instant::now(), None, &sequence).unwrap();
+        let cc =
+            parse_input_event("In A", &[0xB0, 21, 127], Instant::now(), None, &sequence).unwrap();
 
         assert_eq!(
             note_on.message,
@@ -662,4 +821,37 @@ mod tests {
 
         assert_eq!(catalog, MidiDeviceCatalog::demo());
     }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MidiOutputOrigin {
+    Direct,
+    LiveImmediate,
+    LiveScheduled,
+    Playback,
+    Panic,
+}
+
+#[derive(Debug, Clone)]
+pub struct MidiOutputCommandMeta {
+    pub origin: MidiOutputOrigin,
+    pub sequence: u64,
+    pub callback_received_at: Option<Instant>,
+    pub due_at: Option<Instant>,
+    pub enqueued_at: Instant,
+    pub completion_sender: Option<Sender<MidiOutputObservedEvent>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MidiOutputObservedEvent {
+    pub origin: MidiOutputOrigin,
+    pub sequence: u64,
+    pub port: MidiPortRef,
+    pub channel: u8,
+    pub pitch: u8,
+    pub velocity: Option<u8>,
+    pub callback_received_at: Option<Instant>,
+    pub due_at: Option<Instant>,
+    pub enqueued_at: Instant,
+    pub dequeued_at: Instant,
+    pub sent_at: Instant,
 }

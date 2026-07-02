@@ -429,6 +429,10 @@ mod tests {
                 controller: 24,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.mappings.len(), 1);
@@ -462,6 +466,10 @@ mod tests {
                 controller: 24,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.page_state.current_page, AppPage::Mappings);
@@ -494,6 +502,10 @@ mod tests {
                 controller: 21,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.mappings.len(), 1);
@@ -540,6 +552,10 @@ mod tests {
                 controller: 20,
                 value: 127,
             },
+
+            received_at: std::time::Instant::now(),
+            backend_timestamp_micros: None,
+            sequence: 0,
         });
 
         assert_eq!(app.mappings.len(), 2);

@@ -4,7 +4,8 @@ param(
     [switch]$SkipBuild,
     [switch]$BookwormBuild,
     [switch]$InstallRuntimeDeps,
-    [switch]$StartAfterDeploy
+    [switch]$StartAfterDeploy,
+    [switch]$DeployMidiLoopbackHarness
 )
 
 $ErrorActionPreference = "Stop"
@@ -162,6 +163,7 @@ $repoRoot = Get-RepoRoot
 $config = Get-DeployConfig -Path $ConfigPath
 $targetRoot = if ($BookwormBuild) { "target\bookworm\aarch64-unknown-linux-gnu" } else { "target\aarch64-unknown-linux-gnu" }
 $artifactPath = Join-Path $repoRoot "$targetRoot\release\trekr"
+$loopbackHarnessPath = Join-Path $repoRoot "$targetRoot\release\trekr-midi-loopback-latency"
 $sdlLibraryPath = Join-Path $repoRoot "$targetRoot\release\libSDL3.so.0"
 $launchScriptPath = Join-Path $repoRoot "scripts\launch-rpi-zero-2w.sh"
 $runtimeSetupPath = Join-Path $repoRoot "scripts\setup-rpi-zero-2w-runtime.sh"
@@ -170,7 +172,10 @@ if (-not $SkipBuild) {
     $buildScriptName = if ($BookwormBuild) { "build-rpi-zero-2w-bookworm.ps1" } else { "build-rpi-zero-2w.ps1" }
     $buildScriptPath = Join-Path $repoRoot "scripts\$buildScriptName"
     if ($PSCmdlet.ShouldProcess($artifactPath, "Build Pi Zero 2 W release artifact")) {
-        & $buildScriptPath -Release
+        & $buildScriptPath -Release -Binary trekr
+    }
+    if ($DeployMidiLoopbackHarness -and $PSCmdlet.ShouldProcess($loopbackHarnessPath, "Build Pi Zero 2 W MIDI loopback latency harness")) {
+        & $buildScriptPath -Release -Binary trekr-midi-loopback-latency
     }
 }
 
@@ -179,6 +184,9 @@ if (-not (Test-Path $artifactPath)) {
 }
 if (-not (Test-Path $sdlLibraryPath)) {
     throw "Missing SDL runtime library: $sdlLibraryPath"
+}
+if ($DeployMidiLoopbackHarness -and -not (Test-Path $loopbackHarnessPath)) {
+    throw "Missing loopback harness artifact: $loopbackHarnessPath"
 }
 if (-not (Test-Path $runtimeSetupPath)) {
     throw "Missing runtime setup script: $runtimeSetupPath"
@@ -190,14 +198,24 @@ if ($PSCmdlet.ShouldProcess("$($config.User)@$($config.Host):$($config.RemoteDir
     Invoke-RemoteCommand -Config $config -Command $remoteSetup
 }
 
+$pathsToCopy = @($artifactPath, $sdlLibraryPath, $launchScriptPath, $runtimeSetupPath)
+if ($DeployMidiLoopbackHarness) {
+    $pathsToCopy += $loopbackHarnessPath
+}
+
 if ($PSCmdlet.ShouldProcess("$($config.User)@$($config.Host):$($config.RemoteDir)", "Copy trekr binary, SDL runtime, and support scripts")) {
-    Copy-RemoteFiles -Config $config -Paths @($artifactPath, $sdlLibraryPath, $launchScriptPath, $runtimeSetupPath)
+    Copy-RemoteFiles -Config $config -Paths $pathsToCopy
 }
 
 $remoteTrekr = Escape-BashSingleQuoted -Value "$($config.RemoteDir)/trekr"
+$remoteLoopbackHarness = Escape-BashSingleQuoted -Value "$($config.RemoteDir)/trekr-midi-loopback-latency"
 $remoteLauncher = Escape-BashSingleQuoted -Value "$($config.RemoteDir)/launch-rpi-zero-2w.sh"
 $remoteRuntimeSetup = Escape-BashSingleQuoted -Value "$($config.RemoteDir)/setup-rpi-zero-2w-runtime.sh"
-$remoteFinalize = "chmod +x $remoteTrekr $remoteLauncher $remoteRuntimeSetup"
+$remoteFinalizeTargets = @($remoteTrekr, $remoteLauncher, $remoteRuntimeSetup)
+if ($DeployMidiLoopbackHarness) {
+    $remoteFinalizeTargets += $remoteLoopbackHarness
+}
+$remoteFinalize = "chmod +x $($remoteFinalizeTargets -join ' ')"
 if ($PSCmdlet.ShouldProcess("$($config.User)@$($config.Host):$($config.RemoteDir)", "Finalize remote file permissions")) {
     Invoke-RemoteCommand -Config $config -Command $remoteFinalize
 }

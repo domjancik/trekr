@@ -1,5 +1,6 @@
 use crate::midi_io::MidiPortRef;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TrackRouting {
@@ -54,6 +55,17 @@ impl TrackPortSelection {
     pub fn follows_default(&self) -> bool {
         matches!(self, Self::Default)
     }
+
+    pub(crate) fn midi_runtime_signature(&self, hasher: &mut impl Hasher) {
+        match self {
+            Self::None => 0_u8.hash(hasher),
+            Self::Default => 1_u8.hash(hasher),
+            Self::Port(port) => {
+                2_u8.hash(hasher);
+                port.name.hash(hasher);
+            }
+        }
+    }
 }
 
 impl Serialize for TrackPortSelection {
@@ -99,4 +111,19 @@ pub enum MidiChannelFilter {
     #[default]
     Omni,
     Channel(u8),
+}
+
+impl TrackRouting {
+    pub(crate) fn midi_runtime_signature(&self, hasher: &mut impl Hasher) {
+        self.input_port.midi_runtime_signature(hasher);
+        self.output_port.midi_runtime_signature(hasher);
+        match self.input_channel {
+            MidiChannelFilter::Omni => 0_u8.hash(hasher),
+            MidiChannelFilter::Channel(channel) => {
+                1_u8.hash(hasher);
+                channel.hash(hasher);
+            }
+        }
+        self.output_channel.hash(hasher);
+    }
 }

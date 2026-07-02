@@ -23,6 +23,8 @@ impl App {
             let _ = self.apply_action_with_source(action, ActionSource::Midi);
         }
 
+        let runtime_handles_live_output = self.midi_runtime.is_enabled();
+
         let matching_tracks: Vec<usize> = self
             .project
             .tracks
@@ -51,7 +53,6 @@ impl App {
             };
 
             let (
-                record_mode,
                 monitor_input_fx,
                 passthrough,
                 output_port,
@@ -59,7 +60,6 @@ impl App {
                 input_chain,
                 output_chain,
             ) = (
-                track_view.midi_fx.record_input_fx_mode,
                 track_view.midi_fx.monitor_input_fx,
                 track_view.state.passthrough,
                 track_view
@@ -81,23 +81,12 @@ impl App {
                         monitor_input_fx,
                         input_ticks,
                     );
-                    if let Some(track) = self.project.tracks.get_mut(index) {
-                        if track.active_take.is_some() {
-                            let record_events =
-                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
-                                    post_input_events.clone()
-                                } else {
-                                    vec![LiveMidiFxEvent::NoteOn { pitch, velocity }]
-                                };
-                            for record_event in record_events {
-                                if let LiveMidiFxEvent::NoteOn { pitch, velocity } = record_event {
-                                    track.record_note_on(pitch, velocity, input_ticks);
-                                }
-                            }
-                        }
-                    }
-                    self.propagate_live_clone_events(index, &post_input_events);
-                    if passthrough {
+                    self.propagate_live_clone_events(
+                        index,
+                        &post_input_events,
+                        !runtime_handles_live_output,
+                    );
+                    if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,
                             &output_chain,
@@ -117,23 +106,12 @@ impl App {
                         monitor_input_fx,
                         input_ticks,
                     );
-                    if let Some(track) = self.project.tracks.get_mut(index) {
-                        if track.active_take.is_some() {
-                            let record_events =
-                                if record_mode == crate::midi_fx::RecordInputFxMode::PostInputFx {
-                                    post_input_events.clone()
-                                } else {
-                                    vec![LiveMidiFxEvent::NoteOff { pitch }]
-                                };
-                            for record_event in record_events {
-                                if let LiveMidiFxEvent::NoteOff { pitch } = record_event {
-                                    track.record_note_off(pitch, input_ticks);
-                                }
-                            }
-                        }
-                    }
-                    self.propagate_live_clone_events(index, &post_input_events);
-                    if passthrough {
+                    self.propagate_live_clone_events(
+                        index,
+                        &post_input_events,
+                        !runtime_handles_live_output,
+                    );
+                    if passthrough && !runtime_handles_live_output {
                         self.send_live_monitor_events(
                             index,
                             &output_chain,
