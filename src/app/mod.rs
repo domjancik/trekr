@@ -198,10 +198,15 @@ impl App {
     }
 
     fn sync_midi_runtime_state(&mut self) {
-        self.apply_midi_runtime_snapshot();
         let state = self.midi_runtime_state();
         if let Some(runtime) = self.midi_runtime.as_ref() {
             runtime.sync_state(state);
+        }
+    }
+
+    fn apply_midi_runtime_snapshot_if_authoritative(&mut self) {
+        if self.runtime_handles_playback() {
+            self.apply_midi_runtime_snapshot();
         }
     }
 
@@ -1759,6 +1764,7 @@ impl App {
         {
             return;
         }
+        self.apply_midi_runtime_snapshot_if_authoritative();
         self.last_midi_refresh_at = now;
 
         let previous_catalog = self.midi_devices.clone();
@@ -1833,6 +1839,7 @@ impl App {
     }
 
     fn set_preferred_default_output_from_index(&mut self, index: usize) {
+        self.apply_midi_runtime_snapshot_if_authoritative();
         let Some(port) = self.midi_devices.output(index) else {
             return;
         };
@@ -2447,7 +2454,7 @@ impl App {
         action: AppAction,
         source: crate::actions::ActionSource,
     ) -> AppControl {
-        self.apply_midi_runtime_snapshot();
+        self.apply_midi_runtime_snapshot_if_authoritative();
         self.status_state.hovered_target = None;
         self.direct_mapping_state.status_message = None;
         if !matches!(
@@ -2480,6 +2487,7 @@ pub(crate) enum AppControl {
 mod tests {
     use super::{App, AppControl, LastActionStatus};
     use crate::actions::{ActionSource, AppAction};
+    use crate::app::support::midi_runtime::{MidiRuntime, MidiRuntimeSnapshot};
     use crate::mapping::{MappingEntry, MappingSourceKind, default_mapping_source_device};
     use crate::midi_io::{MidiInputEvent, MidiInputMessage, MidiPortRef};
     use crate::routing::TrackPortSelection;
@@ -2765,6 +2773,60 @@ mod tests {
                 source: ActionSource::Keyboard,
             })
         );
+    }
+
+    #[test]
+    fn midi_runtime_snapshot_is_not_applied_while_recording() {
+        let mut app = App::new();
+        app.midi_runtime = Some(MidiRuntime::from_snapshot_for_test(MidiRuntimeSnapshot {
+            transport_ticks: 12,
+            playhead_ticks: 12,
+        }));
+        app.project.transport.playing = true;
+        app.project.transport.recording = true;
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+
+        app.poll_midi_input();
+
+        assert_eq!(app.transport_ticks, 960);
+        assert_eq!(app.playhead_ticks, 960);
+    }
+
+    #[test]
+    fn syncing_midi_runtime_state_does_not_pull_stale_snapshot_after_recording() {
+        let mut app = App::new();
+        app.midi_runtime = Some(MidiRuntime::from_snapshot_for_test(MidiRuntimeSnapshot {
+            transport_ticks: 12,
+            playhead_ticks: 12,
+        }));
+        app.project.transport.playing = true;
+        app.project.transport.recording = false;
+        app.transport_ticks = 960;
+        app.playhead_ticks = 960;
+
+        app.sync_midi_runtime_state();
+
+        assert_eq!(app.transport_ticks, 960);
+        assert_eq!(app.playhead_ticks, 960);
+    }
+
+    #[test]
+    fn authoritative_midi_runtime_snapshot_updates_playing_transport() {
+        let mut app = App::new();
+        app.midi_runtime = Some(MidiRuntime::from_snapshot_for_test(MidiRuntimeSnapshot {
+            transport_ticks: 960,
+            playhead_ticks: 480,
+        }));
+        app.project.transport.playing = true;
+        app.project.transport.recording = false;
+        app.transport_ticks = 12;
+        app.playhead_ticks = 12;
+
+        app.apply_midi_runtime_snapshot_if_authoritative();
+
+        assert_eq!(app.transport_ticks, 960);
+        assert_eq!(app.playhead_ticks, 480);
     }
 
     #[test]

@@ -4,7 +4,6 @@ use crate::midi_fx::{
 };
 use crate::midi_io::{MidiEventPriority, MidiOutputRuntime, MidiPortRef};
 use crate::project::{MidiNote, Project, Track};
-use crate::routing::TrackPortSelection;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -12,10 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::super::note_runtime::{
-    occurrence_note_events, occurrence_note_events_unmuted, scheduled_note_occurrences,
-    ticks_per_second_for_tempo,
-};
+use super::super::note_runtime::{occurrence_note_events, scheduled_note_occurrences};
 
 const PLAYBACK_RUNTIME_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
@@ -55,6 +51,15 @@ impl MidiRuntime {
             return None;
         }
         Some(Self::start(initial_state))
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn from_snapshot_for_test(snapshot: MidiRuntimeSnapshot) -> Self {
+        let (command_sender, _command_receiver) = mpsc::channel();
+        Self {
+            command_sender,
+            latest_snapshot: Arc::new(Mutex::new(snapshot)),
+        }
     }
 
     fn start(initial_state: MidiRuntimeState) -> Self {
