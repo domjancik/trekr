@@ -221,7 +221,6 @@ impl App {
     fn runtime_handles_playback(&self) -> bool {
         self.midi_runtime.is_some()
             && self.project.transport.playing
-            && !self.project.transport.recording
             && !self.project.transport.link_enabled
     }
 
@@ -2776,16 +2775,16 @@ mod tests {
     }
 
     #[test]
-    fn midi_runtime_snapshot_is_not_applied_while_recording() {
+    fn midi_runtime_snapshot_updates_recording_transport() {
         let mut app = App::new();
         app.midi_runtime = Some(MidiRuntime::from_snapshot_for_test(MidiRuntimeSnapshot {
-            transport_ticks: 12,
-            playhead_ticks: 12,
+            transport_ticks: 960,
+            playhead_ticks: 960,
         }));
         app.project.transport.playing = true;
         app.project.transport.recording = true;
-        app.transport_ticks = 960;
-        app.playhead_ticks = 960;
+        app.transport_ticks = 12;
+        app.playhead_ticks = 12;
 
         app.poll_midi_input();
 
@@ -2794,21 +2793,41 @@ mod tests {
     }
 
     #[test]
-    fn syncing_midi_runtime_state_does_not_pull_stale_snapshot_after_recording() {
+    fn midi_recording_uses_runtime_snapshot_ticks() {
         let mut app = App::new();
+        let track = app.project.active_track_mut().unwrap();
+        track.clear_content();
+        track.routing.input_port = TrackPortSelection::named(MidiPortRef::new("Test Input"));
+        track.begin_recording(960);
         app.midi_runtime = Some(MidiRuntime::from_snapshot_for_test(MidiRuntimeSnapshot {
-            transport_ticks: 12,
-            playhead_ticks: 12,
+            transport_ticks: 960,
+            playhead_ticks: 960,
         }));
         app.project.transport.playing = true;
-        app.project.transport.recording = false;
-        app.transport_ticks = 960;
-        app.playhead_ticks = 960;
+        app.project.transport.recording = true;
+        app.transport_ticks = 12;
+        app.playhead_ticks = 12;
 
-        app.sync_midi_runtime_state();
+        app.apply_midi_runtime_snapshot_if_authoritative();
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("Test Input"),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
 
-        assert_eq!(app.transport_ticks, 960);
-        assert_eq!(app.playhead_ticks, 960);
+        let take = app
+            .project
+            .active_track()
+            .and_then(|track| track.active_take.as_ref())
+            .expect("active take");
+        assert!(
+            take.pending_notes
+                .iter()
+                .any(|note| note.pitch == 64 && note.started_at_ticks == 960)
+        );
     }
 
     #[test]

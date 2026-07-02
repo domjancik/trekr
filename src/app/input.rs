@@ -39,6 +39,7 @@ impl App {
             .map(|(index, _)| index)
             .collect();
 
+        let mut recording_changed = false;
         for index in matching_tracks {
             let input_ticks = self
                 .project
@@ -93,6 +94,7 @@ impl App {
                             for record_event in record_events {
                                 if let LiveMidiFxEvent::NoteOn { pitch, velocity } = record_event {
                                     track.record_note_on(pitch, velocity, input_ticks);
+                                    recording_changed = true;
                                 }
                             }
                         }
@@ -129,6 +131,7 @@ impl App {
                             for record_event in record_events {
                                 if let LiveMidiFxEvent::NoteOff { pitch } = record_event {
                                     track.record_note_off(pitch, input_ticks);
+                                    recording_changed = true;
                                 }
                             }
                         }
@@ -147,6 +150,9 @@ impl App {
                 }
                 MidiInputMessage::ControlChange { .. } => {}
             }
+        }
+        if recording_changed {
+            self.sync_midi_runtime_state();
         }
     }
 

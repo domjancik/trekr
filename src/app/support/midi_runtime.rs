@@ -177,9 +177,8 @@ impl MidiRuntimeWorker {
             MidiRuntimeCommand::SyncState(state) => {
                 let was_active = self.background_playback_active();
                 let previous_transport_ticks = self.transport_ticks;
-                let next_active = state.project.transport.playing
-                    && !state.project.transport.recording
-                    && !state.project.transport.link_enabled;
+                let next_active =
+                    state.project.transport.playing && !state.project.transport.link_enabled;
                 let should_seek = !was_active
                     || !next_active
                     || runtime_seek_requested(
@@ -259,9 +258,7 @@ impl MidiRuntimeWorker {
     }
 
     fn background_playback_active(&self) -> bool {
-        self.project.transport.playing
-            && !self.project.transport.recording
-            && !self.project.transport.link_enabled
+        self.project.transport.playing && !self.project.transport.link_enabled
     }
 
     fn publish_snapshot(&self) {
