@@ -33,6 +33,9 @@ Latest renderer-owned captures from the demo state:
 - `docs/specs/feature-spec-stored-loops.md`: shipped stored-loop behavior and constraints.
 - `docs/specs/feature-spec-stored-loops-future.md`: deferred stored-loop enhancements beyond V1.
 - `docs/specs/feature-spec-midi-manipulation.md`: action-driven MIDI note selection and editing behavior.
+- `docs/specs/feature-spec-midi-loopback-port-filtering.md`: planned filtering behavior for Trekr-owned MIDI plumbing ports.
+- `docs/specs/feature-spec-midi-runtime-decoupling.md`: planned MIDI runtime split for Pi-class timing stability.
+- `docs/specs/fix-spec-midi-runtime-scheduler-refinement.md`: scheduler refinement slice for due-time MIDI output ordering.
 - `docs/specs/ui-scaling-spec.md`: current implemented UI scaling behavior and constraints.
 - `docs/specs/ui-density-presets-spec.md`: density preset behavior for default, compact, touch, and tiny layout modes.
 - `docs/specs/feature-spec-clip-align.md`: proposed post-recording clip-to-loop alignment and tempo-fitting workflow.
@@ -359,6 +362,33 @@ SSH deployment entrypoint:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\deploy-rpi-zero-2w.ps1
+```
+
+Armbian microSD first-boot helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-armbian-microsd.ps1 -BusId <usbipd-bus-id> -WifiPassword '<wifi-passphrase>' -UserPassword '<pi-password>'
+```
+
+This writes Armbian's first-login autoconfig file to the mounted microSD root filesystem through WSL. Run it from elevated PowerShell unless the SD reader is already attached to WSL with `usbipd`.
+
+Dedicated Ableton Link Wi-Fi network:
+
+For an MPC or other Link peer in a portable setup, the Pi can host its own WPA2 access point. The installer creates a `trekr-ap` NetworkManager profile and enables `trekr-ap.service` so it is selected at boot. It uses 2.4 GHz channel 6 and NetworkManager's local DHCP network (`10.42.0.0/24`, with the Pi at `10.42.0.1`); Link peer discovery and sync stay on that LAN.
+
+Copy `scripts/install-trekr-ap-service.sh` to the Pi and run it with a WPA2 passphrase. Add `--activate` to switch to the AP immediately. This disconnects SSH sessions that currently reach the Pi through `wlan0`.
+
+```bash
+sudo ./install-trekr-ap-service.sh --ssid trekr --passphrase '<choose-a-strong-passphrase>' --activate
+```
+
+After installation, use the small `trekr-ap` command on the Pi to switch Wi-Fi mode. `on` makes the AP the boot default, while `off` stops it and allows the normal saved Wi-Fi profiles to reconnect at boot. `connect` performs that switch and joins an AP in one command.
+
+```bash
+sudo trekr-ap status
+sudo trekr-ap off
+sudo trekr-ap connect '<SSID>' '<WPA2-passphrase>'
+sudo trekr-ap on
 ```
 
 Deploy with the Debian Bookworm-compatible artifact set:
