@@ -136,6 +136,37 @@ Current working KMSDRM init path:
 - `trekr` then sets the SDL KMSDRM hints, creates a fullscreen borderless window, calls `window.sync()`, and uses the renderer-backed KMSDRM loop by default
 - keep `TREKR_KMSDRM_PRESENT_MODE=surface` only as a diagnostic fallback when the renderer path is not usable on a given Pi image
 
+KMSDRM network capture for OBS:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-rpi-kmsgrab-stream.ps1
+```
+
+This copies `scripts/stream-rpi-kmsgrab.sh` to the configured Pi app directory, defaults to the Pi from `scripts/rpi-deploy.local.psd1` such as `192.168.1.247`, and starts a foreground `ffmpeg` `kmsgrab` stream on the Pi. Keep the PowerShell window open while recording and press `Ctrl+C` to stop.
+Use `-DeployOnly` to copy/update the Pi-side grab script without starting the stream.
+
+For the current `192.168.1.247` Pi:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-rpi-kmsgrab-stream.ps1
+```
+
+OBS setup:
+
+- add a `Media Source`
+- clear `Local file`
+- set input to `tcp://192.168.1.247:1234`
+
+Pi requirements and useful options:
+
+- install `ffmpeg` on the Pi first, or run the launcher once with `-InstallFfmpeg`
+- if the Pi user needs a sudo password, add `-PromptForSudoPassword`
+- stop a stuck/active remote capture with `-Stop -PromptForSudoPassword`
+- `kmsgrab` competes with `trekr` for the KMSDRM device; use it as a diagnostic capture path, not while launching or running the KMSDRM app
+- use `-Transport UdpPush -ObsHost <windows-ip>` only when the Pi can route directly to that Windows address
+- lower Pi CPU load with `-FrameRate 20 -Bitrate 2000k`
+- if the default DRM device or plane is wrong, override with `-DrmDevice /dev/dri/card1`, `-CrtcId <id>`, or `-PlaneId <id>`
+
 Bootstrap and run:
 
 - prefer `cargo xtask run` as the single setup-and-run command
