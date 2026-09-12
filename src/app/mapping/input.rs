@@ -8,6 +8,8 @@ pub(crate) fn midi_learn_label(event: &MidiInputEvent) -> String {
         MidiInputMessage::ControlChange { controller, .. } => {
             format!("CC{} Ch{}", controller, event.channel)
         }
+        MidiInputMessage::ModWheel { .. } => "ModWheel".to_string(),
+        MidiInputMessage::PitchBend { .. } => "PitchBend".to_string(),
     }
 }
 
@@ -52,6 +54,8 @@ pub(crate) fn midi_mapping_matches_event(entry: &MappingEntry, event: &MidiInput
             entry.source_label == format!("CC{controller}")
                 || entry.source_label == format!("CC{controller} Ch{}", event.channel)
         }
+        MidiInputMessage::ModWheel { value } => value > 0,
+        MidiInputMessage::PitchBend { value } => value > 8192,
     }
 }
 

@@ -33,6 +33,8 @@ pub enum MidiInputMessage {
     NoteOn { pitch: u8, velocity: u8 },
     NoteOff { pitch: u8 },
     ControlChange { controller: u8, value: u8 },
+    ModWheel { value: u8 },
+    PitchBend { value: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,6 +219,10 @@ enum MidiOutputCommand {
         port: MidiPortRef,
         channel: u8,
     },
+    Raw {
+        port: MidiPortRef,
+        message: Vec<u8>,
+    },
 }
 
 struct MidiOutputWorker {
@@ -275,6 +281,15 @@ impl Default for MidiOutputWorker {
 }
 
 impl MidiOutputRuntime {
+    pub fn send_raw(&mut self, port: &MidiPortRef, message: Vec<u8>) -> Result<(), String> {
+        self.sender
+            .send(MidiOutputCommand::Raw {
+                port: port.clone(),
+                message,
+            })
+            .map_err(|error| error.to_string())
+    }
+
     pub fn send_note_on(
         &mut self,
         port: &MidiPortRef,
@@ -496,12 +511,17 @@ impl MidiOutputWorker {
             MidiOutputCommand::AllNotesOff { port, channel } => {
                 self.send_message(&port, [status_byte(0xB0, channel), 123, 0])
             }
+            MidiOutputCommand::Raw { port, message } => self.send_raw_message(&port, &message),
         }
     }
 
     fn send_message(&mut self, port: &MidiPortRef, message: [u8; 3]) -> Result<(), String> {
+        self.send_raw_message(port, &message)
+    }
+
+    fn send_raw_message(&mut self, port: &MidiPortRef, message: &[u8]) -> Result<(), String> {
         let connection = self.connection_for(port)?;
-        let result = connection.send(&message).map_err(|error| error.to_string());
+        let result = connection.send(message).map_err(|error| error.to_string());
         if result.is_err() {
             self.connections.remove(&port.name);
         }
@@ -578,9 +598,13 @@ fn parse_input_event(port_name: &str, message: &[u8]) -> Option<MidiInputEvent> 
             pitch,
             velocity: value,
         },
+        0xB0 if pitch == 1 => MidiInputMessage::ModWheel { value },
         0xB0 => MidiInputMessage::ControlChange {
             controller: pitch,
             value,
+        },
+        0xE0 => MidiInputMessage::PitchBend {
+            value: u16::from(pitch) | (u16::from(value) << 7),
         },
         _ => return None,
     };
@@ -653,6 +677,18 @@ mod tests {
                 controller: 21,
                 value: 127,
             }
+        );
+    }
+
+    #[test]
+    fn parse_input_event_handles_mod_wheel_and_pitch_bend() {
+        let mod_wheel = parse_input_event("In A", &[0xB0, 1, 99]).unwrap();
+        let pitch_bend = parse_input_event("In A", &[0xE0, 0x20, 0x40]).unwrap();
+
+        assert_eq!(mod_wheel.message, MidiInputMessage::ModWheel { value: 99 });
+        assert_eq!(
+            pitch_bend.message,
+            MidiInputMessage::PitchBend { value: 8224 }
         );
     }
 

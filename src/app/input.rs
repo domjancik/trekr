@@ -146,6 +146,27 @@ impl App {
                     }
                 }
                 MidiInputMessage::ControlChange { .. } => {}
+                MidiInputMessage::ModWheel { value } => {
+                    if let (true, Some(port), Some(channel)) =
+                        (passthrough, output_port.as_ref(), output_channel)
+                    {
+                        let _ = self.midi_output.send_raw(
+                            port,
+                            vec![0xB0 | channel.saturating_sub(1).min(15), 1, value],
+                        );
+                    }
+                }
+                MidiInputMessage::PitchBend { value } => {
+                    if let (true, Some(port), Some(channel)) =
+                        (passthrough, output_port.as_ref(), output_channel)
+                    {
+                        let channel = channel.saturating_sub(1).min(15);
+                        let _ = self.midi_output.send_raw(
+                            port,
+                            vec![0xE0 | channel, (value & 0x7F) as u8, (value >> 7) as u8],
+                        );
+                    }
+                }
             }
         }
     }

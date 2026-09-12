@@ -1048,6 +1048,8 @@ fn is_mapping_press_event(event: &MidiInputEvent) -> bool {
         MidiInputMessage::NoteOn { .. } => true,
         MidiInputMessage::NoteOff { .. } => false,
         MidiInputMessage::ControlChange { value, .. } => value > 0,
+        MidiInputMessage::ModWheel { value } => value > 0,
+        MidiInputMessage::PitchBend { value } => value > 8192,
     }
 }
 

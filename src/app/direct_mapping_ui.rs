@@ -249,7 +249,10 @@ impl App {
         };
 
         match event.message {
-            MidiInputMessage::NoteOn { .. } | MidiInputMessage::ControlChange { .. } => {}
+            MidiInputMessage::NoteOn { .. }
+            | MidiInputMessage::ControlChange { .. }
+            | MidiInputMessage::ModWheel { .. }
+            | MidiInputMessage::PitchBend { .. } => {}
             MidiInputMessage::NoteOff { .. } => return false,
         }
 
