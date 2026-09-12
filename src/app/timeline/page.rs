@@ -40,6 +40,30 @@ impl App {
             1,
             theme.app_chrome.detail_text,
         )?;
+        if let Some(auto_thru_label) = self.timeline_auto_thru_status_label() {
+            let auto_thru_fill = theme.app_chrome.tab_accent_midi_io;
+            let auto_thru_badge = Rect::new(
+                header_bounds.x + 400,
+                header_bounds.y + 3,
+                crate::ui::text_width(&auto_thru_label, 1) + 16,
+                header_bounds.height().saturating_sub(6),
+            );
+            canvas.set_draw_color(auto_thru_fill);
+            canvas.fill_rect(auto_thru_badge)?;
+            canvas.set_draw_color(theme.app_chrome.surface_border);
+            canvas.draw_rect(auto_thru_badge)?;
+            crate::ui::draw_text_fitted(
+                canvas,
+                &auto_thru_label,
+                crate::app::support::ui_helpers::horizontally_center_text_rect(
+                    &auto_thru_label,
+                    crate::app::support::ui_helpers::chrome_compact_text_rect(auto_thru_badge),
+                    1,
+                ),
+                1,
+                contrasting_text_color(auto_thru_fill, theme),
+            )?;
+        }
         canvas.set_draw_color(if self.focused_track_view {
             theme.app_chrome.tab_active_fill
         } else {
@@ -580,6 +604,11 @@ impl App {
             (layout.center, AppAction::TapTempo),
         ]
     }
+
+    pub(crate) fn timeline_auto_thru_status_label(&self) -> Option<String> {
+        self.auto_thru_enabled
+            .then(|| format!("AUTO THRU: T{}", self.project.active_track_index + 1))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -761,6 +790,20 @@ mod tests {
             labels
                 .iter()
                 .any(|(label, value)| label == "Rec Wrap" && value == "Clamp")
+        );
+    }
+
+    #[test]
+    fn timeline_header_labels_active_auto_thru_route() {
+        let mut app = App::new();
+        assert_eq!(app.timeline_auto_thru_status_label(), None);
+
+        app.project.select_track(2);
+        app.apply_action(AppAction::ToggleAutoThru);
+
+        assert_eq!(
+            app.timeline_auto_thru_status_label().as_deref(),
+            Some("AUTO THRU: T3")
         );
     }
 

@@ -234,6 +234,7 @@ impl App {
             let is_toggle_field = matches!(
                 field,
                 RoutingField::Passthrough
+                    | RoutingField::AutoThru
                     | RoutingField::RecordInputFx
                     | RoutingField::MonitorInputFx
                     | RoutingField::InputFxEnabled
@@ -274,6 +275,13 @@ impl App {
                 | RoutingField::OutputFxMore => theme.io_pages.routing_value_output_fx,
                 RoutingField::Passthrough => {
                     if active_track.state.passthrough {
+                        theme.io_pages.routing_value_passthrough_on
+                    } else {
+                        theme.io_pages.routing_value_passthrough_off
+                    }
+                }
+                RoutingField::AutoThru => {
+                    if self.auto_thru_enabled {
                         theme.io_pages.routing_value_passthrough_on
                     } else {
                         theme.io_pages.routing_value_passthrough_off
@@ -497,12 +505,13 @@ impl App {
     }
 
     pub(super) fn routing_field_rects(&self, body: Rect) -> Vec<(RoutingField, Rect)> {
-        const SIGNAL_FIELDS: [RoutingField; 5] = [
+        const SIGNAL_FIELDS: [RoutingField; 6] = [
             RoutingField::InputDevice,
             RoutingField::InputChannel,
             RoutingField::OutputDevice,
             RoutingField::OutputChannel,
             RoutingField::Passthrough,
+            RoutingField::AutoThru,
         ];
         const REC_FIELDS: [RoutingField; 2] =
             [RoutingField::RecordInputFx, RoutingField::MonitorInputFx];
@@ -629,6 +638,7 @@ impl App {
             }
             RoutingField::OutputChannel => output_channel_label(track.routing.output_channel),
             RoutingField::Passthrough => on_off(track.state.passthrough).to_string(),
+            RoutingField::AutoThru => on_off(self.auto_thru_enabled).to_string(),
             RoutingField::RecordInputFx => track.midi_fx.record_input_fx_mode.label().to_string(),
             RoutingField::MonitorInputFx => on_off(track.midi_fx.monitor_input_fx).to_string(),
             RoutingField::InputFxSlot => {
@@ -929,6 +939,7 @@ impl App {
                     track.state.passthrough = !track.state.passthrough;
                 }
             }
+            RoutingField::AutoThru => self.auto_thru_enabled = !self.auto_thru_enabled,
             RoutingField::RecordInputFx => {
                 if let Some(track) = self.project.active_track_mut() {
                     track.midi_fx.record_input_fx_mode =
@@ -1008,6 +1019,7 @@ impl App {
             if matches!(
                 field,
                 RoutingField::Passthrough
+                    | RoutingField::AutoThru
                     | RoutingField::RecordInputFx
                     | RoutingField::MonitorInputFx
                     | RoutingField::InputFxEnabled
@@ -1054,6 +1066,7 @@ pub(super) fn routing_field_short_label(field: RoutingField) -> &'static str {
         RoutingField::OutputDevice => "Output Device",
         RoutingField::OutputChannel => "Output Chan",
         RoutingField::Passthrough => "Thru",
+        RoutingField::AutoThru => "Auto THRU",
         RoutingField::RecordInputFx => "Rec FX",
         RoutingField::MonitorInputFx => "Mon FX",
         RoutingField::InputFxSlot | RoutingField::OutputFxSlot => "Slot",
@@ -1193,6 +1206,16 @@ mod tests {
             app.project.tracks[0].routing.output_port,
             TrackPortSelection::None
         );
+    }
+
+    #[test]
+    fn auto_thru_toggle_is_available_in_routing() {
+        let mut app = App::new();
+        app.page_state.selected_routing_field = RoutingField::AutoThru;
+
+        app.adjust_routing_field(1);
+
+        assert!(app.auto_thru_enabled);
     }
 
     #[test]

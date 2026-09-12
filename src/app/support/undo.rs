@@ -64,7 +64,8 @@ impl App {
             | AppAction::SelectPreviousClipAlignField
             | AppAction::SelectNextClipAlignField
             | AppAction::AdjustClipAlignFieldBackward
-            | AppAction::AdjustClipAlignFieldForward => Vec::new(),
+            | AppAction::AdjustClipAlignFieldForward
+            | AppAction::ToggleAutoThru => Vec::new(),
             AppAction::CycleRecordMode
             | AppAction::ToggleLoopRecordingExtension
             | AppAction::DecreaseTempo

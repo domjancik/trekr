@@ -127,6 +127,7 @@ pub enum MidiFxKind {
     Transpose,
     Velocity,
     Duration,
+    ScaleFilter,
     ScaleQuantize,
     ChordQuantize,
     #[serde(alias = "TimeShift")]
@@ -135,25 +136,27 @@ pub enum MidiFxKind {
 }
 
 impl MidiFxKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Arp,
         Self::NoteFilter,
         Self::Transpose,
         Self::Velocity,
         Self::Duration,
+        Self::ScaleFilter,
         Self::ScaleQuantize,
         Self::ChordQuantize,
         Self::Delay,
         Self::TrackClone,
     ];
 
-    pub const ALL_WITH_NONE: [Option<Self>; 10] = [
+    pub const ALL_WITH_NONE: [Option<Self>; 11] = [
         None,
         Some(Self::Arp),
         Some(Self::NoteFilter),
         Some(Self::Transpose),
         Some(Self::Velocity),
         Some(Self::Duration),
+        Some(Self::ScaleFilter),
         Some(Self::ScaleQuantize),
         Some(Self::ChordQuantize),
         Some(Self::Delay),
@@ -167,7 +170,8 @@ impl MidiFxKind {
             Self::Transpose => "Transpose",
             Self::Velocity => "Velocity",
             Self::Duration => "Duration",
-            Self::ScaleQuantize => "Scale",
+            Self::ScaleFilter => "Scale Filter",
+            Self::ScaleQuantize => "Scale Quantize",
             Self::ChordQuantize => "Chord",
             Self::Delay => "Delay",
             Self::TrackClone => "Clone",
@@ -181,7 +185,8 @@ impl MidiFxKind {
             Self::Transpose => "TRN",
             Self::Velocity => "VEL",
             Self::Duration => "DUR",
-            Self::ScaleQuantize => "SCL",
+            Self::ScaleFilter => "SFL",
+            Self::ScaleQuantize => "SQT",
             Self::ChordQuantize => "CHD",
             Self::Delay => "DLY",
             Self::TrackClone => "CLN",
@@ -195,7 +200,8 @@ impl MidiFxKind {
             Self::Transpose => "TR",
             Self::Velocity => "VE",
             Self::Duration => "DU",
-            Self::ScaleQuantize => "SC",
+            Self::ScaleFilter => "SF",
+            Self::ScaleQuantize => "SQ",
             Self::ChordQuantize => "CH",
             Self::Delay => "DL",
             Self::TrackClone => "CL",
@@ -223,6 +229,11 @@ pub enum MidiFx {
     },
     Duration {
         ticks: u64,
+    },
+    ScaleFilter {
+        root: u8,
+        #[serde(default)]
+        target: QuantizeTarget,
     },
     ScaleQuantize {
         root: u8,
@@ -324,6 +335,10 @@ impl MidiFx {
             MidiFxKind::Transpose => Self::Transpose { semitones: 0 },
             MidiFxKind::Velocity => Self::Velocity { percent: 100 },
             MidiFxKind::Duration => Self::Duration { ticks: 0 },
+            MidiFxKind::ScaleFilter => Self::ScaleFilter {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
             MidiFxKind::ScaleQuantize => Self::ScaleQuantize {
                 root: 0,
                 target: QuantizeTarget::Local,
@@ -344,6 +359,7 @@ impl MidiFx {
             Self::Transpose { .. } => MidiFxKind::Transpose,
             Self::Velocity { .. } => MidiFxKind::Velocity,
             Self::Duration { .. } => MidiFxKind::Duration,
+            Self::ScaleFilter { .. } => MidiFxKind::ScaleFilter,
             Self::ScaleQuantize { .. } => MidiFxKind::ScaleQuantize,
             Self::ChordQuantize { .. } => MidiFxKind::ChordQuantize,
             Self::Delay { .. } => MidiFxKind::Delay,
@@ -370,7 +386,7 @@ impl MidiFx {
             Self::Transpose { semitones } => format!("{:+}", semitones),
             Self::Velocity { percent } => format!("{percent}%"),
             Self::Duration { ticks } => duration_rate_label(*ticks).to_string(),
-            Self::ScaleQuantize { root, target } => {
+            Self::ScaleFilter { root, target } | Self::ScaleQuantize { root, target } => {
                 format!("{} {}", note_name(*root), target.label())
             }
             Self::ChordQuantize { root, target } => {
@@ -439,7 +455,7 @@ impl MidiFx {
                 label: "Dur",
                 value: duration_rate_label(*ticks).to_string(),
             }],
-            Self::ScaleQuantize { root, target } => vec![
+            Self::ScaleFilter { root, target } | Self::ScaleQuantize { root, target } => vec![
                 MidiFxInlineParam {
                     label: "Root",
                     value: note_name(*root).to_string(),
@@ -483,7 +499,9 @@ impl MidiFx {
             | Self::Duration { .. }
             | Self::Delay { .. }
             | Self::TrackClone { .. } => self.adjust_value(delta, track_count, ppqn),
-            Self::ScaleQuantize { root, target } | Self::ChordQuantize { root, target } => {
+            Self::ScaleFilter { root, target }
+            | Self::ScaleQuantize { root, target }
+            | Self::ChordQuantize { root, target } => {
                 if param_index == 0 {
                     *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
                 } else {
@@ -548,7 +566,9 @@ impl MidiFx {
                 let steps = duration_step_choices(ppqn);
                 *ticks = step_u64_choice(*ticks, &steps, delta);
             }
-            Self::ScaleQuantize { root, .. } | Self::ChordQuantize { root, .. } => {
+            Self::ScaleFilter { root, .. }
+            | Self::ScaleQuantize { root, .. }
+            | Self::ChordQuantize { root, .. } => {
                 *root = ((*root as i32 + delta).rem_euclid(12)) as u8;
             }
             Self::Delay { ticks } => {
@@ -1234,6 +1254,24 @@ fn apply_live_fx(
                     suppress_original_note_off_pitch,
                 });
             }
+            (MidiFx::ScaleFilter { root, target }, LiveMidiFxEvent::NoteOn { pitch, velocity }) => {
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                if is_in_scale(pitch, active_root) {
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOn { pitch, velocity },
+                        suppress_original_note_off_pitch,
+                    });
+                }
+            }
+            (MidiFx::ScaleFilter { root, target }, LiveMidiFxEvent::NoteOff { pitch }) => {
+                let active_root = quantize_root(*root, *target, global_quantize_root);
+                if is_in_scale(pitch, active_root) {
+                    transformed.push(PendingLiveMidiFxEvent {
+                        event: LiveMidiFxEvent::NoteOff { pitch },
+                        suppress_original_note_off_pitch,
+                    });
+                }
+            }
             (
                 MidiFx::ScaleQuantize { root, target },
                 LiveMidiFxEvent::NoteOn { pitch, velocity },
@@ -1402,6 +1440,16 @@ fn apply_note_fx(slot: &MidiFxSlot, notes: &[MidiNote], global_quantize_root: u8
                     .collect()
             }
         }
+        MidiFx::ScaleFilter { root, target } => notes
+            .iter()
+            .copied()
+            .filter(|note| {
+                is_in_scale(
+                    note.pitch,
+                    quantize_root(*root, *target, global_quantize_root),
+                )
+            })
+            .collect(),
         MidiFx::ScaleQuantize { root, target } => notes
             .iter()
             .copied()
@@ -1514,6 +1562,10 @@ fn scale_percent(value: u8, percent: u16) -> u8 {
 
 fn quantize_to_scale(pitch: u8, root: u8) -> u8 {
     quantize_to_allowed_steps(pitch, root, &[0, 2, 4, 5, 7, 9, 11])
+}
+
+fn is_in_scale(pitch: u8, root: u8) -> bool {
+    matches!((pitch + 12 - root % 12) % 12, 0 | 2 | 4 | 5 | 7 | 9 | 11)
 }
 
 fn quantize_to_chord(pitch: u8, root: u8) -> u8 {
@@ -1939,5 +1991,102 @@ mod tests {
         })];
         let transformed = transform_notes(&notes, &chain, 2);
         assert_eq!(transformed[0].pitch, 71);
+    }
+
+    #[test]
+    fn scale_filter_preserves_in_scale_note_without_retuning() {
+        let note = MidiNote::new(64, 36, 240, 93);
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleFilter {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
+        })];
+
+        assert_eq!(transform_notes(&[note], &chain, 0), vec![note]);
+    }
+
+    #[test]
+    fn scale_filter_suppresses_out_of_scale_note_while_scale_quantize_moves_it() {
+        let note = MidiNote::new(61, 0, 120, 100);
+        let filter = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleFilter {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
+        })];
+        let quantize = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleQuantize {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
+        })];
+
+        assert!(transform_notes(&[note], &filter, 0).is_empty());
+        assert_eq!(transform_notes(&[note], &quantize, 0)[0].pitch, 60);
+    }
+
+    #[test]
+    fn scale_filter_uses_pitch_class_at_midi_boundaries() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleFilter {
+                root: 2,
+                target: QuantizeTarget::Local,
+            },
+        })];
+        let notes = [
+            MidiNote::new(0, 0, 120, 100),
+            MidiNote::new(127, 0, 120, 100),
+        ];
+
+        assert_eq!(transform_notes(&notes, &chain, 0), vec![notes[1]]);
+    }
+
+    #[test]
+    fn scale_filter_live_path_suppresses_out_of_scale_note_on_and_off() {
+        let chain = [Some(MidiFxSlot {
+            enabled: true,
+            effect: MidiFx::ScaleFilter {
+                root: 0,
+                target: QuantizeTarget::Local,
+            },
+        })];
+        let mut state = LiveMidiFxState::default();
+
+        assert!(
+            process_live_event(
+                &chain,
+                &mut state,
+                LiveMidiFxEvent::NoteOn {
+                    pitch: 61,
+                    velocity: 100,
+                },
+                0,
+            )
+            .is_empty()
+        );
+        assert!(
+            process_live_event(
+                &chain,
+                &mut state,
+                LiveMidiFxEvent::NoteOff { pitch: 61 },
+                0,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn legacy_scale_quantize_serialization_remains_a_quantizer() {
+        let effect: MidiFx =
+            serde_json::from_str(r#"{"ScaleQuantize":{"root":0,"target":"Local"}}"#)
+                .expect("legacy scale quantize effect");
+
+        assert_eq!(effect.kind().label(), "Scale Quantize");
+        assert!(matches!(effect, MidiFx::ScaleQuantize { .. }));
     }
 }

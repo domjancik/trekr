@@ -131,6 +131,7 @@ pub enum RoutingField {
     OutputDevice,
     OutputChannel,
     Passthrough,
+    AutoThru,
     RecordInputFx,
     MonitorInputFx,
     InputFxSlot,
@@ -148,12 +149,13 @@ pub enum RoutingField {
 }
 
 impl RoutingField {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::InputDevice,
         Self::InputChannel,
         Self::OutputDevice,
         Self::OutputChannel,
         Self::Passthrough,
+        Self::AutoThru,
         Self::RecordInputFx,
         Self::MonitorInputFx,
         Self::InputFxSlot,
@@ -185,6 +187,7 @@ impl RoutingField {
             Self::OutputDevice => "Output Dev",
             Self::OutputChannel => "Output Ch",
             Self::Passthrough => "Passthrough",
+            Self::AutoThru => "Auto THRU",
             Self::RecordInputFx => "Rec FX",
             Self::MonitorInputFx => "Mon FX",
             Self::InputFxSlot => "Input Slot",
@@ -265,10 +268,8 @@ mod tests {
             RoutingField::InputDevice.previous(),
             RoutingField::OutputFxMore
         );
-        assert_eq!(
-            RoutingField::Passthrough.next(),
-            RoutingField::RecordInputFx
-        );
+        assert_eq!(RoutingField::Passthrough.next(), RoutingField::AutoThru);
+        assert_eq!(RoutingField::AutoThru.next(), RoutingField::RecordInputFx);
         assert_eq!(RoutingField::OutputFxMore.next(), RoutingField::InputDevice);
     }
 

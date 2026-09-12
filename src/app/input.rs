@@ -61,7 +61,8 @@ impl App {
             ) = (
                 track_view.midi_fx.record_input_fx_mode,
                 track_view.midi_fx.monitor_input_fx,
-                track_view.state.passthrough,
+                track_view.state.passthrough
+                    || (self.auto_thru_enabled && index == self.project.active_track_index),
                 track_view
                     .routing
                     .output_port
@@ -877,5 +878,62 @@ mod tests {
         assert_eq!(app.mappings[0].source_kind, MappingSourceKind::Key);
         assert_eq!(app.mappings[0].source_label, "A");
         assert_eq!(app.direct_mapping_state.mode, DirectMappingMode::Targeting);
+    }
+
+    #[test]
+    fn auto_thru_follows_the_active_track_route_without_manual_thru() {
+        let mut app = App::new();
+        app.project.clear_all_track_content();
+        for track in &mut app.project.tracks {
+            track.midi_fx.input_fx = vec![None; MIDI_FX_SLOT_COUNT];
+            track.midi_fx.output_fx = vec![None; MIDI_FX_SLOT_COUNT];
+        }
+        app.project.tracks[0].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In A"));
+        app.project.tracks[0].routing.input_channel = MidiChannelFilter::Omni;
+        app.project.tracks[0].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out A"));
+        app.project.tracks[0].routing.output_channel = Some(1);
+        app.project.tracks[1].routing.input_port =
+            TrackPortSelection::named(MidiPortRef::new("In B"));
+        app.project.tracks[1].routing.input_channel = MidiChannelFilter::Omni;
+        app.project.tracks[1].routing.output_port =
+            TrackPortSelection::named(MidiPortRef::new("Out B"));
+        app.project.tracks[1].routing.output_channel = Some(2);
+        app.project.select_track(1);
+        app.apply_action(AppAction::ToggleAutoThru);
+        assert!(app.auto_thru_enabled);
+
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In B"),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 64,
+                velocity: 100,
+            },
+        });
+
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![("Out B".to_string(), 2, 64, Some(100))]
+        );
+
+        app.project.select_track(0);
+        app.handle_midi_input_event(MidiInputEvent {
+            port: MidiPortRef::new("In A"),
+            channel: 1,
+            message: MidiInputMessage::NoteOn {
+                pitch: 65,
+                velocity: 100,
+            },
+        });
+
+        assert_eq!(
+            app.midi_output.sent_messages(),
+            vec![
+                ("Out B".to_string(), 2, 64, Some(100)),
+                ("Out A".to_string(), 1, 65, Some(100)),
+            ]
+        );
     }
 }

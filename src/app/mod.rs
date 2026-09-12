@@ -138,6 +138,7 @@ pub struct App {
     preferred_default_output_name: Option<String>,
     input_fx_live_states: Vec<LiveMidiFxState>,
     output_fx_live_states: Vec<LiveMidiFxState>,
+    auto_thru_enabled: bool,
     undo_history: UndoHistory,
 }
 
@@ -244,6 +245,7 @@ impl App {
             preferred_default_output_name,
             input_fx_live_states: vec![LiveMidiFxState::default(); track_count],
             output_fx_live_states: vec![LiveMidiFxState::default(); track_count],
+            auto_thru_enabled: false,
             undo_history: UndoHistory::default(),
         }
     }
@@ -561,6 +563,7 @@ impl App {
             seed_capture_demo_track(track, track_index);
         }
         self.project.active_track_index = 0;
+        self.auto_thru_enabled = true;
         self.transport_ticks = 0;
         self.playhead_ticks = 0;
     }
@@ -1209,6 +1212,10 @@ impl App {
                 if let Some(track) = self.project.active_track_mut() {
                     track.state.passthrough = !track.state.passthrough;
                 }
+                AppControl::Continue
+            }
+            AppAction::ToggleAutoThru => {
+                self.auto_thru_enabled = !self.auto_thru_enabled;
                 AppControl::Continue
             }
             AppAction::ToggleCurrentTrackRecordingView => {
@@ -2149,7 +2156,8 @@ impl App {
             let output_chain = track_view.midi_fx.output_fx.clone();
             let record_mode = track_view.midi_fx.record_input_fx_mode;
             let monitor_input_fx = track_view.midi_fx.monitor_input_fx;
-            let passthrough = track_view.state.passthrough;
+            let passthrough = track_view.state.passthrough
+                || (self.auto_thru_enabled && track_index == self.project.active_track_index);
             let output_port = track_view
                 .routing
                 .output_port
