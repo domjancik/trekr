@@ -202,10 +202,15 @@ impl App {
                 && left.built_in == right.built_in
         });
 
-        let title = match target.display_scope {
+        let title = if self.status_state.hovered_target == Some(target) {
+            self.status_state.hovered_fx_detail.clone()
+        } else {
+            None
+        }
+        .unwrap_or_else(|| match target.display_scope {
             Some(scope) => format!("{} ({scope})", action_label(target.action)),
             None => action_label(target.action).to_string(),
-        };
+        });
         let total_bindings = badges.len();
 
         ActionDiscoverabilitySummary {

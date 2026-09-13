@@ -119,6 +119,7 @@ impl App {
         self.draw_direct_mapping_targets(canvas, tabs_bounds, content_bounds)?;
         self.draw_overlay(canvas, inset)?;
         self.draw_footer(canvas, footer_bounds)?;
+        self.draw_fx_menu(canvas)?;
         Ok(())
     }
 

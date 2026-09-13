@@ -157,8 +157,8 @@ Current controls:
 - `Up` / `Down`: select current page item
 - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current editable field on the mappings page in write mode, or switch timeline control context on the timeline page
 - `Q` / `E`: adjust current page item
-- `Enter`: activate/toggle current page item, or advance the selected timeline FX edit field
-- `Shift+Enter`: move backward through the selected timeline FX edit field
+- `Enter`: activate/toggle current page item, or switch timeline FX focus between slots and parameters
+- `Shift+Enter`: open choices for the focused timeline FX slot or parameter
 - `W`: toggle mappings page mode between read-only overview and write mode
 - `N`: add a mapping row on the mappings page in write mode
 - `Delete` / `Backspace`: remove the selected mapping row on the mappings page in write mode
@@ -205,13 +205,19 @@ Current controls:
 - `D` / `F`: nudge selected notes down/up by one semitone
 - `Shift+M`: mute/unmute the selected committed recording clip in stacked view, or toggle the selected timeline FX on/off when an `Input FX` / `Output FX` context is active
 - when `Input FX` or `Output FX` timeline context is selected:
-  - `Up` / `Down`: select FX row
-  - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: switch between `Input FX`, `Timeline`, and `Output FX`
-  - `Enter` / `Shift+Enter`: cycle the active FX edit field forward/backward (`On`, `Kind`, `P1`, `P2`, `More`, `Move`)
-  - `Q` / `E`: apply the selected FX field action (toggle, kind switch, primary/secondary parameter adjust, parameter-window scroll, reorder)
-  - `Delete`: remove the selected timeline FX row
-  - kind switching on an existing row cycles between effect kinds without removing the row; `None` is only reached through an empty `ADD ... FX` row
-  - when a free slot exists, a single `Add Input FX` / `Add Output FX` row appears; selecting it and using `Q` / `E` on `Kind`, or clicking/tapping the row, inserts a new effect into the next empty slot
+  - four fixed square slots occupy a left 2×2 grid; the selected effect's values occupy a right 2×2 grid without pagination
+  - `Up` / `Down`: select a slot or parameter in reading order within the focused area
+  - `Enter`: switch focus between FX slots and parameters, remembering selection
+  - `Q` / `E`: change effect type when slots have focus, or adjust the selected parameter when parameters have focus
+  - `Delete`: empty the selected slot when slots have focus; slot positions stay fixed
+  - `Shift+M`: toggle the selected effect's bypass in either area
+  - `Ctrl+Up` / `Ctrl+Down`: swap the selected effect with the previous/next slot, including empty slots; selection follows it and reordering stops at the edges
+  - `Shift+Up` / `Shift+Down` or `Shift+Left` / `Shift+Right`: switch between Input FX, Timeline, and Output FX from either focus area; unmodified Left/Right still select tracks
+  - top-row `Shift+1`–`Shift+4`: select FX slot 1–4, including empty slots, preserving the current focus area and remembered parameter selection
+  - on an empty slot, `Q` / `E` inserts an effect into that exact slot; existing effects never cycle through None
+  - click an icon to select, then click it again to cycle effect type (or populate that empty slot); each parameter click edits immediately: left half decreases, right half increases; triangle buttons reorder
+  - right-click an FX icon or parameter for all available choices; `Shift+Enter` (or `Shift+F10`) opens the focused control’s menu; Up/Down and Enter choose, Escape cancels, and the wheel scrolls long lists
+  - Open Timeline FX Options, FX slot 1–4 selection, bypass, kind, add/delete, reorder, and parameter 1–4 targets are available in Mappings; generic navigation/adjustment targets drive the same two-area workflow
   - the former time-shift effect is now `Delay` (`DLY`) and uses musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) instead of signed tick offsets; it only delays notes later, never earlier
   - `Duration` (`DUR`) now uses absolute musical values (`Off`, `1/16`, `1/8`, `1/4`, ...) rather than relative percentages; `Off` leaves the original note length unchanged
   - `Scale` and `Chord` quantizers expose `Root` plus `Tgt` (`Loc` / `Gbl`); `Gbl` follows the shared timeline `Harmony` transport chip
@@ -245,7 +251,7 @@ Pointer/touch notes:
 - timeline transport controls use a single-row button bar with two-line labels and are clickable/tappable for play, record, record mode, loop-wrap clip extension (`Rec Wrap` + `Clamp` / `Ext`), song loop, global harmony root, Link, Link sync, launch quantize controls, and a composite tempo pad with `-`, `+`, `/`, `*`, and `Tap`
 - each full track header exposes a clickable/tappable `THRU` button for passthrough
 - each track header exposes a clickable/tappable recording-view toggle (`OVR` / `STK`)
-- each timeline FX row now uses one compact single-line layout in all states; it favors shorter effect/parameter labels so parameter values stay visible, keeps `P2` before `More` when both are visible, and uses the `More` cell as a parameter-window position scroller
+- timeline FX use static 2×2 square icon slots on the left and a fixed 2×2 values-only inspector on the right. Adding effects does not change lane height (48 logical px default, 42 compact, 36 tiny, 56 touch). Both racks have a four-logical-pixel gap to the timeline. The selected slot stays outlined; the active icon or parameter has a contrasting fill and inset frame. Bypass adds a slash. The footer names the effect, parameter, and value on selection. See `docs/specs/feature-spec-timeline-control-contexts.md`.
 - each stacked track header exposes clickable/tappable `<` / `>` clip-scroll buttons that gray out when no more clips are available in that direction
 - in stacked view, the active track shows a thin top scrollbar that reflects the visible clip window in both all-track and focused-track views
 - in stacked view, recording lanes are clickable/tappable to select individual committed recording clips

@@ -216,6 +216,9 @@ impl App {
         &mut self,
         event: &sdl3::event::Event,
     ) -> Option<AppControl> {
+        if let Some(control) = self.handle_fx_menu_pointer_event(event) {
+            return Some(control);
+        }
         if let Some((x, y)) = pointer_hover_position(event, self.viewport_size) {
             self.status_state.hovered_target = if self.direct_mapping_state.mode
                 == DirectMappingMode::Inactive
@@ -225,6 +228,10 @@ impl App {
             } else {
                 None
             };
+            self.status_state.hovered_fx_detail = self
+                .status_state
+                .hovered_target
+                .and_then(|_| self.timeline_fx_hover_detail_at(x, y));
             if self.status_state.hovered_target.is_some() {
                 self.direct_mapping_state.status_message = None;
             }
@@ -239,6 +246,11 @@ impl App {
         &mut self,
         event: &sdl3::event::Event,
     ) -> Option<AppControl> {
+        if self.fx_menu.is_some() {
+            if let Some(control) = self.handle_fx_menu_keyboard_event(event) {
+                return Some(control);
+            }
+        }
         if let Some(control) = self.handle_clip_align_keyboard_event(event) {
             return Some(control);
         }
@@ -336,6 +348,79 @@ impl App {
             }
         }
 
+        if let Some(control) = self.handle_fx_menu_keyboard_event(event) {
+            return Some(control);
+        }
+
+        if self.page_state.current_page == AppPage::Timeline
+            && self
+                .page_state
+                .selected_timeline_context
+                .chain_kind()
+                .is_some()
+        {
+            if let sdl3::event::Event::KeyDown {
+                keycode: Some(key),
+                keymod,
+                repeat: false,
+                ..
+            } = event
+            {
+                use sdl3::keyboard::{Keycode, Mod};
+                if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD)
+                    && !keymod.intersects(
+                        Mod::LCTRLMOD
+                            | Mod::RCTRLMOD
+                            | Mod::LALTMOD
+                            | Mod::RALTMOD
+                            | Mod::LGUIMOD
+                            | Mod::RGUIMOD,
+                    )
+                {
+                    let slot = match *key {
+                        Keycode::_1 => Some(0),
+                        Keycode::_2 => Some(1),
+                        Keycode::_3 => Some(2),
+                        Keycode::_4 => Some(3),
+                        _ => None,
+                    };
+                    if let Some(index) = slot {
+                        return Some(self.apply_action_with_source(
+                            AppAction::SelectTimelineFxSlot(index),
+                            ActionSource::Keyboard,
+                        ));
+                    }
+                }
+                if keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD)
+                    && !keymod.intersects(
+                        Mod::LSHIFTMOD
+                            | Mod::RSHIFTMOD
+                            | Mod::LALTMOD
+                            | Mod::RALTMOD
+                            | Mod::LGUIMOD
+                            | Mod::RGUIMOD,
+                    )
+                    && matches!(*key, Keycode::Up | Keycode::Down)
+                {
+                    if self.page_state.selected_timeline_fx_field != TimelineFxField::ParamPrimary {
+                        return Some(self.apply_action_with_source(
+                            if *key == Keycode::Up {
+                                AppAction::MoveSelectedTimelineFxUp
+                            } else {
+                                AppAction::MoveSelectedTimelineFxDown
+                            },
+                            ActionSource::Keyboard,
+                        ));
+                    }
+                    return Some(AppControl::Continue);
+                }
+                if *key == Keycode::Delete
+                    && self.page_state.selected_timeline_fx_field == TimelineFxField::ParamPrimary
+                {
+                    return Some(AppControl::Continue);
+                }
+            }
+        }
         self.keyboard_bindings.resolve(event).map(|action_event| {
             self.apply_action_with_source(action_event.action, action_event.source)
         })
@@ -620,9 +705,12 @@ pub(crate) fn pointer_down_position(
     viewport_size: (u32, u32),
 ) -> Option<(i32, i32, crate::actions::ActionSource)> {
     match event {
-        sdl3::event::Event::MouseButtonDown { x, y, .. } => {
-            Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer))
-        }
+        sdl3::event::Event::MouseButtonDown {
+            mouse_btn: sdl3::mouse::MouseButton::Left,
+            x,
+            y,
+            ..
+        } => Some((*x as i32, *y as i32, crate::actions::ActionSource::Pointer)),
         sdl3::event::Event::FingerDown { x, y, .. } => Some((
             (*x * viewport_size.0 as f32) as i32,
             (*y * viewport_size.1 as f32) as i32,

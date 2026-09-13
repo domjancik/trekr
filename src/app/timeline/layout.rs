@@ -121,9 +121,10 @@ impl App {
         let (top_band_height, bottom_band_height) = self.timeline_fx_band_heights();
         let top_gap = 4_i32;
         let bottom_gap = 4_i32;
-        let top_reserve = (status_rect.y + status_rect.height() as i32 + top_gap + top_band_height
-            - pair_bounds.y)
-            .max(0);
+        let top_reserve =
+            (status_rect.y + status_rect.height() as i32 + top_gap + top_band_height + bottom_gap
+                - pair_bounds.y)
+                .max(0);
         let bottom_reserve = (bottom_gap + bottom_band_height).max(0);
         let new_height = full_bounds
             .height()
@@ -191,14 +192,15 @@ pub(crate) fn rects_overlap(a: Rect, b: Rect) -> bool {
         && a.y + a.height() as i32 > b.y
 }
 
-pub(crate) fn displayed_track_fx_band_height(chain: &[Option<MidiFxSlot>]) -> i32 {
-    let line_height = 8_i32;
-    let line_gap = 2_i32;
-    let vertical_padding = 4_i32;
-    let active = chain.iter().flatten().count();
-    let show_add = active < chain.len().max(MIDI_FX_SLOT_COUNT);
-    let line_count = (active + usize::from(show_add)).max(1) as i32;
-    vertical_padding + line_count * line_height + (line_count - 1) * line_gap
+pub(crate) fn displayed_track_fx_band_height(
+    chain: &[Option<MidiFxSlot>],
+    card_height: i32,
+) -> i32 {
+    if chain.iter().any(Option::is_some) {
+        card_height + 4
+    } else {
+        12
+    }
 }
 
 pub(crate) fn timeline_subcolumn_label_rect(lane: Rect, flow: TimelineFlow) -> Rect {

@@ -158,6 +158,22 @@ const TARGET_OPTIONS: &[&str] = &[
     "Delete Recording Clip",
     "Clip Align",
     "Apply Clip Align",
+    "Open Timeline FX Options",
+    "Select Timeline FX Slot 1",
+    "Select Timeline FX Slot 2",
+    "Select Timeline FX Slot 3",
+    "Select Timeline FX Slot 4",
+    "Toggle Timeline FX",
+    "Cycle Timeline FX Kind",
+    "Adjust Timeline FX Param 1",
+    "Adjust Timeline FX Param 2",
+    "Adjust Timeline FX Param 3",
+    "Adjust Timeline FX Param 4",
+    "Move Timeline FX Up",
+    "Move Timeline FX Down",
+    "Add Timeline FX",
+    "Delete Timeline FX",
+    "Scroll Timeline FX Params",
     "Focused Track View",
     "Select Track",
     "Select Notes At Playhead",
@@ -369,6 +385,22 @@ fn fuzzy_match_distance(label: &str, query: &str) -> Option<usize> {
 
 fn scope_options_for_target(target_label: &str, track_count: usize) -> Vec<String> {
     match target_label {
+        "Open Timeline FX Options"
+        | "Select Timeline FX Slot 1"
+        | "Select Timeline FX Slot 2"
+        | "Select Timeline FX Slot 3"
+        | "Select Timeline FX Slot 4"
+        | "Toggle Timeline FX"
+        | "Cycle Timeline FX Kind"
+        | "Adjust Timeline FX Param 1"
+        | "Adjust Timeline FX Param 2"
+        | "Adjust Timeline FX Param 3"
+        | "Adjust Timeline FX Param 4"
+        | "Move Timeline FX Up"
+        | "Move Timeline FX Down"
+        | "Add Timeline FX"
+        | "Delete Timeline FX"
+        | "Scroll Timeline FX Params" => vec!["Active Track".to_string()],
         "Previous Page Item"
         | "Next Page Item"
         | "Adjust Page Item Backward"
@@ -668,6 +700,22 @@ pub fn demo_mappings() -> Vec<MappingEntry> {
 pub fn mapping_entry_to_actions(entry: &MappingEntry, event: &MidiInputEvent) -> Vec<AppAction> {
     let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
     match entry.target_label.as_str() {
+        "Open Timeline FX Options" => vec![AppAction::OpenTimelineFxMenu],
+        "Select Timeline FX Slot 1" => vec![AppAction::SelectTimelineFxSlot(0)],
+        "Select Timeline FX Slot 2" => vec![AppAction::SelectTimelineFxSlot(1)],
+        "Select Timeline FX Slot 3" => vec![AppAction::SelectTimelineFxSlot(2)],
+        "Select Timeline FX Slot 4" => vec![AppAction::SelectTimelineFxSlot(3)],
+        "Toggle Timeline FX" => vec![AppAction::ToggleSelectedTimelineFx],
+        "Cycle Timeline FX Kind" => vec![AppAction::CycleSelectedTimelineFxKind],
+        "Adjust Timeline FX Param 1" => vec![AppAction::AdjustSelectedTimelineFxPrimary],
+        "Adjust Timeline FX Param 2" => vec![AppAction::AdjustSelectedTimelineFxSecondary],
+        "Adjust Timeline FX Param 3" => vec![AppAction::AdjustSelectedTimelineFxThird],
+        "Adjust Timeline FX Param 4" => vec![AppAction::AdjustSelectedTimelineFxFourth],
+        "Move Timeline FX Up" => vec![AppAction::MoveSelectedTimelineFxUp],
+        "Move Timeline FX Down" => vec![AppAction::MoveSelectedTimelineFxDown],
+        "Add Timeline FX" => vec![AppAction::AddSelectedTimelineFx],
+        "Delete Timeline FX" => vec![AppAction::DeleteSelectedTimelineFx],
+        "Scroll Timeline FX Params" => vec![AppAction::ScrollSelectedTimelineFxWindow],
         "Previous Page Item" => vec![AppAction::SelectPreviousPageItem],
         "Next Page Item" => vec![AppAction::SelectNextPageItem],
         "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
@@ -857,6 +905,22 @@ fn track_scoped_actions(
 fn mapping_entry_possible_actions(entry: &MappingEntry) -> Vec<AppAction> {
     let absolute_track_index = parse_absolute_track_scope(&entry.scope_label);
     match entry.target_label.as_str() {
+        "Open Timeline FX Options" => vec![AppAction::OpenTimelineFxMenu],
+        "Select Timeline FX Slot 1" => vec![AppAction::SelectTimelineFxSlot(0)],
+        "Select Timeline FX Slot 2" => vec![AppAction::SelectTimelineFxSlot(1)],
+        "Select Timeline FX Slot 3" => vec![AppAction::SelectTimelineFxSlot(2)],
+        "Select Timeline FX Slot 4" => vec![AppAction::SelectTimelineFxSlot(3)],
+        "Toggle Timeline FX" => vec![AppAction::ToggleSelectedTimelineFx],
+        "Cycle Timeline FX Kind" => vec![AppAction::CycleSelectedTimelineFxKind],
+        "Adjust Timeline FX Param 1" => vec![AppAction::AdjustSelectedTimelineFxPrimary],
+        "Adjust Timeline FX Param 2" => vec![AppAction::AdjustSelectedTimelineFxSecondary],
+        "Adjust Timeline FX Param 3" => vec![AppAction::AdjustSelectedTimelineFxThird],
+        "Adjust Timeline FX Param 4" => vec![AppAction::AdjustSelectedTimelineFxFourth],
+        "Move Timeline FX Up" => vec![AppAction::MoveSelectedTimelineFxUp],
+        "Move Timeline FX Down" => vec![AppAction::MoveSelectedTimelineFxDown],
+        "Add Timeline FX" => vec![AppAction::AddSelectedTimelineFx],
+        "Delete Timeline FX" => vec![AppAction::DeleteSelectedTimelineFx],
+        "Scroll Timeline FX Params" => vec![AppAction::ScrollSelectedTimelineFxWindow],
         "Previous Page Item" => vec![AppAction::SelectPreviousPageItem],
         "Next Page Item" => vec![AppAction::SelectNextPageItem],
         "Adjust Page Item Backward" => vec![AppAction::AdjustPageItemBackward],
@@ -1332,6 +1396,44 @@ mod tests {
             };
             assert_eq!(mapping_entry_to_actions(&entry, &event), vec![action]);
             assert!(mapping_entry_targets_action(&entry, action));
+        }
+    }
+}
+#[cfg(test)]
+mod split_fx_mapping_tests {
+    use super::*;
+    #[test]
+    fn split_fx_actions_are_available_and_resolve_from_mappings() {
+        for action in [
+            AppAction::SelectTimelineFxSlot(0),
+            AppAction::SelectTimelineFxSlot(1),
+            AppAction::SelectTimelineFxSlot(2),
+            AppAction::SelectTimelineFxSlot(3),
+            AppAction::ToggleSelectedTimelineFx,
+            AppAction::CycleSelectedTimelineFxKind,
+            AppAction::AdjustSelectedTimelineFxPrimary,
+            AppAction::AdjustSelectedTimelineFxSecondary,
+            AppAction::AdjustSelectedTimelineFxThird,
+            AppAction::AdjustSelectedTimelineFxFourth,
+            AppAction::MoveSelectedTimelineFxUp,
+            AppAction::MoveSelectedTimelineFxDown,
+            AppAction::AddSelectedTimelineFx,
+            AppAction::DeleteSelectedTimelineFx,
+        ] {
+            let label = crate::actions::action_label(action);
+            assert!(
+                mapping_target_labels().contains(&label),
+                "missing mapping target: {label}"
+            );
+            let mut entry = MappingEntry::default_new();
+            entry.target_label = label.to_string();
+            entry.scope_label = "Active Track".to_string();
+            entry.enabled = true;
+            assert!(
+                mapping_entry_targets_action(&entry, action),
+                "unresolved mapping: {label}"
+            );
+            assert!(mapping_scope_valid_for_target(label, "Active Track", 4));
         }
     }
 }
