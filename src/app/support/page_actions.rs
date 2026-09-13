@@ -2,6 +2,10 @@ use super::*;
 
 impl App {
     pub(crate) fn select_previous_page_item(&mut self) {
+        if self.fx_menu.is_some() {
+            self.move_fx_menu_selection(-1);
+            return;
+        }
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(-1);
             return;
@@ -44,6 +48,10 @@ impl App {
     }
 
     pub(crate) fn select_next_page_item(&mut self) {
+        if self.fx_menu.is_some() {
+            self.move_fx_menu_selection(1);
+            return;
+        }
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(1);
             return;
@@ -111,6 +119,10 @@ impl App {
     }
 
     pub(crate) fn adjust_page_item(&mut self, delta: i32) {
+        if self.fx_menu.is_some() {
+            self.move_fx_menu_selection(delta);
+            return;
+        }
         if self.mapping_target_lookup_is_active() {
             self.move_mapping_target_lookup_highlight(delta);
             return;
@@ -133,6 +145,10 @@ impl App {
     }
 
     pub(crate) fn activate_page_item(&mut self) {
+        if self.fx_menu.is_some() {
+            self.commit_fx_menu_choice();
+            return;
+        }
         if self.mapping_target_lookup_is_active() {
             self.commit_mapping_target_lookup();
             return;

@@ -21,6 +21,18 @@ impl App {
     }
 
     pub(crate) fn apply_action(&mut self, action: AppAction) -> AppControl {
+        if !matches!(
+            action,
+            AppAction::OpenTimelineFxMenu
+                | AppAction::SelectPreviousPageItem
+                | AppAction::SelectNextPageItem
+                | AppAction::AdjustPageItemBackward
+                | AppAction::AdjustPageItemForward
+                | AppAction::ActivatePageItem
+                | AppAction::CancelCurrentMode
+        ) {
+            self.fx_menu = None;
+        }
         match action {
             AppAction::Undo => return self.perform_undo(None),
             AppAction::Redo => return self.perform_redo(None),
@@ -42,7 +54,8 @@ impl App {
 
     fn undo_candidate_domains(&self, action: AppAction) -> Vec<UndoDomain> {
         match action {
-            AppAction::Quit
+            AppAction::OpenTimelineFxMenu
+            | AppAction::Quit
             | AppAction::Undo
             | AppAction::Redo
             | AppAction::UndoTimeline
@@ -167,12 +180,12 @@ impl App {
             AppAction::AddMappingRow | AppAction::RemoveSelectedMapping => {
                 vec![UndoDomain::Mappings]
             }
-            AppAction::SelectPreviousPageItem | AppAction::SelectNextPageItem => {
-                match self.page_state.current_page {
-                    AppPage::Timeline => vec![UndoDomain::Timeline],
-                    _ => vec![UndoDomain::Ui],
-                }
-            }
+            AppAction::SelectTimelineFxSlot(_)
+            | AppAction::SelectPreviousPageItem
+            | AppAction::SelectNextPageItem => match self.page_state.current_page {
+                AppPage::Timeline => vec![UndoDomain::Timeline],
+                _ => vec![UndoDomain::Ui],
+            },
             AppAction::AdjustPageItemBackward
             | AppAction::AdjustPageItemForward
             | AppAction::ReverseActivatePageItem
@@ -194,6 +207,8 @@ impl App {
             | AppAction::CycleSelectedTimelineFxKind
             | AppAction::AdjustSelectedTimelineFxPrimary
             | AppAction::AdjustSelectedTimelineFxSecondary
+            | AppAction::AdjustSelectedTimelineFxThird
+            | AppAction::AdjustSelectedTimelineFxFourth
             | AppAction::ScrollSelectedTimelineFxWindow
             | AppAction::MoveSelectedTimelineFxUp
             | AppAction::MoveSelectedTimelineFxDown

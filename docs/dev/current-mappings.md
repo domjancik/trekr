@@ -69,7 +69,7 @@ Keyboard mappings currently implemented:
 - `Shift+Left` / `Shift+Right` or `Shift+Up` / `Shift+Down`: select current mappings-editor field in write mode
 - `Q` / `E`: adjust current page item
 - `Enter`: activate/toggle current page item
-- `Shift+Enter`: reverse the timeline FX field cycle when timeline FX is focused
+- `Enter`: switch timeline FX focus between slots and parameters
 - `Escape`: quit
 
 Prototype demo MIDI/OSC mappings shown on the mappings page:
@@ -141,3 +141,13 @@ Notes:
 - stacked-view note-selection actions are scoped to the currently selected recording clip
 - OSC input learn is not implemented yet
 - the page shows demo MIDI/OSC entries plus the current keyboard surface
+
+## Timeline FX input contract
+
+Input FX and Output FX use two focus areas: fixed 2×2 effect slots on the left and 2×2 parameter values on the right. Up/Down cycles the current area in reading order; Q/E changes the selected kind or parameter value. Enter switches areas. Shift+M bypasses in either area. Delete empties the selected slot when FX slots have focus. Ctrl+Up/Down swaps into the adjacent slot (including empty), with no wrap, when slots have focus. Shift+Up/Down or Shift+Left/Right switches timeline context from either focus area; Left/Right still selects tracks. Top-row Shift+1–4 selects the corresponding FX slot without changing focus, including empty slots. Shift+numpad retains stored-loop behavior.
+
+Mappings expose Open Timeline FX Options, Select Timeline FX Slot 1–4, Toggle/Cycle/Add/Delete Timeline FX, Move Timeline FX Up/Down, and Adjust Timeline FX Param 1–4. Use Previous/Next Page Item, Activate Page Item, and Adjust Page Item Backward/Forward for selection-based controller operation. The legacy Scroll Timeline FX Params target now advances parameter selection without paging. See the timeline control contexts spec for the complete contract.
+
+FX pointer/touch editing: select an icon, then click/tap it again to cycle kind; repeating on an empty slot inserts there. Parameter left/right halves immediately focus and adjust backward/forward through the canonical page adjustment actions, with undo support. Keyboard and mapping bindings are unchanged.
+
+Right-click an FX icon or populated parameter cell, or press Shift+Enter (or Shift+F10) on the focused control, to open its choices. Open Timeline FX Options is an Active Track mapping target. While open, Previous/Next Page Item and Adjust Page Item Backward/Forward navigate; Activate Page Item commits one undoable edit; Cancel Current Mode dismisses. Up/Down and Enter provide the keyboard equivalent, Escape cancels, and wheel/Home/End navigate long lists.

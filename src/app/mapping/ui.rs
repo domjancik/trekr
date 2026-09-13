@@ -4,6 +4,21 @@ use sdl3::keyboard::{Keycode, Mod};
 
 pub(crate) fn mapping_target_label_for_action(action: AppAction) -> Option<&'static str> {
     match action {
+        AppAction::OpenTimelineFxMenu => Some("Open Timeline FX Options"),
+        AppAction::SelectTimelineFxSlot(index) if index < 4 => {
+            Some(crate::actions::action_label(action))
+        }
+        AppAction::ToggleSelectedTimelineFx => Some("Toggle Timeline FX"),
+        AppAction::CycleSelectedTimelineFxKind => Some("Cycle Timeline FX Kind"),
+        AppAction::AdjustSelectedTimelineFxPrimary => Some("Adjust Timeline FX Param 1"),
+        AppAction::AdjustSelectedTimelineFxSecondary => Some("Adjust Timeline FX Param 2"),
+        AppAction::AdjustSelectedTimelineFxThird => Some("Adjust Timeline FX Param 3"),
+        AppAction::AdjustSelectedTimelineFxFourth => Some("Adjust Timeline FX Param 4"),
+        AppAction::MoveSelectedTimelineFxUp => Some("Move Timeline FX Up"),
+        AppAction::MoveSelectedTimelineFxDown => Some("Move Timeline FX Down"),
+        AppAction::AddSelectedTimelineFx => Some("Add Timeline FX"),
+        AppAction::DeleteSelectedTimelineFx => Some("Delete Timeline FX"),
+        AppAction::ScrollSelectedTimelineFxWindow => Some("Scroll Timeline FX Params"),
         AppAction::TogglePlayback => Some("Play/Stop"),
         AppAction::ToggleRecording => Some("Record"),
         AppAction::CycleRecordMode => Some("Record Mode"),

@@ -40,8 +40,8 @@ impl TimelineContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TimelineFxField {
     Enabled,
-    Kind,
     #[default]
+    Kind,
     ParamPrimary,
     ParamSecondary,
     Scroll,
@@ -83,4 +83,12 @@ fn cycle_enum<T: Copy + Eq, const N: usize>(all: [T; N], current: T, delta: isiz
     let len = N as isize;
     let next_index = (index + delta).rem_euclid(len) as usize;
     all[next_index]
+}
+#[cfg(test)]
+mod split_fx_default_tests {
+    use super::*;
+    #[test]
+    fn split_fx_defaults_to_slots() {
+        assert_eq!(TimelineFxField::default(), TimelineFxField::Kind);
+    }
 }

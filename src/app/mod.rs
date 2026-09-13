@@ -120,6 +120,7 @@ pub struct App {
     target_lookup_state: MappingTargetLookupState,
     clip_align_defaults: ClipAlignSettings,
     clip_align_session: Option<ClipAlignSession>,
+    fx_menu: Option<timeline::fx_menu::FxMenu>,
     viewport_size: (u32, u32),
     ui_scale_override: Option<f32>,
     ui_scaling_mode: UiScalingMode,
@@ -227,6 +228,7 @@ impl App {
             target_lookup_state: MappingTargetLookupState::default(),
             clip_align_defaults: ClipAlignSettings::default(),
             clip_align_session: None,
+            fx_menu: None,
             viewport_size: (1280, 720),
             ui_scale_override: None,
             ui_scaling_mode: UiScalingMode::Auto,
@@ -808,7 +810,8 @@ impl App {
                 AppControl::Continue
             }
             AppAction::CancelCurrentMode => {
-                if self.target_lookup_state.active.is_some() {
+                if self.fx_menu.take().is_some() {
+                } else if self.target_lookup_state.active.is_some() {
                     self.cancel_mapping_target_lookup();
                 } else if self.clip_align_session.is_some() {
                     self.close_clip_align();
@@ -1317,6 +1320,18 @@ impl App {
                 self.adjust_clip_align_field(1);
                 AppControl::Continue
             }
+            AppAction::OpenTimelineFxMenu => {
+                self.open_focused_fx_menu();
+                AppControl::Continue
+            }
+            AppAction::SelectTimelineFxSlot(index) => {
+                if self.page_state.current_page == AppPage::Timeline && index < 4 {
+                    if let Some(chain) = self.page_state.selected_timeline_context.chain_kind() {
+                        self.set_selected_timeline_fx_row(chain, index);
+                    }
+                }
+                AppControl::Continue
+            }
             AppAction::ToggleSelectedTimelineFx => {
                 self.toggle_selected_timeline_fx_enabled();
                 AppControl::Continue
@@ -1331,6 +1346,14 @@ impl App {
             }
             AppAction::AdjustSelectedTimelineFxSecondary => {
                 self.adjust_selected_timeline_fx_parameter(1, 1);
+                AppControl::Continue
+            }
+            AppAction::AdjustSelectedTimelineFxThird => {
+                self.adjust_selected_timeline_fx_parameter(2, 1);
+                AppControl::Continue
+            }
+            AppAction::AdjustSelectedTimelineFxFourth => {
+                self.adjust_selected_timeline_fx_parameter(3, 1);
                 AppControl::Continue
             }
             AppAction::ScrollSelectedTimelineFxWindow => {
@@ -2410,6 +2433,7 @@ impl App {
         source: crate::actions::ActionSource,
     ) -> AppControl {
         self.status_state.hovered_target = None;
+        self.status_state.hovered_fx_detail = None;
         self.direct_mapping_state.status_message = None;
         if !matches!(
             action,

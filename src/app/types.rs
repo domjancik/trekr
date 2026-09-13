@@ -20,6 +20,7 @@ pub(crate) struct OverlayState {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct StatusState {
     pub hovered_target: Option<DiscoverabilityTarget>,
+    pub hovered_fx_detail: Option<String>,
     pub last_action: Option<LastActionStatus>,
     pub history_message: Option<String>,
 }
@@ -37,6 +38,7 @@ pub(crate) struct TimelineFxRowLayout {
     pub row: Rect,
     pub enabled: Rect,
     pub kind: Rect,
+    pub parameters: [Rect; 4],
     pub param_primary: Rect,
     pub param_secondary: Rect,
     pub overflow: Rect,

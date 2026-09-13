@@ -486,6 +486,99 @@ impl MidiFx {
         }
     }
 
+    /// All direct choices for one inline control, preserving the other controls.
+    pub fn inline_parameter_choices(
+        &self,
+        parameter: usize,
+        track_count: usize,
+        ppqn: u16,
+    ) -> Vec<Self> {
+        if parameter >= self.inline_parameters().len() {
+            return Vec::new();
+        }
+        let values: Vec<i32> = match self {
+            Self::Arp { .. } => match parameter {
+                0 => arp_step_choices(ppqn)
+                    .into_iter()
+                    .map(|v| v as i32)
+                    .collect(),
+                1 => (0..4).collect(),
+                _ => (10..=100).step_by(10).collect(),
+            },
+            Self::NoteFilter { low, high, .. } => match parameter {
+                0 => (0..=i32::from(*high)).collect(),
+                1 => (i32::from(*low)..=127).collect(),
+                _ => (-1..=i32::from(*high - *low) + 1)
+                    .filter(|v| *v != 0)
+                    .collect(),
+            },
+            Self::Transpose { .. } => (-24..=24).collect(),
+            Self::Velocity { .. } => (0..=300).step_by(10).collect(),
+            Self::Duration { .. } => duration_step_choices(ppqn)
+                .into_iter()
+                .map(|v| v as i32)
+                .collect(),
+            Self::Delay { .. } => delay_step_choices(ppqn)
+                .into_iter()
+                .map(|v| v as i32)
+                .collect(),
+            Self::ScaleFilter { .. } | Self::ScaleQuantize { .. } | Self::ChordQuantize { .. } => {
+                (0..if parameter == 0 { 12 } else { 2 }).collect()
+            }
+            Self::TrackClone { .. } => (0..track_count.max(1) as i32).collect(),
+        };
+        let mut choices = values
+            .into_iter()
+            .map(|value| {
+                let mut effect = self.clone();
+                match &mut effect {
+                    Self::Arp {
+                        step_ticks,
+                        order,
+                        gate_percent,
+                    } => match parameter {
+                        0 => *step_ticks = value as u64,
+                        1 => *order = ArpOrder::Up.cycle(value),
+                        _ => *gate_percent = value as u8,
+                    },
+                    Self::NoteFilter {
+                        low,
+                        high,
+                        enabled_notes,
+                    } => match parameter {
+                        0 => *low = value as u8,
+                        1 => *high = value as u8,
+                        _ => {
+                            *enabled_notes = if value < 0 {
+                                Vec::new()
+                            } else {
+                                (*low..=*high).take(value as usize).collect()
+                            }
+                        }
+                    },
+                    Self::Transpose { semitones } => *semitones = value as i8,
+                    Self::Velocity { percent } => *percent = value as u16,
+                    Self::Duration { ticks } | Self::Delay { ticks } => *ticks = value as u64,
+                    Self::ScaleFilter { root, target }
+                    | Self::ScaleQuantize { root, target }
+                    | Self::ChordQuantize { root, target } => {
+                        if parameter == 0 {
+                            *root = value as u8
+                        } else {
+                            *target = QuantizeTarget::Local.cycle(value)
+                        }
+                    }
+                    Self::TrackClone { source_track } => *source_track = value as usize,
+                }
+                effect
+            })
+            .collect::<Vec<_>>();
+        if !choices.contains(self) {
+            choices.insert(0, self.clone());
+        }
+        choices
+    }
+
     pub fn adjust_inline_parameter(
         &mut self,
         param_index: usize,
